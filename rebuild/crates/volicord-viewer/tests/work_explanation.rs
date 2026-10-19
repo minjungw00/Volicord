@@ -54,6 +54,145 @@ fn get(f: &reading_fixture::Fixture, path: &str) -> String {
         .expect("HTTP");
     String::from_utf8(out).expect("UTF-8")
 }
+
+#[test]
+fn reused_execution_keeps_both_checkpoint_reports_across_cli_mcp_live_and_offline(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Authored negative history, not a genuine task or an inferred retest.
+    // Two reports deliberately reference the same original failing Command
+    // Source; the later passing report references a different Source.
+    let mut input: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+    input["prior_checkpoint_count"] = serde_json::json!(0);
+    input["later_checkpoint_count"] = serde_json::json!(0);
+    input["works"][0]["checkpoints"] = serde_json::json!([
+        {"key":"first-failure","work":"Paused","verification":"Failed","outcome":"widget assertion failed","state_change":null,"paths":[]},
+        {"key":"same-run-reported-again","work":"Paused","verification":"Failed","outcome":"same original widget failure, reported again","state_change":null,"paths":[]},
+        {"key":"different-check","work":"Paused","verification":"Passed","outcome":"an unrelated diagnostic exited zero; assertions unspecified","state_change":null,"paths":[]}
+    ]);
+    let f = reading_fixture::fixture_scenario(input)?;
+    let work = f.goals["older"];
+    let before = f.operations.canonical_basis(f.project)?;
+    let privacy = f.operations.privacy_status(f.project)?;
+    let report = f.operations.read_work_verification(f.project, work)?;
+    assert_eq!(report.checks.len(), 3);
+    assert_eq!(report.executions.len(), 2);
+    let failed = report
+        .executions
+        .iter()
+        .find(|e| e.exit_code == Some(1))
+        .ok_or("failed run")?;
+    let passed = report
+        .executions
+        .iter()
+        .find(|e| e.exit_code == Some(0))
+        .ok_or("independent run")?;
+    assert_ne!(failed.source_id, passed.source_id);
+    assert_eq!(failed.checkpoint_reports.len(), 2);
+    assert_eq!(passed.checkpoint_reports.len(), 1);
+    assert_ne!(failed.checkpoint_reports[0], failed.checkpoint_reports[1]);
+    for (check, key) in report.checks.iter().zip([
+        "first-failure",
+        "same-run-reported-again",
+        "different-check",
+    ]) {
+        assert_eq!(check.original.checkpoint_id, f.checkpoints[key].to_string());
+        assert_eq!(check.retest_comparison, RetestComparison::Unresolved);
+        assert_eq!(check.assertion_result, EvidenceDetail::NotObserved);
+        assert_eq!(check.applicability, VerificationApplicability::Unknown);
+    }
+    let expected = serde_json::to_value(&report)?;
+    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime".to_owned(),
+                f.operations.layout().root().to_string_lossy().into_owned(),
+                "--project".into(),
+                f.project.to_string(),
+                "--json".into(),
+                "work".into(),
+                "verification".into(),
+                "--work".into(),
+                work.to_string(),
+            ],
+            &mut stdout,
+            &mut stderr
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&stderr)
+    );
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&stdout)?["verification_report"],
+        expected
+    );
+    let mut host =
+        volicord_host::HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let mcp = host
+        .handle(
+            serde_json::json!({"jsonrpc":"2.0","id":1,"method":"tools/call",
+        "params":{"name":"work_explanation","arguments":{"action":"verification",
+            "project_id":f.project.to_string(),"work_item_id":work.to_string()}}}),
+        )
+        .ok_or("MCP response")?;
+    assert_eq!(mcp["result"]["isError"], false, "{mcp}");
+    assert_eq!(
+        mcp["result"]["structuredContent"]["verification_report"],
+        expected
+    );
+    let live = get(&f, &format!("/?view=work&work={work}"));
+    assert!(live.starts_with("HTTP/1.1 200"));
+    for execution in &report.executions {
+        assert_eq!(
+            live.matches(&format!(
+                "data-execution-source=\"{}\"",
+                execution.source_id
+            ))
+            .count(),
+            1
+        );
+    }
+    for check in &report.checks {
+        assert!(live.contains(check.original_outcome.as_deref().ok_or("original report")?));
+    }
+    let offline = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()))
+        .render_snapshot(
+            &volicord_viewer::ViewerRequest {
+                project_id: f.project,
+                locale: ViewerLocale::English,
+                view: ViewerView::Work { work: Some(work) },
+                requested_language: "en".into(),
+                guarded_request: None,
+            },
+            TimestampMicros::from_unix_micros(123),
+        )?
+        .html;
+    assert!(!offline.contains("<script"));
+    assert!(!offline.contains("<form"));
+    for check in &report.checks {
+        assert!(offline.contains(check.original_outcome.as_deref().ok_or("original report")?));
+    }
+    if let Some(root) = std::env::var_os("VOLICORD_VERIFICATION_JOURNEY_CAPTURE") {
+        let root = std::path::PathBuf::from(root);
+        assert!(root.is_absolute());
+        std::fs::create_dir_all(&root)?;
+        std::fs::write(
+            root.join("verification-report.json"),
+            serde_json::to_vec_pretty(&report)?,
+        )?;
+        std::fs::write(root.join("cli.json"), stdout)?;
+        std::fs::write(root.join("mcp.json"), serde_json::to_vec_pretty(&mcp)?)?;
+        std::fs::write(root.join("live.http"), live)?;
+        std::fs::write(root.join("offline.html"), offline)?;
+        std::fs::write(root.join("origin.txt"), "Authored negative control. Reused original Command Source, separate Checkpoints and independent later passing diagnostic. No observed comparable retest, autonomous article, genuine task or human acceptance.\n")?;
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    assert_eq!(
+        privacy.managed_derived,
+        f.operations.privacy_status(f.project)?.managed_derived
+    );
+    Ok(())
+}
 #[test]
 fn preparation_record_read_correction_delete_and_forget_use_current_operations(
 ) -> Result<(), Box<dyn std::error::Error>> {

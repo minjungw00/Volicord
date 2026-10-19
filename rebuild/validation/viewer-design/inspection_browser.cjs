@@ -8,17 +8,21 @@ const outputRoot=path.resolve(config.output);fs.mkdirSync(outputRoot,{recursive:
 const result={candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
   diff_sha256:require('node:crypto').createHash('sha256').update(execFileSync('git',['diff','HEAD','--','rebuild'])).digest('hex'),
   viewer_sha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(config.viewer)).digest('hex'),
-  fixture_sha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(config.fixture)).digest('hex'),synthetic_controls:true,human_acceptance:'pending',cases:[],screenshots:[]};
+  fixture_sha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(config.fixture)).digest('hex'),
+  driver_sha256:require('node:crypto').createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),synthetic_controls:true,human_acceptance:'pending',cases:[],screenshots:[],listeners:[]};
 async function serve(project){
- const child=spawn(config.viewer,['--runtime',fixture.runtime,'--project',project,'--bind','127.0.0.1:0'],{stdio:['ignore','pipe','pipe']});
+ const argv=['--runtime',fixture.runtime,'--project',project,'--bind','127.0.0.1:0'];
+ const receipt={project,argv:[config.viewer,...argv],started_at:new Date().toISOString(),stdout:`listener-${result.listeners.length}.stdout`,stderr:`listener-${result.listeners.length}.stderr`};result.listeners.push(receipt);
+ const child=spawn(config.viewer,argv,{stdio:['ignore','pipe','pipe']});
  let stderr='',stdout='';child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);
  const exit=new Promise(resolve=>child.on('exit',(code,signal)=>resolve({code,signal})));
  const base=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error(stderr||'listener timeout')),15000);child.stderr.on('data',()=>{const match=stderr.match(/http:\/\/127.0.0.1:\d+\//);if(match){clearTimeout(timer);resolve(match[0]);}});child.on('exit',()=>{clearTimeout(timer);reject(Error(stderr));});});
- return {base,async stop(){child.kill('SIGTERM');result.process_termination=await exit;fs.writeFileSync(path.join(output,'listener.stderr'),stderr);fs.writeFileSync(path.join(output,'listener.stdout'),stdout);}};
+ return {base,async stop(){child.kill('SIGTERM');receipt.termination=await exit;receipt.ended_at=new Date().toISOString();fs.writeFileSync(path.join(output,receipt.stderr),stderr);fs.writeFileSync(path.join(output,receipt.stdout),stdout);}};
 }
 (async()=>{let browser,listener;try{
  listener=await serve(fixture.project);browser=await chromium.launch({executablePath:config.chromium,headless:true,env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})},args:['--no-sandbox','--disable-dev-shm-usage']});
- for(const width of [1440,390]){
+ result.browser_version=browser.version();
+ for(const width of [1440,390,320]){
   const page=await browser.newPage({viewport:{width,height:1000}});
   const failed=[];page.on('pageerror',e=>failed.push(e.message));
   async function open(target){const response=await page.goto(new URL(target,listener.base).href);assert.equal(response.status(),200,target);}

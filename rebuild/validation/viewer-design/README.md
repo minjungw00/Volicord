@@ -242,3 +242,28 @@ executables, original canonical input and selected visual reference. No generate
 screens, Source bytes, Runtime, model output or private report is tracked. The
 [Product integration observations](product-integration-review.md) distinguish
 technical support from exact-artifact human acceptance.
+
+Each delivery case must explicitly declare `evidence_class` (`normal`,
+`record-only`, `degraded`, or `synthetic-control`) and `origin`. Normal means
+currently admitted content, never fresh generation, source sufficiency or approval.
+Use `normal_source_rich_article` in the private config to describe the actual
+positive or exact blocker. An unchanged historical v5 model article with admitted
+v3 copies can support current reader replay; it does not become a new task-time
+capture. Non-current or stale articles remain negative controls.
+
+The entry page contains answer-free reader questions. Case-specific conclusions,
+test results and comparisons belong after the reading journey, and source-first
+expectations are excluded entirely. Packaging allowlists actual driver outputs,
+excluding Runtime trees, evaluator keys and arbitrary neighboring files. Baseline,
+reference and canonical bundle arguments are optional, separately bound inputs.
+Run `python3 -B rebuild/validation/viewer-design/package_product_review_self_test.py`
+through `validate focused` for separation and moved/tampered package controls.
+`package_product_review.verify_package(PATH)` rechecks a copied delivery's exact
+membership and hashes; this is integrity verification, not authenticated authorship.
+
+The browser driver also admits real Works with no Checkpoint: it checks absence
+of a latest-work date instead of forcing an invented event. Native GET inspection
+filters need no mutation token; protected POST forms and HTTP operations retain
+their dedicated authenticity tests. Inspector browser support checks 320 px as
+well as desktop/390 px and retains separate streams and numeric/signal termination
+for each Project listener. These controls supply no human comprehension verdict.

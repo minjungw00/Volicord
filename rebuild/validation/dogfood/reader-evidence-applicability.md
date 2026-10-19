@@ -106,3 +106,43 @@ and time ordering. Every unpaired/unusable comparison remains in per-Source gaps
 even alongside an eligible pair. These are validation-support corrections, not
 capture authority, semantic grading or a Product schema. First failing executions
 and corrected retests are preserved separately.
+
+### Additional retained campaigns and actual current consumers
+
+Later inventory found four additional relevant directories. They were not used as
+new execution evidence or omitted as unsuitable. The separate immutable
+`supplemental-original-bindings.json` freezes their 1,864 files / 60,057,862 bytes.
+Their original manifests, Source bodies, first model attempts, approval rejection,
+retries, authoring outputs and evaluations remain unchanged. Old external
+authorization records do not authorize a new invocation in this session.
+
+| Original case | Identity / format / retention / author | Per-claim disposition |
+| --- | --- | --- |
+| `article-task` | `8c8ed3cd…`, Project `18e3796a…`, Work `e9cf94cf…`; initial before-source receipts and caller-declared host authority | Initial observation/history `passed` as bounded evidence. Completed capture/article chain and independent source-first quality `not_observed`; the authority string is not activation proof. |
+| `article-delivery-c5ff3739-0mZtN2` | `c5ff3739…`; Work `953ae4a6…`, Decision `6e027405…`; authored v5/v3 controls, disposable exits 1/0/0 | Record/transport/privacy controls `passed` at their candidate. Autonomous generation, real user Decision and natural task `inapplicable` to authored controls; their own genuine positive was explicitly `blocked`. |
+| `reader-campaign-20261019-ebe53358` | `ebe53358…`; Project `073d57a6…`, Work `00c96773…`; workspace `67b03afd…` → `d02c6566…`; 86,400-second copies, earliest expiry 2026-10-20 21:42:11 +09:00 | Explicit-local setup/file/command chain and original model article remain historical positives, AC-17/23/24. Trusted automatic activation `blocked`, current-format use of its older producer `inapplicable`; human acceptance `not_observed`. Old model/approval/hook observations confer no renewed grant. |
+| `volicord-reader-campaign-20261020-c5ff3739` Work | `c5ff3739…`; Project `68326332…`, Work `d272e1a4…`; v5, 9 units/18 citations; v3 copies, earliest article expiry 2026-10-21 00:05:41.537742 +09:00; separate requested/self-reported model invocation | Original verifier before/after, failed symlink probe, same intended probe after fix, independent help and four-subcase regression output are retained. Current prepare/read validates all 11 copies and unchanged article: `passed` for current reading/admission replay, not new generation. Code/exit-role/cause/limits support is bounded agent judgment. Authenticated automatic capture and a new current task remain `blocked`; typed retest relation `blocked` (unsupported), despite original probe input/output supporting manual comparison. |
+| Same campaign, no-change investigation | Project `00df6cd3…`, Work `5b3fa3c4…`; v5, 7 units/14 citations; v3, earliest expiry `1792508964578015` µs; separate historical model invocation | Same observed launcher bytes and distinct process report are useful actual investigation evidence, AC-17/19/24. Article discloses a different Project/Work ID in stdout rather than adopting its assertion report. Current public reading `passed`; new source-first/blind independent assessment and human comprehension `not_observed`. No fabricated patch, root cause or Decision. |
+| Same campaign, historical real Decision | Project `39b5742e…`, Decision `04bd432a…`; v5, 7 units/zero code citations; retained recommendation reason, missing technical Source, null user reason | Current record/article replay is admissible for AC-18/24. Recommendation, user choice/reason and interpretation stay distinct. Code-effect verification `blocked`; new Decision capture `inapplicable` to an imported historical choice; human comprehension `not_observed`. |
+
+The Work's before/after file hashes and exact intended probe are positive evidence;
+command fingerprint equality alone would not establish the comparison.
+`historical-source-first-expectations.json` was frozen from original code/output
+before viewing generated prose. This evaluator is separate from the historical
+author invocation but implementation-dependent; no blind or human judgment is
+claimed. No-change and Decision assessments remain dependent. Expectations stay
+outside generation and review inputs.
+
+The original `article-reader` v5 Work is now **stale** in current public reads.
+It remains a historical producer result and a current withholding control, never
+normal content. Reading the separately retained `c5ff3739` source-rich article
+does not rehabilitate that stale case. No retention was renewed and no failed
+generation or original manifest was rewritten.
+
+Current consumer coverage adds one Command Source reused by two Checkpoint reports
+and a different later passing diagnostic. CLI, MCP, live and script-free export
+retain both originals, one execution for the reused Source, unresolved retest,
+unspecified assertions and unchanged canonical/Derived state. Existing adverse
+scope/expiry/corruption/empty/protected-action controls stay in the focused suite.
+Presentation-first tasks are separate answer-free questions; actual human answers,
+misunderstandings and acceptance remain `not_observed`.

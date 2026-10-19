@@ -42,6 +42,7 @@ function command(label,args){
   candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
   worktree_diff_sha256:hash(execFileSync('git',['diff','HEAD','--','rebuild'])),
   executable_sha256:hash(fs.readFileSync(config.viewer)),fixture_sha256:hash(fs.readFileSync(path.join(config.fixture,'fixture.json'))),
+  driver_sha256:hash(fs.readFileSync(__filename)),
   semantic_approval:'not_established',human_comprehension:'pending',design_acceptance:'pending',commands,reads:[],screens:[]};
  const child=spawn(config.viewer,['--runtime',fixture.runtime,'--project',fixture.project,'--bind','127.0.0.1:0','--view','repository'],{stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);
@@ -54,6 +55,7 @@ function command(label,args){
    child.on('exit',()=>{clearTimeout(timer);reject(Error(stderr));});
   });
   browser=await chromium.launch({executablePath:config.chromium,headless:true,args:['--no-sandbox','--disable-dev-shm-usage'],env:{...process.env,FONTCONFIG_FILE:config.fontconfig}});
+  result.browser_version=browser.version();
   const before=state();result.state_before_sha256=hash(before);
   const context=await browser.newContext();
   const measured=[];

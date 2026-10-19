@@ -10,7 +10,7 @@ const output=path.resolve(config.output);fs.mkdirSync(output,{recursive:true});
 const result={candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
  diff_sha256:hash(execFileSync('git',['diff','HEAD','--','rebuild'])),
  executable_sha256:hash(fs.readFileSync(config.viewer)),cli_sha256:hash(fs.readFileSync(config.cli)),
- config_sha256:hash(fs.readFileSync(process.argv[2])),commands:[],cases:[],
+ config_sha256:hash(fs.readFileSync(process.argv[2])),driver_sha256:hash(fs.readFileSync(__filename)),commands:[],cases:[],
  human_acceptance:'pending',screen_reader:'not_observed',native_zoom:'not_observed'};
 function command(label,argv){const started=performance.now();const p=spawnSync(argv[0],argv.slice(1),{encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024,env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
  fs.writeFileSync(path.join(output,label+'.stdout'),p.stdout||'');fs.writeFileSync(path.join(output,label+'.stderr'),p.stderr||'');
@@ -62,7 +62,8 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
  if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');
  assert.ok(command('korean-fonts',['fc-list',':lang=ko']).trim(),'Korean-capable fonts are required for readable review screenshots');
  browser=await chromium.launch({executablePath:config.chromium,headless:true,args:['--no-sandbox','--disable-dev-shm-usage'],env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
- for(const c of config.cases){const r={key:c.key,project:c.project,work:c.work,decision:c.decision,widths:[]};result.cases.push(r);
+ result.browser_version=browser.version();
+ for(const c of config.cases){const r={key:c.key,project:c.project,work:c.work,decision:c.decision,evidence_class:c.evidence_class||'unclassified',origin:c.origin||'not supplied; no authorship claim',widths:[]};result.cases.push(r);
   const before=state(c.runtime);r.state_before_sha256=hash(before);
   let originalEvents;
   if(c.source_bundle && c.work){
@@ -103,20 +104,24 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
     assert.equal(await card.locator('h3').getAttribute('data-title-basis'),'generated-interpretation');
     assert.equal(await card.locator('blockquote').count(),0);assert.equal(await card.locator('[data-question="Synopsis"]').count(),1);
     assert.equal(await card.locator('time[data-event-kind="goal_created"]').count(),1);
-    assert.equal(await card.locator('time[data-event-kind="checkpoint_recorded"]').count(),1);
+    const canonicalWork=status.work_history.find(w=>w.work_item_id===c.normal_work);
+    const hasCheckpoint=originalEvents?Boolean(originalEvents.latest):canonicalWork.checkpoint_ids.length>0;
+    assert.equal(await card.locator('time[data-event-kind="checkpoint_recorded"]').count(),hasCheckpoint?1:0,'no Checkpoint means no fabricated latest-work instant');
     assert.ok((await card.locator('h3').textContent()).length<160);
     if(originalEvents){
      const creation=card.locator('time[data-event-kind="goal_created"]'),latest=card.locator('time[data-event-kind="checkpoint_recorded"]');
      assert.equal(await creation.getAttribute('data-recorded-at'),String(originalEvents.creation.recorded_at));
      assert.equal(await creation.getAttribute('data-revision'),'1');
      assert.equal(await creation.getAttribute('data-record-id'),c.work);
-     assert.equal(await latest.getAttribute('data-recorded-at'),String(originalEvents.latest.recorded_at));
-     assert.equal(await latest.getAttribute('data-record-id'),originalEvents.latest.id);
      row.creation_event={record:c.work,revision:1,micros:originalEvents.creation.recorded_at};
-     row.latest_work_event={record:originalEvents.latest.id,revision:originalEvents.latest.revision,micros:originalEvents.latest.recorded_at};
+     if(originalEvents.latest){
+      assert.equal(await latest.getAttribute('data-recorded-at'),String(originalEvents.latest.recorded_at));
+      assert.equal(await latest.getAttribute('data-record-id'),originalEvents.latest.id);
+      row.latest_work_event={record:originalEvents.latest.id,revision:originalEvents.latest.revision,micros:originalEvents.latest.recorded_at};
+     }else row.latest_work_event='absent: no original Checkpoint';
     }
     row.reading_title=await card.locator('h3').textContent();row.synopsis=await card.locator('[data-question="Synopsis"]').textContent();
-    row.normal_content='exact public host-produced name and synopsis; semantic quality unassessed';
+    row.normal_content='current public name and synopsis; author identity and semantic quality are not established by this browser';
    }
    if(c.unavailable_work)assert.equal(await page.locator(`.work-card[data-work-id="${c.unavailable_work}"] .content-unavailable`).count(),1);
    const tools=page.locator('.tools-menu');await tools.locator('summary').focus();await tools.locator('summary').press('Enter');
@@ -158,7 +163,10 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
     const menu=page.locator('.tools-menu');if(!await menu.evaluate(n=>n.open))await menu.locator('summary').click();
     await menu.locator(`a[href*="tool=${tool}"]`).click();assert.equal(new URL(page.url()).searchParams.get('tool'),tool);
     assert.equal(await page.locator('.page-head h1').count(),1);await capture(page,c,tool,width);
-    if(tool==='memory')assert.ok(await page.locator('form').evaluateAll(forms=>forms.every(f=>f.querySelector('input[name=request_authenticity]')?.value.length>0)),'existing mutation forms retain authenticity without granting new authority');
+    if(tool==='memory'){
+     assert.ok(await page.locator('form').evaluateAll(forms=>forms.every(f=>f.method==='get'||f.querySelector('input[name=request_authenticity]')?.value.length>0)),'mutation forms retain authenticity; native read-only GET filters require no write token');
+     assert.equal(await page.locator('.inspection-query').evaluate(f=>f.method),'get');
+    }
    }
    await page.locator('.brand').click();assert.equal(new URL(page.url()).searchParams.get('view'),'overview');
   }
