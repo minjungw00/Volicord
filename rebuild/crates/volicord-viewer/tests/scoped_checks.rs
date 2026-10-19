@@ -151,6 +151,59 @@ fn scoped_comparison_has_equal_cli_mcp_public_live_and_offline_facts_without_an_
         assert!(root.is_absolute());
         fs::create_dir(&root)?;
         fs::write(root.join("classification.txt"),"Task-owned controlled execution. Actual failing and passing Python assertions, original exact Sources and Checkpoints. Explicit local capture. Trusted SessionStart capture Blocked (absent); ordinary-user capture, model/human review and acceptance unobserved.\n")?;
+        let head = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .output()?;
+        let status = std::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .output()?;
+        assert_eq!(head.status.code(), Some(0));
+        assert_eq!(status.status.code(), Some(0));
+        fs::write(
+            root.join("candidate.json"),
+            serde_json::to_vec_pretty(
+                &json!({"git_head":String::from_utf8(head.stdout)?.trim(),"worktree_status":String::from_utf8(status.stdout)?,"classification":"task_owned_control","capture_authority":"explicit_local_capture","trusted_host_capture":"blocked_no_activation","ordinary_user_capture":"not_observed","human_review":"not_observed","invocation":["python3","-B","check.py"]}),
+            )?,
+        )?;
+        f.ops
+            .export_bundle(f.project, &root.join("original-canonical-bundle.json"))?;
+        let mut cli_json = Vec::new();
+        let mut cli_text = Vec::new();
+        let mut errors = Vec::new();
+        let base = [
+            "--runtime".to_string(),
+            f.ops.layout().root().to_string_lossy().into_owned(),
+            "--project".into(),
+            f.project.to_string(),
+        ];
+        let tail = [
+            "work".to_string(),
+            "verification".into(),
+            "--work".into(),
+            f.work.to_string(),
+        ];
+        assert_eq!(
+            run_cli(
+                base.iter()
+                    .map(String::as_str)
+                    .chain(["--json"])
+                    .chain(tail.iter().map(String::as_str)),
+                &mut cli_json,
+                &mut errors
+            ),
+            CliExit::SUCCESS
+        );
+        assert_eq!(
+            run_cli(
+                base.iter().chain(tail.iter()).map(String::as_str),
+                &mut cli_text,
+                &mut errors
+            ),
+            CliExit::SUCCESS
+        );
+        assert!(errors.is_empty());
+        fs::write(root.join("cli.json"), cli_json)?;
+        fs::write(root.join("cli.txt"), cli_text)?;
         fs::write(
             root.join("verification-report.json"),
             serde_json::to_vec_pretty(&report)?,
