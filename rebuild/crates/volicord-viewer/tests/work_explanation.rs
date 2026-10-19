@@ -1330,6 +1330,22 @@ fn decision_context_is_exact_scoped_and_shared_with_documents_and_recall(
         .find(|q| q.id == d.decision.question_id)
         .ok_or("Question")?;
     let plan = f.operations.prepare_explanation(f.project, subject, "en")?;
+    assert_eq!(
+        plan.evidence
+            .iter()
+            .find(|e| e.key == "recommendation")
+            .ok_or("recommendation")?
+            .content["alternative_key"],
+        "remote"
+    );
+    assert_eq!(
+        plan.evidence
+            .iter()
+            .find(|e| e.key == "choice")
+            .ok_or("choice")?
+            .content["chosen_alternative_key"],
+        "local"
+    );
     let context = plan
         .evidence
         .iter()
@@ -1350,7 +1366,7 @@ fn decision_context_is_exact_scoped_and_shared_with_documents_and_recall(
     let mut response = fake(&plan);
     response.paragraphs = [
         (ExplanationQuestion::UserRationale, vec!["user_rationale", "choice", "question_context"], "The recorded question asks about the boundary. The user chose local; no user rationale is recorded."),
-        (ExplanationQuestion::Recommendation, vec!["recommendation"], "The agent recommended a bounded local boundary."),
+        (ExplanationQuestion::Recommendation, vec!["recommendation"], "The agent recommended remote. The recorded rationale says: Prefer a bounded local boundary. The fields are retained separately without inferring another intended recommendation."),
         (ExplanationQuestion::Consequences, vec!["consequences"], "These are expected alternative consequences; selecting local is not proof of implementation."),
         (ExplanationQuestion::Applicability, vec!["applicability"], "The choice applies to its recorded Work scope and needs review."),
     ].into_iter().map(|(question, keys, text)| ExplanationParagraph { citations: Vec::new(), question,
@@ -1392,6 +1408,15 @@ fn decision_context_is_exact_scoped_and_shared_with_documents_and_recall(
     let page = get(&f, &format!("/?view=decisions&decision={id}"));
     assert!(page.contains("Recorded question context quotation"));
     assert!(page.contains("no user rationale is recorded"));
+    assert!(page.contains("The agent recommended remote."));
+    assert_eq!(
+        selected.decision.recommended_alternative_key.as_deref(),
+        Some("remote")
+    );
+    assert_eq!(
+        selected.decision.chosen_alternative_key.as_deref(),
+        Some("local")
+    );
     let work_plan = f.operations.prepare_explanation(
         f.project,
         ExplanationSubject::Work(f.goals["older"]),

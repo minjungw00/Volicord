@@ -35,6 +35,16 @@ fn recorded_recommendation_article_preserves_missing_user_reason_and_scope(
         recommendation.content["rationale"],
         "Prefer a bounded local boundary"
     );
+    assert_eq!(recommendation.content["alternative_key"], "remote");
+    assert_eq!(
+        prepared
+            .evidence
+            .iter()
+            .find(|e| e.key == "choice")
+            .ok_or("choice")?
+            .content["chosen_alternative_key"],
+        "local"
+    );
     assert!(prepared
         .evidence
         .iter()
@@ -58,9 +68,9 @@ fn recorded_recommendation_article_preserves_missing_user_reason_and_scope(
     );
     let units = [
         ("heading", "Choosing a bounded boundary", vec!["question_context"]),
-        ("synopsis", "The recorded recommendation favors a bounded local boundary. The user's choice is separate; no user reason is recorded.", vec!["choice","recommendation","user_rationale"]),
-        ("section_heading", "Why the agent recommended a local boundary", vec!["recommendation"]),
-        ("narrative", "The recorded recommendation rationale is: Prefer a bounded local boundary. This retained reason does not verify the implementation.", vec!["recommendation"]),
+        ("synopsis", "The agent recommended remote, while the user chose local. No user reason is recorded.", vec!["choice","recommendation","user_rationale"]),
+        ("section_heading", "The recorded recommendation and its reason", vec!["recommendation"]),
+        ("narrative", "The recommended option is remote. The recorded rationale says: Prefer a bounded local boundary. The option and rationale are retained separately; this interpretation does not reconstruct another intended option or verify implementation.", vec!["recommendation"]),
         ("section_heading", "The recorded choice and its reach", vec!["choice","applicability"]),
         ("user_rationale", "No user rationale was recorded; the recommendation does not supply one.", vec!["user_rationale"]),
     ];
@@ -90,6 +100,8 @@ fn recorded_recommendation_article_preserves_missing_user_reason_and_scope(
     let public =
         volicord_operations::decision_reading_json(&decision.decision, "en", FixedLocale::English);
     assert_eq!(public["answers"]["explanation_state"], "current");
+    assert_eq!(public["recommended_alternative_key"], "remote");
+    assert_eq!(public["chosen_alternative_key"], "local");
     assert!(public["evidence"]["user_rationale"].is_null());
     assert_eq!(
         public["evidence"]["recommendation_rationale"],
