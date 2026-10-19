@@ -1238,7 +1238,26 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
         )
         .expect("render completed working Viewer")
         .html;
-    assert!(working.contains("Keep mutation targets readable"));
+    assert!(working.contains("Name and summary production is incomplete"));
+    // Missing generated titles do not turn a verbatim Goal into a finished card.
+    // The actual instruction remains inspectable on its exact Work detail.
+    let detail = viewer
+        .render(
+            &ViewerRequest {
+                project_id: project,
+                locale: ViewerLocale::English,
+                view: ViewerView::Work {
+                    work: Some(context.id),
+                },
+                requested_language: "en".into(),
+                guarded_request: None,
+            },
+            "test-request-authenticity",
+        )
+        .expect("exact Goal detail")
+        .html;
+    assert!(detail.contains("Keep mutation targets readable"));
+    assert!(detail.contains("Original instructions · complete Goal"));
     assert!(working.contains("data-work-state=\"open\""));
     assert!(
         !working.contains("data-work-state=\"completed\""),
@@ -1318,7 +1337,7 @@ fn static_snapshot_is_deterministic_self_contained_and_read_only() {
     );
     assert_eq!(repository_entries(&temporary), repository_before);
     assert!(first.html.contains("data-viewer-mode=\"snapshot\""));
-    assert!(first.html.contains("Read-only static snapshot"));
+    assert!(first.html.contains("Read-only static publication"));
     assert!(first.html.contains("Snapshot basis"));
     assert!(first.html.contains("123456789"));
     assert!(first.html.contains(&project.to_string()));
