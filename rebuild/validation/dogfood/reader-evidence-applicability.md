@@ -57,3 +57,52 @@ omitting that blocked positive. Flexible narrative/UI/structured verification,
 secure inspector, independent semantic assessment and human acceptance remain
 pending. Existing navigation/Purpose/title/times/Work-less/citation behavior remains
 a revalidation baseline. No Final, gate, official V11 or naturalistic approval ran.
+
+## Current-candidate reassessment (2026-10-20)
+
+Execution baseline is clean `d9beb1d4d88ac7e8fbf36e72cc7c52e8c9c5b77b`.
+This supplements the preceding historical disposition. Current public explanation
+format is **5**, Work observation copy format is **3**. Historical v4/v2 inputs
+cannot be submitted as current realizations. Current command copies additionally
+require their immutable integrity Source. Canonical import remains a supported
+record replay; it cannot upgrade old Derived copies or authenticate their host.
+No trusted SessionStart/MCP activation was delivered in this editing session.
+No provider transmission is authorized.
+
+The append-only private reassessment root is
+`rebuild/.local/reader-qualification-2026-10-20/`. `original-bindings.json` freezes
+12,694 original files (5,425,390,583 bytes), including failures, review ZIPs,
+inputs, manifests and rejection references. It grants no body retention.
+`source-first-expectations.json` separately freezes the actual admission repair and
+verification investigation before new candidate prose. Those are engineering tasks,
+not captured Product Works; no article fills their blocked positives. The
+implementing agent's inspection is dependent. Private expectations never enter
+generator input or the answer-free reader entry page.
+
+Statuses below are focused **claim** outcomes: `passed` is the named bounded
+observation only; `failed` preserves an observed adverse result; `not_observed`
+is no current assessment; `inapplicable` gives a scope reason; `blocked` names a
+missing prerequisite. These do not replace the qualitative owner's
+`satisfied`/`violated`/`insufficient_evidence` states or required human rubric.
+No row or exclusion establishes whole-AC success or a pass percentage.
+
+| Case / basis | Claim / AC | Expected versus observed; disposition |
+| --- | --- | --- |
+| B/Click editorial controls; reference manifest `81efb752…`; candidates `33d44765` / `5f3e85a7` | AC-12/14/17/23/25 | `passed` for preserved authored link/layout controls at their own candidate. Autonomous generation and prospective capture `inapplicable`: authored text and no before/attempt chain. Human acceptance `not_observed`. |
+| Rejected integration package `9c2402bc…`; manifest `f1bd3cee…` | AC-12/16/25 | Five-file snapshot and original public results remain historical inspection controls; broader repository flow `not_observed`. Human visual acceptance `failed` by later explicit rejection, independently of the original pending manifest. Current-candidate success `not_observed`. |
+| `review_101901`, `7cbb628e…`, Work `8d2bd548…`; bundle `24a23081…` | AC-17/23/24 | `passed` for original eight-unit record-supported output with zero code citations. Code-grounded repair, original before/after and causal troubleshooting `blocked`: required bodies/events absent. Current v5 production `not_observed`; original v4 remains unchanged. User acceptance remains `failed` (rejected experience). |
+| Same archive, Works `85c42f32…`, `9b366bdb…`, Workless Project `f02dcae1…` | AC-11/17/20/24 | `passed` as original missing-article controls; normal technical/repository explanation `not_observed`. Later reported tests are historical reports, not recovered runs. None is removed to improve the overall outcome. |
+| Decision `04bd432a…`, revision 1 | AC-18/24/25 | `passed` for retained `compact` recommendation reason and null user rationale in original/supported record replay. Supporting Source `8872e87b…` unavailable; technical justification `blocked`, actual user reason and new human comprehension `not_observed`. New Decision capture `inapplicable` to this historical record. |
+| `reader-task-evidence-20261019`, `8c8ed3cd…`, Project `fe9165fe…`, Work `0b2a2f15…` | AC-19/23/24 | Original receipts positively support a technical before/after/command chain, six file citations and separate exit 0/1 observations. Manifest declares caller-supplied provenance, no independent semantic review/Decision and missing early failed-source snapshots. Authenticated host capture `blocked`; independent source-first/blind quality `not_observed`; copy v2 is not current v3. First realization and explicit rebinding remain separate history. |
+| `article-reader/review`, `4d6a0a51…`, retained manifest/public output | AC-11/17/18/19/24 | v5 articles are explicitly authored over old canonical Work/Decision plus newer bounded code/command observations. `passed` as historical producer/consumer replay controls, not task-time code of the old Work or semantic approval. Source-first independence, unseen-task generalization and human acceptance `not_observed`. Current live bodies require fresh admission; archived bytes confer none. |
+| `inspection-review`, `d9beb1d4…`; original run `run-2nTEIw` | AC-20/22/24 | `passed` for its synthetic HTTP/browser/restricted/offline controls. Genuine semantics, user Decision/capture `inapplicable` to a synthetic fixture; human acceptance `not_observed`. Exact-current reruns receive new identities. |
+| Current local caller and independent verification controls | AC-19/23/24 | `passed` for disposable process/file operations, original outcomes and read barriers in focused tests. Genuine autonomous Work and human acceptance `inapplicable` to authored controls. Explicit typed comparable-retest success `blocked`: producers retain no relation. Similar labels or later passes cannot supply it. |
+| New admission repair and no-change verification investigation | AC-17/23/25 | Engineering source/checks observed; prospective Product capture and generated natural article `blocked` by absent trusted activation. Second-repository natural task and user Decision `not_observed`; no synthetic substitute. Independent/human reading `not_observed`. |
+
+Admission regressions reject conflicting responses for one Source instead of
+selecting a favorable copy by order. An explicit comparison requires original
+full-file hashes consistent with its changed/no-change label, exact path/region
+and time ordering. Every unpaired/unusable comparison remains in per-Source gaps
+even alongside an eligible pair. These are validation-support corrections, not
+capture authority, semantic grading or a Product schema. First failing executions
+and corrected retests are preserved separately.

@@ -297,7 +297,7 @@ def reader_applicability(plan, response=None, *, source_reads=(), origin='post_s
         else:
             validate_response(plan, response)
             claims['article'] = result('eligible_for_assessment', 'current_bound_response_not_semantic_approval')
-    usable, blocked = {}, {}
+    usable, blocked, seen = {}, {}, {}
     for read in source_reads:
         obs, meta = read.get('observation', {}), read.get('metadata', {})
         if (work is None or identity(obs.get('project_id')) != plan['project_id']
@@ -314,11 +314,19 @@ def reader_applicability(plan, response=None, *, source_reads=(), origin='post_s
         goal = offered.get('goal')
         if goal and obs['work_revision'] != goal['revision']:
             raise api().CampaignError('reader Source Work revision mismatch')
+        source = identity(obs['source_id'])
+        # One assessment has one read basis. Never let input order choose an
+        # available copy over an expired/corrected copy of the same Source.
+        # Separate observations belong to separate candidate-bound assessments.
+        encoded = compact_bytes(read)
+        if source in seen and seen[source] != encoded:
+            raise api().CampaignError('conflicting reader Source responses; assess each read basis separately')
+        seen[source] = encoded
         until = meta.get('retained_until_unix_micros')
         if type(until) is not int or until <= now or meta.get('retained_state') != 'available':
-            blocked[identity(obs['source_id'])] = 'expired_retention' if type(until) is int and until <= now else meta.get('retained_state', 'source_body_inaccessible')
+            blocked[source] = 'expired_retention' if type(until) is int and until <= now else meta.get('retained_state', 'source_body_inaccessible')
             continue
-        usable[identity(obs['source_id'])] = read
+        usable[source] = read
     files = [r for r in usable.values() if r['observation']['detail'].get('kind') == 'file'
         and isinstance(r['observation']['detail'].get('body'), str)]
     if files:
@@ -326,25 +334,37 @@ def reader_applicability(plan, response=None, *, source_reads=(), origin='post_s
     elif blocked:
         claims['code_body_read'] = result('inaccessible', next(iter(blocked.values())))
     comparison_gaps = []
-    for read in files:
+    for read in sorted(files, key=lambda r: identity(r['observation']['source_id'])):
         after = read['observation']; detail = after['detail']; before = usable.get(detail.get('before_source_id'))
         if before is None:
             if detail.get('before_source_id'):
                 reason = blocked.get(detail['before_source_id'], 'missing_before_inspection')
                 comparison_gaps.append({'source_id': identity(after['source_id']),
                     **result('inaccessible' if detail['before_source_id'] in blocked else 'not_observed', reason)})
+            else:
+                comparison_gaps.append({'source_id': identity(after['source_id']),
+                    **result('not_observed', 'missing_before_state')})
             continue
         prior = before['observation']; old = prior['detail']
+        hashes_present = all(isinstance(v, str) and api().re.fullmatch(r'[0-9a-f]{64}', v)
+            for v in (old.get('sha256'), detail.get('sha256')))
+        expected = 'no_change' if old.get('sha256') == detail.get('sha256') else 'changed'
         if (old.get('kind') == 'file' and old.get('path') == detail.get('path')
                 and old.get('representation') == detail.get('representation')
                 and all((old.get('region') or {}).get(k) == (detail.get('region') or {}).get(k)
                     for k in ('start_byte', 'end_byte'))
                 and prior['observed_at_unix_micros'] < after['observed_at_unix_micros']
-                and detail.get('comparison') in {'changed', 'no_change'}):
+                and hashes_present and detail.get('comparison') == expected):
             claims['two_observed_states'] = result('eligible_for_assessment', 'explicit_same_work_path_region_pair_not_actor_attribution')
+        else:
+            comparison_gaps.append({'source_id': identity(after['source_id']),
+                **result('not_observed', 'inconsistent_observed_comparison')})
     if comparison_gaps:
         if claims['two_observed_states']['state'] != 'eligible_for_assessment':
-            claims['two_observed_states'] = {k: comparison_gaps[0][k] for k in ('state', 'reason')}
+            # An initial unpaired observation cannot conceal an unusable
+            # explicitly claimed comparison in this same case.
+            gap = next((g for g in comparison_gaps if g['reason'] != 'missing_before_state'), comparison_gaps[0])
+            claims['two_observed_states'] = {k: gap[k] for k in ('state', 'reason')}
         claims['two_observed_states']['gaps'] = comparison_gaps
     for read in usable.values():
         detail, command = read['observation']['detail'], read.get('command_source')

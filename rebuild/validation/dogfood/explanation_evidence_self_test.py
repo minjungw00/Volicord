@@ -172,7 +172,8 @@ class ReaderApplicabilityTests(unittest.TestCase):
             'work_revision': 1, 'source_id': source, 'source_revision': 1,
             'analysis_snapshot_id': 'analysis', 'repository_snapshot_id': 'repository',
             'observed_at_unix_micros': observed,
-            'detail': {'kind': kind, 'path': 'main.custom', 'body': 'observed fixture bytes',
+            'detail': {'kind': kind, 'path': 'main.custom', 'body': f'observed fixture bytes {observed}',
+                'sha256': e.binding(f'observed fixture bytes {observed}'.encode())['sha256'],
                 'before_source_id': before, 'comparison': 'changed' if before else 'missing_before_state',
                 'representation': 'whole_file'}}
         result = {'observation': obs, 'read_only': True, 'observation_fingerprint': 'sha256:' + '4' * 64,
@@ -236,7 +237,8 @@ class ReaderApplicabilityTests(unittest.TestCase):
         for reads in [(before, after, missing), (missing, after, before)]:
             comparison = self.assess(*reads)['claims']['two_observed_states']
             self.assertEqual(comparison['state'], 'eligible_for_assessment')
-            self.assertEqual(comparison['gaps'][0]['reason'], 'missing_before_inspection')
+            self.assertTrue(any(g['reason'] == 'missing_before_inspection'
+                for g in comparison['gaps']))
 
     def test_expired_deleted_before_and_read_are_inaccessible(self):
         expired = self.read(until=50)
@@ -299,6 +301,39 @@ class ReaderApplicabilityTests(unittest.TestCase):
         self.assertEqual(value['article']['state'], 'eligible_for_assessment')
         self.assertEqual(value['code_body_read']['state'], 'not_observed')
         self.assertEqual(value['task_time_capture']['state'], 'not_established')
+
+    def test_conflicting_reads_cannot_select_a_favorable_copy_of_one_source(self):
+        permitted = self.read()
+        expired = copy.deepcopy(permitted)
+        expired['metadata']['retained_until_unix_micros'] = 50
+        for reads in [(permitted, expired), (expired, permitted)]:
+            with self.subTest(order=reads[0]['metadata']), self.assertRaisesRegex(
+                    ValueError, 'conflicting reader Source'):
+                self.assess(*reads)
+        # Repeating exactly the same read is harmless and retains both input hashes.
+        report = self.assess(permitted, copy.deepcopy(permitted))
+        self.assertEqual(len(report['input_bindings']['source_reads']), 2)
+
+    def test_comparison_label_requires_original_file_hash_agreement(self):
+        before = self.read()
+        after = self.read(source='05' * 16, before='04' * 16, observed=20)
+        before['observation']['detail']['sha256'] = '1' * 64
+        after['observation']['detail']['sha256'] = '1' * 64
+        comparison = self.assess(before, after)['claims']['two_observed_states']
+        self.assertEqual(comparison['state'], 'not_observed')
+        self.assertEqual(comparison['reason'], 'inconsistent_observed_comparison')
+        after['observation']['detail']['comparison'] = 'no_change'
+        self.assertEqual(self.assess(before, after)['claims']['two_observed_states']['state'],
+            'eligible_for_assessment')
+
+    def test_missing_pair_is_retained_beside_a_qualifying_pair(self):
+        before = self.read()
+        after = self.read(source='05' * 16, before='04' * 16, observed=20)
+        unpaired = self.read(source='06' * 16, observed=30)
+        comparison = self.assess(before, after, unpaired)['claims']['two_observed_states']
+        self.assertEqual(comparison['state'], 'eligible_for_assessment')
+        self.assertTrue(any(g['source_id'] == '06' * 16 and
+            g['reason'] == 'missing_before_state' for g in comparison['gaps']))
 
 
 class LifecycleTests(unittest.TestCase):
