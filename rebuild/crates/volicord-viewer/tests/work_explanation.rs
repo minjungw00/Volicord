@@ -1357,8 +1357,7 @@ fn authored_sections_and_comparisons_reach_live_and_offline_without_enum_titles(
         assert!(page.contains(">What the observation can tell us</h2>"));
         assert!(page.contains(">Boundaries that remain open</h2>"));
         assert!(
-            page.contains("<dl class=\"comparison-card\">")
-                && page.contains("<dt class=\"unit reading-section\"")
+            page.contains("<dl class=\"comparison-card\">") && page.contains("<dt class=\"unit\"")
         );
         assert!(
             page.find("What the observation can tell us")
@@ -1467,5 +1466,44 @@ fn verification_only_snapshot_revalidates_retention_without_any_article(
     assert!(fresh.verification_basis.is_empty());
     assert!(!fresh.html.contains("execution-time tree was not rechecked"));
     assert!(fresh.html.contains("Observed independent command")); // canonical label survives
+    Ok(())
+}
+
+#[test]
+fn recorded_decision_reason_remains_readable_without_generated_article(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let id = f.decisions["explicit"];
+    let request = volicord_viewer::ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::English,
+        view: ViewerView::Decisions { decision: Some(id) },
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    for page in [
+        get(&f, &format!("/?view=decisions&decision={id}")),
+        viewer
+            .render_snapshot(&request, TimestampMicros::from_unix_micros(1))?
+            .html,
+    ] {
+        let selected = page
+            .split(&format!("id=\"decision-{id}\""))
+            .nth(1)
+            .ok_or("selected decision")?;
+        let recorded = selected
+            .split("class=\"reading-section recorded-choice\"")
+            .nth(1)
+            .ok_or("recorded choice")?
+            .split("</section>")
+            .next()
+            .ok_or("section")?;
+        assert!(recorded.contains("Prefer a bounded local boundary"));
+        assert!(recorded.contains("User rationale is not recorded"));
+        assert!(recorded.contains("expected consequences, not verified implementation effects"));
+        assert!(!recorded.contains("<pre>"));
+        assert!(!page.contains("<details class=\"record-box\" open"));
+    }
     Ok(())
 }

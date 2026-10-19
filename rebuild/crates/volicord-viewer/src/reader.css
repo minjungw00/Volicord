@@ -201,3 +201,18 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
  .masthead .nav-link,.tools-menu>summary { padding:7px 9px; font-size:.82rem; }
  .surface-status { margin-bottom:20px; }
 }
+
+/* Authored article flow: headings establish sections; paragraphs stay connected. */
+.doc .unit { max-width:var(--measure); }
+.doc .unit:has(h2) { margin-top:40px; margin-bottom:16px; }
+.doc .unit h2.unit-text { font-size:1.4rem; line-height:1.5; font-weight:680; }
+.doc .unit:has(h2)+.unit { margin-top:0; }
+.doc .unit:has(.evidence-actions:empty) .evidence-actions { display:none; }
+.article-flow { padding-left:1.5rem; }
+.article-flow .unit+.unit { margin-top:14px; }
+.article-absence { color:var(--muted); padding:16px 20px; background:var(--soft); border-radius:8px; }
+.recorded-choice h3 { margin:24px 0 10px; }
+.recorded-choice blockquote { border-left:3px solid var(--line); padding:8px 18px; }
+.choice-alternatives { display:grid; grid-template-columns:minmax(8em,1fr) 3fr; gap:8px 20px; }
+.choice-alternatives dd { margin:0; }
+@media(max-width:600px) { .choice-alternatives { grid-template-columns:1fr; gap:6px; } .choice-alternatives dd { margin-bottom:14px; } }

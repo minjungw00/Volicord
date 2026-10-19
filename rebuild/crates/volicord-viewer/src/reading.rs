@@ -514,7 +514,7 @@ fn reader_unit(
     } else {
         "p"
     };
-    html.push_str(&format!("<{outer} class=\"unit reading-section\" id=\"{}\" tabindex=\"-1\"><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
+    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
     reader_citations(html, r, answers, index);
     html.push_str(&format!("</{outer}>"));
 }
@@ -618,25 +618,6 @@ fn render_document(
     html.push_str("</header>");
     opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
-    if !current {
-        let quotes = if decision.is_some() {
-            &["QuestionContext", "UserRationale"][..]
-        } else {
-            &["ReportedResult"][..]
-        };
-        for fact in answers.facts.iter().filter(|a| {
-            quotes.contains(&a.question.as_str())
-                && (a.question != "ReportedResult"
-                    || work.is_some_and(|w| w.reading.answers.result.is_some()))
-        }) {
-            html.push_str(&format!("<section class=\"reading-section recorded-reading\"><p class=\"unit-text\" data-question=\"{}\" lang=\"\" data-statement-role=\"verified-canonical\">{}</p></section>", escape(&fact.question), escape(&fact.text)));
-        }
-        if let Some(d) = decision {
-            if let Some(rationale) = &d.reading.user_rationale.original_text {
-                html.push_str(&format!("<section class=\"reading-section\"><h2>{}</h2><blockquote lang=\"\">{}</blockquote></section>", text(r.locale, "Recorded user rationale · quotation", "기록된 사용자 이유 · 인용"), escape(rationale)));
-            }
-        }
-    }
     html.push_str("<nav class=\"audit-links\" aria-label=\"Document sections\">");
     for (section, label) in [
         (
@@ -685,6 +666,21 @@ fn render_document(
         "</nav><div id=\"{}\" tabindex=\"-1\">",
         document_anchor(answers, "reading")
     ));
+    if !current {
+        let quotes = &["ReportedResult"][..];
+        for fact in answers.facts.iter().filter(|a| {
+            quotes.contains(&a.question.as_str())
+                && (a.question != "ReportedResult"
+                    || work.is_some_and(|w| w.reading.answers.result.is_some()))
+        }) {
+            html.push_str(&format!("<section class=\"reading-section recorded-reading\"><p class=\"unit-text\" data-question=\"{}\" lang=\"\" data-statement-role=\"verified-canonical\">{}</p></section>", escape(&fact.question), escape(&fact.text)));
+        }
+    }
+    if !current {
+        html.push_str(&format!("<p class=\"article-absence\">{}</p>", text(r.locale,
+            "A reader article is not available. Original recorded facts below remain quotations, not a generated account of the work.",
+            "독자용 설명을 이용할 수 없습니다. 아래 원래 기록은 인용이며 작업을 해석한 설명이 아닙니다.")));
+    }
     let mut flow_open = false;
     for (index, answer) in answers
         .prose
@@ -718,6 +714,9 @@ fn render_document(
         html.push_str("</ol>");
     }
     html.push_str("</div>");
+    if let Some(d) = decision {
+        render_recorded_choice(html, r, d);
+    }
     if let Some(work) = work {
         render_verification(html, r, answers, &work.reading.verification_report);
     }
@@ -762,9 +761,9 @@ fn render_document(
     }
     html.push_str("<div class=\"audit\">");
     if let Some(w) = work {
-        html.push_str(&format!("<details class=\"record-box\" id=\"{}\"{}><summary>{}</summary><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></details>",document_anchor(answers,"original"),if snapshot {" open"}else{""},text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
+        html.push_str(&format!("<details class=\"record-box\" id=\"{}\"><summary>{}</summary><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></details>",document_anchor(answers,"original"),text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
     }
-    html.push_str(&format!("<details class=\"record-box\" id=\"{}\"{}><summary>{}</summary><div class=\"record-facts\" data-statement-role=\"deterministic-derived\">",document_anchor(answers,"audit"),if snapshot{" open"}else{""},text(r.locale,"Full evidence · states · output identity","전체 근거 · 상태 · 출력 identity")));
+    html.push_str(&format!("<details class=\"record-box\" id=\"{}\"><summary>{}</summary><div class=\"record-facts\" data-statement-role=\"deterministic-derived\">",document_anchor(answers,"audit"),text(r.locale,"Full evidence · states · output identity","전체 근거 · 상태 · 출력 identity")));
     for fact in &answers.facts {
         html.push_str(&format!(
             "<p data-question=\"{}\">{}</p>",
@@ -1410,6 +1409,100 @@ fn work_detail(
         snapshot,
     );
     html.push_str("</section>");
+}
+
+fn render_recorded_choice(
+    html: &mut String,
+    r: &ViewerRequest,
+    d: &volicord_projections::UnderstandingDecision,
+) {
+    html.push_str("<section class=\"reading-section recorded-choice\" data-statement-role=\"verified-canonical\">");
+    heading(
+        html,
+        2,
+        text(
+            r.locale,
+            "Recorded choice and reasons",
+            "기록된 선택과 이유",
+        ),
+    );
+    if let Some(question) = &d.decision.question_context {
+        heading(html, 3, text(r.locale, "The question", "질문"));
+        html.push_str(&format!(
+            "<blockquote lang=\"\">{}</blockquote>",
+            escape(&question.prompt)
+        ));
+    }
+    heading(
+        html,
+        3,
+        text(
+            r.locale,
+            "Alternatives · expected consequences",
+            "대안 · 예상 결과",
+        ),
+    );
+    html.push_str("<dl class=\"choice-alternatives\">");
+    for alternative in &d.decision.displayed_alternatives {
+        definition(html, &alternative.label, &alternative.consequence);
+    }
+    html.push_str("</dl>");
+    heading(
+        html,
+        3,
+        text(
+            r.locale,
+            "Recorded agent recommendation",
+            "기록된 에이전트 권고",
+        ),
+    );
+    if let Some(fact) =
+        volicord_projections::decision_answers(&d.decision, &r.requested_language, r.locale.fixed())
+            .facts
+            .iter()
+            .find(|f| f.question == "RecommendedChoice")
+    {
+        html.push_str(&format!("<p>{}</p>", escape(&fact.text)));
+    }
+    if let Some(reason) = &d.reading.recommendation_rationale.original_text {
+        html.push_str(&format!(
+            "<blockquote lang=\"\">{}</blockquote>",
+            escape(reason)
+        ));
+    }
+    heading(html, 3, text(r.locale, "User choice", "사용자 선택"));
+    html.push_str(&format!(
+        "<p>{}</p>",
+        escape(&decision_choice_attribution(&d.decision, r.locale))
+    ));
+    if let Some(reason) = &d.reading.user_rationale.original_text {
+        heading(
+            html,
+            3,
+            text(
+                r.locale,
+                "Recorded user rationale · quotation",
+                "기록된 사용자 이유 · 인용",
+            ),
+        );
+        html.push_str(&format!(
+            "<blockquote lang=\"\">{}</blockquote>",
+            escape(reason)
+        ));
+    } else {
+        html.push_str(&format!(
+            "<p class=\"source-note\">{}</p>",
+            text(
+                r.locale,
+                "User rationale is not recorded; agent recommendation does not supply it.",
+                "사용자 근거가 기록되지 않았습니다. 에이전트 권고는 이를 대신하지 않습니다."
+            )
+        ));
+    }
+    html.push_str(&format!("<p class=\"scope-summary\">{}</p><p class=\"source-note\">{}</p></section>",
+        escape(decision_scope_label(d.decision.work_scope, r.locale)),
+        text(r.locale, "These are retained statements and expected consequences, not verified implementation effects. Source availability is assessed separately.",
+            "보존된 진술과 예상 결과이며 검증된 구현 효과가 아닙니다. Source 가용성은 별도로 확인합니다.")));
 }
 
 fn decision_link(
