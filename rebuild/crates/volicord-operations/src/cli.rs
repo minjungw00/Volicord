@@ -1055,7 +1055,17 @@ fn dispatch_explanation_action(
                 volicord_projections::ExplanationSubject::Work(work) => {
                     operations.explanation_source_manifest(project, work)?
                 }
-                _ => json!({"scope":"recorded_decision_only","body_authority":"not_granted"}),
+                volicord_projections::ExplanationSubject::Repository(analysis) => json!({
+                    "scope":"exact_repository_analysis",
+                    "analysis_snapshot_id":analysis.to_string(),
+                    "body_authority":"not_granted",
+                    "observation_entrypoint":"repository source observe",
+                    "read_entrypoint":"repository source read",
+                    "analysis_entrypoint":"repository explain evidence"
+                }),
+                volicord_projections::ExplanationSubject::Decision(_) => {
+                    json!({"scope":"recorded_decision_only","body_authority":"not_granted"})
+                }
             };
             Ok(json!({"operation":"explanation_prepare", "plan":plan,"source_inventory":inventory}))
         }

@@ -65,6 +65,88 @@ fn source(receipt: &Value) -> Result<SourceId, Box<dyn Error>> {
     }
     Ok(SourceId::from_bytes(bytes))
 }
+#[test]
+fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_access(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let call = |project: ProjectId, args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_volicord"))
+            .args(["--runtime"])
+            .arg(f.ops.layout().root())
+            .args(["--project", &project.to_string(), "--json"])
+            .args(args)
+            .output()
+    };
+    let analysis = f.analysis.to_string();
+    let before = f.ops.canonical_basis(f.project)?;
+    let prepared = call(
+        f.project,
+        &["repository", "explain", "prepare", "--analysis", &analysis],
+    )?;
+    assert!(prepared.status.success(), "{:?}", prepared);
+    let prepared: Value = serde_json::from_slice(&prepared.stdout)?;
+    let inventory = &prepared["source_inventory"];
+    assert_eq!(inventory["scope"], "exact_repository_analysis");
+    assert_eq!(inventory["analysis_snapshot_id"], analysis);
+    assert_eq!(inventory["body_authority"], "not_granted");
+    assert!(!prepared.to_string().contains("안녕"));
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    assert!(before.context_items.is_empty());
+    // Follow the actual returned entry points; preparation is not observation/read.
+    let entry = |key: &str| -> Result<Vec<&str>, Box<dyn Error>> {
+        Ok(inventory[key]
+            .as_str()
+            .ok_or("entry point")?
+            .split_whitespace()
+            .collect())
+    };
+    let mut args = entry("analysis_entrypoint")?;
+    args.extend(["--analysis", &analysis]);
+    let evidence = call(f.project, &args)?;
+    assert!(evidence.status.success());
+    assert!(!String::from_utf8(evidence.stdout)?.contains("안녕"));
+    let mut args = entry("observation_entrypoint")?;
+    args.extend([
+        "--analysis",
+        &analysis,
+        "--path",
+        "main.py",
+        "--retain-seconds",
+        "3600",
+    ]);
+    let observed = call(f.project, &args)?;
+    assert!(observed.status.success());
+    let observed: Value = serde_json::from_slice(&observed.stdout)?;
+    let source = observed["observation"]["source_id"]
+        .as_str()
+        .ok_or("Source")?;
+    let mut args = entry("read_entrypoint")?;
+    args.extend(["--analysis", &analysis, "--source", source]);
+    let read = call(f.project, &args)?;
+    assert!(read.status.success());
+    let read: Value = serde_json::from_slice(&read.stdout)?;
+    assert_eq!(
+        read["observation"]["detail"]["body"],
+        fs::read_to_string(f.root.join("main.py"))?
+    );
+    let other_root = f._temp.path().join("other");
+    fs::create_dir(&other_root)?;
+    let other = f
+        .ops
+        .initialize_project("other", Some(&other_root))?
+        .project
+        .id;
+    for (project, selected) in [(other, analysis.as_str()), (f.project, &"ff".repeat(32))] {
+        let output = call(
+            project,
+            &["repository", "explain", "prepare", "--analysis", selected],
+        )?;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+    }
+    assert!(f.ops.canonical_basis(f.project)?.context_items.is_empty());
+    Ok(())
+}
 fn response(f: &Fixture, source: SourceId) -> Result<ExplanationRealization, Box<dyn Error>> {
     let plan =
         f.ops
