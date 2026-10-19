@@ -1083,3 +1083,15 @@ Goal through scoped inspection and Recall. Genuine Learning still requires its
 separate current-user basis and existing participation/withdrawal operations.
 Command test observations supply no user choice, recommendation or Decision;
 Candidate research/learning content remains within named Candidate Inspection.
+
+### Recorded recommendation reason in reader explanations
+
+[Reader AC-18](reader-experience-design.md) reads the actual retained recommended
+alternative and evidence.recommendation_rationale separately from user_rationale,
+user choice and generated consequences. DecisionReading already exposes
+recommendation_rationale; no extra user-reason field is required. Absent user reason
+stays absent. A retained contemporaneous recommendation reason remains readable
+when its technical Source is unavailable, with that independent verification limit.
+A fresh explanation of code cannot become the original agent's or user's intent.
+The original Question revision, post-choice recommendation visibility and authentic
+current-host Decision response contracts above remain authoritative.

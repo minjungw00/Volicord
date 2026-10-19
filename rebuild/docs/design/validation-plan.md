@@ -3025,3 +3025,32 @@ checks inspect actual HTTP and script-free snapshots at desktop/390/320 CSS px;
 native zoom, assistive use, content understanding and acceptance stay unobserved
 unless actually performed. No aggregate gate or naturalistic claim follows from
 these checks. Existing citation/v4/managed retention are regression baselines.
+
+### Reader evidence campaign admission
+
+[Reader AC-17–25](reader-experience-design.md) supplements AC-01–16. Use the existing
+Dogfood explanation lifecycle/validation support, not a second scoring platform.
+Admission is per task and claim: historical record reading, presentation regression,
+current-format replay, controlled producer/read integrity, genuine task-time capture,
+semantic sufficiency and actual human acceptance are separate. Historical B/Click,
+review_101901 and regenerated cases retain positive applicability and exact gaps.
+An inapplicable required positive with no replacement leaves the AC unsatisfied.
+
+Freeze candidate HEAD/binary, repository/Work/revision, input hashes and Source
+identities before evaluation. Bind producer/format, original event times, retention,
+original/replay/prospective status, required/available evidence, missing reason,
+public consumer/output, retries/manual edits and evaluator order. Source-first
+inspection precedes authored interpretation; presentation-first reviewers receive
+no answer key. Retest identity/coverage needs explicit evidence, never text similarity.
+Classify missing-before, not-observed, inaccessible, unsupported and genuinely absent
+individually. Current/unknown/pending/blocked outcomes remain distinct. Read/render
+rechecks current authorization and retention even for an eligible historical case.
+
+Preserve original instructions, failed attempts, feedback, prior manifests and outputs
+byte-for-byte. New applicability records are append-only and candidate-bound; private
+original data stays ignored. A local command caller test must traverse actual public
+CLI → existing Source recording → scoped read/preparation/composition consumer, with
+failure/termination, scope/lifecycle and read-purity controls. Authored controls prove
+mechanics only. Missing current trusted activation/source authority blocks precisely
+the prospective capture; no synthetic substitute or global failure follows. Do not
+run Final, official V11, gate, Phase 8 qualification or Phase 9 approval for this scope.

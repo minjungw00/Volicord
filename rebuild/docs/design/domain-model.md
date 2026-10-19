@@ -716,3 +716,19 @@ Work event substitutes. Equal valid instants remain equal; Checkpoint identity i
 only a deterministic tie-break. Late-arriving older records do not become latest.
 Generated Work names/summaries remain disposable interpretation, never canonical
 title authority.
+
+### Observation meaning for reader articles
+
+For [reader AC-19/23](reader-experience-design.md), existing file Source observations
+and explicit before_source_id links represent two actually observed states. Absent
+before capture, denied inspection and expired retention are distinct. A command
+observation binds exact Work/revision, selected Repository/Analysis Snapshot,
+Source/revision, operation identity, start/end time, invocation fingerprint, observed
+exit/termination and provenance in the existing disposable envelope. Its selected
+analysis is not proof of the execution-time tree or test coverage. A Checkpoint can
+adopt verified facts with exact Sources; collection alone is neither a Checkpoint,
+a narrative cause, a user choice nor a canonical test assertion. Existing records
+suffice for bounded state/command inspection; no speculative canonical Attempt entity
+or schema field is introduced. Structured attempt/retest coverage remains unsupported
+unless an explicit observed relation and coverage basis exist. Ordinary error-free,
+no-change or Decision-less work needs no invented events or forced Checkpoint.

@@ -1316,11 +1316,21 @@ clean install
 
 ## Current reader acceptance
 
-[Reader experience design](reader-experience-design.md) owns D-01–D-18 and
-AC-01–AC-16, supplementing scenario N and replacing obsolete Viewer layout rules.
+[Reader experience design](reader-experience-design.md) owns D-01–D-27 and
+AC-01–AC-25, supplementing scenario N and replacing obsolete Viewer layout rules.
 Normal real host-generated Work name/summary/detail, unavailable controls and actual
 human reading are independent acceptance classes. All-missing output fails normal
 content acceptance. Work0 repository access, exact Project/Purpose, single navigation,
 truthful dual event times and retained protected tools must reach live and offline
 consumers. Historical tests/evaluations prove only their candidate and assertions;
 the earlier delivered UI was rejected. New output remains unassessed until reviewed.
+
+AC-17–25 add flexible Work/Decision articles, independently sourced named verification,
+severity-aware warnings, unified section navigation, meaning-based evidence inspection,
+bounded prospective capture and per-task campaign admission. Revalidate AC-01–16;
+do not declare new article/inspector behavior implemented from existing shell tests.
+Include missing-before, two truly observed file states, no-change/no-error/no-Decision,
+failed/terminated commands, unrelated later pass, absent user reason with retained
+recommendation reason, expired/deleted/foreign Source and unsupported language controls.
+Required real prospective capture is Blocked when current trusted host/source authority
+is absent; authored controls and historical replay cannot supply that positive case.

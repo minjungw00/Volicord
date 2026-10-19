@@ -675,3 +675,23 @@ and summary. No salvage from stale/deleted content, dependency dropping, mixed
 realizations, new canonical title authority or background grant is permitted.
 Composition performs mechanical binding only; failed production leaves ordinary
 Work usable and records an incomplete content outcome.
+
+### Article collection and scoped inspector authority
+
+[Reader AC-22/23](reader-experience-design.md) reuses explicit bounded Source copies;
+repository editing permission, a prepared plan or historical consent is not runtime
+activation or arbitrary collection/transmission authorization. Local CLI execution
+may expose the existing Work command capability only through an explicit local
+request with exact Work/snapshot, label, timeout and retention. Browser/MCP reads
+receive no command execution authority. No capture of internal reasoning, arbitrary
+conversations, credentials, environment dumps or unbounded command streams is allowed.
+The operator remains responsible for choosing permitted non-secret commands/outputs.
+
+Inspector filters, search, relations, snippets/counts, paging and export apply the
+same server-side Project/Work/Source/revision, Candidate, deletion and read-time
+retention barriers as detail reads. A Source ID/locator or aggregate query supplies
+no broader grant. Protected actions remain dedicated domain operations with their
+existing confirmation. GET, navigation, export and Source reads never capture,
+generate, transmit, renew retention or mutate canonical state. Inspector UI remains
+pending; this contract does not authorize SQL, ambient filesystem/DB access or a
+new background provider.

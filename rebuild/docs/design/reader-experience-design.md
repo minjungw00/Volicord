@@ -3,7 +3,9 @@
 Status: accepted experience requirements, adopted 2026-10-19. Implementation,
 focused technical checks, semantic quality and human acceptance are separate.
 
-This is the maintained entry for D-01–D-18 and AC-01–AC-16. Specialized owners
+This is the maintained entry for D-01–D-27 and AC-01–AC-25.
+D-19–D-27 adopt the subsequent 2026-10-19 user decisions; they do not
+retroactively qualify the rejected review_101901 output. Specialized owners
 retain architecture, domain, privacy, versioning and failure authority. Read this
 entry with [Projection](projections-and-documents.md) and the affected owner.
 Recommendations labelled 설계 권고 remain implementation choices, not user decisions.
@@ -66,6 +68,25 @@ that rejection. New output is unassessed until actually reviewed.
 | **D-16** | 프로토타입은 디자인·UI 참고로 사용하며 실제 문장·결과·상태·코드 위치는 채택하지 않는다. | prototype 또는 평가 정답을 생성 입력·Product 데이터에 주입하지 않는다. | U3 |
 | **D-17** | 실제 Product 생산 결과와 실제 화면으로 평가하고, 내용·디자인·기술·인간 수용을 구분한다. | 손편집·합성 fixture·브라우저 성공으로 실제 설명 품질과 수용을 대신하지 않는다. | U1, U2, U5 |
 | **D-18** | 새 기술의 디자인 효과, 성능·용량·설치·실행·유지보수 비용을 검토한다. 기술 선택은 미확정이다. | React·Vue 도입 자체를 완료나 자동 승인으로 간주하지 않는다. | U2 |
+
+### Subsequent reader and collection decisions
+
+The following rows extend the existing identifiers; specialized owners define
+record meaning, read authority, lifetime and validation. The ignored handoff and
+original Korean plan are preserved evidence of feedback, not parallel authority.
+
+| ID | Accepted outcome | Excluded interpretation |
+| --- | --- | --- |
+
+| **D-19** | Work reads as a flexible grounded technical article: background, supported cause, actual approach/comparison, outcome and limits as relevant. | No compulsory empty sections, invented errors/retries/changes, or enum-to-section mapping. |
+| **D-20** | Decision explains the recorded problem, alternatives, agent recommendation/rationale, actual user choice and separately retained user rationale. | Missing user rationale stays absent; unavailable technical Source does not erase a retained recommendation reason. |
+| **D-21** | Verification identifies named check, execution Source/run, target basis, time, outcome/termination, coverage and limits. | Exit zero is not assertion coverage; a later unrelated pass never resolves an earlier failure or establishes a retest. |
+| **D-22** | One accessible persistent document section navigation; warnings distinguish current blocking, historical failure, unverified and unavailable evidence. | Remove duplicated shortcuts; color alone and a generic disclaimer cannot carry material limits. |
+| **D-23** | A meaning-based evidence index connects article claims to code, commands and original records; raw objects require intentional inspection. | Raw-dump-first presentation and evidence counts do not establish explanation quality. |
+| **D-24** | Tools remain reachable through safe scoped inspection, including useful filtering, paging and relations. | No free SQL, browser DB access, arbitrary execution, cross-Project aggregate leaks or weaker protected actions. A scoped inspector is an implementation recommendation. |
+| **D-25** | Explicit authorized task-time collection records actual states, attempts and checks with original identity/time/provenance. | No historical reconstruction, hidden capture, transcript/chain-of-thought retention or widened host/provider grant. |
+| **D-26** | Campaign admission is per case × claim, with a genuine prospective positive case for task-time collection. | Historical records, replay and synthetic controls keep useful applicability but cannot substitute for that positive case. |
+| **D-27** | Technical, evidence sufficiency, semantic, presentation, human and authority outcomes remain independent. | Source-first assessment precedes authored interpretation; presentation-first readers receive no answer oracle. Missing positive evidence cannot become a pass by exclusion. |
 
 ### 3.1 ‘취소선’ 의견의 처리
 
@@ -355,6 +376,21 @@ Vue·React 또는 다른 FE의 채택은 미확정이다. 실제 정상 콘텐�
 | **AC-15** | D-17~D-18 | HTTP·install·전체 소비자 | local-only·권한·비변경 읽기·protected action·CLI/MCP·offline·기존 도구가 유지된다. 비용·설치 의존성을 실제 측정하고 부재를 0으로 표시하지 않는다. |
 | **AC-16** | D-03, D-17 | 통합·검증 owner | 관련 owner·fixture·schema·consumer·실제 테스트 의미가 새 계약과 일치한다. 현재 후보 기술 gate와 archive, 의미·디자인·사용자 수용을 분리한다. |
 
+### Subsequent acceptance criteria
+
+| ID | Requirement | Responsibility | Observable condition |
+| --- | --- | --- | --- |
+
+| **AC-17** | D-19 | Work article | Grounded task-specific background/mechanism/approach/result; no-change, investigation-only, error-free, no-Decision and no-retry cases invent no events. |
+| **AC-18** | D-20 | Decision article | Exact historical recommendation reason is readable; missing user reason and unavailable supporting Source remain independent. New interpretation is labeled. |
+| **AC-19** | D-21 | Verification | Named command Source/run, selected target snapshot, original times, numeric exit/termination and bounded output remain inspectable; missing inspection/coverage/retest identity stays explicit. |
+| **AC-20** | D-22 | Document navigation/warnings | One persistent accessible control set works with fragments, keyboard, desktop pane, narrow focus and script-free export; warning severity reflects actual relevance. |
+| **AC-21** | D-23 | Evidence index | Claim-purpose navigation reaches permitted exact evidence and original records without default raw object dumps. |
+| **AC-22** | D-24 | Scoped inspector | Server enforces Project/Work/Source/revision, retention, paging and aggregate boundaries; SQL/filter injection, XSS and implicit writes/transmission are rejected; protected tools survive. |
+| **AC-23** | D-25 | Operations/public caller | Authorized actual task-time file/command capture reaches an exact permitted reader; two observed states or explicit missing-before, original time, outcomes and failed writes remain truthful. Missing trusted activation/source authority makes the prospective claim Blocked. |
+| **AC-24** | D-26 | Campaign admission | Per-task/claim applicability binds candidate, original input/Source/output and producer format/lifetime; historical positives remain alongside precise gaps; required prospective positives cannot be dropped to pass. |
+| **AC-25** | D-27 | Evaluation | Source-first and presentation-first order/provenance are recorded separately; technical checks, semantic sufficiency, presentation, human rejection/acceptance and authority have distinct results. |
+
 ### 13.2 반드시 구분해 평가할 세 부류
 
 **정상 콘텐츠 사례:** 근거와 권한이 충분한 상태에서 실제 host가 제목·요약·설명을 만들고 정상 경로로 기록한다. 의미 있는 내용을 제공하는지가 통과 조건이다.
@@ -465,3 +501,27 @@ frameworks were not implemented or benchmarked; no comparative performance claim
 is made. Focused Product review records repeated HTTP response time/bytes and
 export time/bytes separately. Installation and memory were not measured here and
 must not be reported as zero.
+
+### Collection campaign disposition
+
+The existing right-aligned navigation, Purpose, grounded Work name/synopsis,
+creation/latest-Work-record times, Work-less repository subject and citation
+permissions above are revalidation baselines. They are not newly invented features
+or evidence that the following outcomes are complete.
+
+AC-17–22 and AC-25 remain pending end-to-end narrative/presentation/human evaluation.
+AC-23 has existing bounded Operations and file MCP support; its local command caller
+and genuine prospective capture require separate evidence. AC-24 requires per-claim
+admission controls and the applicability report routed by validation-plan.md.
+The original rejected sample has one actual host-produced record-only Work (eight
+units, zero code citations), two missing Work documents, and missing Decision and
+repository documents. It supports historical-record and missing-state tests, not
+code-grounded repair narration or task-time capture. New output is unreviewed.
+
+The source-to-document responsibility ledger lives in
+[Repository Intelligence](repository-intelligence.md#reader-question-to-source-responsibility-ledger).
+Projection owns narrative/verification/evidence separation, Domain owns observation
+meaning, Inquiry owns recorded reasons, Privacy owns collection/inspection authority,
+Versioning owns actual format changes, and Validation owns campaign admission.
+Current, unknown, pending and blocked are independent conditions, never synonyms
+for absent data or completed acceptance.

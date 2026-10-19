@@ -774,3 +774,35 @@ not establish complete semantic understanding. Observation and current explanati
 admission compare the selected repository basis; missing/foreign snapshots, changed
 files, symlinks and redirected roots reject. Historical retained Source reading can
 return exact previous permitted bytes but cannot assert current repository equality.
+
+### Reader question-to-source responsibility ledger
+
+This extends the capability map above for [reader AC-17–25](reader-experience-design.md).
+All reads require exact Project/subject association; a field's existence does not
+prove a caller collected it during the task. Canonical revision/time and Source
+availability survive independently of disposable body retention. “Not observed” is
+an acquisition gap, “inaccessible” is a current permission/retention/deletion barrier,
+“unsupported” lacks a typed capability, and “absent” is a confirmed missing optional
+record. None means another by default.
+
+| Reader question | Actual field / producer | Permitted read and downstream method | Snapshot, revision, lifetime / assessment |
+| --- | --- | --- | --- |
+| Background / requested problem | Goal Context.statement/source_basis via context_record or transition_work | exact canonical field; Work prepare goal → host article | Goal revision and original user Source; Kernel lifecycle; raw turn policy-withheld, not authenticated from caller text |
+| Cause / mechanism | File SourceObservation.detail.body/region; inventory and graph via analyze + observe_work_file/repository file observation | exact scoped Source read → compose citations → article | included hash, Analysis/Repository Snapshot, observation time, Source/Work revision; explicit expiry ≤7 days; cause not observed until substantiated, static edges are not runtime |
+| Attempted fix / investigation | Checkpoint.state_change/changed paths and complete course/change evidence; explicit file observations | exact Checkpoint inspection and Work prepare; selected body reads | same Work Checkpoint revisions/times; Kernel history plus expiring bodies; no Checkpoint means not observed, not proof no attempt occurred |
+| Comparison | SourceObservation.detail.before_source_id/comparison from repeated explicit observe_work_file | exact earlier/later Source reads → cited comparison | same Work/path/region, strictly ordered original observations; both permitted bodies required; missing-before vs expired/deleted-before distinct; current code/Git is no substitute |
+| Result | Checkpoint.state_change/work_state | selected independent facts and chronological Work prepare change/course | exact Checkpoint/time/Source; Kernel lifecycle; report not verified success; absent report stays unrecorded |
+| Test verification | Checkpoint.verification[source_id,state,outcome] or local run_work_command CommandExecution + detail.operation_id/start/end/exit/termination/stdout/stderr | exact canonical verification and scoped command Source read; Work manifest → host read/compose → retained explanation | selected snapshot is not rechecked execution tree; explicit 8 KiB/stream retention/omitted counts; exit zero alone proves no assertions/coverage; no observation ≠ NotRun |
+| Retry / recovery | distinct Command Source/operation identities and original outcomes; Checkpoint course | full exact history + separate scoped reads, qualified host comparison | no typed retest/coverage relation currently supplied; unsupported comparison cannot be deduced from labels/fingerprints; later pass never erases failure |
+| Decision reason | Question recommendation + Decision.evidence.recommendation_rationale, user_rationale, selected alternative and scope via atomic Inquiry response | DecisionReading / Decision prepare and exact retained field inspection → host explanation | exact Question/Decision revision/Source; Kernel lifecycle; retained recommendation can exist with inaccessible supporting Source and genuinely absent user reason |
+| Source / verification basis | canonical Source payload, actor/observer/recorded_at/availability plus managed association, expiry and hashes | manifest metadata → exact scoped read; retained citation read; evidence index | original identity/revision/snapshots/time; deletion/expiry gates bytes; reads never reacquire or renew; wrong Project/Work/snapshot is denied |
+
+Current callers: MCP work_source observes files and canonical_inspect reads retained
+bodies; Operations run_work_command executes only for a local explicit caller.
+CLI Work source observation/read/command wiring is a direct collection gap at the
+reviewed baseline. Work preparation supplies canonical course/verification; a separate exact-Work
+Source manifest enumerates copies. The authorized host explicitly reads them and composition
+binds ranges. Repository preparation uses a separate Work-less exact analysis subject.
+Decision preparation reads recorded reasons; it does not borrow Work body authority.
+No new canonical Attempt/Verification schema is needed for bounded observed state
+and process facts. Rich typed retest/coverage and narrative/UI remain pending.

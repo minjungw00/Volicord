@@ -169,7 +169,7 @@ key. A stale realization, generation/authorization failure, selection failure an
 genuinely absent information are distinct outcomes.
 
 The current experience requirements are [Reader experience design](reader-experience-design.md),
-D-01–D-18 / AC-01–AC-16. One right-aligned navigation includes Overview,
+D-01–D-27 / AC-01–AC-25. One right-aligned navigation includes Overview,
 Repository explanation, Work and a native Tools disclosure. The brand is left;
 read-only status belongs outside navigation and describes the actual surface.
 Overview shows PROJECT OVERVIEW, the actual canonical Project name, canonical
@@ -1941,3 +1941,39 @@ v4 whole-realization lifecycle; a fresh record-only document is allowed, while
 technical claims keep Source dependencies. Canonical-only failures or missing
 bodies are not reasons to extract stale title text. See the current reader ledger
 for direct tests and outstanding semantic/human conditions.
+
+### Technical article, verification and inspection contract
+
+[Reader experience D-19–D-27](reader-experience-design.md) supersedes any earlier
+fixed question-enum-to-screen-section, raw-dump-first or duplicated navigation
+requirement. Evidence questions/roles remain grounding coordinates, not mandatory
+headings. Work prose explains supported background, mechanism/cause (when observed
+or explicitly inferred), actual attempts/change/comparison and result in suitable
+reader order. No-change, error-free, no-Decision and no-retry tasks omit fictional
+events. Direct technical prose can name mechanisms without repetitive report
+attribution; material uncertainty remains beside the claim and in a short basis.
+
+Article, structured verification, material warnings/limits, original instructions,
+evidence index and administrative inspection have distinct reading responsibilities.
+Verification lists available named checks, exact Command Source/run, selected target
+snapshot (including whether execution state was rechecked), times, outcome/termination,
+coverage, skipped/unstructured records and historical/current applicability. Similar
+labels or invocation fingerprints alone do not establish a retest or assertion
+coverage. Unrelated later passes cannot heal an earlier failure. Canonical reports,
+local process observations and host interpretation retain their different provenance.
+
+One persistent accessible document navigation replaces duplicate shortcut controls;
+fragment/offline/keyboard/pane behavior and original protected actions survive.
+Warnings state type, severity, relevance and safe action; current conclusion-changing
+failures are prominent while historical adversity is qualified. The evidence index
+connects claims by meaning/purpose to exact permitted records; full raw structs are
+available through explicit inspection. Scoped search/filter/paging/relations/counts
+must use Operations projections and Privacy barriers. No SQL or database-file bypass
+is granted. These are target outcomes; current v4 roles/rendering are only a partial
+implementation, not proof that flexible articles, typed verification UI or a secure
+inspector have been delivered.
+
+The reader-question ledger in repository-intelligence.md maps existing producers
+and known missing inputs. Explicit Source manifest/read and preparation/composition
+are separate steps: a canonical plan does not automatically incorporate every body,
+and a missing Checkpoint cannot manufacture attempts, verification or Decision.

@@ -407,3 +407,15 @@ Canonical revision-1 event read metadata is derived from existing revision histo
 it changes no canonical SQL or portable format. No numeric version is raised for
 an unchanged durable representation. Missing/non-current content is never converted
 into a current title.
+
+### Reader article and collection evolution
+
+[Reader AC-17–25](reader-experience-design.md) changes experience/admission contracts,
+not existing durable representations by itself. Reusing SourceObservation v2,
+CommandExecution, before_source_id and DecisionReading recommendation_rationale
+requires no canonical/bundle/analysis/explanation version bump. Current CLI wiring
+and validation applicability reports add no Product decoder. If later typed
+attempt/verification relations or generated nested structures change durable meaning,
+update their owning format and exhaustive consumers together; no compatibility-only
+branch, historical rewrite or version bump for prose alone. Unsupported current
+capabilities stay explicit instead of coercing old records into new evidence.
