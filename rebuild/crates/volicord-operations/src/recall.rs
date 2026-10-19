@@ -23,7 +23,7 @@ pub fn resume_brief_json(
             "changed_source_basis":value.changed_source_basis.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
             "changed_paths":value.changed_paths,
             "applied_decisions":value.applied_decisions.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-            "verification":value.verification.iter().map(|fact| json!({"state":verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
+            "verification":value.verification.iter().map(|fact| json!({"state":verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome,"scoped_run":fact.scoped_run})).collect::<Vec<_>>(),
             "user_review":{"state":user_review_state_name(value.user_review.state),"source_id":value.user_review.source_id.map(|id| id.to_string())},
             "user_acceptance":{"state":user_acceptance_state_name(value.user_acceptance.state),"source_id":value.user_acceptance.source_id.map(|id| id.to_string())},
             "known_limits":value.known_limits,
@@ -217,7 +217,7 @@ fn state_observation_json(state: &volicord_projections::WorkStateObservation) ->
         "detail_inspection":{"tool":"canonical_inspect","record_kind":"checkpoint","record_id":state.checkpoint_id.to_string(),"revision":state.checkpoint_revision,"field":"verification"},
         "observed_at_unix_micros":state.observed_at.as_unix_micros(),
         "work_state":work_state_name(state.work_state), "work_source_basis":state.work_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        "verification":state.verification.iter().map(|fact| json!({"state":verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome})).collect::<Vec<_>>(),
+        "verification":state.verification.iter().map(|fact| json!({"state":verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome,"scoped_run":fact.scoped_run})).collect::<Vec<_>>(),
         "user_review":{"state":user_review_state_name(state.user_review.state),"source_id":state.user_review.source_id.map(|id| id.to_string())},
         "user_acceptance":{"state":user_acceptance_state_name(state.user_acceptance.state),"source_id":state.user_acceptance.source_id.map(|id| id.to_string())},
         "later_changed_checkpoint_ids":state.later_changed_checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>()

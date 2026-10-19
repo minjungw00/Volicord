@@ -354,7 +354,7 @@ pub fn prepare_explanation(
                 &basis,
                 json!({"observed_at":s.observed_at.as_unix_micros(),
                 "work_state":format!("{:?}",s.work_state),
-                "verification":s.verification.iter().map(|v|json!({"state":format!("{:?}",v.state),"source":v.source_id.map(|id|id.to_string()),"outcome":v.outcome})).collect::<Vec<_>>(),
+                "verification":s.verification.iter().map(|v|json!({"state":format!("{:?}",v.state),"source":v.source_id.map(|id|id.to_string()),"outcome":v.outcome,"scoped_run":v.scoped_run})).collect::<Vec<_>>(),
                 "review":format!("{:?}",s.user_review.state),"acceptance":format!("{:?}",s.user_acceptance.state),
                 "later_changes":s.later_changed_checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>()}),
             );

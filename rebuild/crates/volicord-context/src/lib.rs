@@ -6,6 +6,8 @@
 //! SQLite operations at a caller-supplied path.
 
 mod canonical_state;
+mod verification;
+pub use verification::*;
 mod error;
 mod identity;
 mod merge;

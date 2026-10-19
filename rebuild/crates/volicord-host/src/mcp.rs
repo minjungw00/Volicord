@@ -1786,6 +1786,19 @@ impl HostAdapter {
         let project = project(args)?;
         let work = parse_context_item(required_str(args, "work_item_id")?)?;
         match required_str(args, "action")? {
+            "record_check" => {
+                let request: volicord_operations::WorkCheckRecording =
+                    serde_json::from_value(args["recording"].clone())
+                        .map_err(|e| HostError::new(format!("invalid check recording: {e}")))?;
+                if request.work_item_id != work {
+                    return Err(HostError::new(
+                        "recording Work differs from authorized Work",
+                    ));
+                }
+                Ok(
+                    json!({"receipt":self.operations.record_work_check(project, request).map_err(operation_error)?}),
+                )
+            }
             "observe_file" => {
                 let receipt = self
                     .operations
@@ -3284,8 +3297,12 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "work_source" => (
-            "Explicitly observe one included repository-relative UTF-8 file (at most 16384 retained bytes); optional byte_range explicitly selects a half-open UTF-8 excerpt (at most 16384 bytes) from a file verified in full up to 16 MiB. Excerpts preserve absolute file byte/line coordinates and explicitly omit other context, for an exact Project/Work and Analysis Snapshot, within the current host's already authorized source scope. The observed hash must equal the selected inventory hash. Optional before_source_id must be an available strictly earlier observation of the same Work/path; absent before-state is not reconstructed. retain_seconds explicitly permits local disposable retention for 1..604800 seconds, never background transmission. Read through the returned canonical_inspect selector. delete_source_copy removes that exact managed body while preserving canonical Source and unrelated context. This tool cannot execute commands or read URLs, arbitrary absolute paths, symlinks, excluded files or full user turns.",
+            "Explicitly observe one included repository-relative UTF-8 file (at most 16384 retained bytes); optional byte_range explicitly selects a half-open UTF-8 excerpt (at most 16384 bytes) from a file verified in full up to 16 MiB. Excerpts preserve absolute file byte/line coordinates and explicitly omit other context, for an exact Project/Work and Analysis Snapshot, within the current host's already authorized source scope. The observed hash must equal the selected inventory hash. Optional before_source_id must be an available strictly earlier observation of the same Work/path; absent before-state is not reconstructed. retain_seconds explicitly permits local disposable retention for 1..604800 seconds, never background transmission. Read through the returned canonical_inspect selector. delete_source_copy removes that exact managed body while preserving canonical Source and unrelated context. record_check attaches an explicit assertion report to one already retained declared local check run; recording includes Work/source, assertion_state (not_observed/passed/failed), optional assertion_evidence (stream, UTF-8 byte interval, sha256), optional exact prior Checkpoint/source retest basis, outcome and next_step. It executes nothing and creates no trusted-host attestation. This tool cannot execute commands or read URLs, arbitrary absolute paths, symlinks, excluded files or full user turns.",
             json!({"oneOf":[object_schema(vec![
+                ("action",enum_schema("Explicit Source operation", &["record_check"])),
+                ("project_id",identity_schema("Project identity")),("work_item_id",identity_schema("Exact Work")),
+                ("recording",work_check_recording_schema())
+            ], &["action","project_id","work_item_id","recording"]), object_schema(vec![
                 ("action",enum_schema("Explicit Source operation", &["observe_file"])),
                 ("project_id",identity_schema("Project identity")),("work_item_id",identity_schema("Exact retained Goal-backed Work identity")),
                 ("analysis_snapshot_id",digest_identity_schema("Exact selected Analysis Snapshot")),
@@ -8765,4 +8782,97 @@ mod draft_budget_tests {
             result["structuredContent"]
         );
     }
+}
+
+fn work_check_recording_schema() -> Value {
+    let nullable = |v: Value| json!({"oneOf":[v,{"type":"null"}]});
+    object_schema(
+        vec![
+            ("work_item_id", identity_schema("Exact Goal-backed Work")),
+            (
+                "source_id",
+                identity_schema("Previously retained declared check Command Source"),
+            ),
+            (
+                "assertion_state",
+                enum_schema(
+                    "Explicit operator assertion report, never inferred exit",
+                    &["not_observed", "passed", "failed"],
+                ),
+            ),
+            (
+                "assertion_evidence",
+                nullable(object_schema(
+                    vec![
+                        (
+                            "stream",
+                            enum_schema("Retained stream", &["stdout", "stderr"]),
+                        ),
+                        (
+                            "start_byte",
+                            json!({"type":"integer","minimum":0,"maximum":8191}),
+                        ),
+                        (
+                            "end_byte",
+                            json!({"type":"integer","minimum":1,"maximum":8192}),
+                        ),
+                        (
+                            "sha256",
+                            text_schema("Hash of exact retained UTF-8 interval", 64, 64),
+                        ),
+                    ],
+                    &["stream", "start_byte", "end_byte", "sha256"],
+                )),
+            ),
+            (
+                "retest",
+                nullable(object_schema(
+                    vec![
+                        (
+                            "checkpoint_id",
+                            identity_schema("Exact prior same-Work Checkpoint"),
+                        ),
+                        ("checkpoint_revision", json!({"type":"integer","minimum":1})),
+                        ("verification_index", json!({"type":"integer","minimum":0})),
+                        ("source_id", identity_schema("Prior exact Command Source")),
+                        (
+                            "target_relation",
+                            enum_schema(
+                                "Explicit compared artifact relation",
+                                &["same_artifacts", "changed_artifacts"],
+                            ),
+                        ),
+                        (
+                            "rationale",
+                            text_schema(
+                                "Why this comparison is appropriate within declared coverage",
+                                1,
+                                4096,
+                            ),
+                        ),
+                    ],
+                    &[
+                        "checkpoint_id",
+                        "checkpoint_revision",
+                        "verification_index",
+                        "source_id",
+                        "target_relation",
+                        "rationale",
+                    ],
+                )),
+            ),
+            (
+                "outcome",
+                text_schema("Original operator report quotation", 1, 16384),
+            ),
+            ("next_step", text_schema("Next meaningful step", 1, 16384)),
+        ],
+        &[
+            "work_item_id",
+            "source_id",
+            "assertion_state",
+            "outcome",
+            "next_step",
+        ],
+    )
 }

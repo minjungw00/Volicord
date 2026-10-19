@@ -564,3 +564,13 @@ hash and original expiry. Mutating streams, provenance, operation identity or
 retention cannot establish a fresh execution. Missing/forgotten integrity Source
 withholds the copy; canonical Command outcome remains historical. Earlier copy
 formats are Unsupported with explicit new-observation recovery, never conversion.
+
+Scoped check admission fails without mutation on wrong Project/Work/revision,
+unavailable/corrupt/expired/deleted command copy, absent sealed declaration, invalid
+assertion coordinates/hash, contradictory passed process state or invalid prior
+Checkpoint/run. Missing assertion becomes explicit Partial only when requested.
+A target changed during execution remains recorded with unstable target and cannot
+support comparability. Failed spawn retains the operational failure and yields no
+fabricated command observation or Checkpoint. Fresh explicitly authorized execution
+is a different attempt. Canonical scoped evidence survives stdout expiry/deletion;
+readers distinguish that original report from unavailable current output.

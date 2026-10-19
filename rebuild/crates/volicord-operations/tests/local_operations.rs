@@ -1216,7 +1216,7 @@ fn retained_work_evidence_is_recoverable_in_revision_bound_parts(
         volicord_projections::FixedLocale::English,
     );
     assert!(recall.to_string().contains("serialized_byte_budget"));
-    for (field,expected) in [("state_change",json!(exact)),("verification",json!(cp.verification.iter().map(|v|json!({"state":"passed","source_id":v.source_id.map(|s|s.to_string()),"outcome":v.outcome})).collect::<Vec<_>>()))] {
+    for (field,expected) in [("state_change",json!(exact)),("verification",json!(cp.verification.iter().map(|v|json!({"state":"passed","source_id":v.source_id.map(|s|s.to_string()),"outcome":v.outcome,"scoped_run":v.scoped_run})).collect::<Vec<_>>()))] {
         let mut r = EvidenceDetailRequest {record_kind:"checkpoint".into(),record_id:cp.id.to_string(),revision:cp.revision,field:field.into(),offset:0,expected_fingerprint:None,work_item_id:cp.work_item_id};
         let mut recovered=String::new();
         let mut reads=0;

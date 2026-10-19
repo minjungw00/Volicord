@@ -549,6 +549,7 @@ fn resume_brief_is_deterministic_bounded_grounded_and_read_only(
             changed_paths: Vec::new(),
             applied_decisions: vec![current_decision.id],
             verification: vec![VerificationFact {
+                scoped_run: None,
                 state: VerificationState::NotRun,
                 source_id: None,
                 outcome: None,
@@ -906,6 +907,7 @@ fn historical_checkpoint_remains_readable_with_non_current_source_basis(
                 changed_paths: Vec::new(),
                 applied_decisions: Vec::new(),
                 verification: vec![VerificationFact {
+                    scoped_run: None,
                     state: VerificationState::NotRun,
                     source_id: None,
                     outcome: None,

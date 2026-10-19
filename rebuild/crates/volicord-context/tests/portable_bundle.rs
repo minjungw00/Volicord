@@ -187,6 +187,7 @@ fn populate(
                 changed_paths: vec!["rebuild/crates/volicord-context".to_owned()],
                 applied_decisions: vec![decision.id],
                 verification: vec![VerificationFact {
+                    scoped_run: None,
                     state: VerificationState::NotRun,
                     source_id: None,
                     outcome: None,

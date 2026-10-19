@@ -302,7 +302,7 @@ def reader_applicability(plan, response=None, *, source_reads=(), origin='post_s
         obs, meta = read.get('observation', {}), read.get('metadata', {})
         if (work is None or identity(obs.get('project_id')) != plan['project_id']
                 or identity(obs.get('work_item_id')) != work
-                or obs.get('format_kind') != 'volicord_source_observation' or obs.get('format_version') != 3
+                or obs.get('format_kind') != 'volicord_source_observation' or obs.get('format_version') != 4
                 or read.get('read_only') is not True
                 or read.get('observation_fingerprint') != read.get('citation_basis', {}).get('observation_fingerprint')
                 or identity(obs.get('source_id')) != read.get('citation_basis', {}).get('source_id')

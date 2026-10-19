@@ -1059,6 +1059,7 @@ impl UserAcceptanceState {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct VerificationFact {
+    pub scoped_run: Option<crate::ScopedCheckRun>,
     pub state: VerificationState,
     pub source_id: Option<SourceId>,
     pub outcome: Option<String>,

@@ -1137,6 +1137,7 @@ fn memory_targets_and_checkpoints_are_human_identifiable_and_detailed() {
                 changed_paths: vec!["rebuild/crates/volicord-viewer/src/render.rs".into()],
                 applied_decisions: Vec::new(),
                 verification: vec![VerificationFact {
+                    scoped_run: None,
                     state: VerificationState::Passed,
                     source_id: Some(command.id),
                     outcome: Some("viewer tests passed".into()),

@@ -245,6 +245,7 @@ fn semantic_fixture(root: &Path) -> Result<Fixture, Box<dyn std::error::Error>> 
             changed_paths: vec!["rebuild/crates/volicord-context".to_owned()],
             applied_decisions: vec![],
             verification: vec![VerificationFact {
+                scoped_run: None,
                 state: VerificationState::Passed,
                 source_id: Some(command.id),
                 outcome: Some("volicord-context tests passed".to_owned()),
@@ -393,11 +394,13 @@ fn checkpoint_forgetting_fixture(
                 applied_decisions: vec![],
                 verification: vec![
                     VerificationFact {
+                        scoped_run: None,
                         state: VerificationState::Passed,
                         source_id: Some(verification_one.id),
                         outcome: Some("first verification passed".to_owned()),
                     },
                     VerificationFact {
+                        scoped_run: None,
                         state: VerificationState::Failed,
                         source_id: Some(verification_two.id),
                         outcome: Some("second verification failed".to_owned()),

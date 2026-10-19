@@ -302,6 +302,7 @@ fn completed_project_documents_are_human_first_and_keep_resolved_ambiguity_in_au
             changed_paths: vec!["src/summary.rs".to_owned()],
             applied_decisions: vec![decision.id],
             verification: vec![VerificationFact {
+                scoped_run: None,
                 state: VerificationState::Passed,
                 source_id: Some(verification.id),
                 outcome: Some("all focused checks passed".to_owned()),
@@ -602,6 +603,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             changed_paths: vec!["src/lib.rs".to_owned()],
             applied_decisions: vec![active_decision.id],
             verification: vec![VerificationFact {
+                scoped_run: None,
                 state: VerificationState::Passed,
                 source_id: Some(verification_source.id),
                 outcome: Some("focused tests passed".to_owned()),

@@ -15,7 +15,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 pub const BUNDLE_KIND: &str = "volicord-context-bundle";
-pub const BUNDLE_FORMAT_VERSION: u32 = 9;
+pub const BUNDLE_FORMAT_VERSION: u32 = 10;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleExport {
@@ -418,6 +418,7 @@ pub(crate) const TABLES: &[TableSpec] = &[
             "verification_state",
             "source_id",
             "outcome",
+            "scoped_run",
         ],
         primary_key: &[1, 2],
         project_column: 0,
@@ -2268,6 +2269,6 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
         assert_eq!(BUNDLE_KIND, "volicord-context-bundle");
-        assert_eq!(BUNDLE_FORMAT_VERSION, 9);
+        assert_eq!(BUNDLE_FORMAT_VERSION, 10);
     }
 }

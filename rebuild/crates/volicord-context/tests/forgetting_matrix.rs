@@ -230,6 +230,7 @@ fn create_fixture(value: &mut Store) -> Result<Fixture, Box<dyn std::error::Erro
                 changed_paths: vec!["src/private.rs".to_owned()],
                 applied_decisions: vec![decision.id],
                 verification: vec![VerificationFact {
+                    scoped_run: None,
                     state: VerificationState::NotRun,
                     source_id: None,
                     outcome: None,

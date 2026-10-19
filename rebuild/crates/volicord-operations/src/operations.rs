@@ -3762,6 +3762,7 @@ impl LocalOperations {
         for (fact, outcome) in draft.verification.iter().zip(verification_outcomes) {
             if fact.state == VerificationState::NotRun {
                 verification.push(VerificationFact {
+                    scoped_run: None,
                     state: VerificationState::NotRun,
                     source_id: None,
                     outcome: None,
@@ -3771,6 +3772,7 @@ impl LocalOperations {
             let source = self.record_command_source(draft.project_id, fact)?;
             verification_source_ids.push(source.id);
             verification.push(VerificationFact {
+                scoped_run: None,
                 state: fact.state,
                 source_id: Some(source.id),
                 outcome,

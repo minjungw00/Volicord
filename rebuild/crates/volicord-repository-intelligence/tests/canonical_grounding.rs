@@ -209,6 +209,7 @@ fn canonical_fixture() -> Result<(tempfile::TempDir, CanonicalFixture), Box<dyn 
                 changed_paths: vec!["src/index.ts".to_owned()],
                 applied_decisions: vec![decision.id],
                 verification: vec![VerificationFact {
+                    scoped_run: None,
                     state: VerificationState::NotRun,
                     source_id: None,
                     outcome: None,

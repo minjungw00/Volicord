@@ -1095,3 +1095,14 @@ when its technical Source is unavailable, with that independent verification lim
 A fresh explanation of code cannot become the original agent's or user's intent.
 The original Question revision, post-choice recommendation visibility and authentic
 current-host Decision response contracts above remain authoritative.
+
+### Source-bound local check Checkpoints
+
+An explicitly requested local check can be reported in a same-Work pause Checkpoint
+through `record_work_check`, independently of generated prose and without a new
+inquiry/Decision or ordinary-edit ceremony. This records an observed verification
+boundary only: no work completion, changed path, user review or acceptance is inferred.
+The existing grounded completion producer retains its original quotation-only
+verification meaning unless actual scoped evidence is supplied through the explicit
+capture path. Domain owns the scoped run and exact retest references; readers evaluate
+comparability without changing original facts or deciding user acceptance.

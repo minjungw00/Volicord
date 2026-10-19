@@ -137,7 +137,7 @@ impl LocalOperations {
                     fields = json!({"goal":cp.goal,"state_change":cp.state_change,"next_step":cp.next_step,
                     "changed_paths":cp.changed_paths,"source_basis":ids(&cp.source_basis),"changed_source_basis":ids(&cp.changed_source_basis),
                     "applied_decisions":cp.applied_decisions.iter().map(ToString::to_string).collect::<Vec<_>>(),
-                    "verification":cp.verification.iter().map(|v|json!({"state":crate::recall::verification_state_name(v.state),"source_id":v.source_id.map(|s|s.to_string()),"outcome":v.outcome})).collect::<Vec<_>>(),
+                    "verification":cp.verification.iter().map(|v|json!({"state":crate::recall::verification_state_name(v.state),"source_id":v.source_id.map(|s|s.to_string()),"outcome":v.outcome,"scoped_run":v.scoped_run})).collect::<Vec<_>>(),
                     "user_review":{"state":crate::recall::user_review_state_name(cp.user_review.state),"source_id":cp.user_review.source_id.map(|s|s.to_string())},
                     "user_acceptance":{"state":crate::recall::user_acceptance_state_name(cp.user_acceptance.state),"source_id":cp.user_acceptance.source_id.map(|s|s.to_string())},
                     "known_limits":cp.known_limits,"non_goals":cp.non_goals,"handoff_to":cp.handoff_to,

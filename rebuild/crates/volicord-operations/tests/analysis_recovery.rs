@@ -237,6 +237,7 @@ fn add_user_owned_meaning(
             changed_paths: Vec::new(),
             applied_decisions: vec![current_decision.id],
             verification: vec![VerificationFact {
+                scoped_run: None,
                 state: VerificationState::NotRun,
                 source_id: None,
                 outcome: None,

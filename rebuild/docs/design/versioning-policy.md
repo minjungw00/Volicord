@@ -59,7 +59,7 @@ Context Item, Checkpoint, revision, supersession와 forgetting meaning을 durabl
 Canonical data는 Derived State에서 rebuild할 수 없으므로 best-effort field dropping,
 silent downgrade 또는 fresh empty initialization으로 대체하지 않는다.
 
-현재 canonical schema version은 `16`이다. `Project Purpose`와 work `Goal`을 구분하는
+현재 canonical schema version은 `17`이다. `Project Purpose`와 work `Goal`을 구분하는
 Context role, Checkpoint의 explicit Work Item identity와 Decision의 typed work scope는 durable
 meaning이므로 이 version에서만 읽고 쓴다. 이전 record의 Goal text, path 또는 chronology를
 Work Item identity로 추정하는 decoder를 두지 않는다.
@@ -84,7 +84,7 @@ deterministic representation, lineage/common-base와 conflict basis를 해석한
 - Non-current bundle rejection은 current canonical state, common-base와 merge provenance를
   변경하지 않는다.
 
-현재 portable bundle format version은 `9`이다. Source-grounded `Project Purpose` role,
+현재 portable bundle format version은 `10`이다. Source-grounded `Project Purpose` role,
 Checkpoint Work Item identity와 Decision work scope를 그대로 운반한다. Older bundle의 Goal을
 Purpose로, 또는 Checkpoint/Decision text를 Work Item identity로 추론하거나 dual decode하지 않는다.
 
@@ -453,3 +453,12 @@ new observation is recovery. Historical artifacts stay unchanged; no old-copy
 conversion or retrospective integrity assertion exists. Mutated or rehashed copies
 cannot replace the immutable Source anchor. Every citation dependency includes
 that anchor, and scoped verification/publication uses the same validated copy.
+
+Scoped Checkpoint verification uses canonical schema 17 and bundle format 10.
+The nullable `scoped_run` column is part of the single current representation;
+null retains historical quotation-only meaning, never inferred typed identities.
+Non-current canonical stores/bundles are refused before mutation; no migration or
+old decoder is supplied. Work SourceObservation current format is 4, sealing the
+optional local check declaration and sampled artifact hashes with the existing
+integrity Source. Old observations remain Unsupported; fresh explicit capture is
+the only recovery. No explanation-document format or Analysis format changes.

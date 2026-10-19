@@ -454,6 +454,7 @@ fn changed_work_preparation_exposes_actual_question_grounding_for_first_record(
                 changed_paths: vec!["main.py".into()],
                 applied_decisions: vec![],
                 verification: vec![VerificationFact {
+                    scoped_run: None,
                     state: VerificationState::Passed,
                     source_id: Some(execution),
                     outcome: Some("Value assertion passed; stdout reports 값: 9.".into()),

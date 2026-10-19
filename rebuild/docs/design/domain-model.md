@@ -741,3 +741,38 @@ Decision. Command Source and invocation identity remain distinct and unchanged.
 Managed canonical links include the artifact anchor; forgetting it makes the copy
 and dependent interpretations unavailable. Disposable copy format/version is owned
 by versioning-policy.md. No output bodies enter Canonical Context.
+
+### Explicit scoped check recording
+
+A `VerificationFact.scoped_run` may retain an explicitly declared check key,
+purpose, assertion definition, bounded declared coverage and optional non-secret
+operator environment description. It binds exact Goal-backed Work/revision,
+Command Source, operation identity, invocation fingerprint, execution window,
+selected Analysis/Repository Snapshot and repository Source, plus included artifact
+paths and full-file hashes sampled before execution and checked afterward. End-point
+agreement is neither an atomic snapshot nor proof against intervening writes or
+coverage of unlisted dependencies. Selected analysis alone supplies no execution-time
+coverage. Missing environment/coverage remains absent.
+
+Explicit local `run_work_check` seals this declaration and measured target basis in
+the existing retained command observation. `record_work_check` admits only that
+available exact same-Work/revision observation into a new pause Checkpoint. Assertion
+state is `not_observed`, `passed` or `failed`, separately from numeric process outcome.
+Observed assertions are operator reports with verified UTF-8 stream coordinates and
+hash; no output bytes enter Canonical Context. The operator is responsible for the
+assertion interpretation. Successful exit alone cannot create a passed assertion.
+Timeout/cancellation/nonzero or non-exited processes cannot support a passed report.
+Unobserved assertion records Partial, preserving actual execution without inventing
+coverage, review, acceptance, completion or changed paths.
+
+Optional retest basis names the exact prior same-Work Checkpoint/revision/vector
+position and Command Source, explicit same/changed-artifacts relation and rationale.
+This link does not itself assert comparability or repair. Comparison requires the
+same declared key/purpose/assertion/coverage, known equal declared environment,
+matching target path scope, stable end-point samples and the stated measured artifact
+relation. Different targets are comparable only as explicitly scoped changed-artifact
+retests. Missing/different bases remain Unresolved/NotComparable. An earlier failure
+is immutable; a comparable later pass is a separate observation, never an overwrite.
+Historical facts with no scoped_run remain exact quotations with unknown identities.
+Canonical evidence persists through disposable stdout expiry/deletion; body access
+continues to obey privacy/forgetting barriers. No new canonical entity is introduced.

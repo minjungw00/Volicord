@@ -600,6 +600,7 @@ fn checkpoint_uses_snapshot_delta_and_preserves_independent_dimensions(
             supporting_sources: vec![repository.id],
             applied_decisions: Vec::new(),
             verification: vec![VerificationFact {
+                scoped_run: None,
                 state: VerificationState::NotRun,
                 source_id: None,
                 outcome: None,
@@ -958,6 +959,7 @@ fn verification_checkpoint_basis_is_current_and_keeps_command_kind_semantics(
         .value;
     let canonical = store.read_canonical_basis(project.id, CanonicalReadOptions::default())?;
     let executed = |source_id| VerificationFact {
+        scoped_run: None,
         state: VerificationState::Passed,
         source_id: Some(source_id),
         outcome: Some("focused validation passed".to_owned()),
@@ -993,6 +995,7 @@ fn verification_checkpoint_basis_is_current_and_keeps_command_kind_semantics(
 
     let mut not_run = pause_candidate(project.id, vec![repository.id]);
     not_run.verification = vec![VerificationFact {
+        scoped_run: None,
         state: VerificationState::NotRun,
         source_id: None,
         outcome: None,

@@ -21,6 +21,7 @@ pub use inspection::{
     InspectionClass, InspectionFailure, InspectionPage, InspectionQuery, InspectionRelation,
     InspectionRow, INSPECTION_ROLES, INSPECTION_STATES,
 };
+mod check_capture;
 mod layout;
 mod model;
 mod operations;
@@ -31,6 +32,7 @@ mod repository_explanation;
 mod source_observations;
 mod work_explanation;
 mod work_verification;
+pub use check_capture::{WorkCheckReceipt, WorkCheckRecording};
 pub use repository_explanation::{
     RepositoryClaimRange, RepositoryExplanationDraft, RepositoryFileObservationRequest,
     RepositoryReaderUnit,

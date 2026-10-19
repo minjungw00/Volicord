@@ -464,6 +464,7 @@ fn fixture_with_temporary(
                         Vec::new()
                     } else {
                         vec![VerificationFact {
+                            scoped_run: None,
                             state: verification_state(verification),
                             source_id: commands.get(verification).copied(),
                             outcome: commands.contains_key(verification).then(|| {

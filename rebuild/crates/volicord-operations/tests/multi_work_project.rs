@@ -152,6 +152,7 @@ fn checkpoint(
                 changed_paths: vec![path.to_owned()],
                 applied_decisions: vec![decision],
                 verification: vec![VerificationFact {
+                    scoped_run: None,
                     state: if verification_source.is_some() {
                         VerificationState::Passed
                     } else {

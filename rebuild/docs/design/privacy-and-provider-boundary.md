@@ -710,7 +710,7 @@ Command-copy integrity Source hashes contain no command body. Their managed
 artifact locator grants no repository-file access; only the existing same-Work
 command-copy reader can expose permitted bytes. The copy and dependent article
 links include this anchor, so canonical forgetting withholds dependent content.
-Current Work copies use the single exact v3 format; old copies are Unsupported.
+Current Work copies use the single exact v4 format; old copies are Unsupported.
 
 ### Bounded Project data inspection threat model
 
@@ -760,3 +760,14 @@ escaped; no executable/user-controlled URL or external asset is introduced.
 Stronger multi-Project browsing, general Derived body reads, raw SQL or historical
 source restoration would expand authority and require a separate human decision.
 None is authorized by this dashboard.
+
+Explicit local check execution reuses the existing bounded Work command authority.
+CLI `work source run --check-input FILE` adds a declared check and included artifact
+sampling; it does not grant ambient execution. CLI `work check --input FILE` and MCP
+`work_source action=record_check` only attach reports to already permitted retained
+local observations and execute nothing. Browser GET, ordinary readers, exports and
+background actions cannot run commands. Environment is a bounded non-secret operator
+description, not captured variables. Raw argv/output remain disposable; canonical
+assertion evidence retains only coordinates/hash, declaration and measured run basis.
+Absent maintained trusted SessionStart activation leaves default trusted-host capture
+Blocked. Explicit local capture and task-owned controls cannot supply that claim.

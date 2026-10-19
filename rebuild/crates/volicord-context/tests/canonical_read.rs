@@ -186,6 +186,7 @@ fn populate(store: &mut Store) -> Result<Fixture, Box<dyn std::error::Error>> {
                 changed_paths: vec!["rebuild/crates/volicord-context".to_owned()],
                 applied_decisions: vec![original_decision.id],
                 verification: vec![VerificationFact {
+                    scoped_run: None,
                     state: VerificationState::NotRun,
                     source_id: None,
                     outcome: None,

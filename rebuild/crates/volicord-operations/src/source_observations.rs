@@ -20,7 +20,7 @@ use volicord_repository_intelligence::{
 };
 
 const KIND: &str = "volicord_source_observation";
-const VERSION: u32 = 3;
+const VERSION: u32 = 4;
 const FILE_BYTES: usize = 16_384;
 const STREAM_BYTES: usize = 8_192;
 const MAX_RETENTION_SECONDS: u64 = 7 * 24 * 60 * 60;
@@ -375,6 +375,26 @@ impl LocalOperations {
         &self,
         request: WorkCommandRequest,
     ) -> Result<SourceObservationReceipt, Error> {
+        self.run_declared_work_command(request, None)
+    }
+
+    /// Explicit local execution only. Remote/read adapters cannot call this route.
+    pub fn run_work_check(
+        &self,
+        request: WorkCommandRequest,
+        declaration: volicord_context::CheckDeclaration,
+    ) -> Result<SourceObservationReceipt, Error> {
+        declaration
+            .validate()
+            .map_err(|e| Error::with_source("invalid check declaration", e))?;
+        self.run_declared_work_command(request, Some(declaration))
+    }
+
+    fn run_declared_work_command(
+        &self,
+        request: WorkCommandRequest,
+        declaration: Option<volicord_context::CheckDeclaration>,
+    ) -> Result<SourceObservationReceipt, Error> {
         let now = now_micros()?;
         retention_until(now, request.retain_seconds)?;
         if request.command_label.trim().is_empty()
@@ -402,6 +422,10 @@ impl LocalOperations {
             return Err(Error::new("command invocation exceeds bounded input"));
         }
         let fingerprint = format!("sha256:{:x}", Sha256::digest(&invocation));
+        let artifacts = declaration
+            .as_ref()
+            .map(|d| self.check_artifacts(&basis, &analysis, d))
+            .transpose()?;
         let result = self.run_child(
             &request.program,
             request.arguments.iter().map(OsString::from),
@@ -449,7 +473,7 @@ impl LocalOperations {
                     (None, volicord_context::CommandTermination::Indeterminate)
                 }
             };
-            let detail = json!({"kind":"command","operation_id":result.operation_id.to_string(),
+            let mut detail = json!({"kind":"command","operation_id":result.operation_id.to_string(),
                 "started_at_unix_micros":result.started_at_unix_micros,"ended_at_unix_micros":result.ended_at_unix_micros,
                 "exit_code":exit_code,"termination":format!("{:?}",termination).to_lowercase(),
                 "operation_state":format!("{:?}",result.state).to_lowercase(),
@@ -457,6 +481,12 @@ impl LocalOperations {
                 "timeout_detected":outcome.timeout_detected,"cancellation_requested":outcome.cancellation_requested,
                 "process_tree_cleanup":format!("{:?}",outcome.cleanup),"stdout":stream(&outcome.stdout)?,"stderr":stream(&outcome.stderr)?,
                 "repository_state":"selected_analysis_only_not_rechecked","comparison":"not_applicable"});
+            if let Some(declaration) = &declaration {
+                let after = self.check_artifacts(&basis, &analysis, declaration);
+                detail["check_capture"] = json!({"declaration":declaration,"artifacts":artifacts,
+                    "target_unchanged_during_run":after.as_ref().ok() == artifacts.as_ref(),
+                    "authority":"explicit_local_capture"});
+            }
             Ok((
                 SourcePayload::CommandExecution {
                     command_label: request.command_label,
@@ -505,6 +535,37 @@ impl LocalOperations {
             )?,
             detail,
         )
+    }
+
+    fn check_artifacts(
+        &self,
+        basis: &CanonicalReadBasis,
+        analysis: &volicord_repository_intelligence::AnalysisSnapshot,
+        declaration: &volicord_context::CheckDeclaration,
+    ) -> Result<Vec<volicord_context::CheckArtifact>, Error> {
+        declaration
+            .target_paths
+            .iter()
+            .map(|path| {
+                // Verify full included-file identity using the existing bounded reader.
+                let file = self.capture_included_file(
+                    basis,
+                    analysis,
+                    path,
+                    Some(FileByteRange {
+                        start_byte: 0,
+                        end_byte: 1,
+                    }),
+                )?;
+                Ok(volicord_context::CheckArtifact {
+                    path: path.clone(),
+                    sha256: file["sha256"]
+                        .as_str()
+                        .ok_or_else(|| Error::new("missing artifact hash"))?
+                        .into(),
+                })
+            })
+            .collect()
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const SCHEMA_KIND: &str = "volicord-context";
-pub const SCHEMA_VERSION: u32 = 16;
+pub const SCHEMA_VERSION: u32 = 17;
 
 pub(crate) const CURRENT_HOST_USER_AUTHORITY: &str = "current_host_user_turn";
 const READ_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1437,6 +1437,36 @@ impl Store {
             ensure_question_revision_exists(&transaction, question.question_id, question.revision)?;
         }
         for verification in &draft.verification {
+            if let Some(run) = &verification.scoped_run {
+                crate::validate_scoped_check(run, draft.work_item_id, verification.state)?;
+                let work = load_context_item(&transaction, project_id, run.work_item_id)?;
+                ensure_revision(run.work_revision, work.revision, "Work")?;
+                if let Some(previous) = &run.retest {
+                    let prior = load_checkpoint(&transaction, project_id, previous.checkpoint_id)?;
+                    let fact = prior
+                        .verification
+                        .get(previous.verification_index)
+                        .ok_or_else(|| {
+                            Error::new(
+                                ErrorKind::InvalidInput,
+                                "retest verification position missing",
+                            )
+                        })?;
+                    if prior.revision != previous.checkpoint_revision
+                        || prior.work_item_id != draft.work_item_id
+                        || fact.source_id != Some(previous.source_id)
+                        || fact.scoped_run.as_ref().is_none_or(|prior| {
+                            prior.ended_at_unix_micros >= run.started_at_unix_micros
+                        })
+                        || verification.source_id == Some(previous.source_id)
+                    {
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "retest must name an exact earlier same-Work scoped run",
+                        ));
+                    }
+                }
+            }
             if let Some(source_id) = verification.source_id {
                 let source = load_source(&transaction, source_id)?;
                 if source.project_id != project_id {
@@ -1446,6 +1476,9 @@ impl Store {
                     ));
                 }
                 crate::canonical_state::validate_executed_verification_source(&source)?;
+                if let Some(run) = &verification.scoped_run {
+                    crate::validate_scoped_command(run, &source)?;
+                }
             }
         }
         for source_id in [draft.user_review.source_id, draft.user_acceptance.source_id]
@@ -1552,8 +1585,8 @@ impl Store {
             transaction
                 .execute(
                     "INSERT INTO checkpoint_verifications(
-                         project_id, checkpoint_id, position, verification_state, source_id, outcome
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                         project_id, checkpoint_id, position, verification_state, source_id, outcome, scoped_run
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
                         project_id.as_bytes().as_slice(),
                         checkpoint_id.as_bytes().as_slice(),
@@ -1563,6 +1596,7 @@ impl Store {
                             .source_id
                             .map(|source_id| source_id.as_bytes().to_vec()),
                         verification.outcome,
+                        verification.scoped_run.as_ref().map(serde_json::to_string).transpose().map_err(|e| Error::with_source(ErrorKind::InvalidInput, "cannot encode scoped run", e))?,
                     ],
                 )
                 .map_err(write_error)?;
@@ -3849,7 +3883,7 @@ fn load_checkpoint_verification(
 ) -> Result<Vec<VerificationFact>, Error> {
     let mut statement = connection
         .prepare(
-            "SELECT verification_state, source_id, outcome FROM checkpoint_verifications
+            "SELECT verification_state, source_id, outcome, scoped_run FROM checkpoint_verifications
              WHERE checkpoint_id = ?1 ORDER BY position",
         )
         .map_err(read_error)?;
@@ -3859,13 +3893,20 @@ fn load_checkpoint_verification(
                 row.get::<_, String>(0)?,
                 row.get::<_, Option<Vec<u8>>>(1)?,
                 row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
             ))
         })
         .map_err(read_error)?;
     let mut values = Vec::new();
     for value in rows {
-        let (state, source_id, outcome) = value.map_err(read_error)?;
+        let (state, source_id, outcome, scoped_run) = value.map_err(read_error)?;
         values.push(VerificationFact {
+            scoped_run: scoped_run
+                .map(|v| serde_json::from_str(&v))
+                .transpose()
+                .map_err(|e| {
+                    Error::with_source(ErrorKind::CorruptState, "invalid scoped run", e)
+                })?,
             state: VerificationState::parse(&state)
                 .ok_or_else(|| invalid_stored("Checkpoint verification state"))?,
             source_id: source_id
@@ -5585,6 +5626,7 @@ fn initialize_schema(connection: &Connection) -> Result<(), Error> {
                  )),
                  source_id BLOB CHECK(source_id IS NULL OR length(source_id) = 16),
                  outcome TEXT,
+                 scoped_run TEXT,
                  PRIMARY KEY(checkpoint_id, position),
                  FOREIGN KEY(project_id, checkpoint_id) REFERENCES checkpoints(project_id, id) ON DELETE RESTRICT,
                  FOREIGN KEY(project_id, source_id) REFERENCES sources(project_id, id) ON DELETE RESTRICT

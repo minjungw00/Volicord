@@ -305,7 +305,7 @@ fn explanation_command(kind: &'static str) -> Command {
                     },
                 )
             });
-            command = command.subcommand(work_source_command()).subcommand(Command::new("verification").about("Read independent typed verification and retained execution facts; never generates").arg(Arg::new("work").long("work").required(true)));
+            command = command.subcommand(Command::new("check").about("Record a reported assertion from an exact retained declared local run into a same-Work Checkpoint").arg(path_arg("input", "input", "WorkCheckRecording JSON; no execution authority").required(true))).subcommand(work_source_command()).subcommand(Command::new("verification").about("Read independent typed verification and retained execution facts; never generates").arg(Arg::new("work").long("work").required(true)));
         }
     }
     command
@@ -337,6 +337,7 @@ fn work_source_command() -> Command {
             .about("Execute an explicitly permitted local command and retain bounded non-secret output")
             .after_help("The selected analysis identifies the requested basis; it does not prove the execution-time tree or assertion coverage. Command exit is in the Source outcome, distinct from successful evidence recording. No browser/MCP execution authority is added.")
             .arg(work()).arg(analysis()).arg(retention())
+            .arg(path_arg("check-input", "check-input", "Optional CheckDeclaration JSON: key, purpose, assertion, coverage/environment or null, target_paths"))
             .arg(Arg::new("label").long("label").required(true))
             .arg(Arg::new("timeout-seconds").long("timeout-seconds").required(true)
                 .value_parser(clap::value_parser!(u64).range(1..=300)))
@@ -404,7 +405,7 @@ fn dispatch_work_source(
                     .next()
                     .ok_or_else(|| Error::new("program is required"))?
                     .clone();
-                operations.run_work_command(crate::WorkCommandRequest {
+                let request = crate::WorkCommandRequest {
                     project_id: project,
                     work_item_id: work,
                     analysis_snapshot_id: analysis,
@@ -417,7 +418,14 @@ fn dispatch_work_source(
                             .get_one::<u64>("timeout-seconds")
                             .ok_or_else(|| Error::new("timeout is required"))?,
                     ),
-                })?
+                };
+                if let Some(path) = args.get_one::<PathBuf>("check-input") {
+                    let declaration = serde_json::from_value(read_bounded_input(path)?)
+                        .map_err(|e| Error::with_source("invalid check declaration", e))?;
+                    operations.run_work_check(request, declaration)?
+                } else {
+                    operations.run_work_command(request)?
+                }
             }
         }
         _ => return Err(Error::new("unsupported Work Source action")),
@@ -471,8 +479,11 @@ fn repository_command() -> Command {
     )
 }
 fn read_explanation_input(args: &ArgMatches) -> Result<Value, Error> {
-    let file = std::fs::File::open(required_path(args, "input")?)
-        .map_err(|e| Error::with_source("cannot open host input", e))?;
+    read_bounded_input(required_path(args, "input")?)
+}
+fn read_bounded_input(path: &std::path::Path) -> Result<Value, Error> {
+    let file =
+        std::fs::File::open(path).map_err(|e| Error::with_source("cannot open host input", e))?;
     let mut bytes = Vec::new();
     file.take(volicord_projections::EXPLANATION_INPUT_BYTE_LIMIT as u64 + 1)
         .read_to_end(&mut bytes)
@@ -1009,6 +1020,17 @@ fn dispatch_explanation(
     matches: &ArgMatches,
 ) -> Result<Value, Error> {
     if kind == "work" {
+        if let Some(args) = matches.subcommand_matches("check") {
+            let project = resolve_project(operations, selection)?;
+            let path = args
+                .get_one::<PathBuf>("input")
+                .ok_or_else(|| Error::new("input is required"))?;
+            let request = serde_json::from_value(read_bounded_input(path)?)
+                .map_err(|e| Error::with_source("invalid check recording", e))?;
+            return Ok(
+                json!({"operation":"work_check_record", "receipt":operations.record_work_check(project,request)?}),
+            );
+        }
         if let Some(args) = matches.subcommand_matches("verification") {
             let project = resolve_project(operations, selection)?;
             let work = ContextItemId::from_bytes(parse_identity(required(args, "work")?)?);
@@ -2933,6 +2955,7 @@ fn checkpoint(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value
             changed_paths: Vec::new(),
             applied_decisions: Vec::new(),
             verification: vec![VerificationFact {
+                scoped_run: None,
                 state: VerificationState::NotRun,
                 source_id: None,
                 outcome: None,

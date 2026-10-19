@@ -331,6 +331,7 @@ fn checkpoint_draft(
         changed_paths: vec![],
         applied_decisions: vec![],
         verification: vec![VerificationFact {
+            scoped_run: None,
             state: VerificationState::NotRun,
             source_id: None,
             outcome: None,
@@ -409,6 +410,7 @@ fn records_completion_with_independent_states_and_explicit_relations(
     draft.changed_paths = vec!["rebuild/crates/volicord-context/src/store.rs".to_owned()];
     draft.applied_decisions = vec![decision.id];
     draft.verification = vec![VerificationFact {
+        scoped_run: None,
         state: VerificationState::Failed,
         source_id: Some(command.id),
         outcome: Some("one focused assertion failed".to_owned()),
@@ -497,6 +499,7 @@ fn rejects_empty_read_only_completion_and_unexecuted_verification_claim(
     );
     let mut false_claim = checkpoint_draft(CheckpointKind::Pause, WorkState::Paused, repository.id);
     false_claim.verification = vec![VerificationFact {
+        scoped_run: None,
         state: VerificationState::Passed,
         source_id: None,
         outcome: Some("not actually run".to_owned()),

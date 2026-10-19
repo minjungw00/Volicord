@@ -348,6 +348,9 @@ fn validate_checkpoint_draft_with_missing(
         let missing_verification = i64::try_from(position)
             .ok()
             .is_some_and(|position| missing.verification.contains_key(&position));
+        if let Some(run) = &verification.scoped_run {
+            crate::validate_scoped_check(run, draft.work_item_id, verification.state)?;
+        }
         match verification.state {
             VerificationState::NotRun => {
                 if verification.source_id.is_some()
@@ -835,6 +838,51 @@ fn validate_checkpoints(
                 })?;
                 validate_executed_verification_source(source)
                     .map_err(|error| semantic_corruption("Checkpoint", error))?;
+                if let Some(run) = &fact.scoped_run {
+                    crate::validate_scoped_command(run, source)
+                        .map_err(|e| semantic_corruption("scoped command", e))?;
+                }
+            }
+        }
+        for fact in &draft.verification {
+            if let Some(run) = &fact.scoped_run {
+                if let Some(previous) = &run.retest {
+                    let key = value_key_from_bytes(previous.checkpoint_id.as_bytes());
+                    let prior_row = required_table(payload, "checkpoints")?
+                        .rows
+                        .iter()
+                        .find(|r| value_key(&r[0]) == key);
+                    if let Some(prior_row) = prior_row {
+                        let prior = verification
+                            .get(&key)
+                            .and_then(|v| v.get(previous.verification_index));
+                        if previous.checkpoint_revision
+                            != u64::try_from(value_integer(&prior_row[2])?).unwrap_or(0)
+                            || prior_row[3] != row[3]
+                            || !prior.is_some_and(|p| {
+                                (p.source_id == Some(previous.source_id)
+                                    || source_tombstones.contains(&previous.source_id))
+                                    && p.scoped_run.as_ref().is_some_and(|r| {
+                                        r.ended_at_unix_micros < run.started_at_unix_micros
+                                    })
+                            })
+                        {
+                            return corrupt(
+                                "scoped retest names incompatible prior Work/revision/execution",
+                            );
+                        }
+                    }
+                    // A forgotten prior Checkpoint remains an unresolved historical reference.
+                    else if !required_table(payload, "tombstones")?.rows.iter().any(|r| {
+                        value_text(&r[1]).ok() == Some("checkpoint")
+                            && value_bytes(&r[2]).ok().as_deref()
+                                == Some(previous.checkpoint_id.as_bytes())
+                    }) {
+                        return corrupt(
+                            "scoped retest Checkpoint missing without forgetting witness",
+                        );
+                    }
+                }
             }
         }
         for source_id in [review_source, acceptance_source].into_iter().flatten() {
@@ -1064,6 +1112,12 @@ fn ordered_verification(
         values.entry(value_key(&row[1])).or_default().push((
             value_integer(&row[2])?,
             VerificationFact {
+                scoped_run: owned_optional_text(&row[6])?
+                    .map(|v| serde_json::from_str(&v))
+                    .transpose()
+                    .map_err(|e| {
+                        Error::with_source(ErrorKind::CorruptState, "invalid scoped run", e)
+                    })?,
                 state: VerificationState::parse(value_text(&row[3])?).ok_or_else(|| {
                     Error::new(
                         ErrorKind::CorruptState,
