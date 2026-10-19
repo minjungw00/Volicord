@@ -21,6 +21,9 @@ from typing import Any, Callable
 
 
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
+# Mirrors the maintained portable writer; direct Product round trips and the
+# explanation evidence self-test challenge drift. No historical decoder.
+CURRENT_BUNDLE_FORMAT_VERSION = 11
 MAX_CAPTURE_EVENTS = 200_000
 MAX_PATHS = 256
 MAX_USER_MESSAGE_CONTENT_ITEMS = 256
@@ -3151,7 +3154,7 @@ def load_canonical_bundle(path: Path) -> CanonicalBundle:
         raise EvidenceError("canonical bundle is not JSON") from error
     if not isinstance(envelope, dict) or envelope.get("kind") != "volicord-context-bundle":
         raise EvidenceError("canonical evidence is not a Volicord context bundle")
-    if envelope.get("format_version") != 9:
+    if envelope.get("format_version") != CURRENT_BUNDLE_FORMAT_VERSION:
         raise EvidenceError("canonical bundle format is not the supported current version")
     payload = envelope.get("payload")
     if not isinstance(payload, dict) or sha256_bytes(canonical_json(payload)) != envelope.get("checksum"):

@@ -3079,6 +3079,14 @@ public Decision preparation/read, preserving the original bytes and absent user 
 
 ### Flexible technical article controls
 
+Current canonical explanation campaign reads use portable format 11, matching
+the maintained writer. The generated synthetic fixture includes nullable
+`checkpoint_verifications.scoped_run`; absence remains unobserved, not a typed
+passing check. The observer accepts only the current envelope, checksums and
+lineage. Direct Product CLI round trips plus a writer-version drift/rejection
+control cover this boundary. Historical format-9 artifacts are preserved and
+cannot serve as current-format positive evidence; no decoder or migration is added.
+
 Focused article production also exercises a shared section/layer index with exact
 original unit positions, short unheaded content and rejection of empty/consecutive
 headings. Host composition/record tests retain label-only Source dependency while

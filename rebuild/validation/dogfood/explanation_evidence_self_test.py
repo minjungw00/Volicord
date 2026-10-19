@@ -11,6 +11,36 @@ import explanation_evidence as e
 import capture_self_test as captures
 
 
+class CurrentBundleTests(unittest.TestCase):
+    def test_current_product_format_and_fixture_preserve_unknown_scoped_verification(self):
+        import re
+        import harness
+        import codex_events
+        writer = (Path(__file__).resolve().parents[2] /
+                  'crates/volicord-context/src/portable.rs').read_text()
+        version = re.search(r'pub const BUNDLE_FORMAT_VERSION: u32 = (\d+);', writer)
+        self.assertIsNotNone(version)
+        self.assertEqual(codex_events.CURRENT_BUNDLE_FORMAT_VERSION, int(version.group(1)))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            descriptor = harness.real_session_fixture('volicord', 1, '0' * 40, root)
+            path = root / descriptor['evidence']['canonical_bundle']['file']
+            raw = path.read_bytes()
+            bundle = codex_events.load_canonical_bundle(path)
+            self.assertEqual(path.read_bytes(), raw)
+            self.assertTrue(bundle.rows('checkpoint_verifications'))
+            self.assertTrue(all(row['scoped_run'] is None for row in
+                                bundle.rows('checkpoint_verifications')))
+            envelope = json.loads(raw)
+            for unsupported in (9, 10, codex_events.CURRENT_BUNDLE_FORMAT_VERSION + 1):
+                with self.subTest(version=unsupported):
+                    envelope['format_version'] = unsupported
+                    changed = root / ('unsupported-' + str(unsupported) + '.json')
+                    changed.write_text(json.dumps(envelope))
+                    with self.assertRaisesRegex(codex_events.EvidenceError, 'supported current version'):
+                        codex_events.load_canonical_bundle(changed)
+
+
 class MeasuredExecutionTests(unittest.TestCase):
     def test_corpus_shaped_explanation_lifecycle_reaches_final_consumer(self):
         helper = captures.CurrentExecutionTests()

@@ -32,6 +32,7 @@ import qualitative_review
 import answer_observations
 
 from codex_events import (
+    CURRENT_BUNDLE_FORMAT_VERSION,
     activation_identity,
     CanonicalBundle,
     CodexCapture,
@@ -12278,7 +12279,7 @@ def real_session_fixture(
             if is_user_owned_behavior(materiality_obligations)
             else [],
         ),
-        table("checkpoint_verifications", ["project_id", "checkpoint_id", "position", "verification_state", "source_id", "outcome"], [[blob(project), blob(checkpoint), integer(0), text("passed"), blob(verification_source), text("focused tests passed")]]),
+        table("checkpoint_verifications", ["project_id", "checkpoint_id", "position", "verification_state", "source_id", "outcome", "scoped_run"], [[blob(project), blob(checkpoint), integer(0), text("passed"), blob(verification_source), text("focused tests passed"), null()]]),
     ]
     state = {"project_id": project, "tables": tables}
     history_basis = hashlib.sha256(json.dumps(state, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
@@ -12289,7 +12290,7 @@ def real_session_fixture(
     }
     bundle = {
         "checksum": hashlib.sha256(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest(),
-        "format_version": 9,
+        "format_version": CURRENT_BUNDLE_FORMAT_VERSION,
         "kind": "volicord-context-bundle",
         "payload": payload,
     }
