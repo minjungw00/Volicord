@@ -12,7 +12,7 @@ const result={candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'
  executable_sha256:hash(fs.readFileSync(config.viewer)),cli_sha256:hash(fs.readFileSync(config.cli)),
  config_sha256:hash(fs.readFileSync(process.argv[2])),commands:[],cases:[],
  human_acceptance:'pending',screen_reader:'not_observed',native_zoom:'not_observed'};
-function command(label,argv){const started=performance.now();const p=spawnSync(argv[0],argv.slice(1),{encoding:'utf8',timeout:120000});
+function command(label,argv){const started=performance.now();const p=spawnSync(argv[0],argv.slice(1),{encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024,env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
  fs.writeFileSync(path.join(output,label+'.stdout'),p.stdout||'');fs.writeFileSync(path.join(output,label+'.stderr'),p.stderr||'');
  const r={label,argv,exit:p.status,signal:p.signal,error:p.error?.message,duration_ms:performance.now()-started,stdout_bytes:Buffer.byteLength(p.stdout||''),stderr_bytes:Buffer.byteLength(p.stderr||'')};result.commands.push(r);assert.equal(p.status,0,JSON.stringify(r));return p.stdout;}
 function state(runtime){return execFileSync('python3',['-c',`import sqlite3,json,hashlib,sys,pathlib
@@ -59,6 +59,8 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
  assert.equal(new URL(page.url()).hash,'#'+returnId);return {state:'read',target,returnId};
 }
 (async()=>{let browser;try{
+ if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');
+ assert.ok(command('korean-fonts',['fc-list',':lang=ko']).trim(),'Korean-capable fonts are required for readable review screenshots');
  browser=await chromium.launch({executablePath:config.chromium,headless:true,args:['--no-sandbox','--disable-dev-shm-usage'],env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
  for(const c of config.cases){const r={key:c.key,project:c.project,work:c.work,decision:c.decision,widths:[]};result.cases.push(r);
   const before=state(c.runtime);r.state_before_sha256=hash(before);

@@ -5,6 +5,7 @@ const {spawn,spawnSync,execFileSync}=require('node:child_process');
 const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const {chromium}=require(config.playwright);
+if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');
 const fixture=JSON.parse(fs.readFileSync(path.join(config.fixture,'fixture.json'),'utf8'));
 fs.mkdirSync(config.output,{recursive:true});
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
@@ -31,6 +32,9 @@ function command(label,args){
  return receipt;
 }
 (async()=>{
+ const fontCheck=spawnSync('fc-list',[':lang=ko'],{encoding:'utf8',env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
+ fs.writeFileSync(path.join(config.output,'korean-fonts.stdout'),fontCheck.stdout||'');fs.writeFileSync(path.join(config.output,'korean-fonts.stderr'),fontCheck.stderr||'');
+ assert.equal(fontCheck.status,0);assert.ok(fontCheck.stdout.trim(),'Korean-capable fonts required');
  const result={initial_unique_text_bytes:fixture.answers.source_excerpts.reduce((n,e)=>n+Buffer.byteLength(e.text),0),
   omitted_unique_ranges:fixture.answers.omitted_source_excerpt_count,
   admitted_cited_source_bytes:fixture.originals.reduce((n,s)=>n+Buffer.byteLength(s),0),
