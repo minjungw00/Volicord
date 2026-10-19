@@ -3138,6 +3138,17 @@ These controls do not supply a genuine prospective host integration, native zoom
 screen-reader use, independent semantic approval or human acceptance. Prior rejection
 remains preserved; fresh Product review is pending feedback for its exact artifact.
 
+`article_reading_browser.cjs` additionally consumes exact current Product Work
+readbacks and original permitted Source receipts, without authoring or recording
+content. It checks authored-topic navigation, native heading focus/offset/reload,
+separate verification/limits, a single article lead, exact Source bytes and claim
+return/history at 1440/1024/768/390/320 in en/ko, both live and script-free offline.
+Logical store identities before/after challenge mutation by GET, navigation,
+Source reads and export. Runtime setup/generation is separate evidence; current
+readback equality is never a semantic oracle. Missing real subjects due to current
+schema/bundle/Source incompatibility remain class-specific blockers; historical
+bytes are preserved rather than converted or replaced with authored controls.
+
 ### Bounded inspection security and review matrix
 
 Before browser polishing, exercise the actual public HTTP consumer against the

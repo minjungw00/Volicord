@@ -534,13 +534,63 @@ fn reader_unit(
         _ => "div",
     };
     let tag = if answer.question == "SectionHeading" {
-        "h2"
+        if answers.sections.iter().any(|s| {
+            s.heading_index == Some(index) && s.layer != volicord_projections::ArticleLayer::Article
+        }) {
+            "h3"
+        } else {
+            "h2"
+        }
     } else {
         "p"
     };
     html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
     reader_citations(html, r, answers, index);
     html.push_str(&format!("</{outer}>"));
+}
+
+/// Consume the shared producer/read structure without renumbering any claim.
+fn render_article_layer(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+    layer: volicord_projections::ArticleLayer,
+) {
+    for section in answers.sections.iter().filter(|s| s.layer == layer) {
+        html.push_str("<section class=\"article-section\">");
+        if let Some(index) = section.heading_index {
+            reader_unit(html, r, answers, index);
+        }
+        let mut flow_open = false;
+        for &index in &section.unit_indices {
+            let answer = &answers.prose[index];
+            if answer.question != "FlowStep" && flow_open {
+                html.push_str("</ol>");
+                flow_open = false;
+            }
+            if answer.question == "FlowStep" && !flow_open {
+                html.push_str("<ol class=\"article-flow\">");
+                flow_open = true;
+            }
+            if answer.question == "ComparisonCondition" {
+                html.push_str("<dl class=\"comparison-card\">");
+            }
+            if answer.question == "Comparison" {
+                html.push_str("<div class=\"comparisons\"><div class=\"comparison-card\">");
+            }
+            reader_unit(html, r, answers, index);
+            if answer.question == "Comparison" {
+                html.push_str("</div></div>");
+            }
+            if answer.question == "ComparisonResult" {
+                html.push_str("</dl>");
+            }
+        }
+        if flow_open {
+            html.push_str("</ol>");
+        }
+        html.push_str("</section>");
+    }
 }
 fn render_card_publication(
     html: &mut String,
@@ -577,6 +627,11 @@ fn render_document(
     related: &str,
     snapshot: bool,
 ) {
+    let has_verification = work.is_some()
+        || answers
+            .sections
+            .iter()
+            .any(|s| s.layer == volicord_projections::ArticleLayer::Verification);
     let has_limits = answers.prose.iter().any(|a| a.question == "Limits")
         || answers.facts.iter().any(|a| {
             matches!(
@@ -612,7 +667,10 @@ fn render_document(
         work.map(|w|format!(" data-work-id=\"{}\" data-work-state=\"{}\"",w.work_item_id,understanding_work_state_key(w.state))).unwrap_or_default(),
         if snapshot { format!("#{back_id}") } else { escape(&url(r, &back_view)) }, back_label, kind, text(r.locale,"interpretation and observations","해석과 관측")));
     if current {
-        if let Some(name) = answers.card_name() {
+        if let Some(name) = answers
+            .card_name()
+            .filter(|name| Some(*name) != answers.reading_title())
+        {
             html.push_str(&format!(
                 "<p class=\"work-name\" data-publication-scope=\"name\" lang=\"{}\">{} · {}</p>",
                 escape(&content_language_tag(&r.requested_language)),
@@ -657,8 +715,12 @@ fn render_document(
     {
         html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><p class=\"lead\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&lead.text)));
     }
-    if let Some(summary) = &answers.work_summary {
-        render_card_publication(html, r, summary, "summary", snapshot);
+    // The independent summary remains useful when detail is unavailable. In a
+    // current article it is inspection material, not a second competing lead.
+    if !current {
+        if let Some(summary) = &answers.work_summary {
+            render_card_publication(html, r, summary, "summary", snapshot);
+        }
     }
     if let Some(w) = work {
         html.push_str(&format!(
@@ -678,25 +740,53 @@ fn render_document(
     opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
     html.push_str("<nav class=\"document-nav\" aria-label=\"Document sections\">");
+    let authored_sections: Vec<_> = answers
+        .sections
+        .iter()
+        .filter(|s| s.layer == volicord_projections::ArticleLayer::Article)
+        .filter_map(|s| s.heading_index)
+        .collect();
+    if authored_sections.is_empty()
+        || answers.sections.iter().any(|s| {
+            s.layer == volicord_projections::ArticleLayer::Article && s.heading_index.is_none()
+        })
+    {
+        html.push_str(&format!(
+            "<a href=\"#{}\">{}</a>",
+            document_anchor(answers, "reading"),
+            if authored_sections.is_empty() {
+                text(r.locale, "Article", "설명")
+            } else {
+                text(r.locale, "Introduction", "도입")
+            }
+        ));
+    }
+    for index in authored_sections {
+        html.push_str(&format!(
+            "<a href=\"#{}\">{}</a>",
+            reader_claim_anchor(answers, index),
+            escape(&answers.prose[index].text)
+        ));
+    }
     for (section, label) in [
-        ("reading", text(r.locale, "Article", "설명")),
-        ("limits", text(r.locale, "Limitations", "한계")),
         ("choice", text(r.locale, "Recorded choice", "기록된 선택")),
-        (
-            "original",
-            text(r.locale, "Original instructions", "원래 지시"),
-        ),
         (
             "verification",
             text(r.locale, "Verification report", "검증 보고"),
         ),
+        ("limits", text(r.locale, "Limitations", "한계")),
         (
             "evidence-index",
             text(r.locale, "Evidence index", "근거 색인"),
         ),
+        (
+            "original",
+            text(r.locale, "Original instructions", "원래 지시"),
+        ),
         ("audit", text(r.locale, "Inspect records", "기록 검사")),
     ] {
-        if ((section == "original" || section == "verification") && work.is_none())
+        if (section == "original" && work.is_none())
+            || (section == "verification" && !has_verification)
             || (section == "limits" && !has_limits)
             || (section == "choice" && decision.is_none())
         {
@@ -713,6 +803,14 @@ fn render_document(
         document_anchor(answers, "reading")
     ));
     if !current {
+        for (index, _) in answers
+            .prose
+            .iter()
+            .enumerate()
+            .filter(|(_, unit)| unit.question == "ExplanationAvailability")
+        {
+            reader_unit(html, r, answers, index);
+        }
         if let Some(result) = work
             .and_then(|w| w.reading.answers.result.as_ref())
             .and_then(|r| r.original_text.as_ref())
@@ -721,56 +819,31 @@ fn render_document(
                 text(r.locale,"Original recorded result · quotation", "원래 기록된 결과 · 인용"),escape(result)));
         }
     }
-    let mut flow_open = false;
-    for (index, answer) in answers
-        .prose
-        .iter()
-        .enumerate()
-        .filter(|(_, a)| !matches!(a.question.as_str(), "Heading" | "Synopsis" | "Limits"))
-    {
-        if answer.question != "FlowStep" && flow_open {
-            html.push_str("</ol>");
-            flow_open = false;
-        }
-        if answer.question == "FlowStep" && !flow_open {
-            html.push_str("<ol class=\"article-flow\">");
-            flow_open = true;
-        }
-        if answer.question == "ComparisonCondition" {
-            html.push_str("<dl class=\"comparison-card\">");
-        }
-        if answer.question == "Comparison" {
-            html.push_str("<div class=\"comparisons\"><div class=\"comparison-card\">");
-        }
-        reader_unit(html, r, answers, index);
-        if answer.question == "Comparison" {
-            html.push_str("</div></div>");
-        }
-        if answer.question == "ComparisonResult" {
-            html.push_str("</dl>");
-        }
-    }
-    if flow_open {
-        html.push_str("</ol>");
-    }
+    render_article_layer(
+        html,
+        r,
+        answers,
+        volicord_projections::ArticleLayer::Article,
+    );
     html.push_str("</div>");
     if let Some(d) = decision {
         render_recorded_choice(html, r, answers, d);
     }
     if let Some(work) = work {
         render_verification(html, r, answers, &work.reading.verification_report);
+    } else if has_verification {
+        html.push_str(&format!("<section class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2>",document_anchor(answers,"verification"),text(r.locale,"Verification","검증")));
+        render_article_layer(
+            html,
+            r,
+            answers,
+            volicord_projections::ArticleLayer::Verification,
+        );
+        html.push_str("</section>");
     }
-    render_evidence_index(html, r, answers, work, decision);
     if has_limits {
         html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><aside class=\"guard\"><h2>{}</h2>",document_anchor(answers,"limits"),answer_title("Limits",r.locale)));
-        for (index, _) in answers
-            .prose
-            .iter()
-            .enumerate()
-            .filter(|(_, a)| a.question == "Limits")
-        {
-            reader_unit(html, r, answers, index);
-        }
+        render_article_layer(html, r, answers, volicord_projections::ArticleLayer::Limits);
         for fact in answers.facts.iter().filter(|a| {
             matches!(
                 a.question.as_str(),
@@ -799,6 +872,7 @@ fn render_document(
         html.push_str(related);
         html.push_str("</section>");
     }
+    render_evidence_index(html, r, answers);
     html.push_str("<div class=\"audit\">");
     if let Some(w) = work {
         html.push_str(&format!("<details class=\"record-box\" id=\"{}\"><summary>{}</summary><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></details>",document_anchor(answers,"original"),text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
@@ -817,6 +891,11 @@ fn render_document(
             "<pre class=\"publication-provenance\">{}</pre>",
             escape(&format!("{:?}", scoped.provenance))
         ));
+    }
+    if current {
+        if let Some(summary) = &answers.work_summary {
+            render_card_publication(html, r, summary, "summary", snapshot);
+        }
     }
     if let Some(provenance) = &answers.provenance {
         repository_boundaries(html, r, answers, provenance);
@@ -899,54 +978,11 @@ fn render_evidence_index(
     html: &mut String,
     r: &ViewerRequest,
     answers: &volicord_projections::QuestionAnswers,
-    work: Option<&UnderstandingWork>,
-    decision: Option<&volicord_projections::UnderstandingDecision>,
 ) {
     html.push_str(&format!("<section class=\"reading-section evidence-index\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2><p class=\"source-note\">{}</p>",
         document_anchor(answers,"evidence-index"),text(r.locale,"Evidence index", "근거 색인"),
         text(r.locale,"Start with the statement you want to check. Source ranges show observed bytes; original records show what was reported or chosen. Neither alone verifies every interpretation.",
             "확인할 문장에서 시작하세요. Source 범위는 관측된 바이트를, 원래 기록은 보고되거나 선택된 내용을 보여 줍니다. 어느 쪽도 그 자체로 모든 해석을 검증하지는 않습니다.")));
-    if work.is_some() || decision.is_some() {
-        html.push_str("<ul class=\"evidence-records\">");
-        for (include, section, label) in [
-            (
-                work.is_some(),
-                "original",
-                text(
-                    r.locale,
-                    "What was requested? Read the complete original Goal",
-                    "무엇을 요청했나요? 원래 Goal 전체 읽기",
-                ),
-            ),
-            (
-                work.is_some(),
-                "verification",
-                text(
-                    r.locale,
-                    "What was checked? Read independent executions and reports",
-                    "무엇을 확인했나요? 독립적인 실행·보고 읽기",
-                ),
-            ),
-            (
-                decision.is_some(),
-                "choice",
-                text(
-                    r.locale,
-                    "What was chosen, and why? Read the retained choice and reasons",
-                    "무엇을 왜 선택했나요? 보존된 선택·이유 읽기",
-                ),
-            ),
-        ] {
-            if include {
-                html.push_str(&format!(
-                    "<li><a href=\"#{}\">{}</a></li>",
-                    document_anchor(answers, section),
-                    label
-                ));
-            }
-        }
-        html.push_str("</ul>");
-    }
     if answers.evidence_index.is_empty() {
         html.push_str(&format!("<p>{}</p>",text(r.locale,"No admitted article claims are available to index. Original records remain inspectable.", "색인할 수 있는 유효한 설명 문장이 없습니다. 원래 기록은 검사할 수 있습니다.")));
     }
@@ -955,15 +991,25 @@ fn render_evidence_index(
             continue;
         };
         let preview: String = unit.text.chars().take(160).collect();
-        let section = answers.prose[..entry.unit_index]
-            .iter()
-            .rev()
-            .find(|u| u.question == "SectionHeading");
+        let section = answers.sections.iter().find(|s| {
+            s.heading_index == Some(entry.unit_index) || s.unit_indices.contains(&entry.unit_index)
+        });
+        let section_name = section
+            .and_then(|s| s.heading_index)
+            .map(|i| answers.prose[i].text.as_str())
+            .unwrap_or_else(|| match section.map(|s| s.layer) {
+                Some(volicord_projections::ArticleLayer::Verification) => {
+                    text(r.locale, "Verification", "검증")
+                }
+                Some(volicord_projections::ArticleLayer::Limits) => {
+                    text(r.locale, "Limitations", "한계")
+                }
+                _ => text(r.locale, "Article statement", "설명 문장"),
+            });
         html.push_str(&format!("<details class=\"record-box evidence-entry\"><summary><span><small>{}</small><span>{}{}</span></span></summary><a class=\"button\" href=\"#{}\">{}</a>",
-            escape(section.map(|s|s.text.as_str()).unwrap_or(text(r.locale,"Article statement", "설명 문장"))),escape(&preview),if preview.len()<unit.text.len(){"…"}else{""},
+            escape(section_name),escape(&preview),if preview.len()<unit.text.len(){"…"}else{""},
             reader_claim_anchor(answers,entry.unit_index),text(r.locale,"Read this statement in context", "문맥에서 이 문장 읽기")));
         if !entry.citations.is_empty() {
-            html.push_str(&format!("<p>{}</p>",text(r.locale,"Inspect the cited observation. Availability is rechecked when selected in the live reader; offline includes only its displayed excerpt.", "인용된 관측을 검사하세요. 실시간 읽기에서는 선택 시 가용성을 다시 확인하며, 오프라인은 표시된 발췌만 포함합니다.")));
             reader_citations(html, r, answers, entry.unit_index);
         }
         if let Some(provenance) = &answers.provenance {
@@ -990,9 +1036,8 @@ fn render_evidence_index(
                     ),
                     _ => text(r.locale, "Prepared supporting record", "준비된 근거 기록"),
                 };
-                html.push_str(&format!("<li><a href=\"#{}\">{} · {}</a><details><summary>{}</summary><p>{} {}@{} · {}</p><p>{}</p></details></li>",
-                    document_anchor(answers,"audit"),label,escape(&evidence.field),text(r.locale,"Exact reference", "정확한 참조"),escape(&evidence.record_kind),escape(&evidence.identity),evidence.revision,escape(&evidence.key),
-                    text(r.locale,"This record supports what was stated; it is not independent verification of a technical effect.", "이 기록은 진술의 근거이며 기술적 효과의 독립 검증은 아닙니다.")));
+                html.push_str(&format!("<li><a href=\"#{}\">{} · {}</a><details><summary>{}</summary><p>{} {}@{} · {}</p></details></li>",
+                    document_anchor(answers,"audit"),label,escape(&evidence.field),text(r.locale,"Exact reference", "정확한 참조"),escape(&evidence.record_kind),escape(&evidence.identity),evidence.revision,escape(&evidence.key)));
             }
             html.push_str("</ul>");
         }

@@ -204,6 +204,9 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
 .doc .unit:has(h2) { margin-top:40px; margin-bottom:16px; }
 .doc .unit h2.unit-text { font-size:1.4rem; line-height:1.5; font-weight:680; }
 .doc .unit:has(h2)+.unit { margin-top:0; }
+.article-section+.article-section { margin-top:36px; }
+.article-section>.unit:has(h2):first-child { margin-top:0; }
+.article-section .unit h3.unit-text { margin:20px 0 12px; font-size:1.1rem; }
 .doc .unit:has(.evidence-actions:empty) .evidence-actions { display:none; }
 .article-flow { padding-left:1.5rem; }
 .article-flow .unit+.unit { margin-top:14px; }

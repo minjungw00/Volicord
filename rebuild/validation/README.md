@@ -6,6 +6,16 @@ surface, not a Volicord product command or production architecture.
 
 ## Commands
 
+`node rebuild/validation/end-to-end/multi-repository/article_reading_browser.cjs
+<private-config.json>` checks exact current Work articles in live and script-free
+offline readers at five widths in en/ko. Configuration names local viewer/CLI,
+Playwright/Chromium, a fresh ignored output directory and `cases` with
+`key`, `runtime`, `project`, `work`, plus `source_reads` mapping exact Source IDs
+to preserved permitted-read JSON receipts. It invokes no generation or record
+operation. Keep setup, authoring, source-first semantic review and actual user
+acceptance separate from its navigation/byte/immutability results. Run through
+`rebuild/scripts/validate focused` and inspect complete logs and numeric outcomes.
+
 Read-only qualitative inspection accepts `inspect-agent-review --review-root <private-run>
 --criterion-numbers 1 2 3`. Each request verifies one full package byte set; single
 inspection uses the same presentation. Recording and publication recheck current bytes.

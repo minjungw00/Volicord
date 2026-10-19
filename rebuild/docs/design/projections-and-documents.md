@@ -2149,6 +2149,18 @@ observation metadata in the focused pane. These presentation changes alter no
 retained format, authority, public route, protected action or generation policy.
 Technical browser results remain separate from semantic and human acceptance.
 
+Authored primary section headings now populate that same navigator in their
+original order. Unheaded introductory content keeps a native introduction link;
+short unheaded documents need no synthesized heading. Verification and limits
+consume their separately grouped units, preserving original indices and citations.
+Their authored subheadings are nested within their reading layer. The independent
+card summary is disclosed in inspection when an article has its own lead, and
+remains visible when the article is unavailable. Evidence index entries use the
+shared section/layer metadata; they cannot borrow the preceding article heading
+for a limitation that has moved into its own layer. Generic navigation shortcuts
+and repeated equivalent per-entry cautions are consolidated, without removing
+material warnings, lifecycle diagnostics or exact supporting record references.
+
 ### Purpose-led local inspection
 
 D-24 / AC-22 uses a bounded Operations query over already authorized Project read

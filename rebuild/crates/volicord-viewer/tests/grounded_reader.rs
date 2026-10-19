@@ -2152,3 +2152,129 @@ fn work_selected_citations_keep_observed_pairs_and_missing_before_distinct(
     }
     Ok(())
 }
+
+#[test]
+fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate_layers(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    record(&f, &mut host)?;
+    let generation = call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"generate",
+        "project_id":f["project"],"work_item_id":f["work"],"language":"en"}),
+    )?;
+    call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"read_source","project_id":f["project"],
+        "work_item_id":f["work"],"generation_id":generation["generation_id"],"source_id":f["after"]}),
+    )?;
+    let units = [
+        ("heading", "Investigate a constant return"),
+        (
+            "synopsis",
+            "A source investigation, with no patch or execution.",
+        ),
+        ("section_heading", "How the constant reaches the caller"),
+        (
+            "narrative",
+            "The observed definition returns the literal 5.",
+        ),
+        ("section_heading", "What this inspection establishes"),
+        (
+            "narrative",
+            "This is a static source reading, not a runtime result.",
+        ),
+        ("section_heading", "Execution was not observed"),
+        (
+            "verification",
+            "No command was executed for this investigation.",
+        ),
+        ("section_heading", "No downstream coverage"),
+        ("limits", "Caller behavior remains unverified."),
+    ];
+    let paragraphs: Vec<_> = units
+        .iter()
+        .map(|(q, t)| json!({"question":q,"text":t,"evidence_keys":["goal"],"sources":[]}))
+        .collect();
+    let composed = call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"compose","project_id":f["project"],
+        "work_item_id":f["work"],"generation_id":generation["generation_id"],"draft":{
+            "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
+            "generator":{"host":"authored-control","session":"topic-reader","agent":null,"model":null},"paragraphs":paragraphs}}),
+    )?;
+    call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"record","project_id":f["project"],
+        "work_item_id":f["work"],"generation_id":generation["generation_id"],"realization":composed["realization"]}),
+    )?;
+    let public = public_answers(&f, &mut host)?;
+    assert_eq!(public["sections"][0]["heading_index"], 2);
+    assert_eq!(public["sections"][1]["unit_indices"], json!([5]));
+    assert_eq!(public["sections"][2]["layer"], "verification");
+    assert_eq!(public["sections"][3]["layer"], "limits");
+    let canonical = ops(&f)?.canonical_basis(project(&f)?)?;
+    let derived = ops(&f)?.privacy_status(project(&f)?)?.managed_derived;
+    for page in [
+        get(&f)?,
+        ViewerAdapter::new(ops(&f)?)
+            .render_snapshot(&request(&f)?, TimestampMicros::from_unix_micros(1))?
+            .html,
+    ] {
+        let document = page
+            .split(&format!(
+                "<article class=\"doc\" data-work-id=\"{}\"",
+                f["work"].as_str().ok_or("Work")?
+            ))
+            .nth(1)
+            .ok_or("Work document")?
+            .split("</details></div></article>")
+            .next()
+            .ok_or("document end")?;
+        let page = document;
+        let nav = page
+            .split("class=\"document-nav\"")
+            .nth(1)
+            .ok_or("nav")?
+            .split("</nav>")
+            .next()
+            .ok_or("nav end")?;
+        assert_eq!(document.matches("class=\"document-nav\"").count(), 1);
+        assert!(nav.contains("How the constant reaches the caller"));
+        assert!(nav.contains("What this inspection establishes"));
+        assert!(!nav.contains("Execution was not observed"));
+        assert!(!nav.contains("No downstream coverage"));
+        let article = page
+            .find("How the constant reaches the caller</h2>")
+            .ok_or("authored topic")?;
+        let verification = page
+            .find("class=\"reading-section verification-report\"")
+            .ok_or("verification")?;
+        let limits = page
+            .find("class=\"reading-section limits-section\"")
+            .ok_or("limits")?;
+        let index = page
+            .find("class=\"reading-section evidence-index\"")
+            .ok_or("index")?;
+        assert!(article < verification && verification < limits && limits < index);
+        assert!(page.contains("Execution was not observed</h3>"));
+        assert!(page.contains("No downstream coverage</h3>"));
+        assert!(
+            page[verification..limits].contains("No command was executed for this investigation.")
+        );
+        assert!(!page[article..verification]
+            .contains("No command was executed for this investigation."));
+    }
+    assert_eq!(canonical, ops(&f)?.canonical_basis(project(&f)?)?);
+    assert_eq!(
+        derived,
+        ops(&f)?.privacy_status(project(&f)?)?.managed_derived
+    );
+    Ok(())
+}

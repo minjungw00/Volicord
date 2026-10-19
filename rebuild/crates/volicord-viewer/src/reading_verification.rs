@@ -266,6 +266,7 @@ pub(super) fn render_verification(
         document_anchor(answers,"verification"),text(r.locale,"Verification report", "검증 보고"),
         text(r.locale,"Observed executions and Checkpoint reports have separate provenance. Exit status proves no assertions.", "실행 관측과 Checkpoint 보고는 출처가 다릅니다. 종료 코드만으로 assertion을 확정하지 않습니다."),
         if report.checks.iter().all(|c|matches!(c.scoped_run,EvidenceDetail::NotObserved)) {text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Environment, assertion detail and coverage are shown only when observed.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 환경·assertion 상세·coverage는 관측되었을 때만 표시합니다.")} else {text(r.locale,"Only explicit recorded relationships support comparison. Earlier failures remain original facts; environment and coverage descriptions are attributed operator reports.","명시적으로 기록된 관계만 비교를 뒷받침합니다. 이전 실패는 원래 사실로 보존하며 환경과 coverage 설명은 작업자 보고로 표시합니다.")}));
+    render_article_layer(html, r, answers, ArticleLayer::Verification);
     if report.checks.is_empty() {
         html.push_str(&format!(
             "<p>{}</p>",

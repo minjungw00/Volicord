@@ -530,6 +530,17 @@ for absent data or completed acceptance.
 
 ### Flexible article implementation evidence
 
+The shared section index now supplies authored primary-topic links to the single
+persistent navigator. Verification/limits sections retain authored subheadings
+inside their independent reading layers, rather than appearing as more article
+paragraphs. Original unit indices remain the claim/Source return coordinates.
+When an article is current, its independent card summary stays accessible in
+record inspection instead of becoming a competing lead. When detail is absent,
+the separately current summary remains visible with its own publication identity.
+The evidence index uses the same section/layer assignment and avoids a second
+generic navigation list or repeated per-entry interpretation disclaimers.
+These are presentation/structure guarantees, not semantic or human acceptance.
+
 Current v6 composition and reading implement authored section names/order rather
 than obligatory question headings. Host `work_explanation` and
 `decision_explanation` controls exercise the public generation-request, composition,
