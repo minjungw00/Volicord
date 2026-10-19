@@ -164,8 +164,9 @@ pub(crate) fn validate_scoped_command(
     run: &ScopedCheckRun,
     source: &crate::Source,
 ) -> Result<(), Error> {
-    if !matches!(&source.payload, crate::SourcePayload::CommandExecution { invocation_fingerprint, outcome, .. }
-        if *invocation_fingerprint == run.invocation_fingerprint
+    if !matches!(&source.payload, crate::SourcePayload::CommandExecution { capture_fingerprint, invocation_fingerprint, outcome, .. }
+        if capture_fingerprint.as_deref() == Some(run.capture_fingerprint()?.as_str())
+            && *invocation_fingerprint == run.invocation_fingerprint
             && (run.assertion_state != AssertionState::Passed || (outcome.exit_code == Some(0) && outcome.termination == crate::CommandTermination::Exited)))
         || run.ended_at_unix_micros > source.recorded_at.as_unix_micros()
     {
@@ -205,3 +206,24 @@ macro_rules! string_identity {
 string_identity!(check_work_id, ContextItemId);
 string_identity!(check_source_id, SourceId);
 string_identity!(check_checkpoint_id, CheckpointId);
+
+impl ScopedCheckRun {
+    /// The Source commits the observation before any assertion interpretation or
+    /// retest link. Those later reports cannot change captured execution identity.
+    pub fn capture_fingerprint(&self) -> Result<String, Error> {
+        use sha2::{Digest, Sha256};
+        let mut basis = self.clone();
+        basis.assertion_state = AssertionState::NotObserved;
+        basis.assertion_evidence = None;
+        basis.retest = None;
+        let bytes =
+            serde_json::to_vec(&("volicord-scoped-command-capture", basis)).map_err(|e| {
+                Error::with_source(
+                    ErrorKind::InvalidInput,
+                    "cannot fingerprint captured check basis",
+                    e,
+                )
+            })?;
+        Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+    }
+}

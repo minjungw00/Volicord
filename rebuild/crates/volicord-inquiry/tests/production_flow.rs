@@ -943,6 +943,7 @@ fn verification_checkpoint_basis_is_current_and_keeps_command_kind_semantics(
             source_draft(
                 &project,
                 SourcePayload::CommandExecution {
+                    capture_fingerprint: None,
                     command_label: "cargo test".to_owned(),
                     invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
                     outcome: CommandOutcome {

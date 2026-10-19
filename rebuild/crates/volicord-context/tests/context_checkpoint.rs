@@ -90,6 +90,7 @@ fn record_sources(
             project.id,
             draft(
                 SourcePayload::CommandExecution {
+                    capture_fingerprint: None,
                     command_label: "cargo test".to_owned(),
                     invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
                     outcome: volicord_context::CommandOutcome {

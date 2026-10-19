@@ -53,12 +53,6 @@ impl LocalOperations {
         {
             return Err(Error::new("Source has no explicit local check declaration"));
         }
-        let decode = |name: &str| {
-            detail[name]
-                .as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| Error::new(format!("missing command {name}")))
-        };
         let source = basis
             .sources
             .iter()
@@ -100,38 +94,24 @@ impl LocalOperations {
         }
         let body = serde_json::to_value(&observation)
             .map_err(|e| Error::with_source("cannot inspect observation", e))?;
-        let run = ScopedCheckRun {
-            work_item_id: work.id,
-            work_revision: work.revision,
-            declaration: serde_json::from_value(detail["check_capture"]["declaration"].clone())
-                .map_err(|e| Error::with_source("check declaration unavailable", e))?,
-            artifacts: serde_json::from_value(detail["check_capture"]["artifacts"].clone())
-                .map_err(|e| Error::with_source("target artifacts unavailable", e))?,
-            operation_id: decode("operation_id")?,
-            invocation_fingerprint: invocation_fingerprint.clone(),
-            analysis_snapshot_id: body["analysis_snapshot_id"]
+        let mut run = captured_check_run(
+            work.id,
+            work.revision,
+            body["analysis_snapshot_id"]
                 .as_str()
-                .ok_or_else(|| Error::new("analysis missing"))?
-                .into(),
-            repository_snapshot_id: body["repository_snapshot_id"]
+                .ok_or_else(|| Error::new("analysis missing"))?,
+            body["repository_snapshot_id"]
                 .as_str()
-                .ok_or_else(|| Error::new("repository snapshot missing"))?
-                .into(),
-            repository_source_id: serde_json::from_value(body["repository_source_id"].clone())
+                .ok_or_else(|| Error::new("repository missing"))?,
+            serde_json::from_value(body["repository_source_id"].clone())
                 .map_err(|e| Error::with_source("repository Source missing", e))?,
-            started_at_unix_micros: detail["started_at_unix_micros"]
-                .as_i64()
-                .ok_or_else(|| Error::new("start missing"))?,
-            ended_at_unix_micros: detail["ended_at_unix_micros"]
-                .as_i64()
-                .ok_or_else(|| Error::new("end missing"))?,
-            target_unchanged_during_run: detail["check_capture"]["target_unchanged_during_run"]
-                .as_bool()
-                .ok_or_else(|| Error::new("target stability missing"))?,
-            assertion_state: request.assertion_state,
-            assertion_evidence: request.assertion_evidence,
-            retest: request.retest,
-        };
+            invocation_fingerprint,
+            detail,
+        )?
+        .ok_or_else(|| Error::new("captured check basis missing"))?;
+        run.assertion_state = request.assertion_state;
+        run.assertion_evidence = request.assertion_evidence;
+        run.retest = request.retest;
         // The relation is recorded even when its stated comparison cannot be
         // supported. Readers expose non-comparability, never repair causality.
         if let Some(previous) = &run.retest {
@@ -186,4 +166,50 @@ impl LocalOperations {
             work_item_id: work.id,
         })
     }
+}
+
+pub(crate) fn captured_check_run(
+    work: ContextItemId,
+    revision: u64,
+    analysis: &str,
+    repository: &str,
+    repository_source: SourceId,
+    invocation: &str,
+    detail: &serde_json::Value,
+) -> Result<Option<ScopedCheckRun>, Error> {
+    let capture = &detail["check_capture"];
+    if capture.is_null() {
+        return Ok(None);
+    }
+    let string = |name: &str| {
+        detail[name]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| Error::new(format!("missing command {name}")))
+    };
+    Ok(Some(ScopedCheckRun {
+        work_item_id: work,
+        work_revision: revision,
+        declaration: serde_json::from_value(capture["declaration"].clone())
+            .map_err(|e| Error::with_source("invalid captured check declaration", e))?,
+        artifacts: serde_json::from_value(capture["artifacts"].clone())
+            .map_err(|e| Error::with_source("invalid captured check artifacts", e))?,
+        operation_id: string("operation_id")?,
+        invocation_fingerprint: invocation.into(),
+        analysis_snapshot_id: analysis.into(),
+        repository_snapshot_id: repository.into(),
+        repository_source_id: repository_source,
+        started_at_unix_micros: detail["started_at_unix_micros"]
+            .as_i64()
+            .ok_or_else(|| Error::new("missing start"))?,
+        ended_at_unix_micros: detail["ended_at_unix_micros"]
+            .as_i64()
+            .ok_or_else(|| Error::new("missing end"))?,
+        target_unchanged_during_run: capture["target_unchanged_during_run"]
+            .as_bool()
+            .ok_or_else(|| Error::new("missing target stability"))?,
+        assertion_state: AssertionState::NotObserved,
+        assertion_evidence: None,
+        retest: None,
+    }))
 }

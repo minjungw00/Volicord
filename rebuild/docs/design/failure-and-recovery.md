@@ -559,7 +559,7 @@ publication rejects changed/expired/deleted execution-copy dependencies under th
 mutation lock, independently of article validity. Re-render is explicit recovery;
 reads never reacquire bodies or invoke a host/model.
 
-Command observation v3 reads additionally validate the immutable artifact Source
+Command observation v4 reads additionally validate the immutable artifact Source
 hash and original expiry. Mutating streams, provenance, operation identity or
 retention cannot establish a fresh execution. Missing/forgotten integrity Source
 withholds the copy; canonical Command outcome remains historical. Earlier copy
@@ -574,3 +574,9 @@ support comparability. Failed spawn retains the operational failure and yields n
 fabricated command observation or Checkpoint. Fresh explicitly authorized execution
 is a different attempt. Canonical scoped evidence survives stdout expiry/deletion;
 readers distinguish that original report from unavailable current output.
+
+Scoped command capture fingerprints are checked by canonical admission and portable
+semantic validation. Same invocation, later successful output or rehashed envelope
+metadata cannot substitute another execution or changed Work/target basis. A mismatch
+rejects the transaction/import, preserving earlier canonical state. Disposable body
+loss cannot remove the Source capture seal or establish new assertion evidence.

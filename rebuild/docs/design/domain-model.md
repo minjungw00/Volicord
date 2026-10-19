@@ -776,3 +776,10 @@ is immutable; a comparable later pass is a separate observation, never an overwr
 Historical facts with no scoped_run remain exact quotations with unknown identities.
 Canonical evidence persists through disposable stdout expiry/deletion; body access
 continues to obey privacy/forgetting barriers. No new canonical entity is introduced.
+
+A scoped Command Source commits a separate capture fingerprint before report
+admission. Its hash binds measured Work/revision, declared check, operation/window,
+snapshots and artifact samples; it excludes the later assertion report and retest
+link. Kernel admission and portable validation require an exact capture match,
+independently of equal invocation fingerprints. A missing seal cannot support a
+scoped run. This digest retains no raw output/argv and grants no body access.

@@ -195,6 +195,7 @@ pub struct ExecutionReading {
     /// Presentation only; never a parsed test name or correlation key.
     pub command_label: String,
     pub invocation_fingerprint: String,
+    pub capture_fingerprint: Option<String>,
     pub recorded_at_unix_micros: i64,
     pub exit_code: Option<i32>,
     pub termination: ExecutionTermination,
@@ -318,6 +319,7 @@ pub fn execution_reading(
     let SourcePayload::CommandExecution {
         command_label,
         invocation_fingerprint,
+        capture_fingerprint,
         outcome,
     } = &source.source.payload
     else {
@@ -343,6 +345,7 @@ pub fn execution_reading(
         },
         command_label: command_label.clone(),
         invocation_fingerprint: invocation_fingerprint.clone(),
+        capture_fingerprint: capture_fingerprint.clone(),
         recorded_at_unix_micros: source.source.recorded_at.as_unix_micros(),
         exit_code: outcome.exit_code,
         termination: match outcome.termination {

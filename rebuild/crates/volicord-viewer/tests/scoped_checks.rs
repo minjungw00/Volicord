@@ -109,12 +109,8 @@ fn scoped_comparison_has_equal_cli_mcp_public_live_and_offline_facts_without_an_
             }
             // Inspect the independently serialized typed model, rather than using
             // rendered text as the oracle for expected original identities.
-            let needle = if language == "en" {
-                "Complete verification read model (JSON)"
-            } else {
-                "전체 검증 읽기 모델 (JSON)"
-            };
-            let start = html.find(needle).ok_or("JSON disclosure")?;
+            let needle = format!("data-verification-work=\"{}\"", f.work);
+            let start = html.find(&needle).ok_or("exact Work JSON disclosure")?;
             let encoded = html[start..]
                 .split_once("<pre>")
                 .ok_or("JSON start")?

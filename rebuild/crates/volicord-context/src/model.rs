@@ -130,6 +130,8 @@ pub enum SourcePayload {
         snapshot: String,
     },
     CommandExecution {
+        /// Binds a scoped measured capture; absent for report-only historical commands.
+        capture_fingerprint: Option<String>,
         command_label: String,
         invocation_fingerprint: String,
         outcome: CommandOutcome,

@@ -840,7 +840,8 @@ fn render_document(
     }
     if let Some(w) = work {
         html.push_str(&format!(
-            "<details><summary>{}</summary><pre>{}</pre></details>",
+            "<details data-verification-work=\"{}\"><summary>{}</summary><pre>{}</pre></details>",
+            w.work_item_id,
             text(
                 r.locale,
                 "Complete verification read model (JSON)",

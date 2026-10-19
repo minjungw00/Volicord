@@ -60,9 +60,9 @@ impl LocalOperations {
         let command_source = basis.sources.iter().find(|s| s.source.id == source)
             .and_then(|s| match &s.source.payload {
                 volicord_context::SourcePayload::CommandExecution {
-                    command_label, invocation_fingerprint, outcome,
+                    command_label, invocation_fingerprint, outcome, capture_fingerprint,
                 } => Some(json!({"command_label":command_label,
-                    "invocation_fingerprint":invocation_fingerprint,
+                    "invocation_fingerprint":invocation_fingerprint,"capture_fingerprint":capture_fingerprint,
                     "exit_code":outcome.exit_code,"termination":format!("{:?}",outcome.termination).to_lowercase(),
                     "recorded_at_unix_micros":s.source.recorded_at.as_unix_micros(),
                     "actor":format!("{:?}",s.source.actor),"observer":format!("{:?}",s.source.observer)})),

@@ -73,8 +73,12 @@ pub(crate) fn validate_source_draft(draft: &SourceDraft) -> Result<(), Error> {
         SourcePayload::CommandExecution {
             command_label,
             invocation_fingerprint,
+            capture_fingerprint,
             ..
         } => {
+            if let Some(fingerprint) = capture_fingerprint {
+                validate_sha256_fingerprint("Command capture fingerprint", fingerprint)?;
+            }
             validate_nonempty("Source locator", command_label)?;
             validate_sha256_fingerprint(
                 "Command Source invocation fingerprint",
@@ -137,17 +141,16 @@ pub(crate) fn decode_source_payload(
             locator: locator.ok_or_else(missing)?,
             snapshot: snapshot_basis.ok_or_else(missing)?,
         }),
-        "command_execution" if no_snapshot && detail_two.is_none() => {
-            Ok(SourcePayload::CommandExecution {
-                command_label: locator.ok_or_else(missing)?,
-                invocation_fingerprint: detail_one.ok_or_else(missing)?,
-                outcome: CommandOutcome {
-                    exit_code,
-                    termination: CommandTermination::parse(&termination.ok_or_else(missing)?)
-                        .ok_or_else(missing)?,
-                },
-            })
-        }
+        "command_execution" if no_snapshot => Ok(SourcePayload::CommandExecution {
+            capture_fingerprint: detail_two,
+            command_label: locator.ok_or_else(missing)?,
+            invocation_fingerprint: detail_one.ok_or_else(missing)?,
+            outcome: CommandOutcome {
+                exit_code,
+                termination: CommandTermination::parse(&termination.ok_or_else(missing)?)
+                    .ok_or_else(missing)?,
+            },
+        }),
         "current_host_user_turn" if no_snapshot && no_outcome => {
             Ok(SourcePayload::CurrentHostUserTurn {
                 host: detail_one.ok_or_else(missing)?,

@@ -186,6 +186,7 @@ fn fixture_with_temporary(
                 SourceDraft {
                     expected_project_revision: project.revision,
                     payload: SourcePayload::CommandExecution {
+                        capture_fingerprint: None,
                         command_label: format!("synthetic {key}"),
                         invocation_fingerprint: format!(
                             "sha256:{}",

@@ -178,6 +178,7 @@ fn semantic_fixture(root: &Path) -> Result<Fixture, Box<dyn std::error::Error>> 
             SourceDraft {
                 expected_project_revision: 1,
                 payload: SourcePayload::CommandExecution {
+                    capture_fingerprint: None,
                     command_label: "cargo test -p volicord-context".to_owned(),
                     invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
                     outcome: CommandOutcome {
@@ -304,6 +305,7 @@ fn command_source(command_label: &str) -> SourceDraft {
     SourceDraft {
         expected_project_revision: 1,
         payload: SourcePayload::CommandExecution {
+            capture_fingerprint: None,
             command_label: command_label.to_owned(),
             invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
             outcome: CommandOutcome {

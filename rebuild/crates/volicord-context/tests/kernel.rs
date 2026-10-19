@@ -203,6 +203,7 @@ fn records_all_required_source_kinds_and_provenance() -> Result<(), Box<dyn std:
             snapshot: "abc123".to_owned(),
         },
         SourcePayload::CommandExecution {
+            capture_fingerprint: None,
             command_label: "cargo test (bounded observation)".to_owned(),
             invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
             outcome: CommandOutcome {

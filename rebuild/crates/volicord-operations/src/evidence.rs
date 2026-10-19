@@ -474,9 +474,10 @@ fn source_reference(payload: &volicord_context::SourcePayload) -> Value {
         CommandExecution {
             command_label,
             invocation_fingerprint,
+            capture_fingerprint,
             outcome,
         } => {
-            json!({"kind":"command_execution","command_label":command_label,"invocation_fingerprint":invocation_fingerprint,"exit_code":outcome.exit_code,"termination":format!("{:?}",outcome.termination).to_lowercase()})
+            json!({"kind":"command_execution","command_label":command_label,"invocation_fingerprint":invocation_fingerprint,"capture_fingerprint":capture_fingerprint,"exit_code":outcome.exit_code,"termination":format!("{:?}",outcome.termination).to_lowercase()})
         }
     }
 }
@@ -486,9 +487,10 @@ fn source_observation(s: &volicord_context::SourceReadBasis) -> Value {
         CommandExecution {
             command_label,
             invocation_fingerprint,
+            capture_fingerprint,
             outcome,
         } => {
-            json!({"kind":"command_execution","command_label":command_label,"invocation_fingerprint":invocation_fingerprint,"exit_code":outcome.exit_code,"termination":format!("{:?}",outcome.termination).to_lowercase(),"body_retention":"not_retained"})
+            json!({"kind":"command_execution","command_label":command_label,"invocation_fingerprint":invocation_fingerprint,"capture_fingerprint":capture_fingerprint,"exit_code":outcome.exit_code,"termination":format!("{:?}",outcome.termination).to_lowercase(),"body_retention":"not_retained"})
         }
         CurrentHostUserTurn { host, session, .. } => {
             json!({"kind":"current_host_user_turn","host":host,"session":session,"body_access":"policy_withheld"})

@@ -59,7 +59,7 @@ Context Item, Checkpoint, revision, supersession와 forgetting meaning을 durabl
 Canonical data는 Derived State에서 rebuild할 수 없으므로 best-effort field dropping,
 silent downgrade 또는 fresh empty initialization으로 대체하지 않는다.
 
-현재 canonical schema version은 `17`이다. `Project Purpose`와 work `Goal`을 구분하는
+현재 canonical schema version은 `18`이다. `Project Purpose`와 work `Goal`을 구분하는
 Context role, Checkpoint의 explicit Work Item identity와 Decision의 typed work scope는 durable
 meaning이므로 이 version에서만 읽고 쓴다. 이전 record의 Goal text, path 또는 chronology를
 Work Item identity로 추정하는 decoder를 두지 않는다.
@@ -84,7 +84,7 @@ deterministic representation, lineage/common-base와 conflict basis를 해석한
 - Non-current bundle rejection은 current canonical state, common-base와 merge provenance를
   변경하지 않는다.
 
-현재 portable bundle format version은 `10`이다. Source-grounded `Project Purpose` role,
+현재 portable bundle format version은 `11`이다. Source-grounded `Project Purpose` role,
 Checkpoint Work Item identity와 Decision work scope를 그대로 운반한다. Older bundle의 Goal을
 Purpose로, 또는 Checkpoint/Decision text를 Work Item identity로 추론하거나 dual decode하지 않는다.
 
@@ -361,7 +361,7 @@ freshness evidence; missing historical receipts imply no knowledge of earlier at
 
 Privacy SQL current schema is `2`, adding the managed `source_observation` kind.
 Non-current Privacy stores are rejected before domain read/write; no migration
-or implicit conversion is supplied. Canonical schema `17` and bundle `10` carry the scoped Checkpoint run; analysis
+or implicit conversion is supplied. Canonical schema `18` and bundle `11` carry the scoped Checkpoint run; analysis
 formats are unchanged. Source observation content has exact kind
 `volicord_source_observation`, version `4`, checked before typed decode, inside the
 existing 147,456-byte managed body limit. Unsupported/corrupt bodies are withheld;
@@ -453,7 +453,7 @@ conversion or retrospective integrity assertion exists. Mutated or rehashed copi
 cannot replace the immutable Source anchor. Every citation dependency includes
 that anchor, and scoped verification/publication uses the same validated copy.
 
-Scoped Checkpoint verification uses canonical schema 17 and bundle format 10.
+Scoped Checkpoint verification uses canonical schema 18 and bundle format 11.
 The nullable `scoped_run` column is part of the single current representation;
 null retains historical quotation-only meaning, never inferred typed identities.
 Non-current canonical stores/bundles are refused before mutation; no migration or
@@ -461,3 +461,12 @@ old decoder is supplied. Work SourceObservation current format is 4, sealing the
 optional local check declaration and sampled artifact hashes with the existing
 integrity Source. Old observations remain Unsupported; fresh explicit capture is
 the only recovery. No explanation-document format or Analysis format changes.
+
+Command Sources in schema 18/bundle 11 optionally retain a scoped capture fingerprint
+in addition to the invocation fingerprint. It is a domain-separated hash of measured
+Work/revision, check declaration, operation/window, snapshots and artifact samples;
+assertion interpretation/evidence and later retest links are excluded. The Source
+commits this basis before Checkpoint adoption, so another same-argv execution or
+modified target/Work cannot substitute for the original capture. Historical/report-only
+commands have no capture fingerprint and cannot acquire a scoped run by inference.
+Non-current canonical/bundle formats remain refused with no compatibility decoder.

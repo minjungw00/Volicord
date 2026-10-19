@@ -489,6 +489,18 @@ impl LocalOperations {
             }
             Ok((
                 SourcePayload::CommandExecution {
+                    capture_fingerprint: crate::check_capture::captured_check_run(
+                        request.work_item_id,
+                        revision,
+                        &analysis.identity.to_string(),
+                        &analysis.repository_snapshot.to_string(),
+                        analysis.repository_source.identity(),
+                        &fingerprint,
+                        &detail,
+                    )?
+                    .map(|run| run.capture_fingerprint())
+                    .transpose()
+                    .map_err(|e| Error::with_source("cannot seal command capture", e))?,
                     command_label: request.command_label,
                     invocation_fingerprint: fingerprint,
                     outcome: volicord_context::CommandOutcome {

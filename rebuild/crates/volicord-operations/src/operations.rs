@@ -3853,6 +3853,7 @@ impl LocalOperations {
                 SourceDraft {
                     expected_project_revision: project.revision,
                     payload: SourcePayload::CommandExecution {
+                        capture_fingerprint: None,
                         command_label: draft.command_label.clone().ok_or_else(|| {
                             Error::new("executed verification needs a command label")
                         })?,

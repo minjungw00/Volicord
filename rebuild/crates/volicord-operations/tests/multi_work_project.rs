@@ -247,6 +247,7 @@ fn multi_work_identity_survives_restart_portability_and_read_consumers(
             SourceDraft {
                 expected_project_revision: project.revision,
                 payload: SourcePayload::CommandExecution {
+                    capture_fingerprint: None,
                     command_label: "focused multi-work verification".into(),
                     invocation_fingerprint: format!("sha256:{}", "1".repeat(64)),
                     outcome: volicord_context::CommandOutcome {

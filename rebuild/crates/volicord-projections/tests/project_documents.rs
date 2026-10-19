@@ -274,6 +274,7 @@ fn completed_project_documents_are_human_first_and_keep_resolved_ambiguity_in_au
             SourceDraft {
                 expected_project_revision: project.revision,
                 payload: SourcePayload::CommandExecution {
+                    capture_fingerprint: None,
                     command_label: "cargo test -p completed-fixture".to_owned(),
                     invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
                     outcome: volicord_context::CommandOutcome {
@@ -575,6 +576,7 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
             SourceDraft {
                 expected_project_revision: project.revision,
                 payload: SourcePayload::CommandExecution {
+                    capture_fingerprint: None,
                     command_label: "cargo test -p volicord-projections".to_owned(),
                     invocation_fingerprint: format!("sha256:{}", "0".repeat(64)),
                     outcome: volicord_context::CommandOutcome {
