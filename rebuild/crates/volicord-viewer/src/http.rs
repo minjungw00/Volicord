@@ -82,6 +82,7 @@ impl ViewerServer {
         match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/") => self.render(request.query, None),
             ("GET", "/citation") => self.read_citation(request),
+            ("GET", "/inspection.json") => self.read_inspection(request),
             ("POST", "/memory/context/correct") => {
                 let form = request.form()?;
                 form.require_only(&[
@@ -312,6 +313,96 @@ impl ViewerServer {
             ("GET", _) | ("POST", _) => Err(HttpFailure::not_found()),
             _ => Err(HttpFailure::method_not_allowed("GET, POST")),
         }
+    }
+
+    fn read_inspection(&self, request: HttpRequest) -> Result<HttpResponse, HttpFailure> {
+        if request.origin.as_deref().is_some_and(|s| s != self.origin)
+            || request
+                .fetch_site
+                .as_deref()
+                .is_some_and(|s| !["same-origin", "none"].contains(&s))
+        {
+            return Err(HttpFailure::forbidden());
+        }
+        let q = &request.query;
+        q.require_only(&[
+            "class",
+            "q",
+            "state",
+            "role",
+            "offset",
+            "limit",
+            "basis",
+            "id",
+            "revision",
+            "field",
+            "field_offset",
+            "field_basis",
+            "work",
+            "relationships",
+            "locale",
+            "language",
+        ])?;
+        let number = |key, default| -> Result<usize, HttpFailure> {
+            if q.optional(key).is_none() {
+                return Ok(default);
+            }
+            usize::try_from(q.u64(key)?)
+                .map_err(|_| HttpFailure::bad_request("invalid bounded selector"))
+        };
+        let class =
+            volicord_operations::InspectionClass::parse(q.optional("class").unwrap_or("work"))
+                .map_err(inspection_failure)?;
+        let selection = crate::inspection::InspectionSelection {
+            query: volicord_operations::InspectionQuery {
+                class,
+                term: q.optional("q").unwrap_or_default().into(),
+                state: q.optional("state").map(str::to_owned),
+                role: q.optional("role").map(str::to_owned),
+                offset: number("offset", 0)?,
+                limit: number("limit", 10)?,
+                expected_fingerprint: q.optional("basis").map(str::to_owned),
+                identity: q.optional("id").map(str::to_owned),
+            },
+            revision: q
+                .optional("revision")
+                .map(|_| q.u64("revision"))
+                .transpose()?,
+            field: q.optional("field").map(str::to_owned),
+            field_offset: number("field_offset", 0)?,
+            field_basis: q.optional("field_basis").map(str::to_owned),
+            work: q
+                .optional("work")
+                .map(identity)
+                .transpose()?
+                .map(ContextItemId::from_bytes),
+            relationship_offset: number("relationships", 0)?,
+        };
+        if selection.field_offset > 147456
+            || selection.relationship_offset > 100000
+            || selection.field.is_none()
+                && (selection.revision.is_some()
+                    || selection.work.is_some()
+                    || selection.field_offset > 0
+                    || selection.field_basis.is_some())
+        {
+            return Err(HttpFailure::bad_request(
+                "invalid inspection detail selector",
+            ));
+        }
+        let (page, detail) = self
+            .adapter
+            .inspection_read(self.project_id, &selection)
+            .map_err(inspection_failure)?;
+        let body = serde_json::to_vec(&serde_json::json!({"page":page,"detail":detail}))
+            .map_err(|_| HttpFailure::bad_request("inspection encoding failed"))?;
+        Ok(HttpResponse {
+            status: 200,
+            reason: "OK",
+            content_type: "application/json; charset=utf-8",
+            body,
+            location: None,
+        })
     }
 
     fn read_citation(&self, request: HttpRequest) -> Result<HttpResponse, HttpFailure> {
@@ -801,6 +892,17 @@ impl fmt::Display for HttpFailure {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.message)
     }
+}
+
+fn inspection_failure(error: volicord_operations::InspectionFailure) -> HttpFailure {
+    use volicord_operations::InspectionFailure::*;
+    let (status, reason) = match error {
+        Invalid => (400, "Bad Request"),
+        NotFound => (404, "Not Found"),
+        Changed => (409, "Conflict"),
+        Unavailable => (503, "Service Unavailable"),
+    };
+    HttpFailure::new(status, reason, error.to_string())
 }
 
 fn domain_failure(error: ViewerError) -> HttpFailure {

@@ -2472,8 +2472,8 @@ fn source_summary(payload: &SourcePayload) -> String {
             Some(exit_code) => format!("Command {command_label} (exit {exit_code})"),
             None => format!("Command {command_label} (no exit code)"),
         },
-        SourcePayload::CurrentHostUserTurn { host, turn, .. } => {
-            format!("User input on {host}: {turn}")
+        SourcePayload::CurrentHostUserTurn { host, .. } => {
+            format!("User input on {host} · body withheld")
         }
         SourcePayload::Url { url } => format!("URL {url}"),
         SourcePayload::AdoptedArtifact { locator, revision } => {

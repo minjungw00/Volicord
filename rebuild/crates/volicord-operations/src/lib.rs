@@ -16,6 +16,11 @@ mod explanation_sources;
 pub use explanation::ExplanationCitationSelection;
 mod forgetting;
 mod guarded;
+mod inspection;
+pub use inspection::{
+    InspectionClass, InspectionFailure, InspectionPage, InspectionQuery, InspectionRelation,
+    InspectionRow, INSPECTION_ROLES, INSPECTION_STATES,
+};
 mod layout;
 mod model;
 mod operations;

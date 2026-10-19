@@ -6,6 +6,7 @@
 //! lifecycle, or Guarded approval model of its own.
 
 mod http;
+mod inspection;
 mod interaction;
 mod render;
 mod selection;

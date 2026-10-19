@@ -67,8 +67,15 @@ impl LocalOperations {
         project: ProjectId,
         request: &EvidenceDetailRequest,
     ) -> Result<Value, Error> {
-        validate_request(request)?;
         let _inspection = self.layout().acquire_health_lock()?;
+        self.canonical_evidence_detail_unlocked(project, request)
+    }
+    pub(crate) fn canonical_evidence_detail_unlocked(
+        &self,
+        project: ProjectId,
+        request: &EvidenceDetailRequest,
+    ) -> Result<Value, Error> {
+        validate_request(request)?;
         let basis = self.canonical_basis(project)?;
         let identity = &request.record_id;
         let mut revision = None;
@@ -305,11 +312,19 @@ impl LocalOperations {
         candidate: CandidateId,
         request: &EvidenceDetailRequest,
     ) -> Result<Value, Error> {
+        let _inspection = self.layout().acquire_health_lock()?;
+        self.candidate_evidence_detail_unlocked(project, candidate, request)
+    }
+    pub(crate) fn candidate_evidence_detail_unlocked(
+        &self,
+        project: ProjectId,
+        candidate: CandidateId,
+        request: &EvidenceDetailRequest,
+    ) -> Result<Value, Error> {
         validate_request(request)?;
         if request.record_kind != "candidate" || request.record_id != candidate.to_string() {
             return Err(Error::new("Candidate evidence identity mismatch"));
         }
-        let _inspection = self.layout().acquire_health_lock()?;
         let canonical = self.canonical_basis(project)?;
         let basis = self.candidate_basis(project)?;
         let inspection = inspect_candidate(
@@ -376,7 +391,7 @@ impl LocalOperations {
     }
 }
 
-fn canonical_fields(kind: &str) -> &'static [&'static str] {
+pub(crate) fn canonical_fields(kind: &str) -> &'static [&'static str] {
     match kind {
         "context_item" => &[
             "source_observations",
