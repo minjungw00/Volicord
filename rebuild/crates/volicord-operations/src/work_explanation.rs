@@ -1,7 +1,7 @@
 //! Explicit host-authored Work production. No model dispatch or persistence here.
 use crate::{operations::parse_identity, Error, FileByteRange, LocalOperations};
 use serde::{Deserialize, Serialize};
-use volicord_context::{ContextItemId, ProjectId, SourceId};
+use volicord_context::{ContextItemId, DecisionId, ProjectId, SourceId};
 use volicord_projections::*;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -31,6 +31,16 @@ pub struct WorkClaimRange {
     pub claim: Option<FileByteRange>,
 }
 impl LocalOperations {
+    /// Recorded Decision interpretation uses its actual prepared recommendation
+    /// rationale. This grants no Work/repository Source-body authority.
+    pub fn compose_decision_explanation(
+        &self,
+        project: ProjectId,
+        decision: DecisionId,
+        draft: WorkExplanationDraft,
+    ) -> Result<ExplanationRealization, Error> {
+        self.compose_subject_explanation(project, ExplanationSubject::Decision(decision), draft)
+    }
     /// Bind a newly authored name, synopsis and narrative to current Work evidence.
     /// No unavailable old realization is read, edited or partially revived.
     pub fn compose_work_explanation(
@@ -39,8 +49,16 @@ impl LocalOperations {
         work: ContextItemId,
         draft: WorkExplanationDraft,
     ) -> Result<ExplanationRealization, Error> {
+        self.compose_subject_explanation(project, ExplanationSubject::Work(work), draft)
+    }
+
+    fn compose_subject_explanation(
+        &self,
+        project: ProjectId,
+        subject: ExplanationSubject,
+        draft: WorkExplanationDraft,
+    ) -> Result<ExplanationRealization, Error> {
         let canonical = self.canonical_basis(project)?;
-        let subject = ExplanationSubject::Work(work);
         let plan = self.prepare_subject_explanation(&canonical, subject, &draft.language)?;
         if draft.plan_fingerprint != plan.fingerprint {
             return Err(Error::new("stale Work preparation; prepare again"));
@@ -63,6 +81,9 @@ impl LocalOperations {
         for unit in draft.paragraphs {
             let mut citations = Vec::new();
             for selected in unit.sources {
+                let ExplanationSubject::Work(work) = subject else {
+                    return Err(Error::new("Decision composition cannot borrow Work Source authority; use exact recorded Decision evidence"));
+                };
                 let source = SourceId::from_bytes(parse_identity(&selected.source_id)?);
                 let read = self.read_explanation_source(project, work, source)?;
                 let detail = &read["observation"]["detail"];

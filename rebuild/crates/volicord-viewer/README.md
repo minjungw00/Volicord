@@ -344,7 +344,7 @@ volicord --json work explain delete --work GOAL_ID
 
 Preparation returns `{operation, plan}`. The current active agent reads the entire
 plan under its existing source-access authority and creates a response JSON using
-`format_kind: "volicord_explanation"`, `format_version: 4`, the exact
+`format_kind: "volicord_explanation"`, `format_version: 5`, the exact
 `plan_fingerprint`, `language`, `generator: {host, session, agent, model}` and
 `paragraphs: [{question, text, evidence_keys, citations}]`. The small reader vocabulary adds authored `heading` and `synopsis`, `observation`,
 `comparison`, `limits` and claim-linked `reading_point` to the supported narrative
@@ -639,3 +639,9 @@ withholds the whole realization. Explicit fresh production is recovery, with no
 stale-title extraction or mixed output. Generated wording is never canonical title
 truth. Creation/latest work-record events are public JSON in CLI/MCP and remain
 independent from generation time.
+
+Article units preserve author order. `section_heading` supplies the actual section
+name, `narrative` supplies prose, adjacent `comparison_condition`/`comparison_result`
+supply individually grounded comparison entries, and `flow_step` supplies cited
+ordered reading labels. These share the ordinary citation pane and script-free
+export; the reader creates no content or Source observations.

@@ -1286,3 +1286,85 @@ fn decision_context_is_exact_scoped_and_shared_with_documents_and_recall(
     assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
     Ok(())
 }
+
+#[test]
+fn authored_sections_and_comparisons_reach_live_and_offline_without_enum_titles(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let work = f.goals["relay"];
+    let plan = f
+        .operations
+        .prepare_explanation(f.project, ExplanationSubject::Work(work), "en")?;
+    let mut article = fake(&plan);
+    article.paragraphs = [
+        (
+            ExplanationQuestion::Heading,
+            "Investigating the recorded result",
+        ),
+        (
+            ExplanationQuestion::Synopsis,
+            "This authored control exercises record-grounded reading.",
+        ),
+        (
+            ExplanationQuestion::SectionHeading,
+            "What the observation can tell us",
+        ),
+        (
+            ExplanationQuestion::Narrative,
+            "The following comparison preserves reported conditions separately from conclusions.",
+        ),
+        (
+            ExplanationQuestion::ComparisonCondition,
+            "A recorded Checkpoint reports verification",
+        ),
+        (
+            ExplanationQuestion::ComparisonResult,
+            "The report alone does not establish current source coverage",
+        ),
+        (
+            ExplanationQuestion::SectionHeading,
+            "Boundaries that remain open",
+        ),
+        (
+            ExplanationQuestion::Narrative,
+            "No technical Source is supplied by this control.",
+        ),
+    ]
+    .into_iter()
+    .map(|(question, text)| ExplanationParagraph {
+        question,
+        text: text.into(),
+        evidence_keys: vec!["goal".into(), "verification".into()],
+        citations: Vec::new(),
+    })
+    .collect();
+    f.operations
+        .record_explanation(f.project, ExplanationSubject::Work(work), "en", article)?;
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let request = volicord_viewer::ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::English,
+        view: ViewerView::Work { work: Some(work) },
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let live = get(&f, &format!("/?view=work&work={work}"));
+    let offline = viewer
+        .render_snapshot(&request, TimestampMicros::from_unix_micros(1))?
+        .html;
+    for page in [live, offline] {
+        assert!(page.contains(">What the observation can tell us</h2>"));
+        assert!(page.contains(">Boundaries that remain open</h2>"));
+        assert!(
+            page.contains("<dl class=\"comparison-card\">")
+                && page.contains("<dt class=\"unit reading-section\"")
+        );
+        assert!(
+            page.find("What the observation can tell us")
+                .ok_or("first")?
+                < page.find("Boundaries that remain open").ok_or("last")?
+        );
+        assert!(!page.contains(">Change / investigation</h2>"));
+    }
+    Ok(())
+}

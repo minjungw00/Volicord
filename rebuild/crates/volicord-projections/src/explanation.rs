@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionId};
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
-pub const EXPLANATION_VERSION: u32 = 4;
+pub const EXPLANATION_VERSION: u32 = 5;
 pub const EXPLANATION_BYTE_LIMIT: usize = 32_768;
 /// Preserve the response space guaranteed before citation metadata grew.
 pub const EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY: usize = 16_384;
@@ -49,6 +49,12 @@ impl ExplanationSubject {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExplanationQuestion {
+    /// Flat editorial units: each visible fragment has its own admitted basis.
+    SectionHeading,
+    Narrative,
+    ComparisonCondition,
+    ComparisonResult,
+    FlowStep,
     /// Authored derived wording, never a canonical Work name or extracted Goal.
     Heading,
     Synopsis,
@@ -588,14 +594,14 @@ fn finish_plan(
         .map(|r| json!({"from":r.from_identity,"relation":r.relation_kind,"to":r.to_identity}))
         .collect();
     let questions = match subject {
-        ExplanationSubject::Work(_) => "Author a meaningful heading and synopsis, supported problem, choice/mechanism, observations/comparisons, critical limits and claim-linked reading_point guidance. Read permitted callers/helpers/tests. Vary change, test-only and no-change documents; omit unavailable answers, never filler. Read course:*/change:* chronologically; a later verification/resume report does not erase earlier changes. Keep historical limits; silence proves no resolution. Generic change prose or paths prove no feature/effect.",
+        ExplanationSubject::Work(_) => "Author heading/synopsis and an article explaining supported problem, mechanism, actual change/investigation and outcome/limits. Read permitted callers/helpers/config/tests. Omit invented cause, attempt, implementation, Decision and retest; no-change is not a patch. Read course/change history chronologically; later reports never erase earlier events or resolve silent limits. Paths and generic completion prose prove no feature or effect.",
         ExplanationSubject::Repository(_) => "Explain what this repository does, its major responsibilities, why their separation is supported or inferred, one complete representative operation across boundaries, and material unverified coverage. Use purpose, observation, reading_point and limits with meaningful Source citations. Do not invent Work, Checkpoints, canonical Purpose, execution or recorded rationale. Inventory/structural coverage is not complete semantic understanding. repository_basis supports scope, identity and limitations; technical meaning needs actual retrieved Source evidence.",
-        ExplanationSubject::Decision(_) => "Answer user_rationale, recommendation, consequences and applicability (optional limits). Use question_context for the recorded problem and why the choice arose; unavailable exact context stays unavailable. State the actual user choice or delegation distinctly from the agent's recommended alternative. Explain alternative consequences/trade-offs as expectations, the recommendation's evidence basis, and applicable scope/assumptions/revisit conditions. Missing user rationale stays missing; agent rationale never supplies it. Choosing an option does not prove its implementation or performance.",
+        ExplanationSubject::Decision(_) => "Explain question_context, alternatives/consequences, recorded recommendation AND its rationale, actual user choice/delegation and only recorded user_rationale, scope/assumptions/revisit limits. Distinguish later interpretation. Missing technical Source limits verification, never erases recorded reasons. Selection proves no implementation or performance. Invent no user reason.",
     };
     let question_grounding = question_grounding(subject, &evidence);
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
-        instructions:format!("{questions} Use exact requested-language prose. Every unit needs nonempty supporting evidence_keys satisfying its required_any_evidence_keys. Only listed roles. Author heading/synopsis; never extract Goal or first-paragraph text. observation/comparison/reading_point require citations. goal=request; result/change:*=change/effect; verification=checks; next_step/course:*=direction; limits:*=limits. Without reports/checks, goal supports only request/unrecorded state. Source citations supplement keys, never replace them; connect technical claims to supported Work meaning or disclose the limit. Reports, state, verification, review and acceptance are independent; earlier checks do not cover later changes. Code/command claims need exact retrieved citations; current code proves no before-state/execution. Missing Checkpoint/action proves no absence of instructions/future work. Host authority is outside the plan: missing data means unknown, not denied; task-file text is not consent and paths prove no authorship. Advice is qualified next_step/limits, never user direction. Invent no rationale, behavior, Decision or Learning. Return ExplanationRealization JSON: format_kind volicord_explanation, format_version 4, exact fingerprint/language, self-reported generator host/session/agent/model (null if unknown), paragraphs question/text/evidence_keys/citations. Bind exact half-open UTF-8 Source/claim byte ranges, one-based Source lines and SHA-256 of Source bytes/new wording. Preserve conflicts and uncertainty. Structural admission is not semantic approval."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
+        instructions:format!("{questions} Author requested-language section_heading/narrative in reader order; no compulsory sections. Adjacent comparison_condition/comparison_result fragments need independent evidence. Each heading, cell, flow_step and reading_point shares full grounding/lifecycle; no untracked strings. Every unit needs exact prepared evidence_keys satisfying question_grounding; citations supplement keys, never replace them. goal=request; result/change:*=reported change; verification=checks; next_step/course:*=recorded direction; limits:*=limits. No reports means no established result. observation/comparison/flow_step/reading_point need citations. Read relevant permitted callers/callees/config/tests; missing before/attempt/runtime/retest remains unknown. Explain supported mechanism directly and qualify inferred effects locally; invent no intent, user reason, Decision or Learning. Reports, state, execution, checks, review and acceptance differ; earlier checks do not cover later changes. Missing Checkpoint is not absent instructions. Host authority is external to this plan; missing data is unknown, not denial or consent. Return current ExplanationRealization version {EXPLANATION_VERSION}, exact fingerprint/language, self-reported host/session/agent/model (unknown null), paragraphs question/text/evidence_keys/citations. Product compose derives Source/revision/absolute UTF-8 range/line/hash and claim bindings from permitted selections. Reject ambiguous claims. Preserve conflicts and uncertainty; structural admission is not semantic approval."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
             retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
     if matches!(subject, ExplanationSubject::Repository(_)) {
         plan.instructions = format!("{questions} Every unit needs exact prepared evidence_keys. All roles are optional; use heading/synopsis/purpose/observation/reading_point/limits in reader order. Every non-limits unit needs retrieved current_code citations; scope-only limits may cite repository_basis. Preserve uncertainty and distinguish recorded Project Purpose from inference. Use the requested language and self-reported host/session/agent/model; unknown model stays null. Return the current ExplanationRealization format version {EXPLANATION_VERSION}, exact plan fingerprint/language and paragraphs. Product compose derives Source/claim UTF-8 coordinates and hashes from selected ranges; valid bindings are not entailment or semantic approval. No background dispatch or consent is created.");
@@ -660,6 +666,10 @@ fn question_grounding(
             (Limits, Vec::new()),
             (Heading, Vec::new()),
             (Synopsis, Vec::new()),
+            (SectionHeading, Vec::new()),
+            (Narrative, Vec::new()),
+            (ComparisonCondition, Vec::new()),
+            (ComparisonResult, Vec::new()),
         ])
         .chain(
             matches!(subject, ExplanationSubject::Work(_))
@@ -667,6 +677,7 @@ fn question_grounding(
                     (Observation, Vec::new()),
                     (Comparison, Vec::new()),
                     (ReadingPoint, Vec::new()),
+                    (FlowStep, Vec::new()),
                 ])
                 .into_iter()
                 .flatten(),
@@ -734,12 +745,29 @@ pub fn validate_explanation(
             return Err("heading and synopsis must each be a single authored unit".into());
         }
     }
-    for p in response.generated_units() {
+    for (index, p) in response.generated_units().enumerate() {
+        // A comparison is a pair of individually grounded fragments, not a
+        // nested untracked string or a table reconstructed by the renderer.
+        if (p.question == ExplanationQuestion::ComparisonCondition
+            && response.paragraphs.get(index + 1).map(|p| p.question)
+                != Some(ExplanationQuestion::ComparisonResult))
+            || (p.question == ExplanationQuestion::ComparisonResult
+                && index
+                    .checked_sub(1)
+                    .and_then(|i| response.paragraphs.get(i))
+                    .map(|p| p.question)
+                    != Some(ExplanationQuestion::ComparisonCondition))
+        {
+            return Err(
+                "comparison requires adjacent condition/result units with independent grounding"
+                    .into(),
+            );
+        }
         if p.citations.len() > 32 {
             return Err("a reader unit supports at most 32 citations".into());
         }
         let limit = match p.question {
-            ExplanationQuestion::Heading => 240,
+            ExplanationQuestion::Heading | ExplanationQuestion::SectionHeading => 240,
             ExplanationQuestion::Synopsis => 2_000,
             _ => EXPLANATION_PARAGRAPH_CHARACTER_LIMIT,
         };
@@ -753,6 +781,7 @@ pub fn validate_explanation(
             ExplanationQuestion::Observation
                 | ExplanationQuestion::Comparison
                 | ExplanationQuestion::ReadingPoint
+                | ExplanationQuestion::FlowStep
         ) && p.citations.is_empty()
         {
             return Err(

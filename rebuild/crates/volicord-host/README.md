@@ -399,3 +399,12 @@ and recorded facts readable. Server session correlation is not authentication;
 model/author strings stay self-reported and structural grounding is not independent
 semantic approval. `delete` removes explanation history locally through existing
 Managed Derived sanitation and preserves canonical records.
+
+`decision_explanation` provides prepare/generate/compose/record/delete for an exact
+`decision_id`, language and ephemeral generation request, using the same current
+article schema as Work. It reads recorded recommendation rationale independently
+of user rationale and cannot read Work Source bodies. CLI `decision explain compose
+--decision ID --input FILE` provides the same explicit local composition. No host
+operation invokes a model automatically; generation requests await the authorized
+active host. Section titles, narrative, comparisons and flow labels are grounded
+units, with whole-article invalidation and unchanged byte budgets.

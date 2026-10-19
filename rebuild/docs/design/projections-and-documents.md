@@ -443,7 +443,7 @@ Inventing source-specific lexical rules would not generalize to the reordered va
 and independent export case. Deterministic selection and state explanations remain
 appropriate for structured facts; explicit host realization supplies Work prose.
 
-`ExplanationRealization` uses exact-current `volicord_explanation` version 4,
+`ExplanationRealization` uses exact-current `volicord_explanation` version 5,
 plan fingerprint, language, host/session and nullable agent/model provenance, and
 question/text/evidence-key/citation units in reader-selected order. A document has
 1..32 grounded units; heading and synopsis are optional singletons. Purpose,
@@ -1937,7 +1937,7 @@ new host-authored heading, synopsis and reader-ordered narrative. Product derive
 Source revisions, coordinates and Source/claim hashes from exact permitted reads;
 MCP additionally requires retrieval in the same ephemeral generation request.
 Compose persists nothing and invokes no model. Work record/read retain the single
-v4 whole-realization lifecycle; a fresh record-only document is allowed, while
+v5 whole-realization lifecycle; a fresh record-only document is allowed, while
 technical claims keep Source dependencies. Canonical-only failures or missing
 bodies are not reasons to extract stale title text. See the current reader ledger
 for direct tests and outstanding semantic/human conditions.
@@ -1969,7 +1969,7 @@ failures are prominent while historical adversity is qualified. The evidence ind
 connects claims by meaning/purpose to exact permitted records; full raw structs are
 available through explicit inspection. Scoped search/filter/paging/relations/counts
 must use Operations projections and Privacy barriers. No SQL or database-file bypass
-is granted. These are target outcomes; current v4 roles/rendering are only a partial
+is granted. These are target outcomes; previous v4 roles/rendering were only a partial
 implementation, not proof that flexible articles, typed verification UI or a secure
 inspector have been delivered.
 
@@ -1977,3 +1977,25 @@ The reader-question ledger in repository-intelligence.md maps existing producers
 and known missing inputs. Explicit Source manifest/read and preparation/composition
 are separate steps: a canonical plan does not automatically incorporate every body,
 and a missing Checkpoint cannot manufacture attempts, verification or Decision.
+
+### Flexible article production
+
+The exact-current v5 reader stream adds `section_heading` and `narrative`, paired
+`comparison_condition` / `comparison_result`, and cited `flow_step` fragments.
+Each fragment uses the existing question/text/evidence_keys/citations envelope,
+common exhaustive traversal and whole-realization validity. No nested generated
+strings, extra retention store or format-dependent decoder exists. Conditions
+precede their adjacent result; all other sections follow the author's order.
+Section headings are bounded to 240 characters; existing aggregate budgets remain.
+Work and Decision compose require a fresh authored heading and synopsis. General
+record admission still permits partial documents; unsupported detail is omitted.
+
+Work CLI prepare includes its explicit Source inventory; the host selects and reads
+permitted caller, callee, configuration, test and before/current material. Missing
+Source, unobserved execution or absent before-state cannot be supplied by prose.
+Decision CLI compose and MCP `decision_explanation` use the exact recorded Question,
+alternatives, recommendation/rationale, user choice/optional reason and scope. They
+grant no Work Source authority. Preparation, compose and record never dispatch a
+model; the authorized active host supplies semantics. All public readers carry the
+same admitted units. Viewer uses actual section names and typed comparisons/flows
+in live/offline output, without fixed enum-titled sections or additional generation.

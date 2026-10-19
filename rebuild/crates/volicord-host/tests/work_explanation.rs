@@ -220,9 +220,14 @@ fn retrieved_source_cannot_replace_required_canonical_grounding() -> Result<(), 
             {"question":"limits","required_any_evidence_keys":[]},
             {"question":"heading","required_any_evidence_keys":[]},
             {"question":"synopsis","required_any_evidence_keys":[]},
+            {"question":"section_heading","required_any_evidence_keys":[]},
+            {"question":"narrative","required_any_evidence_keys":[]},
+            {"question":"comparison_condition","required_any_evidence_keys":[]},
+            {"question":"comparison_result","required_any_evidence_keys":[]},
             {"question":"observation","required_any_evidence_keys":[]},
             {"question":"comparison","required_any_evidence_keys":[]},
-            {"question":"reading_point","required_any_evidence_keys":[]}
+            {"question":"reading_point","required_any_evidence_keys":[]},
+            {"question":"flow_step","required_any_evidence_keys":[]}
         ])
     );
     assert_eq!(generation["plan"]["evidence"][1]["content"], Value::Null);
@@ -486,9 +491,14 @@ fn changed_work_preparation_exposes_actual_question_grounding_for_first_record(
             {"question":"limits","required_any_evidence_keys":[]},
             {"question":"heading","required_any_evidence_keys":[]},
             {"question":"synopsis","required_any_evidence_keys":[]},
+            {"question":"section_heading","required_any_evidence_keys":[]},
+            {"question":"narrative","required_any_evidence_keys":[]},
+            {"question":"comparison_condition","required_any_evidence_keys":[]},
+            {"question":"comparison_result","required_any_evidence_keys":[]},
             {"question":"observation","required_any_evidence_keys":[]},
             {"question":"comparison","required_any_evidence_keys":[]},
-            {"question":"reading_point","required_any_evidence_keys":[]}
+            {"question":"reading_point","required_any_evidence_keys":[]},
+            {"question":"flow_step","required_any_evidence_keys":[]}
         ])
     );
     let current = f.read(&generation, f.source)?;
@@ -1654,7 +1664,7 @@ fn compose_work_name_summary_and_unicode_citations_without_manual_bindings(
     f.read(&generation, f.source)?;
     let composed = success(&mut f.host, compose.clone())?;
     assert_eq!(composed["retained"], false);
-    assert_eq!(composed["realization"]["format_version"], 4);
+    assert_eq!(composed["realization"]["format_version"], 5);
     let response: ExplanationRealization = serde_json::from_value(composed["realization"].clone())?;
     let args = f.record_args(&generation, &response)?;
     success(&mut f.host, args)?;
@@ -1822,5 +1832,92 @@ fn compose_work_name_summary_and_unicode_citations_without_manual_bindings(
             .privacy_status(f.project)?
             .managed_derived
     );
+    Ok(())
+}
+
+#[test]
+fn editorial_fragments_are_grounded_before_public_read_and_cannot_survive_source_deletion(
+) -> Result<(), Box<dyn Error>> {
+    // Source-first expectations precede authored transport controls, not model output.
+    // The fixture is a no-change investigation, not an observed repair.
+    let mut f = Fixture::new()?;
+    let generation = f.generate()?;
+    let read = f.read(&generation, f.source)?;
+    assert_eq!(
+        read["observation"]["detail"]["body"],
+        "def value():\n    return 7\n"
+    );
+    for role in [
+        "section_heading",
+        "narrative",
+        "comparison_condition",
+        "comparison_result",
+        "flow_step",
+        "reading_point",
+    ] {
+        let selection = json!({"source_id":f.source.to_string(),"field":"body","use_kind":"current_code","start_byte":0,"end_byte":25,"claim":null});
+        let fragment = |question: &str, text: &str| json!({"question":question,"text":text,"evidence_keys":["goal"],"sources":[selection.clone()]});
+        let mut paragraphs = vec![
+            json!({"question":"heading","text":"Investigating a constant return","evidence_keys":["goal"],"sources":[]}),
+            json!({"question":"synopsis","text":"Inspect the value before recommending a change; execution remains unobserved.","evidence_keys":["goal"],"sources":[]}),
+        ];
+        if role == "comparison_condition" || role == "comparison_result" {
+            paragraphs.push(fragment(
+                "comparison_condition",
+                "Calling value without arguments",
+            ));
+            paragraphs.push(fragment("comparison_result", "The function body returns the literal 7; this is a source reading, not an execution."));
+        } else {
+            paragraphs.push(fragment(role, "Reading the constant return"));
+        }
+        let mut args = f.args("compose");
+        args["generation_id"] = generation["generation_id"].clone();
+        args["draft"] = json!({"plan_fingerprint":generation["plan"]["fingerprint"],"language":"en","generator":{"host":"authored-control","session":"source-first","agent":null,"model":null},"paragraphs":paragraphs});
+        let composed = success(&mut f.host, args.clone())?;
+        let realization: ExplanationRealization =
+            serde_json::from_value(composed["realization"].clone())?;
+        assert_eq!(
+            realization.citations().count(),
+            if role.starts_with("comparison_") {
+                2
+            } else {
+                1
+            }
+        );
+        // Malformed pair and a foreign key cannot be admitted by any renderer.
+        if role == "comparison_condition" {
+            args["draft"]["paragraphs"]
+                .as_array_mut()
+                .ok_or("units")?
+                .pop();
+            assert_eq!(call(&mut f.host, args)["result"]["isError"], true);
+        }
+    }
+    // The only technical dependency is on the section label. It still invalidates
+    // the complete article: no post-hoc rescue of the title/synopsis.
+    let mut args = f.args("compose");
+    args["generation_id"] = generation["generation_id"].clone();
+    args["draft"] = json!({"plan_fingerprint":generation["plan"]["fingerprint"],"language":"en","generator":{"host":"test","session":"label-only","agent":null,"model":null},"paragraphs":[
+        {"question":"heading","text":"Inspect a return","evidence_keys":["goal"],"sources":[]},
+        {"question":"synopsis","text":"A no-change investigation; no command was observed.","evidence_keys":["goal"],"sources":[]},
+        {"question":"section_heading","text":"The constant return","evidence_keys":["goal"],"sources":[{"source_id":f.source.to_string(),"field":"body","use_kind":"current_code","start_byte":0,"end_byte":25,"claim":null}]}]});
+    let composed = success(&mut f.host, args)?;
+    let response: ExplanationRealization = serde_json::from_value(composed["realization"].clone())?;
+    let args = f.record_args(&generation, &response)?;
+    success(&mut f.host, args)?;
+    f.host
+        .operations()
+        .delete_work_source_observation(f.project, f.work, f.source)?;
+    let projection = f
+        .host
+        .operations()
+        .project_projection_selected(f.project, WorkSelector::ExactWork(f.work))?;
+    let work = projection.selected_work.ok_or("work")?;
+    let answers = work_answers(&work, "en", FixedLocale::English);
+    assert!(answers.reading_title().is_none());
+    assert!(answers
+        .prose
+        .iter()
+        .all(|p| p.role != AnswerRole::GeneratedInterpretation));
     Ok(())
 }

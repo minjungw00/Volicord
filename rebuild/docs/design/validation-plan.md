@@ -3076,3 +3076,20 @@ preserve both applicable positives and explicit negative gaps, including separat
 missing-before versus missing-before-inspection and expiry/deletion states. The
 actual historical Decision reason control uses supported disposable import and
 public Decision preparation/read, preserving the original bytes and absent user reason.
+
+### Flexible technical article controls
+
+Exact-current explanation v5 uses independently grounded flat editorial fragments,
+with whole-realization lifecycle. Focused Host `work_explanation`,
+`decision_explanation`, `mcp` and `answer_consumers`, Operations `explanation_cli`,
+`cli_work_sources`, `explanation_budgets` and `repository_explanation`, Viewer
+`work_explanation`, `grounded_reader` and `citation_reading` exercise the actual
+producer/record/public-read/live/offline consumers. New controls include authored
+section order, condition/result pairs, all new fragment Source binding, label-only
+deletion, missing user rationale and retained recommendation reason. Campaign
+validators use the same single current vocabulary; historical artifacts stay intact.
+These are authored technical controls. They establish neither genuine active-host
+prospective capture nor independent semantic assessment or human comprehension.
+No trusted Volicord SessionStart/MCP activation is present in the editing session;
+the real-task capture is precisely Blocked, not substituted with fixture prose.
+Original historical recommendations support record reading only. No gate runs here.

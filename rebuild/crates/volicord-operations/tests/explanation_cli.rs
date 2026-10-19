@@ -286,3 +286,67 @@ fn work_preparation_keeps_change_meaning_before_later_verification_report(
         .is_string());
     Ok(())
 }
+
+#[test]
+fn decision_compose_cli_binds_recorded_reason_without_json_hash_authoring(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let id = f.decisions["explicit"].to_string();
+    let prepare = invoke(
+        &f,
+        &[
+            "decision",
+            "explain",
+            "prepare",
+            "--decision",
+            &id,
+            "--language",
+            "en",
+        ],
+    )?;
+    let plan = &prepare["plan"];
+    assert!(plan["evidence"]
+        .as_array()
+        .ok_or("evidence")?
+        .iter()
+        .any(|e| e["key"] == "recommendation"
+            && e["content"]["rationale"] == "Prefer a bounded local boundary"));
+    let draft = json!({"plan_fingerprint":plan["fingerprint"],"language":"en","generator":{"host":"authored-control","session":"cli","agent":null,"model":null},"paragraphs":[
+        {"question":"heading","text":"A bounded local choice","evidence_keys":["choice"],"sources":[]},
+        {"question":"synopsis","text":"The agent recommended a bounded local boundary; user rationale remains unrecorded.","evidence_keys":["recommendation","user_rationale"],"sources":[]},
+        {"question":"section_heading","text":"Recorded recommendation","evidence_keys":["recommendation"],"sources":[]},
+        {"question":"narrative","text":"Prefer a bounded local boundary is the recorded recommendation rationale, not an inferred user reason.","evidence_keys":["recommendation","user_rationale"],"sources":[]}]});
+    let input = f._temporary.path().join("article.json");
+    std::fs::write(&input, serde_json::to_vec(&draft)?)?;
+    let composed = invoke(
+        &f,
+        &[
+            "decision",
+            "explain",
+            "compose",
+            "--decision",
+            &id,
+            "--input",
+            input.to_str().ok_or("path")?,
+        ],
+    )?;
+    assert_eq!(composed["realization"]["format_version"], 5);
+    std::fs::write(&input, serde_json::to_vec(&composed["realization"])?)?;
+    invoke(
+        &f,
+        &[
+            "decision",
+            "explain",
+            "record",
+            "--decision",
+            &id,
+            "--language",
+            "en",
+            "--input",
+            input.to_str().ok_or("path")?,
+        ],
+    )?;
+    let read = invoke(&f, &["decisions", "--language", "en"])?;
+    assert!(read.to_string().contains("Recorded recommendation"));
+    Ok(())
+}

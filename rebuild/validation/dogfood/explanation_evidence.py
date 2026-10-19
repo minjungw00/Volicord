@@ -160,7 +160,7 @@ def validate_response(plan, response):
         raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; prepared response capacity {capacity}; preserve grounding and seek Product support for this evidence shape')
     if (not isinstance(response, dict) or set(response) != {'format_kind', 'format_version',
             'plan_fingerprint', 'language', 'generator', 'paragraphs'}
-            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 4
+            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 5
             or response['plan_fingerprint'] != plan['fingerprint']
             or response['language'] != plan['requested_language']):
         raise api().CampaignError('explanation response format/plan/language mismatch')
@@ -171,7 +171,7 @@ def validate_response(plan, response):
                 for k in ('agent', 'model'))):
         raise api().CampaignError('invalid self-reported explanation generator')
     paragraphs, keys = response['paragraphs'], {e['key'] for e in plan['evidence']}
-    allowed = ((WORK_QUESTIONS | {'observation', 'comparison', 'reading_point'}) if plan['subject']['kind'] == 'work' else DECISION_QUESTIONS) | {'heading', 'synopsis', 'limits'}
+    allowed = ((WORK_QUESTIONS | {'observation', 'comparison', 'reading_point', 'flow_step'}) if plan['subject']['kind'] == 'work' else DECISION_QUESTIONS) | {'heading', 'synopsis', 'limits', 'section_heading', 'narrative', 'comparison_condition', 'comparison_result'}
     if (not isinstance(paragraphs, list) or not paragraphs
             or any(not isinstance(p, dict) or set(p) != {'question', 'text', 'evidence_keys', 'citations'}
                 or p['question'] not in allowed or not isinstance(p['text'], str) or not p['text'].strip()
@@ -180,6 +180,14 @@ def validate_response(plan, response):
                 or not all(isinstance(k, str) and k in keys for k in p['evidence_keys']) for p in paragraphs)
             or any(not isinstance(p.get('citations'), list) for p in paragraphs)):
         raise api().CampaignError('explanation required claims/grounding missing or malformed')
+
+    for index, paragraph in enumerate(paragraphs):
+        role = paragraph['question']
+        if ((role == 'comparison_condition' and (index + 1 == len(paragraphs) or paragraphs[index + 1]['question'] != 'comparison_result'))
+                or (role == 'comparison_result' and (index == 0 or paragraphs[index - 1]['question'] != 'comparison_condition'))):
+            raise api().CampaignError('comparison requires adjacent condition/result fragments')
+        if role in {'heading', 'section_heading'} and len(paragraph['text']) > 240:
+            raise api().CampaignError('article heading exceeds Product bound')
 
 
 def validate_lifecycle(preparation, response, receipt, after):
@@ -284,7 +292,7 @@ def reader_applicability(plan, response=None, *, source_reads=(), origin='post_s
     if response is not None:
         # Current format/bindings only. Historical bytes remain immutable and can
         # still supply record/presentation evidence without becoming a replay.
-        if response.get('format_kind') != 'volicord_explanation' or response.get('format_version') != 4:
+        if response.get('format_kind') != 'volicord_explanation' or response.get('format_version') != 5:
             claims['article'] = result('unsupported', 'non_current_explanation_format')
         else:
             validate_response(plan, response)

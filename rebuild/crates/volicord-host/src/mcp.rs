@@ -52,7 +52,7 @@ use volicord_projections::{
     UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingWork,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 23] = [
+pub const HOST_TOOL_NAMES: [&str; 24] = [
     "project_resolve",
     "project_initialize",
     "project_health",
@@ -61,6 +61,7 @@ pub const HOST_TOOL_NAMES: [&str; 23] = [
     "repository_analyze",
     "work_source",
     "work_explanation",
+    "decision_explanation",
     "engineering_choice_discovery",
     "materiality_review",
     "learning_deliberation",
@@ -124,7 +125,7 @@ pub struct HostAdapter {
 
 struct HostExplanationRequest {
     project: ProjectId,
-    work: ContextItemId,
+    subject: ExplanationSubject,
     language: String,
     fingerprint: String,
     retrieved: BTreeSet<(String, String)>,
@@ -212,7 +213,7 @@ impl HostAdapter {
                 "repository_understanding" => self.repository_understanding(&arguments),
                 "repository_analyze" => self.repository_analyze(&arguments),
                 "work_source" => self.work_source(&arguments),
-                "work_explanation" => self.work_explanation(&arguments),
+                "work_explanation" | "decision_explanation" => self.work_explanation(&arguments),
                 "engineering_choice_discovery" => self.engineering_choice_discovery(&arguments),
                 "materiality_review" => self.materiality_review(&arguments),
                 "learning_deliberation" => self.learning_deliberation(&arguments),
@@ -235,6 +236,7 @@ impl HostAdapter {
         match result {
             Ok(value)
                 if name == "work_explanation"
+                    || name == "decision_explanation"
                     || (name == "repository_understanding"
                         && (arguments["reading_focus"] == "repository_explanation"
                             || value["repository_explanation"]["explanation_state"]
@@ -1584,8 +1586,14 @@ impl HostAdapter {
         self.explanation_requests
             .retain(|_, r| r.started.elapsed() < std::time::Duration::from_secs(1800));
         let project = project(args)?;
-        let work = parse_context_item(required_str(args, "work_item_id")?)?;
-        let subject = ExplanationSubject::Work(work);
+        let subject = if args.get("decision_id").is_some() {
+            ExplanationSubject::Decision(DecisionId::from_bytes(parse_identity(required_str(
+                args,
+                "decision_id",
+            )?)?))
+        } else {
+            ExplanationSubject::Work(parse_context_item(required_str(args, "work_item_id")?)?)
+        };
         match required_str(args, "action")? {
             "prepare" | "generate" => {
                 let language = required_str(args, "language")?;
@@ -1593,10 +1601,13 @@ impl HostAdapter {
                     .operations
                     .prepare_explanation(project, subject, language)
                     .map_err(operation_error)?;
-                let manifest = self
-                    .operations
-                    .explanation_source_manifest(project, work)
-                    .map_err(operation_error)?;
+                let manifest = match subject {
+                    ExplanationSubject::Work(work) => self
+                        .operations
+                        .explanation_source_manifest(project, work)
+                        .map_err(operation_error)?,
+                    _ => json!({"scope":"recorded_decision_only", "body_authority":"not_granted"}),
+                };
                 let mut result = json!({"plan":plan,"source_inventory":manifest,"generation_status":"not_requested",
                     "read_only":true,"semantic_approval":"not_established"});
                 if args["action"] == "generate" {
@@ -1608,12 +1619,15 @@ impl HostAdapter {
                     result["generation_id"] = json!(request_id.clone());
                     result["host_session_correlation"] = json!(self.host_session);
                     result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Read plan.instructions and question_grounding: every paragraph needs genuinely supporting prepared canonical evidence_keys and the question's required key relationship, independently of Source citations. Discover existing Source copies in source_inventory; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Author a distinct heading and synopsis connecting the problem, actual approach and supported outcome; then write reader narrative. Use compose with this generation_id and a host-authored draft to derive mechanical citation bindings. Record the composed realization. A fresh record-only document can omit unavailable technical detail; technical claims keep their Source dependencies. A no-change investigation is not a patch. Host transmission authorization is separate from this canonical plan; missing plan data establishes neither consent nor its absence. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
+                    if matches!(subject, ExplanationSubject::Decision(_)) {
+                        result["next_action"] = json!("The authorized active host authors a reader-directed Decision article from this exact plan: question context, actual alternatives/consequences, recorded recommendation and recommendation rationale, distinct user choice and only recorded user rationale, applicability and qualified later interpretation. Use section_heading/narrative in useful order; no compulsory empty sections. Technical Source unavailability limits independent verification, not the retained recommendation. Compose then record with this generation_id. No Work Source authority or automatic model dispatch is granted; host/access failure remains incomplete.");
+                    }
                     explanation_tool_result(result.clone())?;
                     self.explanation_requests.insert(
                         request_id,
                         HostExplanationRequest {
                             project,
-                            work,
+                            subject,
                             language: language.into(),
                             fingerprint: plan.fingerprint.clone(),
                             retrieved: BTreeSet::new(),
@@ -1633,9 +1647,12 @@ impl HostAdapter {
                             "explanation request unavailable or expired; explicitly generate again",
                         )
                     })?;
-                if request.project != project || request.work != work {
+                if request.project != project || request.subject != subject {
                     return Err(HostError::new("explanation request Project/Work mismatch"));
                 }
+                let ExplanationSubject::Work(work) = subject else {
+                    return Err(HostError::new("Decision does not grant Work Source access"));
+                };
                 let source = parse_source(required_str(args, "source_id")?)?;
                 let read = self
                     .operations
@@ -1657,7 +1674,7 @@ impl HostAdapter {
                         "explanation request unavailable or expired; explicitly generate again",
                     )
                 })?;
-                if request.project != project || request.work != work {
+                if request.project != project || request.subject != subject {
                     return Err(HostError::new("explanation request Project/Work mismatch"));
                 }
                 let composing = args["action"] == "compose";
@@ -1672,9 +1689,16 @@ impl HostAdapter {
                             "explanation request preparation/language mismatch",
                         ));
                     }
-                    self.operations
-                        .compose_work_explanation(project, work, draft)
-                        .map_err(operation_error)?
+                    match subject {
+                        ExplanationSubject::Work(work) => self
+                            .operations
+                            .compose_work_explanation(project, work, draft),
+                        ExplanationSubject::Decision(decision) => self
+                            .operations
+                            .compose_decision_explanation(project, decision, draft),
+                        _ => return Err(HostError::new("unsupported article subject")),
+                    }
+                    .map_err(operation_error)?
                 } else {
                     serde_json::from_value(args["realization"].clone())
                         .map_err(|_| HostError::new("invalid host explanation realization"))?
@@ -1713,7 +1737,7 @@ impl HostAdapter {
                     .delete_explanations(project, subject)
                     .map_err(operation_error)?;
                 self.explanation_requests
-                    .retain(|_, r| r.project != project || r.work != work);
+                    .retain(|_, r| r.project != project || r.subject != subject);
                 Ok(json!({"deleted":deleted,"canonical_mutated":false}))
             }
             _ => Err(HostError::new("unsupported explanation action")),
@@ -2719,6 +2743,30 @@ fn work_explanation_schema() -> Value {
         object_schema(delete,&["action","project_id","work_item_id"])]})
 }
 
+fn decision_explanation_schema() -> Value {
+    let mut schema = work_explanation_schema();
+    if let Some(variants) = schema["oneOf"].as_array_mut() {
+        variants.retain(|v| v["properties"]["action"]["enum"] != json!(["read_source"]));
+        for variant in variants {
+            if let Some(properties) = variant["properties"].as_object_mut() {
+                properties.remove("work_item_id");
+                properties.insert(
+                    "decision_id".into(),
+                    identity_schema("Exact recorded Decision"),
+                );
+            }
+            if let Some(required) = variant["required"].as_array_mut() {
+                for key in required {
+                    if *key == "work_item_id" {
+                        *key = json!("decision_id");
+                    }
+                }
+            }
+        }
+    }
+    schema
+}
+
 fn file_byte_range_schema() -> Value {
     let mut schema = object_schema(
         vec![
@@ -2800,6 +2848,11 @@ fn explanation_realization_schema() -> Value {
                 enum_schema(
                     "Reader-unit role listed in plan.question_grounding; author supported sections without filler. Heading/synopsis are derived wording; observation/comparison/reading_point need exact citations; recommendation belongs only to Decision",
                     &[
+                        "section_heading",
+                        "narrative",
+                        "comparison_condition",
+                        "comparison_result",
+                        "flow_step",
                         "heading",
                         "synopsis",
                         "observation",
@@ -3192,6 +3245,11 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
         "work_explanation" => (
             "On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected bodies with read_source, follows plan.instructions and question_grounding to select genuinely supporting canonical evidence_keys for EVERY paragraph alongside exact Source citations, and records its prose. Source citations never replace canonical keys; goal is not generic evidence for technical claims. Host-level transmission authorization is outside canonical Work facts: missing plan data does not prove absent consent. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
             work_explanation_schema(),
+            ToolBehavior::DestructiveClosed,
+        ),
+        "decision_explanation" => (
+            "Explicit active-host Decision article preparation, generation request, composition, retention or deletion. Uses the recorded choice, alternatives, recommendation and its recorded rationale separately from optional user rationale. Missing supporting Source does not erase a recorded reason. No Work Source-body authority, inferred user choice or automatic model invocation. Same exact-version and whole-article grounding/retention barriers as Work.",
+            decision_explanation_schema(),
             ToolBehavior::DestructiveClosed,
         ),
         "canonical_mutate" => (

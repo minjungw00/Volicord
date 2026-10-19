@@ -437,6 +437,9 @@ pub(super) fn work_reading_heading(
 
 fn answer_title<'a>(question: &str, locale: ViewerLocale) -> &'a str {
     match question {
+        "SectionHeading" | "Narrative" | "FlowStep" => text(locale, "Article", "설명"),
+        "ComparisonCondition" => text(locale, "Condition", "조건"),
+        "ComparisonResult" => text(locale, "Result", "결과"),
         "Heading" => text(locale, "Work heading · interpretation", "작업 제목 · 해석"),
         "Synopsis" => text(locale, "Synopsis", "요약"),
         "Observation" => text(locale, "Observations", "관측과 범위"),
@@ -500,9 +503,20 @@ fn reader_unit(
     index: usize,
 ) {
     let answer = &answers.prose[index];
-    html.push_str(&format!("<div class=\"unit\" id=\"{}\" tabindex=\"-1\"><p class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</p>",reader_claim_anchor(answers,index),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
+    let outer = match answer.question.as_str() {
+        "ComparisonCondition" => "dt",
+        "ComparisonResult" => "dd",
+        "FlowStep" => "li",
+        _ => "div",
+    };
+    let tag = if answer.question == "SectionHeading" {
+        "h2"
+    } else {
+        "p"
+    };
+    html.push_str(&format!("<{outer} class=\"unit reading-section\" id=\"{}\" tabindex=\"-1\"><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
     reader_citations(html, r, answers, index);
-    html.push_str("</div>");
+    html.push_str(&format!("</{outer}>"));
 }
 pub(super) fn render_answers(
     html: &mut String,
@@ -661,57 +675,37 @@ fn render_document(
         "</nav><div id=\"{}\" tabindex=\"-1\">",
         document_anchor(answers, "reading")
     ));
-    let mut previous: Option<&str> = None;
-    let mut comparison_ordinal = 0;
+    let mut flow_open = false;
     for (index, answer) in answers
         .prose
         .iter()
         .enumerate()
         .filter(|(_, a)| !matches!(a.question.as_str(), "Heading" | "Synopsis" | "Limits"))
     {
-        // Work prose follows authored reader order, not one section per record role.
-        let section_role = if work.is_some()
-            && !matches!(answer.question.as_str(), "Comparison" | "ExpectedEffect")
-        {
-            "WorkNarrative"
-        } else {
-            answer.question.as_str()
-        };
-        if previous != Some(section_role) {
-            if previous == Some("Comparison") {
-                html.push_str("</div>");
-            }
-            if previous.is_some() {
-                html.push_str("</section>");
-            }
-            html.push_str("<section class=\"reading-section\">");
-            if current && section_role != "WorkNarrative" {
-                heading(html, 2, answer_title(&answer.question, r.locale));
-            }
-            if answer.question == "Comparison" {
-                html.push_str("<div class=\"comparisons\">");
-                comparison_ordinal = 0;
-            }
-            previous = Some(section_role);
+        if answer.question != "FlowStep" && flow_open {
+            html.push_str("</ol>");
+            flow_open = false;
+        }
+        if answer.question == "FlowStep" && !flow_open {
+            html.push_str("<ol class=\"article-flow\">");
+            flow_open = true;
+        }
+        if answer.question == "ComparisonCondition" {
+            html.push_str("<dl class=\"comparison-card\">");
         }
         if answer.question == "Comparison" {
-            comparison_ordinal += 1;
-            html.push_str(&format!(
-                "<div class=\"comparison-card\"><p class=\"serial\">{} {:02}</p>",
-                text(r.locale, "Observation", "관측"),
-                comparison_ordinal
-            ));
+            html.push_str("<div class=\"comparisons\"><div class=\"comparison-card\">");
         }
         reader_unit(html, r, answers, index);
         if answer.question == "Comparison" {
-            html.push_str("</div>");
+            html.push_str("</div></div>");
+        }
+        if answer.question == "ComparisonResult" {
+            html.push_str("</dl>");
         }
     }
-    if previous == Some("Comparison") {
-        html.push_str("</div>");
-    }
-    if previous.is_some() {
-        html.push_str("</section>");
+    if flow_open {
+        html.push_str("</ol>");
     }
     html.push_str("</div>");
     if has_limits {

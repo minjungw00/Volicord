@@ -278,11 +278,20 @@ fn explanation_command(kind: &'static str) -> Command {
                         .arg(subject()),
                 ),
         );
-    if kind == "work" {
-        command = command.mut_subcommand("explain", |explain| explain.subcommand(
-            Command::new("compose").about("Bind a host-authored Work name, summary and narrative; no generation or retention")
-                .arg(subject()).arg(path_arg("input", "input", "Host-authored Work draft JSON").required(true))));
-        command = command.subcommand(work_source_command());
+    if kind == "work" || kind == "decision" {
+        command = command.mut_subcommand("explain", |explain| {
+            explain.subcommand(
+                Command::new("compose")
+                    .about("Bind a host-authored article; no generation or retention")
+                    .arg(subject())
+                    .arg(
+                        path_arg("input", "input", "Host-authored Work draft JSON").required(true),
+                    ),
+            )
+        });
+        if kind == "work" {
+            command = command.subcommand(work_source_command());
+        }
     }
     command
 }
@@ -1016,19 +1025,33 @@ fn dispatch_explanation_action(
         ),
     };
     match action {
-        "compose" if kind == "work" => {
-            let volicord_projections::ExplanationSubject::Work(work) = subject else {
-                return Err(Error::new("Work subject required"));
-            };
+        "compose" => {
             let draft = serde_json::from_value(read_explanation_input(args)?)
-                .map_err(|_| Error::new("invalid host-authored Work draft"))?;
+                .map_err(|_| Error::new("invalid host-authored article draft"))?;
+            let realization = match subject {
+                volicord_projections::ExplanationSubject::Work(work) => {
+                    operations.compose_work_explanation(project, work, draft)?
+                }
+                volicord_projections::ExplanationSubject::Decision(decision) => {
+                    operations.compose_decision_explanation(project, decision, draft)?
+                }
+                _ => return Err(Error::new("Work or Decision subject required")),
+            };
             Ok(
-                json!({"operation":"work_explanation_compose", "realization":operations.compose_work_explanation(project,work,draft)?}),
+                json!({"operation":format!("{kind}_explanation_compose"), "realization":realization}),
             )
         }
-        "prepare" => Ok(
-            json!({"operation":"explanation_prepare", "plan":operations.prepare_explanation(project,subject,required(args,"language")?)?}),
-        ),
+        "prepare" => {
+            let plan =
+                operations.prepare_explanation(project, subject, required(args, "language")?)?;
+            let inventory = match subject {
+                volicord_projections::ExplanationSubject::Work(work) => {
+                    operations.explanation_source_manifest(project, work)?
+                }
+                _ => json!({"scope":"recorded_decision_only","body_authority":"not_granted"}),
+            };
+            Ok(json!({"operation":"explanation_prepare", "plan":plan,"source_inventory":inventory}))
+        }
         "record" => {
             let file = std::fs::File::open(required_path(args, "input")?)
                 .map_err(|e| Error::with_source("cannot open generated response", e))?;

@@ -455,7 +455,7 @@ evidence; no generated Product wording is checked into these design owners.
 
 ### Implementation choices for the first Product path
 
-Use the existing single current v4 managed reader document. A fresh record-only
+Use the single current v5 managed reader document with authored sections, narrative, comparisons and flow labels. A fresh record-only
 document may contain an independently authored name, summary and record-grounded
 narrative with no technical Source claim. Unavailable detailed code cannot prevent
 that production. A technical claim must retain its actual Source dependency. This
@@ -526,3 +526,16 @@ meaning, Inquiry owns recorded reasons, Privacy owns collection/inspection autho
 Versioning owns actual format changes, and Validation owns campaign admission.
 Current, unknown, pending and blocked are independent conditions, never synonyms
 for absent data or completed acceptance.
+
+### Flexible article implementation evidence
+
+Current v5 composition and reading implement authored section names/order rather
+than obligatory question headings. Host `work_explanation` and
+`decision_explanation` controls exercise the public generation-request, composition,
+record and read interfaces; they are authored validation controls, not actual model
+generation. Label-only Source dependence invalidates the whole article. Existing
+recorded recommendation rationale survives separately from absent user reason.
+AC-17/18 real semantic adequacy and AC-23 genuine prospective capture remain
+unestablished without current trusted host activation and source authority; no
+historical or authored control replaces those positives. Human comprehension is
+unobserved. The independent verification responsibility remains separately tested.

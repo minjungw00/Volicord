@@ -67,7 +67,7 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
     reserve = e.retention_metadata_bytes(plan)
     plan['retention_budget'] = {'response_byte_limit': e.RESPONSE_BYTE_LIMIT, 'retained_byte_limit': e.RETAINED_BYTE_LIMIT,
         'metadata_byte_reserve': reserve, 'response_byte_capacity': min(e.RESPONSE_BYTE_LIMIT, e.RETAINED_BYTE_LIMIT - reserve)}
-    response = {'format_kind': 'volicord_explanation', 'format_version': 4,
+    response = {'format_kind': 'volicord_explanation', 'format_version': 5,
         'plan_fingerprint': plan['fingerprint'], 'language': language,
         'generator': {'host': 'authored fixture', 'session': 'fixture-only', 'agent': None, 'model': None},
         'paragraphs': [{'question': q, 'text': '구조 검사 예제입니다.' if language == 'ko' else 'Structural example only.',
@@ -277,7 +277,7 @@ class ReaderApplicabilityTests(unittest.TestCase):
         self.assertEqual(value['article']['state'], 'unsupported')
         self.assertEqual(value['record_reading']['state'], 'eligible_for_assessment')
         self.assertEqual(response['format_version'], 2)
-        self.assertEqual(original['format_version'], 4)
+        self.assertEqual(original['format_version'], 5)
 
     def test_campaign_inspection_consumes_applicability_without_rewriting_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:

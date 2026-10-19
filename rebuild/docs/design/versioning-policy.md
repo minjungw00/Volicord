@@ -294,7 +294,7 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 ### Shared explanation content
 
 Retained Work/Decision/repository explanation JSON inside the existing managed CachedSummary store
-has format kind `volicord_explanation` and exact current format version 4
+has format kind `volicord_explanation` and exact current format version 5
 in its realization header. Record/read check that header before typed domain
 decode. Non-current content is Unsupported and its prose is withheld; malformed
 current content is Corrupt. Explicit delete and preparation/generation from current
@@ -303,12 +303,12 @@ The enclosing privacy SQL schema, canonical schema, portable bundle, Analysis Sn
 formats do not change; generated-document metadata is current version 10. A preparation fingerprint binds evidence
 and language; it is neither a format version nor an authenticity certificate.
 
-Explanation format 4 uses one reader-unit envelope (`question`, `text`,
+Explanation format 5 uses one reader-unit envelope (`question`, `text`,
 `evidence_keys`, `citations`) for authored heading, synopsis, narrative, observation,
 comparison, critical limits and reading-point guidance. All units share exhaustive
 validation, retrieval/dependency traversal, retention, budgeting and output identity.
 There is no alternate title, table-cell, relation-label or guidance store. The current
-vocabulary has no nested generated fields; adding any requires extending this common
+vocabulary adds section_heading, narrative, adjacent comparison_condition/comparison_result and flow_step units. Section names and order are authored; evidence roles do not prescribe screen headings. Each heading, cell, flow label and reading point is a complete flat grounded unit. The vocabulary has no nested generated fields; adding any requires extending this common
 traversal. Partial documents omit unavailable sections without filler. Heading and
 synopsis are each optional singleton authored units; without them consumers preserve
 original facts rather than extracting a title/result from another paragraph.
@@ -401,7 +401,7 @@ selected analysis and repository dependencies.
 ### Reader identity production and event projection
 
 The [reader experience](reader-experience-design.md) first path retains current
-explanation v4 with its exhaustive reader-unit traversal and whole-realization
+explanation v5 with its exhaustive reader-unit traversal and whole-realization
 validity. Ephemeral Work composition adds no retained decoder or parallel store.
 Canonical revision-1 event read metadata is derived from existing revision history;
 it changes no canonical SQL or portable format. No numeric version is raised for

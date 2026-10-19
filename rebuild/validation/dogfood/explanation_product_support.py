@@ -47,7 +47,7 @@ def run(config):
                 work_keys = {'purpose': 'goal', 'reported_change': 'result' if 'result' in offered else 'goal',
                     'expected_effect': 'result' if 'result' in offered else 'goal',
                     'verification': 'verification' if 'verification' in offered else 'goal', 'next_step': 'next_step'}
-                response = {'format_kind': 'volicord_explanation', 'format_version': 4,
+                response = {'format_kind': 'volicord_explanation', 'format_version': 5,
                     'plan_fingerprint': plan['fingerprint'], 'language': p['language'],
                     'generator': {'host': 'structural-support', 'session': 'self-authored', 'agent': None, 'model': None},
                     'paragraphs': [{'question': q, 'text': '구조 검증 예제.' if p['language'] == 'ko' else 'Structural support example.',
