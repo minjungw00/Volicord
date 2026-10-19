@@ -407,6 +407,13 @@ selected analysis and repository dependencies.
 
 ### Reader identity production and event projection
 
+Source-first authoring guidance and shared section grouping change preparation
+fingerprints and may make earlier explanations Stale. Fresh generation/admission
+is required; old prose is never rebound. Section metadata consists only of indices
+into the admitted flat stream and reading layers. No retained field, canonical
+meaning, decoder or numeric format changes. Empty section headings now fail the
+same shared structural validation on compose, record and current read.
+
 The [reader experience](reader-experience-design.md) first path retains current
 explanation v6 with exhaustive reader-unit traversal and independent Work
 name/summary/article publication validity. Ephemeral Work composition adds no retained decoder or parallel store.

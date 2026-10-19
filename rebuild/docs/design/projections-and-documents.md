@@ -2051,6 +2051,19 @@ and a missing Checkpoint cannot manufacture attempts, verification or Decision.
 
 ### Flexible article production
 
+Preparation now gives the authorized host a source-first editorial pass: identify
+missing explanatory steps, organize actual topics, author useful section headings
+and read each causal bridge against original evidence. Short single-topic answers
+can stay unheaded; neither section counts nor enum order establish adequacy.
+The shared `article_sections` contract groups exact original unit indices into
+article, verification and limits layers. A heading introduces the next content
+unit; layer changes end a group. Empty/consecutive headings and headings followed
+by a title/synopsis are rejected before retention. All labels remain ordinary
+grounded units, with their existing complete dependency traversal. The ephemeral
+public `sections` read metadata contains only indices/layers, never new prose.
+It neither synthesizes missing headings nor makes unstructured prose semantically
+approved. General admission still allows truthful short/partial content.
+
 The exact-current v6 reader stream adds `section_heading` and `narrative`, paired
 `comparison_condition` / `comparison_result`, and cited `flow_step` fragments.
 Each fragment uses the existing question/text/evidence_keys/citations envelope,

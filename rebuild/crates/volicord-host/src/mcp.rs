@@ -3020,7 +3020,7 @@ fn work_explanation_draft_schema() -> Value {
         properties.remove("format_version");
     }
     schema["required"] = json!(["plan_fingerprint", "language", "generator", "paragraphs"]);
-    schema["description"] = json!("New host-authored Work content; one heading and synopsis required. No prior-output salvage.");
+    schema["description"] = json!("New host-authored content from original evidence. Follow plan.instructions: author task-specific section_heading and supporting units in reader order; short single-topic answers may be unheaded. No empty headings or fixed enum template. Article composition requires one heading and synopsis; independent name/summary scope requires only its own unit. No prior-output salvage.");
     let paragraph = &mut schema["properties"]["paragraphs"]["items"];
     if let Some(properties) = paragraph["properties"].as_object_mut() {
         properties.remove("citations");

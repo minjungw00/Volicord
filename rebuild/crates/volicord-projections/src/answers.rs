@@ -128,6 +128,8 @@ pub struct QuestionAnswers {
     pub evidence_index: Vec<ReaderEvidenceEntry>,
     pub cautions: Vec<ReadingCaution>,
     pub prose: Vec<QuestionAnswer>,
+    /// Derived grouping only; indices refer to this exact admitted prose stream.
+    pub sections: Vec<crate::ArticleSection>,
     pub facts: Vec<QuestionAnswer>,
     pub explanation_state: ExplanationState,
     pub diagnostic: Option<String>,
@@ -305,6 +307,11 @@ pub fn explanation_answers(
             Vec::new()
         },
         cautions: Vec::new(),
+        sections: current
+            .and_then(|e| {
+                crate::article_sections(e.realization.generated_units().map(|p| p.question)).ok()
+            })
+            .unwrap_or_default(),
         prose,
         facts: Vec::new(),
         explanation_state: state,

@@ -3079,7 +3079,15 @@ public Decision preparation/read, preserving the original bytes and absent user 
 
 ### Flexible technical article controls
 
-Exact-current explanation v5 uses independently grounded flat editorial fragments,
+Focused article production also exercises a shared section/layer index with exact
+original unit positions, short unheaded content and rejection of empty/consecutive
+headings. Host composition/record tests retain label-only Source dependency while
+requiring actual section content. Evidence-heavy preparation stays within existing
+budgets by consolidating guidance; no limit increase or evidence truncation is
+permitted. These are structural checks, distinct from inspecting current-host
+source-rich/no-change readbacks and from independent or human acceptance.
+
+Exact-current explanation v6 uses independently grounded flat editorial fragments,
 with whole-realization lifecycle. Focused Host `work_explanation`,
 `decision_explanation`, `mcp` and `answer_consumers`, Operations `explanation_cli`,
 `cli_work_sources`, `explanation_budgets` and `repository_explanation`, Viewer

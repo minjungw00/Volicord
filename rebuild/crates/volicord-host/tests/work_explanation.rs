@@ -1871,6 +1871,9 @@ fn editorial_fragments_are_grounded_before_public_read_and_cannot_survive_source
             paragraphs.push(fragment("comparison_result", "The function body returns the literal 7; this is a source reading, not an execution."));
         } else {
             paragraphs.push(fragment(role, "Reading the constant return"));
+            if role == "section_heading" {
+                paragraphs.push(json!({"question":"narrative","text":"This investigation has no observed execution.","evidence_keys":["goal"],"sources":[]}));
+            }
         }
         let mut args = f.args("compose");
         args["generation_id"] = generation["generation_id"].clone();
@@ -1902,9 +1905,16 @@ fn editorial_fragments_are_grounded_before_public_read_and_cannot_survive_source
     args["draft"] = json!({"plan_fingerprint":generation["plan"]["fingerprint"],"language":"en","generator":{"host":"test","session":"label-only","agent":null,"model":null},"paragraphs":[
         {"question":"heading","text":"Inspect a return","evidence_keys":["goal"],"sources":[]},
         {"question":"synopsis","text":"A no-change investigation; no command was observed.","evidence_keys":["goal"],"sources":[]},
-        {"question":"section_heading","text":"The constant return","evidence_keys":["goal"],"sources":[{"source_id":f.source.to_string(),"field":"body","use_kind":"current_code","start_byte":0,"end_byte":25,"claim":null}]}]});
+        {"question":"section_heading","text":"The constant return","evidence_keys":["goal"],"sources":[{"source_id":f.source.to_string(),"field":"body","use_kind":"current_code","start_byte":0,"end_byte":25,"claim":null}]},
+        {"question":"narrative","text":"No execution was observed in this investigation.","evidence_keys":["goal"],"sources":[]}]});
     let composed = success(&mut f.host, args)?;
     let response: ExplanationRealization = serde_json::from_value(composed["realization"].clone())?;
+    // A heading-only skeleton is not an authored section. Rejection is atomic;
+    // the same valid generation request remains usable after correction.
+    let mut empty = response.clone();
+    empty.paragraphs.pop();
+    let bad = f.record_args(&generation, &empty)?;
+    assert_eq!(call(&mut f.host, bad)["result"]["isError"], true);
     let args = f.record_args(&generation, &response)?;
     success(&mut f.host, args)?;
     f.host

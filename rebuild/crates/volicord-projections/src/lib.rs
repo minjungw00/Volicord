@@ -8,6 +8,8 @@ mod code_behavior;
 pub use code_behavior::{CodeBehaviorClaim, CodeBehaviorReading, CodeExplanationState};
 mod answers;
 pub use answers::*;
+mod article;
+pub use article::*;
 mod analysis_status;
 pub use analysis_status::*;
 mod candidate_inspection;

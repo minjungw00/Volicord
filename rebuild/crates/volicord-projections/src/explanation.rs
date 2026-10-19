@@ -19,6 +19,10 @@ pub const EXPLANATION_RETAINED_BYTE_LIMIT: usize = 147_456;
 pub const EXPLANATION_INPUT_BYTE_LIMIT: usize = 65_536;
 const GENERATOR_IDENTITY_STATUS: &str = "self_reported_not_independently_verified";
 
+/// One authoring contract for CLI/MCP preparation, independent of transport.
+/// These are investigation obligations, never prewritten subject answers.
+const ARTICLE_AUTHORING: &str = "Read original sources first. Identify missing explanatory steps and group actual topics with section_heading followed by supporting narrative/comparison/flow. Use useful authored headings at topic changes, not an undifferentiated multi-topic paragraph stream. Short single-topic answers may be unheaded; no fixed names, count or enum order. No empty headings. Explain conditions -> relevant implementation -> consequence. Distinguish structural inference, recorded rationale and observed execution. Corrections need evidenced symptom/conditions, cause, actual modification, mechanism and positive/negative consequences. Missing before-state remains unknown. No-change/preferences invent no cause, patch, retry, tests or Decision. Write a concise lead and substantive prose without repeating the card or 'the user asked'/'the report says'. Localize material uncertainty; consolidate equivalent cautions. Use verification/limits roles for separate reading layers; a layer change ends a section. Read claims against exact Sources before compose. Admission is not semantic or human approval.";
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExplanationRetentionBudget {
@@ -625,14 +629,14 @@ fn finish_plan(
     let questions = match subject {
         ExplanationSubject::WorkName(_) => "Author exactly one heading naming this Work from its original Goal. Describe the requested problem/action, never claim an implementation or successful outcome. No technical Source is needed for a request-grounded name.",
         ExplanationSubject::WorkSummary(_) => "Author exactly one synopsis connecting the Goal problem to the actually reported approach/outcome. When result exists cite result as well as goal; preserve partial, failed and unchanged outcomes. Without result describe only the request and unreported outcome. Canonical reports establish reported meaning, not current-code verification. Any implementation claim beyond the report needs its own permitted Source citations. This is an independently admitted summary, not an extract of an article.",
-        ExplanationSubject::Work(_) => "Author heading/synopsis and an article explaining supported problem, mechanism, actual change/investigation and outcome/limits. Summarize command outcomes in natural prose with precise Source citations; keep complete JSON reports and execution logs in Source inspection, not repeated in the article. Quote only short diagnostic excerpts needed to explain a result. Read permitted callers/helpers/config/tests. Omit invented cause, attempt, implementation, Decision and retest; no-change is not a patch. Read course/change history chronologically; later reports never erase earlier events or resolve silent limits. Paths and generic completion prose prove no feature or effect.",
+        ExplanationSubject::Work(_) => "Author heading/synopsis and a task-specific article from goal, reported result/change:*, chronological course:* history, verification, next_step and limits:*. Reports establish no code mechanism. Read permitted callers/helpers/config/tests; paths alone prove no effect. Summarize command outcomes with citations; raw logs/JSON stay in Source inspection. Later reports never erase earlier failures or prove a retest.",
         ExplanationSubject::Repository(_) => "Explain what this repository does, its major responsibilities, why their separation is supported or inferred, one complete representative operation across boundaries, and material unverified coverage. Use purpose, observation, reading_point and limits with meaningful Source citations. Do not invent Work, Checkpoints, canonical Purpose, execution or recorded rationale. Inventory/structural coverage is not complete semantic understanding. repository_basis supports scope, identity and limitations; technical meaning needs actual retrieved Source evidence.",
         ExplanationSubject::Decision(_) => "Explain question_context, alternatives/consequences, recorded recommendation AND its rationale, actual user choice/delegation and only recorded user_rationale, scope/assumptions/revisit limits. Distinguish later interpretation. Missing technical Source limits verification, never erases recorded reasons. Selection proves no implementation or performance. Invent no user reason.",
     };
     let question_grounding = question_grounding(subject, &evidence);
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
-        instructions:format!("{questions} Author requested-language section_heading/narrative in reader order; no compulsory sections. Adjacent comparison_condition/comparison_result fragments need independent evidence. Each heading, cell, flow_step and reading_point shares full grounding/lifecycle; no untracked strings. Every unit needs exact prepared evidence_keys satisfying question_grounding; citations supplement keys, never replace them. goal=request; result/change:*=reported change; verification=checks; next_step/course:*=recorded direction; limits:*=limits. No reports means no established result. observation/comparison/flow_step/reading_point need citations. Read relevant permitted callers/callees/config/tests; missing before/attempt/runtime/retest remains unknown. Explain supported mechanism directly and qualify inferred effects locally; invent no intent, user reason, Decision or Learning. Reports, state, execution, checks, review and acceptance differ; earlier checks do not cover later changes. Missing Checkpoint is not absent instructions. Host authority is external to this plan; missing data is unknown, not denial or consent. Return current ExplanationRealization version {EXPLANATION_VERSION}, exact fingerprint/language, self-reported host/session/agent/model (unknown null), paragraphs question/text/evidence_keys/citations. Product compose derives Source/revision/absolute UTF-8 range/line/hash and claim bindings from permitted selections. Reject ambiguous claims. Preserve conflicts and uncertainty; structural admission is not semantic approval."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
+        instructions:format!("{questions} Every unit needs exact evidence_keys satisfying question_grounding; citations supplement keys. Adjacent comparison_condition/result each need grounding. Observation/comparison/flow_step/reading_point require citations. All generated units share validation and lifecycle. Reports, state, execution, review and acceptance differ; earlier checks cannot cover later changes. Use requested language, current format {EXPLANATION_VERSION}, exact fingerprint and self-reported generator (unknown model null). Product compose derives Source/claim UTF-8 coordinates and hashes. Host authority is external: missing data is neither denial nor consent. Preserve uncertainty; admission is not semantic approval. Return paragraphs question/text/evidence_keys/citations."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
             retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
     if matches!(subject, ExplanationSubject::Repository(_)) {
         plan.instructions = format!("{questions} Every unit needs exact prepared evidence_keys. All roles are optional; use heading/synopsis/purpose/observation/reading_point/limits in reader order. Every non-limits unit needs retrieved current_code citations; scope-only limits may cite repository_basis. Preserve uncertainty and distinguish recorded Project Purpose from inference. Use the requested language and self-reported host/session/agent/model; unknown model stays null. Return the current ExplanationRealization format version {EXPLANATION_VERSION}, exact plan fingerprint/language and paragraphs. Product compose derives Source/claim UTF-8 coordinates and hashes from selected ranges; valid bindings are not entailment or semantic approval. No background dispatch or consent is created.");
@@ -642,6 +646,15 @@ fn finish_plan(
         ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
     ) {
         plan.instructions = format!("{questions} Use the requested language, exact current fingerprint and format {EXPLANATION_VERSION}, and self-reported host/session/agent/model (unknown model null). Every unit needs the exact prepared evidence keys required above. Source/claim coordinates and hashes are bound by explicit compose from permitted selections. Never extract, relabel or rebind an earlier article or other publication. Record only this scope; sibling publications have separate provenance and validity. Structural admission establishes no semantic approval, verification or acceptance. Host authority is external; preparation grants no transmission or background permission. Ordinary reads never generate.");
+    }
+    if matches!(
+        subject,
+        ExplanationSubject::Work(_)
+            | ExplanationSubject::Decision(_)
+            | ExplanationSubject::Repository(_)
+    ) {
+        plan.instructions.push(' ');
+        plan.instructions.push_str(ARTICLE_AUTHORING);
     }
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage
@@ -786,6 +799,7 @@ pub fn validate_explanation(
     if response.paragraphs.is_empty() || response.paragraphs.len() > 32 {
         return Err("a reader document requires 1..32 grounded units".into());
     }
+    crate::article_sections(response.generated_units().map(|p| p.question))?;
     if matches!(
         plan.subject,
         ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
