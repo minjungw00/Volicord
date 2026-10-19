@@ -1592,11 +1592,15 @@ impl HostAdapter {
                 "decision_id",
             )?)?))
         } else {
-            ExplanationSubject::Work(parse_context_item(required_str(args, "work_item_id")?)?)
+            ExplanationSubject::work_publication(
+                parse_context_item(required_str(args, "work_item_id")?)?,
+                args["scope"].as_str().unwrap_or("article"),
+            )
+            .map_err(HostError::new)?
         };
         match required_str(args, "action")? {
             "verification" => {
-                let ExplanationSubject::Work(work) = subject else {
+                let Some(work) = subject.work() else {
                     return Err(HostError::new("Work subject required"));
                 };
                 Ok(
@@ -1610,7 +1614,9 @@ impl HostAdapter {
                     .prepare_explanation(project, subject, language)
                     .map_err(operation_error)?;
                 let manifest = match subject {
-                    ExplanationSubject::Work(work) => self
+                    ExplanationSubject::Work(work)
+                    | ExplanationSubject::WorkName(work)
+                    | ExplanationSubject::WorkSummary(work) => self
                         .operations
                         .explanation_source_manifest(project, work)
                         .map_err(operation_error)?,
@@ -1627,6 +1633,12 @@ impl HostAdapter {
                     result["generation_id"] = json!(request_id.clone());
                     result["host_session_correlation"] = json!(self.host_session);
                     result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Read plan.instructions and question_grounding: every paragraph needs genuinely supporting prepared canonical evidence_keys and the question's required key relationship, independently of Source citations. Discover existing Source copies in source_inventory; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Author a distinct heading and synopsis connecting the problem, actual approach and supported outcome; then write reader narrative. Use compose with this generation_id and a host-authored draft to derive mechanical citation bindings. Record the composed realization. A fresh record-only document can omit unavailable technical detail; technical claims keep their Source dependencies. A no-change investigation is not a patch. Host transmission authorization is separate from this canonical plan; missing plan data establishes neither consent nor its absence. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
+                    if matches!(
+                        subject,
+                        ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
+                    ) {
+                        result["next_action"] = json!("The authorized active host authors exactly the prepared name or summary scope. Follow plan.instructions and question_grounding; name uses Goal alone, summary binds Goal and actual report, and any technical assertion needs permitted Source retrieval with this same generation_id and scope. Compose, then record. Each scope replaces only its own publication; never extract or rebind stale article text. No automatic model dispatch or new authority is granted.");
+                    }
                     if matches!(subject, ExplanationSubject::Decision(_)) {
                         result["next_action"] = json!("The authorized active host authors a reader-directed Decision article from this exact plan: question context, actual alternatives/consequences, recorded recommendation and recommendation rationale, distinct user choice and only recorded user rationale, applicability and qualified later interpretation. Use section_heading/narrative in useful order; no compulsory empty sections. Technical Source unavailability limits independent verification, not the retained recommendation. Compose then record with this generation_id. No Work Source authority or automatic model dispatch is granted; host/access failure remains incomplete.");
                     }
@@ -1658,7 +1670,7 @@ impl HostAdapter {
                 if request.project != project || request.subject != subject {
                     return Err(HostError::new("explanation request Project/Work mismatch"));
                 }
-                let ExplanationSubject::Work(work) = subject else {
+                let Some(work) = subject.work() else {
                     return Err(HostError::new("Decision does not grant Work Source access"));
                 };
                 let source = parse_source(required_str(args, "source_id")?)?;
@@ -1698,9 +1710,11 @@ impl HostAdapter {
                         ));
                     }
                     match subject {
-                        ExplanationSubject::Work(work) => self
+                        ExplanationSubject::Work(_)
+                        | ExplanationSubject::WorkName(_)
+                        | ExplanationSubject::WorkSummary(_) => self
                             .operations
-                            .compose_work_explanation(project, work, draft),
+                            .compose_subject_explanation(project, subject, draft),
                         ExplanationSubject::Decision(decision) => self
                             .operations
                             .compose_decision_explanation(project, decision, draft),
@@ -2684,6 +2698,13 @@ fn work_explanation_schema() -> Value {
         vec![
             ("project_id", identity_schema("Project identity")),
             ("work_item_id", identity_schema("Exact Goal-backed Work")),
+            (
+                "scope",
+                enum_schema(
+                    "Independent publication scope; default article",
+                    &["article", "name", "summary"],
+                ),
+            ),
         ]
     };
     let mut prepare = scope();
@@ -2768,6 +2789,7 @@ fn decision_explanation_schema() -> Value {
         });
         for variant in variants {
             if let Some(properties) = variant["properties"].as_object_mut() {
+                properties.remove("scope");
                 properties.remove("work_item_id");
                 properties.insert(
                     "decision_id".into(),

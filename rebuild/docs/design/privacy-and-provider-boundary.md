@@ -670,8 +670,10 @@ carry only embedded bounded evidence and cannot call this capability.
 [Reader experience AC-05/06/13](reader-experience-design.md) uses the existing
 interactive-host boundary and CachedSummary retention. A newly authored record-only
 document needs no unavailable code body; technical claims keep their scoped Source
-dependencies. Whole-realization invalidation applies to every field, including title
-and summary. No salvage from stale/deleted content, dependency dropping, mixed
+dependencies. Name, summary and article are separately admitted Work publication scopes. Each
+keeps its own complete dependencies and lifetime; failure of an article dependency
+does not invalidate an independent record-grounded name or summary. No salvage
+from stale/deleted content, post-admission dependency dropping, implicit mixed
 realizations, new canonical title authority or background grant is permitted.
 Composition performs mechanical binding only; failed production leaves ordinary
 Work usable and records an incomplete content outcome.

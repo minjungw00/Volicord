@@ -52,7 +52,7 @@ impl LocalOperations {
         self.compose_subject_explanation(project, ExplanationSubject::Work(work), draft)
     }
 
-    fn compose_subject_explanation(
+    pub fn compose_subject_explanation(
         &self,
         project: ProjectId,
         subject: ExplanationSubject,
@@ -66,7 +66,12 @@ impl LocalOperations {
         if draft.paragraphs.len() > 32 || draft.paragraphs.iter().any(|p| p.sources.len() > 32) {
             return Err(Error::new("Work document exceeds unit/citation bound"));
         }
-        for role in [ExplanationQuestion::Heading, ExplanationQuestion::Synopsis] {
+        let roles: &[_] = match subject {
+            ExplanationSubject::WorkName(_) => &[ExplanationQuestion::Heading],
+            ExplanationSubject::WorkSummary(_) => &[ExplanationQuestion::Synopsis],
+            _ => &[ExplanationQuestion::Heading, ExplanationQuestion::Synopsis],
+        };
+        for &role in roles {
             if draft
                 .paragraphs
                 .iter()
@@ -81,7 +86,7 @@ impl LocalOperations {
         for unit in draft.paragraphs {
             let mut citations = Vec::new();
             for selected in unit.sources {
-                let ExplanationSubject::Work(work) = subject else {
+                let Some(work) = subject.work() else {
                     return Err(Error::new("Decision composition cannot borrow Work Source authority; use exact recorded Decision evidence"));
                 };
                 let source = SourceId::from_bytes(parse_identity(&selected.source_id)?);

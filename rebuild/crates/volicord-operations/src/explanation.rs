@@ -111,7 +111,10 @@ impl LocalOperations {
         let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
         validate_explanation(&plan, &realization).map_err(Error::new)?;
         let (source_dependencies, retained_until) = match subject {
-            ExplanationSubject::Work(_) | ExplanationSubject::Repository(_) => {
+            ExplanationSubject::Work(_)
+            | ExplanationSubject::WorkName(_)
+            | ExplanationSubject::WorkSummary(_)
+            | ExplanationSubject::Repository(_) => {
                 let validated = self.validate_subject_sources(&canonical, subject, &realization)?;
                 (validated.dependencies, validated.expiry)
             }
@@ -363,7 +366,7 @@ impl LocalOperations {
                                     && retained_matches(&plan, &retained) =>
                             {
                                 let validation = match subject {
-                                    ExplanationSubject::Work(_) | ExplanationSubject::Repository(_) => self.validate_subject_sources(canonical,subject,&retained.realization).map(|validated| {
+                                    ExplanationSubject::Work(_) | ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_) | ExplanationSubject::Repository(_) => self.validate_subject_sources(canonical,subject,&retained.realization).map(|validated| {
                                         source_excerpts = validated.excerpts;
                                         omitted_source_excerpt_count = validated.omitted_excerpt_count;
                                     }),
@@ -444,6 +447,10 @@ impl LocalOperations {
             .chain(projection.resume.selected_work.iter_mut())
         {
             work.reading.explanations = attach(ExplanationSubject::Work(work.work_item_id));
+            work.reading.name_explanations =
+                attach(ExplanationSubject::WorkName(work.work_item_id));
+            work.reading.summary_explanations =
+                attach(ExplanationSubject::WorkSummary(work.work_item_id));
         }
         for decision in projection
             .decision_catalog

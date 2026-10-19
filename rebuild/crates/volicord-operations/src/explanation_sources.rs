@@ -95,7 +95,9 @@ impl LocalOperations {
     ) -> Result<ValidatedExplanationSources, Error> {
         let mut selected = None;
         let read_source = |source| match subject {
-            ExplanationSubject::Work(work) => self.explanation_source(basis, work, source),
+            ExplanationSubject::Work(work)
+            | ExplanationSubject::WorkName(work)
+            | ExplanationSubject::WorkSummary(work) => self.explanation_source(basis, work, source),
             ExplanationSubject::Repository(analysis) => {
                 self.read_repository_explanation_source(basis.project.id, analysis, source)
             }
@@ -392,7 +394,7 @@ impl LocalOperations {
                     excerpts.push(volicord_projections::ExplanationSourceExcerpt {
                         citation: citation.clone(),
                         work_revision: match subject {
-                            ExplanationSubject::Work(_) => Some(observation["work_revision"].as_u64().ok_or_else(||Error::new("Source Work revision unavailable"))?),
+                            ExplanationSubject::Work(_) | ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_) => Some(observation["work_revision"].as_u64().ok_or_else(||Error::new("Source Work revision unavailable"))?),
                             _ => None,
                         },
                         observed_at_unix_micros: observation["observed_at_unix_micros"].as_i64()

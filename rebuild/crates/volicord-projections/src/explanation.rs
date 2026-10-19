@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionId};
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
-pub const EXPLANATION_VERSION: u32 = 5;
+pub const EXPLANATION_VERSION: u32 = 6;
 pub const EXPLANATION_BYTE_LIMIT: usize = 32_768;
 /// Preserve the response space guaranteed before citation metadata grew.
 pub const EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY: usize = 16_384;
@@ -33,6 +33,9 @@ pub struct ExplanationRetentionBudget {
 #[serde(tag = "kind", content = "identity", rename_all = "snake_case")]
 pub enum ExplanationSubject {
     Work(ContextItemId),
+    /// Independent publications of the same canonical Work, never new entities.
+    WorkName(ContextItemId),
+    WorkSummary(ContextItemId),
     Decision(DecisionId),
     Repository(volicord_repository_intelligence::AnalysisSnapshotId),
 }
@@ -40,8 +43,24 @@ impl ExplanationSubject {
     pub fn key(self) -> String {
         match self {
             Self::Work(id) => format!("work:{id}"),
+            Self::WorkName(id) => format!("work_name:{id}"),
+            Self::WorkSummary(id) => format!("work_summary:{id}"),
             Self::Decision(id) => format!("decision:{id}"),
             Self::Repository(id) => format!("repository:{id}"),
+        }
+    }
+    pub fn work(self) -> Option<ContextItemId> {
+        match self {
+            Self::Work(id) | Self::WorkName(id) | Self::WorkSummary(id) => Some(id),
+            _ => None,
+        }
+    }
+    pub fn work_publication(work: ContextItemId, scope: &str) -> Result<Self, String> {
+        match scope {
+            "article" => Ok(Self::Work(work)),
+            "name" => Ok(Self::WorkName(work)),
+            "summary" => Ok(Self::WorkSummary(work)),
+            _ => Err("Work publication scope must be article, name or summary".into()),
         }
     }
 }
@@ -252,7 +271,9 @@ pub fn prepare_explanation(
         return Err("a bounded nonempty requested language is required".into());
     }
     let work = match subject {
-        ExplanationSubject::Work(work) => work,
+        ExplanationSubject::Work(work)
+        | ExplanationSubject::WorkName(work)
+        | ExplanationSubject::WorkSummary(work) => work,
         ExplanationSubject::Decision(decision) => {
             return prepare_decision(canonical, decision, language)
         }
@@ -283,8 +304,16 @@ pub fn prepare_explanation(
         });
     };
     add("goal", &selected.reading.goal.basis, json!(selected.title));
+    if matches!(subject, ExplanationSubject::WorkName(_)) {
+        return finish_plan(canonical, subject, "work_name", language, evidence);
+    }
     if let Some(result) = &selected.reading.answers.result {
         add("result", &result.basis, json!(result.original_text));
+    }
+    if matches!(subject, ExplanationSubject::WorkSummary(_)) {
+        // The selected result includes its exact report revision and Sources.
+        // Absence is fingerprinted, so a first/new result requires new admission.
+        return finish_plan(canonical, subject, "work_summary", language, evidence);
     }
     add(
         "next_step",
@@ -594,6 +623,8 @@ fn finish_plan(
         .map(|r| json!({"from":r.from_identity,"relation":r.relation_kind,"to":r.to_identity}))
         .collect();
     let questions = match subject {
+        ExplanationSubject::WorkName(_) => "Author exactly one heading naming this Work from its original Goal. Describe the requested problem/action, never claim an implementation or successful outcome. No technical Source is needed for a request-grounded name.",
+        ExplanationSubject::WorkSummary(_) => "Author exactly one synopsis connecting the Goal problem to the actually reported approach/outcome. When result exists cite result as well as goal; preserve partial, failed and unchanged outcomes. Without result describe only the request and unreported outcome. Canonical reports establish reported meaning, not current-code verification. Any implementation claim beyond the report needs its own permitted Source citations. This is an independently admitted summary, not an extract of an article.",
         ExplanationSubject::Work(_) => "Author heading/synopsis and an article explaining supported problem, mechanism, actual change/investigation and outcome/limits. Summarize command outcomes in natural prose with precise Source citations; keep complete JSON reports and execution logs in Source inspection, not repeated in the article. Quote only short diagnostic excerpts needed to explain a result. Read permitted callers/helpers/config/tests. Omit invented cause, attempt, implementation, Decision and retest; no-change is not a patch. Read course/change history chronologically; later reports never erase earlier events or resolve silent limits. Paths and generic completion prose prove no feature or effect.",
         ExplanationSubject::Repository(_) => "Explain what this repository does, its major responsibilities, why their separation is supported or inferred, one complete representative operation across boundaries, and material unverified coverage. Use purpose, observation, reading_point and limits with meaningful Source citations. Do not invent Work, Checkpoints, canonical Purpose, execution or recorded rationale. Inventory/structural coverage is not complete semantic understanding. repository_basis supports scope, identity and limitations; technical meaning needs actual retrieved Source evidence.",
         ExplanationSubject::Decision(_) => "Explain question_context, alternatives/consequences, recorded recommendation AND its rationale, actual user choice/delegation and only recorded user_rationale, scope/assumptions/revisit limits. Distinguish later interpretation. Missing technical Source limits verification, never erases recorded reasons. Selection proves no implementation or performance. Invent no user reason.",
@@ -605,6 +636,12 @@ fn finish_plan(
             retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
     if matches!(subject, ExplanationSubject::Repository(_)) {
         plan.instructions = format!("{questions} Every unit needs exact prepared evidence_keys. All roles are optional; use heading/synopsis/purpose/observation/reading_point/limits in reader order. Every non-limits unit needs retrieved current_code citations; scope-only limits may cite repository_basis. Preserve uncertainty and distinguish recorded Project Purpose from inference. Use the requested language and self-reported host/session/agent/model; unknown model stays null. Return the current ExplanationRealization format version {EXPLANATION_VERSION}, exact plan fingerprint/language and paragraphs. Product compose derives Source/claim UTF-8 coordinates and hashes from selected ranges; valid bindings are not entailment or semantic approval. No background dispatch or consent is created.");
+    }
+    if matches!(
+        subject,
+        ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
+    ) {
+        plan.instructions = format!("{questions} Use the requested language, exact current fingerprint and format {EXPLANATION_VERSION}, and self-reported host/session/agent/model (unknown model null). Every unit needs the exact prepared evidence keys required above. Source/claim coordinates and hashes are bound by explicit compose from permitted selections. Never extract, relabel or rebind an earlier article or other publication. Record only this scope; sibling publications have separate provenance and validity. Structural admission establishes no semantic approval, verification or acceptance. Host authority is external; preparation grants no transmission or background permission. Ordinary reads never generate.");
     }
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage
@@ -623,6 +660,26 @@ fn question_grounding(
     evidence: &[ExplanationEvidence],
 ) -> Vec<ExplanationQuestionGrounding> {
     use ExplanationQuestion::*;
+    match subject {
+        ExplanationSubject::WorkName(_) => {
+            return vec![ExplanationQuestionGrounding {
+                question: Heading,
+                required_any_evidence_keys: vec!["goal".into()],
+            }]
+        }
+        ExplanationSubject::WorkSummary(_) => {
+            return vec![ExplanationQuestionGrounding {
+                question: Synopsis,
+                required_any_evidence_keys: vec![if evidence.iter().any(|e| e.key == "result") {
+                    "result"
+                } else {
+                    "goal"
+                }
+                .into()],
+            }]
+        }
+        _ => (),
+    }
     let present_or_goal = |key: &str| {
         if evidence.iter().any(|e| e.key == key) {
             key.to_owned()
@@ -659,6 +716,7 @@ fn question_grounding(
             (Consequences, vec!["consequences".into()]),
             (Applicability, vec!["applicability".into()]),
         ],
+        ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_) => Vec::new(),
     };
     rules
         .into_iter()
@@ -727,6 +785,26 @@ pub fn validate_explanation(
     }
     if response.paragraphs.is_empty() || response.paragraphs.len() > 32 {
         return Err("a reader document requires 1..32 grounded units".into());
+    }
+    if matches!(
+        plan.subject,
+        ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
+    ) && (response.paragraphs.len() != 1
+        || !response.paragraphs[0]
+            .evidence_keys
+            .iter()
+            .any(|key| key == "goal"))
+    {
+        return Err(
+            "Work name/summary requires one independently grounded unit including goal".into(),
+        );
+    }
+    if matches!(plan.subject, ExplanationSubject::WorkName(_))
+        && response.citations().next().is_some()
+    {
+        return Err(
+            "Work name describes the Goal; technical claims belong in summary/article".into(),
+        );
     }
     if response
         .paragraphs

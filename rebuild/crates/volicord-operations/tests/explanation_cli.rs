@@ -330,7 +330,7 @@ fn decision_compose_cli_binds_recorded_reason_without_json_hash_authoring(
             input.to_str().ok_or("path")?,
         ],
     )?;
-    assert_eq!(composed["realization"]["format_version"], 5);
+    assert_eq!(composed["realization"]["format_version"], 6);
     std::fs::write(&input, serde_json::to_vec(&composed["realization"])?)?;
     invoke(
         &f,

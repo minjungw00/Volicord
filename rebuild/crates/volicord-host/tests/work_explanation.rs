@@ -1665,7 +1665,7 @@ fn compose_work_name_summary_and_unicode_citations_without_manual_bindings(
     f.read(&generation, f.source)?;
     let composed = success(&mut f.host, compose.clone())?;
     assert_eq!(composed["retained"], false);
-    assert_eq!(composed["realization"]["format_version"], 5);
+    assert_eq!(composed["realization"]["format_version"], 6);
     let response: ExplanationRealization = serde_json::from_value(composed["realization"].clone())?;
     let args = f.record_args(&generation, &response)?;
     success(&mut f.host, args)?;

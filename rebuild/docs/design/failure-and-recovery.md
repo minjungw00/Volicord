@@ -121,6 +121,15 @@ cause와 현재 workflow/required next action을 보존하며 internal storage s
 
 ### Shared explanation failure
 
+Work name, summary and article fail within their independently admitted publication
+scope (Projection's format-6 contract). A technical article Source failure cannot
+erase a separately current Goal-grounded name or report-grounded summary. A genuinely
+cited summary Source failure still withholds that entire summary; no dependency is
+removed after retention. Each unavailable scope keeps its own state/diagnostic and
+explicit prepare/compose/record recovery. Canonical state, both event bases and
+independent verification/review/acceptance remain readable. Replacing/deleting one
+scope never falls back to another historical realization of that scope.
+
 Work and Decision reads distinguish no reported result, no generated interpretation in the
 requested language, stale evidence, unavailable preparation/storage, corrupt
 current-format content and unsupported format. Missing, explicitly deleted and

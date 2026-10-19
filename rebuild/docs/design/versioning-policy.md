@@ -293,8 +293,16 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 
 ### Shared explanation content
 
+Format 6 adds independently admitted `work_name` and `work_summary` publication
+subjects referencing the existing Goal-backed Work, alongside `work` article.
+Each has its own exact preparation, realization, managed purpose, dependencies and
+replacement. All use one current writer/decoder. Format 5 is Unsupported; there is
+no old-output split, conversion, rebinding or dual reader. Canonical, Privacy SQL,
+bundle and Analysis formats are unchanged. Document provenance includes every
+separately used publication; its existing subject/plan/realization fields suffice.
+
 Retained Work/Decision/repository explanation JSON inside the existing managed CachedSummary store
-has format kind `volicord_explanation` and exact current format version 5
+has format kind `volicord_explanation` and exact current format version 6
 in its realization header. Record/read check that header before typed domain
 decode. Non-current content is Unsupported and its prose is withheld; malformed
 current content is Corrupt. Explicit delete and preparation/generation from current
@@ -303,7 +311,7 @@ The enclosing privacy SQL schema, canonical schema, portable bundle, Analysis Sn
 formats do not change; generated-document metadata is current version 10. A preparation fingerprint binds evidence
 and language; it is neither a format version nor an authenticity certificate.
 
-Explanation format 5 uses one reader-unit envelope (`question`, `text`,
+Explanation format 6 uses one reader-unit envelope (`question`, `text`,
 `evidence_keys`, `citations`) for authored heading, synopsis, narrative, observation,
 comparison, critical limits and reading-point guidance. All units share exhaustive
 validation, retrieval/dependency traversal, retention, budgeting and output identity.
@@ -376,10 +384,10 @@ copies inside retained explanation records.
 
 ### Repository explanation and Source copy formats
 
-Current `volicord_explanation` format 4 adds the explicit repository subject and
+The former `volicord_explanation` format 4 added the explicit repository subject and
 retained repository scope/coverage metadata in its analysis evidence, and read-time
 Source excerpts have an optional Work revision (absent for repository scope).
-Version 3 and every other non-current format are Unsupported with prose withheld;
+Every non-current format (including 3, 4 and 5) is Unsupported with prose withheld;
 explicit current preparation/composition/recording is recovery. Work and Decision
 use this same single current writer/decoder; there is no v3 compatibility reader.
 Canonical, bundle, Analysis Snapshot and document-metadata versions are unchanged.
@@ -401,8 +409,8 @@ selected analysis and repository dependencies.
 ### Reader identity production and event projection
 
 The [reader experience](reader-experience-design.md) first path retains current
-explanation v5 with its exhaustive reader-unit traversal and whole-realization
-validity. Ephemeral Work composition adds no retained decoder or parallel store.
+explanation v6 with exhaustive reader-unit traversal and independent Work
+name/summary/article publication validity. Ephemeral Work composition adds no retained decoder or parallel store.
 Canonical revision-1 event read metadata is derived from existing revision history;
 it changes no canonical SQL or portable format. No numeric version is raised for
 an unchanged durable representation. Missing/non-current content is never converted
@@ -424,8 +432,8 @@ The independent verification report, caution/evidence index and Viewer publicati
 proofs are ephemeral read metadata over existing Checkpoint/Command Source and
 SourceObservation v3. The ephemeral reads introduce no canonical schema upgrade
 or alternative article decoder. The command integrity correction below separately
-replaces the disposable Work copy format. Exact-current article v5 and
-its whole-realization dependencies remain unchanged.
+replaces the disposable Work copy format. Exact-current explanation v6 admits independent Work publications; each retains
+its full own dependencies.
 
 ### Command observation artifact integrity
 

@@ -290,6 +290,21 @@ fn explanation_command(kind: &'static str) -> Command {
             )
         });
         if kind == "work" {
+            command = command.mut_subcommand("explain", |explain| {
+                ["prepare", "compose", "record", "delete"].into_iter().fold(
+                    explain,
+                    |command, action| {
+                        command.mut_subcommand(action, |action| {
+                            action.arg(
+                                Arg::new("scope")
+                                    .long("scope")
+                                    .default_value("article")
+                                    .value_parser(["article", "name", "summary"]),
+                            )
+                        })
+                    },
+                )
+            });
             command = command.subcommand(work_source_command()).subcommand(Command::new("verification").about("Read independent typed verification and retained execution facts; never generates").arg(Arg::new("work").long("work").required(true)));
         }
     }
@@ -1024,9 +1039,11 @@ fn dispatch_explanation_action(
         "repository" => volicord_projections::ExplanationSubject::Repository(
             crate::AnalysisSnapshotId::from_hex(required(args, "analysis")?).map_err(Error::new)?,
         ),
-        "work" => volicord_projections::ExplanationSubject::Work(ContextItemId::from_bytes(
-            parse_identity(required(args, kind)?)?,
-        )),
+        "work" => volicord_projections::ExplanationSubject::work_publication(
+            ContextItemId::from_bytes(parse_identity(required(args, kind)?)?),
+            required(args, "scope")?,
+        )
+        .map_err(Error::new)?,
         _ => volicord_projections::ExplanationSubject::Decision(
             volicord_context::DecisionId::from_bytes(parse_identity(required(args, kind)?)?),
         ),
@@ -1036,8 +1053,10 @@ fn dispatch_explanation_action(
             let draft = serde_json::from_value(read_explanation_input(args)?)
                 .map_err(|_| Error::new("invalid host-authored article draft"))?;
             let realization = match subject {
-                volicord_projections::ExplanationSubject::Work(work) => {
-                    operations.compose_work_explanation(project, work, draft)?
+                volicord_projections::ExplanationSubject::Work(_)
+                | volicord_projections::ExplanationSubject::WorkName(_)
+                | volicord_projections::ExplanationSubject::WorkSummary(_) => {
+                    operations.compose_subject_explanation(project, subject, draft)?
                 }
                 volicord_projections::ExplanationSubject::Decision(decision) => {
                     operations.compose_decision_explanation(project, decision, draft)?
@@ -1052,7 +1071,9 @@ fn dispatch_explanation_action(
             let plan =
                 operations.prepare_explanation(project, subject, required(args, "language")?)?;
             let inventory = match subject {
-                volicord_projections::ExplanationSubject::Work(work) => {
+                volicord_projections::ExplanationSubject::Work(work)
+                | volicord_projections::ExplanationSubject::WorkName(work)
+                | volicord_projections::ExplanationSubject::WorkSummary(work) => {
                     operations.explanation_source_manifest(project, work)?
                 }
                 volicord_projections::ExplanationSubject::Repository(analysis) => json!({

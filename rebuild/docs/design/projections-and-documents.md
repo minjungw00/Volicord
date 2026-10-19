@@ -443,7 +443,7 @@ Inventing source-specific lexical rules would not generalize to the reordered va
 and independent export case. Deterministic selection and state explanations remain
 appropriate for structured facts; explicit host realization supplies Work prose.
 
-`ExplanationRealization` uses exact-current `volicord_explanation` version 5,
+`ExplanationRealization` uses exact-current `volicord_explanation` version 6,
 plan fingerprint, language, host/session and nullable agent/model provenance, and
 question/text/evidence-key/citation units in reader-selected order. A document has
 1..32 grounded units; heading and synopsis are optional singletons. Purpose,
@@ -525,7 +525,7 @@ Those aggregate bounds are not new per-explanation storage/decoder limits.
 its MCP serializer currently has no Recall-style byte ceiling. External host capture
 limits remain separately observable and cannot be inferred from local decode success.
 
-Reads select the latest locally inserted envelope per subject/language and recompute
+Reads select the latest locally inserted envelope per publication subject/language and recompute
 its basis; tied/rollback UTC and random IDs cannot select an older output. Publication
 uses the same selection. `ExplanationReading` distinguishes Current, Stale, Missing
 (no recording in the requested language), Deleted, Withheld (canonical forgetting
@@ -547,7 +547,7 @@ They require `user_rationale`, `recommendation`, `consequences` and `applicabili
 paragraphs, including an honest missing-rationale answer. Work requires purpose,
 reported change, expected effect, verification and next step. There is no old-format
 reader, alias or second store; unsupported disposable derived content must be deleted
-and regenerated. Recording and Current reads verify the whole retained binding,
+and regenerated. Recording and Current reads verify each publication's whole retained binding,
 not only a response hash.
 
 Document metadata version 10 and Viewer publication carry exact explanation provenance
@@ -1730,8 +1730,8 @@ CLI/MCP, live Viewer and offline snapshot read the same answers and source basis
 Existing MCP transport omissions remain separate from shared excerpt bounds.
 The optional `reading_title` API uses only a permitted authored Heading unit.
 Synopsis selection likewise uses its own role, never Purpose or a first paragraph as
-result. Both remain interpretation with the common exact realization fingerprint.
-No heading can survive a failed dependency or current-language mismatch. Canonical
+result. Each card scope carries its own exact realization fingerprint.
+No unit can survive failure of its own dependency or current-language mismatch. Canonical
 Goal, Source and Work identities remain independent of reader wording.
 
 Citation navigation leads with the bound unit's explanatory role, evidence use and
@@ -1798,8 +1798,8 @@ provenance and read-time excerpts. Every unit requires exact prepared canonical 
 technical claims also require scoped Source bindings. Observation/comparison/reading
 point units require citations. Heading (240 characters) and synopsis (2,000) are
 optional singleton authored interpretation, never clipped Goal text, a first body
-paragraph or canonical title authority. They share exact language, plan and realization
-identity and cannot survive a title-only dependency's deletion or invalidation. Original
+paragraph or canonical title authority. Each publication binds exact language, plan and realization
+identity and cannot survive deletion or invalidation of its own dependencies. Original
 quotations retain their own language. All unit JSON participates in the existing byte
 budgets; no limit is widened and no read generates or writes.
 
@@ -1932,12 +1932,69 @@ HTML transfer size includes markup, repeated claim panels and escaped text separ
 
 ### Explicit Work content composition
 
+#### Independently admitted Work publications
+
+Exact-current format 6 uses three publication subjects for the same Goal-backed
+Work: `work_name`, `work_summary`, and `work` (article). These are Derived purposes,
+not canonical entities or alternate Work identities. They use the same producer,
+retained envelope, CachedSummary store, decoder, read barriers and Source validator.
+CLI `work explain prepare/compose/record/delete --scope name|summary|article`
+(default article) and MCP `work_explanation scope=name|summary|article` explicitly
+select one scope. MCP request identity binds that exact subject; a request/retrieval
+from another scope cannot authorize recording. No read or canonical write generates.
+
+Name preparation contains only the current Goal identity/revision/field, original
+Source metadata and relevant conflict relations. It admits exactly one Heading
+grounded in `goal`, describing the requested action/problem, with no technical
+citations or result assertion. Summary preparation contains Goal plus the selected
+latest nonblank same-Work result, if any. It admits exactly one Synopsis with `goal`
+and, when present, `result`. The host explains reported problem/approach/outcome,
+preserving partial/failed/no-change meaning. A report is no current-code verification;
+technical assertions beyond it need their own permitted Source citations. Article
+preparation retains the full course and technical dependencies. Every scope fingerprints
+its exact Project/subject/language, current preparation instructions/budget, evidence
+revisions, Source metadata and conflicts. Cited copies additionally bind Work revision,
+Repository/Analysis identities, retrieval fingerprint, range/claim hashes and original
+expiry. Uncited technical bodies are not dependencies of record-only publications.
+
+Each successful explicit record creates one complete independently admitted envelope
+under its subject/language purpose. Latest local insertion selects replacement only
+within that purpose. Retention is bounded by that scope's earliest cited body expiry;
+record-only scopes need no retained code copy. Deleting a publication removes its
+languages/history without deleting sibling publications. Canonical correction or
+forgetting invalidates/deletes all genuinely linked publications through existing
+managed links/barriers. Expired or invalid article text is never partitioned, stripped
+of dependencies or reused as a current card: recovery requires fresh preparation,
+host authorship and admission. Failed admission leaves prior permitted output intact.
+
+Counterexamples determine this boundary:
+
+| Input/change | Name | Summary | Article |
+| --- | --- | --- | --- |
+| Goal only, no code | Meaningful requested-action name | Request and unreported outcome | Missing/partial detail remains explicit |
+| New selected result Checkpoint | Unchanged Goal name remains current | Stale; explicitly author the new actual result | Full preparation becomes stale |
+| Uncited technical copy expires | Record-only name remains current | Record-only report summary remains current | Citing article becomes stale |
+| Summary actually cites deleted Source | Goal name remains current | Withheld/stale; never drop citation after admission | Only affected publications become non-current |
+| Goal correction/forgetting | Non-current/deleted | Non-current/deleted | Non-current/deleted |
+| Different requested language | No language fallback | No language fallback | No language fallback |
+| Replacement name/summary/article | Only that scope selects the new realization | No implicit prose merging or historical fallback | Exact publication provenance remains separate |
+
+A single whole-document lifecycle unnecessarily couples a Goal name to unrelated
+technical expiry. Splitting a stale document on read would change its admitted basis.
+Per-paragraph article storage would create unnecessary editorial/replacement complexity.
+The three scopes are the smallest meaningful publication boundary for these cases.
+Readers expose separate name/summary/article availability and provenance, preserve
+exact canonical state, Goal, Decisions and both event bases, and never label a safe
+missing screen as successful normal content. Export/publication rechecks every used
+scope independently. Offline copies retain the admitted identities and explicit
+limits of their export instant; they never renew retention or access a Source.
+
 `LocalOperations::compose_work_explanation` and Work CLI/MCP compose consume a
 new host-authored heading, synopsis and reader-ordered narrative. Product derives
 Source revisions, coordinates and Source/claim hashes from exact permitted reads;
 MCP additionally requires retrieval in the same ephemeral generation request.
 Compose persists nothing and invokes no model. Work record/read retain the single
-v5 whole-realization lifecycle; a fresh record-only document is allowed, while
+v6 publication-scoped lifecycle; a fresh record-only document is allowed, while
 technical claims keep Source dependencies. Canonical-only failures or missing
 bodies are not reasons to extract stale title text. See the current reader ledger
 for direct tests and outstanding semantic/human conditions.
@@ -1980,10 +2037,10 @@ and a missing Checkpoint cannot manufacture attempts, verification or Decision.
 
 ### Flexible article production
 
-The exact-current v5 reader stream adds `section_heading` and `narrative`, paired
+The exact-current v6 reader stream adds `section_heading` and `narrative`, paired
 `comparison_condition` / `comparison_result`, and cited `flow_step` fragments.
 Each fragment uses the existing question/text/evidence_keys/citations envelope,
-common exhaustive traversal and whole-realization validity. No nested generated
+common exhaustive traversal and validity within its admitted publication scope. No nested generated
 strings, extra retention store or format-dependent decoder exists. Conditions
 precede their adjacent result; all other sections follow the author's order.
 Section headings are bounded to 240 characters; existing aggregate budgets remain.

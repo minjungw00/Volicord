@@ -455,15 +455,16 @@ evidence; no generated Product wording is checked into these design owners.
 
 ### Implementation choices for the first Product path
 
-Use the single current v5 managed reader document with authored sections, narrative, comparisons and flow labels. A fresh record-only
-document may contain an independently authored name, summary and record-grounded
-narrative with no technical Source claim. Unavailable detailed code cannot prevent
-that production. A technical claim must retain its actual Source dependency. This
-first path uses whole-realization validity: unavailable support withholds the whole
-realization until explicit fresh preparation/composition/recording. Never extract a
-title from an invalid realization, drop dependencies after admission or combine
-wording from different realizations. A changed Goal/result invalidates the affected
-whole document. More granular independent units remain a possible later optimization.
+Use current explanation format 6 with independently admitted Work name, summary
+and article publications, as specified by Projection. Name is grounded in the Goal;
+summary binds the Goal and selected actual report (or explicitly unreported outcome).
+Technical claims retain their own permitted Source dependencies. Each publication
+has its own preparation, exact language/realization, retention and replacement.
+Unavailable article support withholds that article without erasing a separately
+current card. Never extract text from an invalid realization, remove dependencies
+after admission or silently combine scopes under one article identity. Goal correction
+or forgetting still invalidates all genuinely dependent scopes. A new reported result
+requires fresh summary admission while a Goal-only name remains current.
 
 The explicit producer is the current authorized host using Work explanation
 prepare/generate, composition and record. It must author heading and synopsis and
@@ -529,7 +530,7 @@ for absent data or completed acceptance.
 
 ### Flexible article implementation evidence
 
-Current v5 composition and reading implement authored section names/order rather
+Current v6 composition and reading implement authored section names/order rather
 than obligatory question headings. Host `work_explanation` and
 `decision_explanation` controls exercise the public generation-request, composition,
 record and read interfaces; they are authored validation controls, not actual model
