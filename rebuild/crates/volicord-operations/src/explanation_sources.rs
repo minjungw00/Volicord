@@ -54,12 +54,26 @@ impl LocalOperations {
         let repository_source: SourceId =
             serde_json::from_value(observation["repository_source_id"].clone())
                 .map_err(|_| Error::new("Source repository binding is corrupt"))?;
+        // Preserve the existing canonical command identity alongside its disposable
+        // streams. The label is presentation; fingerprint + Source identifies the
+        // invocation, never a retest or assertion-coverage relationship.
+        let command_source = basis.sources.iter().find(|s| s.source.id == source)
+            .and_then(|s| match &s.source.payload {
+                volicord_context::SourcePayload::CommandExecution {
+                    command_label, invocation_fingerprint, outcome,
+                } => Some(json!({"command_label":command_label,
+                    "invocation_fingerprint":invocation_fingerprint,
+                    "exit_code":outcome.exit_code,"termination":format!("{:?}",outcome.termination).to_lowercase(),
+                    "recorded_at_unix_micros":s.source.recorded_at.as_unix_micros(),
+                    "actor":format!("{:?}",s.source.actor),"observer":format!("{:?}",s.source.observer)})),
+                _ => None,
+            });
         let citation_basis = json!({"source_id":source.to_string(),"source_revision":observation["source_revision"],
             "observation_fingerprint":fingerprint,"analysis_snapshot_id":observation["analysis_snapshot_id"],
             "repository_snapshot_id":observation["repository_snapshot_id"],"repository_source_id":repository_source.to_string()});
         Ok(
             json!({"observation":observation,"observation_fingerprint":fingerprint,
-            "citation_basis":citation_basis,"metadata":read.metadata,"read_only":true,"semantic_approval":"not_established"}),
+            "citation_basis":citation_basis,"command_source":command_source,"metadata":read.metadata,"read_only":true,"semantic_approval":"not_established"}),
         )
     }
 

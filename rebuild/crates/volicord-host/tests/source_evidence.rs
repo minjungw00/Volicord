@@ -333,6 +333,12 @@ fn normal_host_observation_is_exact_scoped_bounded_historical_and_deletable(
     let mut bad_path = observe.clone();
     bad_path["path"] = json!("../outside.py");
     denied(&mut host, "work_source", bad_path)?;
+    let mut execution = observe.clone();
+    execution["action"] = json!("run_command");
+    execution["program"] = json!("touch");
+    execution["arguments"] = json!(["forbidden-mcp-execution"]);
+    denied(&mut host, "work_source", execution)?;
+    assert!(!root.join("forbidden-mcp-execution").exists());
     let basis_before = host.operations().canonical_basis(p)?;
     assert!(basis_before.active_decisions.is_empty());
     assert!(basis_before.latest_checkpoint.is_none());

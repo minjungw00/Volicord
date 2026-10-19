@@ -282,8 +282,126 @@ fn explanation_command(kind: &'static str) -> Command {
         command = command.mut_subcommand("explain", |explain| explain.subcommand(
             Command::new("compose").about("Bind a host-authored Work name, summary and narrative; no generation or retention")
                 .arg(subject()).arg(path_arg("input", "input", "Host-authored Work draft JSON").required(true))));
+        command = command.subcommand(work_source_command());
     }
     command
+}
+
+fn work_source_command() -> Command {
+    let work = || Arg::new("work").long("work").required(true);
+    let analysis = || Arg::new("analysis").long("analysis").required(true);
+    let source = || Arg::new("source").long("source").required(true);
+    let retention = || {
+        Arg::new("retain-seconds")
+            .long("retain-seconds")
+            .required(true)
+            .value_parser(clap::value_parser!(u64).range(1..=604800))
+    };
+    Command::new("source")
+        .about("Explicit local Work evidence; reads never capture or renew retention")
+        .subcommand_required(true)
+        .subcommand(Command::new("observe")
+            .about("Observe one included UTF-8 file or bounded byte region in the selected analysis")
+            .arg(work()).arg(analysis()).arg(retention())
+            .arg(Arg::new("path").long("path").required(true))
+            .arg(Arg::new("before-source").long("before-source"))
+            .arg(Arg::new("start-byte").long("start-byte").requires("end-byte")
+                .value_parser(clap::value_parser!(usize)))
+            .arg(Arg::new("end-byte").long("end-byte").requires("start-byte")
+                .value_parser(clap::value_parser!(usize))))
+        .subcommand(Command::new("run")
+            .about("Execute an explicitly permitted local command and retain bounded non-secret output")
+            .after_help("The selected analysis identifies the requested basis; it does not prove the execution-time tree or assertion coverage. Command exit is in the Source outcome, distinct from successful evidence recording. No browser/MCP execution authority is added.")
+            .arg(work()).arg(analysis()).arg(retention())
+            .arg(Arg::new("label").long("label").required(true))
+            .arg(Arg::new("timeout-seconds").long("timeout-seconds").required(true)
+                .value_parser(clap::value_parser!(u64).range(1..=300)))
+            .arg(Arg::new("command").required(true).num_args(1..).last(true)
+                .value_name("PROGRAM [ARG...]")))
+        .subcommand(Command::new("list").about("List only exact-Work observation metadata and read selectors").arg(work()))
+        .subcommand(Command::new("read").about("Read one permitted retained observation; no filesystem fallback").arg(work()).arg(source()))
+        .subcommand(Command::new("delete").about("Delete one Work Source copy, retaining canonical identity").arg(work()).arg(source()))
+}
+
+fn dispatch_work_source(
+    operations: &LocalOperations,
+    selection: &ProjectSelection,
+    actions: &ArgMatches,
+) -> Result<Value, Error> {
+    let (action, args) = actions
+        .subcommand()
+        .ok_or_else(|| Error::new("a Source action is required"))?;
+    let project = resolve_project(operations, selection)?;
+    let work = ContextItemId::from_bytes(parse_identity(required(args, "work")?)?);
+    let receipt = match action {
+        "list" => return operations.explanation_source_manifest(project, work),
+        "read" => {
+            return operations.read_explanation_source(
+                project,
+                work,
+                SourceId::from_bytes(parse_identity(required(args, "source")?)?),
+            )
+        }
+        "delete" => {
+            return Ok(
+                json!({"deleted":operations.delete_work_source_observation(project, work,
+            SourceId::from_bytes(parse_identity(required(args, "source")?)?))?}),
+            )
+        }
+        "observe" | "run" => {
+            let analysis = crate::AnalysisSnapshotId::from_hex(required(args, "analysis")?)
+                .map_err(Error::new)?;
+            let retain_seconds = *args
+                .get_one::<u64>("retain-seconds")
+                .ok_or_else(|| Error::new("retention is required"))?;
+            if action == "observe" {
+                operations.observe_work_file(crate::FileObservationRequest {
+                    project_id: project,
+                    work_item_id: work,
+                    analysis_snapshot_id: analysis,
+                    path: required(args, "path")?.into(),
+                    before_source_id: args
+                        .get_one::<String>("before-source")
+                        .map(|s| parse_identity(s).map(SourceId::from_bytes))
+                        .transpose()?,
+                    byte_range: args.get_one::<usize>("start-byte").map(|start| {
+                        crate::FileByteRange {
+                            start_byte: *start,
+                            end_byte: *args.get_one::<usize>("end-byte").unwrap_or(start),
+                        }
+                    }),
+                    retain_seconds,
+                })?
+            } else {
+                let mut command = args
+                    .get_many::<String>("command")
+                    .ok_or_else(|| Error::new("command is required"))?;
+                let program = command
+                    .next()
+                    .ok_or_else(|| Error::new("program is required"))?
+                    .clone();
+                operations.run_work_command(crate::WorkCommandRequest {
+                    project_id: project,
+                    work_item_id: work,
+                    analysis_snapshot_id: analysis,
+                    command_label: required(args, "label")?.into(),
+                    program,
+                    arguments: command.cloned().collect(),
+                    retain_seconds,
+                    timeout: std::time::Duration::from_secs(
+                        *args
+                            .get_one::<u64>("timeout-seconds")
+                            .ok_or_else(|| Error::new("timeout is required"))?,
+                    ),
+                })?
+            }
+        }
+        _ => return Err(Error::new("unsupported Work Source action")),
+    };
+    Ok(
+        json!({"operation":"work_source_capture", "source_id":receipt.source_id.to_string(),
+        "observation":receipt, "read_command":format!("volicord work source read --work {work} --source {}", receipt.source_id)}),
+    )
 }
 
 fn repository_command() -> Command {
@@ -866,6 +984,11 @@ fn dispatch_explanation(
     kind: &str,
     matches: &ArgMatches,
 ) -> Result<Value, Error> {
+    if kind == "work" {
+        if let Some(actions) = matches.subcommand_matches("source") {
+            return dispatch_work_source(operations, selection, actions);
+        }
+    }
     let (_, actions) = matches
         .subcommand()
         .ok_or_else(|| Error::new("explain is required"))?;

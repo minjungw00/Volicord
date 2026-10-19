@@ -3054,3 +3054,14 @@ failure/termination, scope/lifecycle and read-purity controls. Authored controls
 mechanics only. Missing current trusted activation/source authority blocks precisely
 the prospective capture; no synthetic substitute or global failure follows. Do not
 run Final, official V11, gate, Phase 8 qualification or Phase 9 approval for this scope.
+
+Local caller control: `cargo test --manifest-path rebuild/Cargo.toml -p
+volicord-operations --test cli_work_sources` traverses CLI file/command capture,
+metadata/read, Work preparation/composition/recording and public status excerpts.
+Its explicitly authored control uses two real observations of disposable fixture
+bytes, an actual named assertion, failure/timeout/spawn denial, expired/deleted
+before state, foreign scope and failed body-store publication. It preserves separate
+child and recording outcomes, original times and no-read-write/retention behavior.
+`source_observations` and Host `source_evidence` supply coupled UTF-8/region/hash,
+unsupported-language, symlink, forgetting, corruption and MCP no-execution controls.
+None is a genuine prospective Work or independent semantic assessment.

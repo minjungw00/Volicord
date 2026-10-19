@@ -355,6 +355,35 @@ discarded; it must not be correlated as if it were a shell command string. Raw
 stream artifacts are removed before retained-body publication. Selected analysis
 identity is preserved, but execution-time repository equality is not asserted.
 
+The same Operations capability is now reachable from an explicit local CLI caller:
+
+```text
+volicord work source observe --work WORK --analysis SNAPSHOT --path src/file.py --retain-seconds 3600
+volicord work source observe --work WORK --analysis SNAPSHOT --path src/file.py --before-source SOURCE --retain-seconds 3600
+volicord work source run --work WORK --analysis SNAPSHOT --label "Named check" --timeout-seconds 60 --retain-seconds 3600 -- python3 -B -m unittest
+volicord work source list --work WORK
+volicord work source read --work WORK --source SOURCE
+volicord work source delete --work WORK --source SOURCE
+```
+
+Use the current installed Runtime/repository prefix and existing authorized Work.
+Observe the before state while it exists, then analyze the actual changed tree
+before observing after. Optional `--start-byte`/`--end-byte` require both bounds.
+`--json` returns a Source ID, original observation/expiry times and a read command.
+The caller permits only chosen non-secret local inputs/outputs; this is not an
+ambient collection grant. Command recording success differs from the child outcome:
+a failed/timed-out child can produce a successful evidence receipt whose exact
+exit/termination remains failed. No assertion coverage or execution-tree equality
+is inferred. Raw argv is not retained and the Source label is not a run identity.
+
+The host can consume the retained command/file via its existing scoped Source read
+and compose ranges into an explicitly authored Work explanation. CLI
+`work explain prepare`, `compose`, `record`, followed by `status` supplies the same
+consumer path. Separate `work source list` discovers observations; preparation does
+not silently collect or ingest all bodies. A fresh Work needs no fictional
+Checkpoint/Decision/retry. These public controls demonstrate mechanics only; a real
+task capture needs current trusted activation and source authority.
+
 For an explicitly requested Work explanation, call `work_explanation` with
 `action: generate`, exact `project_id`, `work_item_id` and `language`. The returned
 plan and scoped Source inventory are evidence, with status

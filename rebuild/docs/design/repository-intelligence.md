@@ -799,8 +799,8 @@ record. None means another by default.
 
 Current callers: MCP work_source observes files and canonical_inspect reads retained
 bodies; Operations run_work_command executes only for a local explicit caller.
-CLI Work source observation/read/command wiring is a direct collection gap at the
-reviewed baseline. Work preparation supplies canonical course/verification; a separate exact-Work
+CLI `work source observe/run/list/read/delete` now wires that local gap through the
+existing Operations capabilities. This proves no current-session activation. Work preparation supplies canonical course/verification; a separate exact-Work
 Source manifest enumerates copies. The authorized host explicitly reads them and composition
 binds ranges. Repository preparation uses a separate Work-less exact analysis subject.
 Decision preparation reads recorded reasons; it does not borrow Work body authority.
