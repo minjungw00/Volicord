@@ -1993,6 +1993,10 @@ record admission still permits partial documents; unsupported detail is omitted.
 Work CLI prepare includes its explicit Source inventory; the host selects and reads
 permitted caller, callee, configuration, test and before/current material. Missing
 Source, unobserved execution or absent before-state cannot be supplied by prose.
+Work prose summarizes command outcomes with precise citations and only necessary
+short diagnostic quotes. Complete JSON reports and execution logs remain in Source
+inspection instead of being repeated in the article. This is authoring guidance,
+not structural proof of readability or semantic approval.
 Repository CLI prepare identifies its exact Analysis Snapshot and separate repository
 observation, Source read and analysis-evidence entry points. Preparation grants no
 body authority, observes no files and never substitutes the Decision-only boundary.
