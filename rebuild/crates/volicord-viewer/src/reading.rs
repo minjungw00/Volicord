@@ -488,7 +488,7 @@ fn reader_citations(
 ) {
     html.push_str("<div class=\"evidence-actions\">");
     for (n, c) in answers.prose[index].citations.iter().enumerate() {
-        html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\">{} · {} {} ↗<span>{}:{}–{}</span></a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),answer_title(&answers.prose[index].question,r.locale),text(r.locale,"Source","근거"),n+1,escape(&c.locator),c.start_line,c.end_line));
+        html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\">{} · {} {} ↗<span>{}:{}–{}</span></a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),citation_use_label(r.locale,c.use_kind),text(r.locale,"Source","근거"),n+1,escape(&c.locator),c.start_line,c.end_line));
     }
     html.push_str("</div>");
 }
@@ -701,7 +701,7 @@ fn render_document(
     if let Some(work) = work {
         render_verification(html, r, answers, &work.reading.verification_report);
     }
-    render_evidence_index(html, r, answers);
+    render_evidence_index(html, r, answers, work, decision);
     if has_limits {
         html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><aside class=\"guard\"><h2>{}</h2>",document_anchor(answers,"limits"),answer_title("Limits",r.locale)));
         for (index, _) in answers
@@ -774,6 +774,17 @@ fn render_document(
         }
     }
     if let Some(w) = work {
+        html.push_str(&format!(
+            "<details><summary>{}</summary><pre>{}</pre></details>",
+            text(
+                r.locale,
+                "Complete verification read model (JSON)",
+                "전체 검증 읽기 모델 (JSON)"
+            ),
+            escape(
+                &serde_json::to_string_pretty(&w.reading.verification_report).unwrap_or_default()
+            )
+        ));
         for state in &w.reading.states {
             html.push_str(&format!(
                 "<section class=\"state-observation\"><h3>{} · {}</h3>",
@@ -822,95 +833,111 @@ fn render_evidence_index(
     html: &mut String,
     r: &ViewerRequest,
     answers: &volicord_projections::QuestionAnswers,
+    work: Option<&UnderstandingWork>,
+    decision: Option<&volicord_projections::UnderstandingDecision>,
 ) {
-    html.push_str(&format!(
-        "<section class=\"reading-section\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2>",
-        document_anchor(answers, "evidence-index"),
-        text(r.locale, "Evidence index", "근거 색인")
-    ));
+    html.push_str(&format!("<section class=\"reading-section evidence-index\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2><p class=\"source-note\">{}</p>",
+        document_anchor(answers,"evidence-index"),text(r.locale,"Evidence index", "근거 색인"),
+        text(r.locale,"Start with the statement you want to check. Source ranges show observed bytes; original records show what was reported or chosen. Neither alone verifies every interpretation.",
+            "확인할 문장에서 시작하세요. Source 범위는 관측된 바이트를, 원래 기록은 보고되거나 선택된 내용을 보여 줍니다. 어느 쪽도 그 자체로 모든 해석을 검증하지는 않습니다.")));
+    if work.is_some() || decision.is_some() {
+        html.push_str("<ul class=\"evidence-records\">");
+        for (include, section, label) in [
+            (
+                work.is_some(),
+                "original",
+                text(
+                    r.locale,
+                    "What was requested? Read the complete original Goal",
+                    "무엇을 요청했나요? 원래 Goal 전체 읽기",
+                ),
+            ),
+            (
+                work.is_some(),
+                "verification",
+                text(
+                    r.locale,
+                    "What was checked? Read independent executions and reports",
+                    "무엇을 확인했나요? 독립적인 실행·보고 읽기",
+                ),
+            ),
+            (
+                decision.is_some(),
+                "choice",
+                text(
+                    r.locale,
+                    "What was chosen, and why? Read the retained choice and reasons",
+                    "무엇을 왜 선택했나요? 보존된 선택·이유 읽기",
+                ),
+            ),
+        ] {
+            if include {
+                html.push_str(&format!(
+                    "<li><a href=\"#{}\">{}</a></li>",
+                    document_anchor(answers, section),
+                    label
+                ));
+            }
+        }
+        html.push_str("</ul>");
+    }
+    if answers.evidence_index.is_empty() {
+        html.push_str(&format!("<p>{}</p>",text(r.locale,"No admitted article claims are available to index. Original records remain inspectable.", "색인할 수 있는 유효한 설명 문장이 없습니다. 원래 기록은 검사할 수 있습니다.")));
+    }
     for entry in &answers.evidence_index {
         let Some(unit) = answers.prose.get(entry.unit_index) else {
             continue;
         };
-        let preview: String = unit.text.chars().take(120).collect();
-        let omitted = unit.text.len().saturating_sub(preview.len());
-        html.push_str(&format!(
-            "<details class=\"record-box\"><summary>{}</summary><a href=\"#{}\">{}</a>",
-            escape(&preview),
-            reader_claim_anchor(answers, entry.unit_index),
-            text(r.locale, "Return to exact unit", "해당 문장으로 돌아가기")
-        ));
-        if omitted > 0 {
-            html.push_str(&format!(
-                "<p>{}: {omitted} UTF-8 bytes</p>",
-                text(r.locale, "Index quotation omitted", "색인 인용 생략")
-            ));
+        let preview: String = unit.text.chars().take(160).collect();
+        let section = answers.prose[..entry.unit_index]
+            .iter()
+            .rev()
+            .find(|u| u.question == "SectionHeading");
+        html.push_str(&format!("<details class=\"record-box evidence-entry\"><summary><span><small>{}</small><span>{}{}</span></span></summary><a class=\"button\" href=\"#{}\">{}</a>",
+            escape(section.map(|s|s.text.as_str()).unwrap_or(text(r.locale,"Article statement", "설명 문장"))),escape(&preview),if preview.len()<unit.text.len(){"…"}else{""},
+            reader_claim_anchor(answers,entry.unit_index),text(r.locale,"Read this statement in context", "문맥에서 이 문장 읽기")));
+        if !entry.citations.is_empty() {
+            html.push_str(&format!("<p>{}</p>",text(r.locale,"Inspect the cited observation. Availability is rechecked when selected in the live reader; offline includes only its displayed excerpt.", "인용된 관측을 검사하세요. 실시간 읽기에서는 선택 시 가용성을 다시 확인하며, 오프라인은 표시된 발췌만 포함합니다.")));
+            reader_citations(html, r, answers, entry.unit_index);
         }
         if let Some(provenance) = &answers.provenance {
+            html.push_str("<ul class=\"evidence-records\">");
             for evidence in provenance
                 .evidence
                 .iter()
                 .filter(|e| entry.evidence_keys.contains(&e.key))
             {
-                html.push_str(&format!(
-                    "<p>{} · {} {}@{} · {}</p>",
-                    escape(&evidence.key),
-                    escape(&evidence.record_kind),
-                    escape(&evidence.identity),
-                    evidence.revision,
-                    escape(&evidence.field)
-                ));
+                let label = match evidence.record_kind.as_str() {
+                    "context_item" => {
+                        text(r.locale, "Original context / request", "원래 맥락 / 요청")
+                    }
+                    "checkpoint" => text(r.locale, "Recorded work observation", "기록된 작업 관측"),
+                    "decision" => text(
+                        r.locale,
+                        "Recorded choice or recommendation",
+                        "기록된 선택·권고",
+                    ),
+                    "question" => text(
+                        r.locale,
+                        "Recorded question and alternatives",
+                        "기록된 질문·대안",
+                    ),
+                    _ => text(r.locale, "Prepared supporting record", "준비된 근거 기록"),
+                };
+                html.push_str(&format!("<li><a href=\"#{}\">{} · {}</a><details><summary>{}</summary><p>{} {}@{} · {}</p><p>{}</p></details></li>",
+                    document_anchor(answers,"audit"),label,escape(&evidence.field),text(r.locale,"Exact reference", "정확한 참조"),escape(&evidence.record_kind),escape(&evidence.identity),evidence.revision,escape(&evidence.key),
+                    text(r.locale,"This record supports what was stated; it is not independent verification of a technical effect.", "이 기록은 진술의 근거이며 기술적 효과의 독립 검증은 아닙니다.")));
             }
+            html.push_str("</ul>");
         }
-        reader_citations(html, r, answers, entry.unit_index);
         html.push_str("</details>");
     }
     html.push_str("</section>");
 }
-fn render_verification(
-    html: &mut String,
-    r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
-    report: &volicord_projections::WorkVerificationReport,
-) {
-    use volicord_projections::EvidenceDetail;
-    html.push_str(&format!("<section class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2><p>{}</p>",document_anchor(answers,"verification"),text(r.locale,"Verification report","검증 보고"),text(r.locale,"Checkpoint reports and observed executions are separate. Exit status proves no assertions. Unrecorded test IDs, environment, coverage and comparable retest stay unknown.","Checkpoint 보고와 실행 관측은 별개입니다. 종료 코드만으로 assertion을 확정하지 않습니다. 미기록 테스트 ID·환경·coverage·비교 가능한 재검증은 미관측입니다.")));
-    for check in report.checks.iter().take(64) {
-        html.push_str(&format!("<article class=\"verification-check\"><h3>{}</h3><dl><dt>{}</dt><dd>{}</dd><dt>Checkpoint</dt><dd>{}@{} verification[{}]</dd><dt>Source</dt><dd>{}</dd><dt>{}</dt><dd>{:?}</dd></dl>",check.reported_state.label(r.locale.fixed()),text(r.locale,"Reported at","보고 시각"),timestamp_label(TimestampMicros::from_unix_micros(check.reported_at_unix_micros),r.locale),check.original.checkpoint_id,check.original.checkpoint_revision,check.original.verification_index,escape(check.source_id.as_deref().unwrap_or("—")),text(r.locale,"Applicability","적용성"),check.applicability));
-        if let Some(quote) = &check.original_outcome {
-            html.push_str(&format!(
-                "<details><summary>{}</summary><blockquote lang=\"\">{}</blockquote></details>",
-                text(
-                    r.locale,
-                    "Original verification report quotation",
-                    "원래 검증 보고 인용"
-                ),
-                escape(quote)
-            ));
-        }
-        html.push_str(&format!("<p>{}</p></article>",text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Later independent success does not repair this observation.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 나중의 독립 성공은 이 관측을 복구하지 않습니다.")));
-    }
-    for execution in report.executions.iter().take(32) {
-        html.push_str(&format!("<article class=\"verification-execution\"><h3>{}</h3><dl><dt>Source</dt><dd>{}@{}</dd><dt>{}</dt><dd>{}</dd><dt>Exit / termination</dt><dd>{:?} / {:?}</dd><dt>{}</dt><dd>{:?}</dd></dl>",escape(&execution.command_label),execution.source_id,execution.source_revision,text(r.locale,"Recorded at","기록 시각"),timestamp_label(TimestampMicros::from_unix_micros(execution.recorded_at_unix_micros),r.locale),execution.exit_code,execution.termination,text(r.locale,"Retained observation","보존 관측"),execution.body_state));
-        if let EvidenceDetail::Observed(o) = &execution.observation {
-            html.push_str(&format!("<dl><dt>{}</dt><dd>{} → {}</dd><dt>Operation</dt><dd>{}</dd><dt>Analysis / Repository Snapshot</dt><dd>{} / {}</dd><dt>{}</dt><dd>{}</dd><dt>stdout / stderr</dt><dd>{:?} ({} bytes) / {:?} ({} bytes)</dd></dl>",text(r.locale,"Execution window","실행 시각"),timestamp_label(TimestampMicros::from_unix_micros(o.started_at_unix_micros),r.locale),timestamp_label(TimestampMicros::from_unix_micros(o.ended_at_unix_micros),r.locale),escape(&o.operation_id),escape(&o.analysis_snapshot_id),escape(&o.repository_snapshot_id),text(r.locale,"Target limitation","대상 한계"),text(r.locale,"Selected analysis only; execution-time tree was not rechecked","선택된 분석이며 실행 시점의 트리는 재확인하지 않았습니다"),o.stdout.representation,o.stdout.observed_bytes,o.stderr.representation,o.stderr.observed_bytes));
-        }
-        html.push_str("</article>");
-    }
-    html.push_str(&format!(
-        "<p>{}: {} / {}. {}: {} / {}.</p></section>",
-        text(r.locale, "Checks / executions", "보고 / 실행"),
-        report.checks.len(),
-        report.executions.len(),
-        text(
-            r.locale,
-            "Displayed; full originals in evidence disclosure and CLI/MCP report",
-            "표시 수; 전체 원본은 근거 상세와 CLI/MCP 보고"
-        ),
-        report.checks.len().min(64),
-        report.executions.len().min(32)
-    ));
-}
+
+#[path = "reading_verification.rs"]
+mod verification;
+use verification::render_verification;
 
 fn repository_boundaries(
     html: &mut String,
@@ -1197,25 +1224,6 @@ fn render_source_excerpts(
         return;
     }
     html.push_str("<aside class=\"appendix\" data-reading-role=\"cited-source\" data-statement-role=\"observed-fact\">");
-    heading(
-        html,
-        2,
-        text(r.locale, "Sources for this document", "이 문서의 Source"),
-    );
-    html.push_str(&format!(
-        "<p class=\"source-note\">{}: {} / 16,384 UTF-8 bytes · 4,096 / {}</p>",
-        text(
-            r.locale,
-            "Included unique cited text",
-            "포함된 고유 인용 텍스트"
-        ),
-        answers
-            .source_excerpts
-            .iter()
-            .map(|e| e.text.len())
-            .sum::<usize>(),
-        text(r.locale, "range maximum", "범위별 최대")
-    ));
     let mut seen = std::collections::BTreeSet::new();
     for (index, answer) in answers.prose.iter().enumerate() {
         for (n, c) in answer.citations.iter().enumerate() {
@@ -1237,6 +1245,7 @@ fn render_source_excerpts(
                 "<p class=\"source-note\">{}</p>",
                 citation_use_label(r.locale, c.use_kind)
             ));
+            let mut context = String::new();
             if let Some(e) = excerpt {
                 if c.use_kind == volicord_projections::ExplanationSourceUse::CurrentCode {
                     let comparison=match e.comparison.as_deref() {
@@ -1244,7 +1253,7 @@ fn render_source_excerpts(
                         Some("no_change")=>text(r.locale,"The paired file observations have identical bytes. No change is shown.","짝지어진 파일 관측의 바이트가 동일합니다. 변경이 표시되지 않습니다."),
                         _=>text(r.locale,"Before-state was not retained. A before/after comparison is unavailable.","이전 상태가 보존되지 않았습니다. 이전/이후 비교를 이용할 수 없습니다."),
                     };
-                    html.push_str(&format!("<p class=\"source-note\">{}</p>", comparison));
+                    context.push_str(&format!("<p class=\"source-note\">{}</p>", comparison));
                     if let Some(before_index) = e.before_source_id.as_ref().and_then(|id| {
                         answer.citations.iter().position(|b| {
                             &b.source_id == id
@@ -1252,7 +1261,7 @@ fn render_source_excerpts(
                                     == volicord_projections::ExplanationSourceUse::BeforeCode
                         })
                     }) {
-                        html.push_str(&format!(
+                        context.push_str(&format!(
                             "<p><a href=\"#{}\">{}</a></p>",
                             source_point_anchor(answers, index, before_index),
                             text(
@@ -1264,7 +1273,7 @@ fn render_source_excerpts(
                     }
                 }
                 if e.source_representation.as_deref() == Some("bounded_excerpt") {
-                    html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.","제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
+                    context.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.","제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
                 }
                 html.push_str(&format!("<pre class=\"code-region\" tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\">{}</code></pre>",text(r.locale,"Original Source","Source 원문"),escape(&c.locator),c.start_line,e.displayed_end_line,e.text.split_inclusive('\n').enumerate().map(|(line,_)|format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(),escape(&e.text)));
                 if e.omitted_utf8_bytes > 0 {
@@ -1301,7 +1310,7 @@ fn render_source_excerpts(
                     ),
                 );
             }
-            html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,
+            context.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,
                 "This is the author's cited claim span. Range binding does not verify that each statement follows from this code.",
                 "이것은 작성자가 인용한 주장 범위입니다. 범위 연결만으로 각 문장이 이 코드에서 성립하는지 검증되지는 않습니다.")));
             if !snapshot {
@@ -1321,6 +1330,9 @@ fn render_source_excerpts(
                     "Offline: only the displayed bytes are included. Additional omitted evidence cannot be retrieved from this document.",
                     "오프라인: 표시된 바이트만 포함됩니다. 이 문서에서는 추가 생략 근거를 가져올 수 없습니다.")));
             }
+            html.push_str(&format!("<details class=\"source-context\"><summary>{}</summary>{context}<p class=\"source-note\">{}: {} / 16,384 UTF-8 bytes · 4,096 / {}</p></details>",
+                text(r.locale,"Observation scope and limits", "관측 범위와 한계"),text(r.locale,"Included unique cited text", "포함된 고유 인용 텍스트"),
+                answers.source_excerpts.iter().map(|e|e.text.len()).sum::<usize>(),text(r.locale,"range maximum", "범위별 최대")));
             html.push_str("<nav class=\"point-others\">");
             for (other, other_c) in answer
                 .citations

@@ -175,6 +175,27 @@ fn preparation_record_read_correction_delete_and_forget_use_current_operations(
         &f,
         &format!("/?view=work&work={work}&locale=ko&language=ko"),
     );
+    if let Some(root) = std::env::var_os("VOLICORD_READER_CONTROL_CAPTURE") {
+        let root = std::path::PathBuf::from(root);
+        std::fs::create_dir_all(&root)?;
+        let request = volicord_viewer::ViewerRequest {
+            project_id: f.project,
+            locale: ViewerLocale::Korean,
+            view: ViewerView::Work { work: Some(work) },
+            requested_language: "ko".into(),
+            guarded_request: None,
+        };
+        let snapshot = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()))
+            .render_snapshot(&request, TimestampMicros::from_unix_micros(123))?;
+        std::fs::write(root.join("stale-offline.html"), snapshot.html)?;
+        std::fs::write(
+            root.join("stale-control.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "classification":"synthetic correction/staleness control; not normal article success",
+                "project":f.project.to_string(),"work":work.to_string(),"human_acceptance":"pending"
+            }))?,
+        )?;
+    }
     assert!(stale.contains("근거가 변경"));
     assert!(!stale.contains("Fake unit-test paragraph"));
     assert!(stale.contains(&format!(
@@ -1505,5 +1526,76 @@ fn recorded_decision_reason_remains_readable_without_generated_article(
         assert!(!recorded.contains("<pre>"));
         assert!(!page.contains("<details class=\"record-box\" open"));
     }
+    Ok(())
+}
+
+#[test]
+fn verification_displays_distinct_named_executions_and_numeric_facts_without_article(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let work = f.goals["goal_only"];
+    let analysis = f
+        .operations
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let mut runs = Vec::new();
+    for exit in [3, 0] {
+        let result = f
+            .operations
+            .run_work_command(volicord_operations::WorkCommandRequest {
+                project_id: f.project,
+                work_item_id: work,
+                analysis_snapshot_id: analysis,
+                command_label: "Same <check> & label".into(),
+                program: "python3".into(),
+                arguments: vec![
+                    "-c".into(),
+                    format!("print('output is not an assertion'); raise SystemExit({exit})"),
+                ],
+                timeout: std::time::Duration::from_secs(3),
+                retain_seconds: 3600,
+            })?;
+        runs.push((result.source_id, exit));
+    }
+    let before = f.operations.canonical_basis(f.project)?;
+    let request = volicord_viewer::ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::English,
+        view: ViewerView::Work { work: Some(work) },
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    for page in [
+        get(&f, &format!("/?view=work&work={work}")),
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()))
+            .render_snapshot(&request, TimestampMicros::from_unix_micros(1))?
+            .html,
+    ] {
+        for (id, exit) in &runs {
+            let row = page
+                .split(&format!("data-execution-source=\"{id}\""))
+                .nth(1)
+                .ok_or("exact run")?
+                .split("</article>")
+                .next()
+                .ok_or("run end")?;
+            assert!(row.contains("Same &lt;check&gt; &amp; label"));
+            assert!(row.contains(&format!("Numeric exit code</dt><dd>{exit}</dd>")));
+            assert!(row.contains("Environment</dt><dd>Not observed</dd>"));
+            assert!(row.contains("Assertion result</dt><dd>Not observed</dd>"));
+            assert!(row.contains("Started</dt>"));
+            assert!(row.contains("Ended</dt>"));
+            assert!(row.contains("execution-time tree was not rechecked"));
+            assert!(row.contains("No Checkpoint assertion report is linked"));
+            assert!(!row.contains("SelectedAnalysisOnlyNotRechecked"));
+            assert!(!row.contains("Some(0)"));
+        }
+        assert!(page.contains("Complete verification read model (JSON)"));
+        assert!(page.contains("No admitted article claims are available to index"));
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())
 }

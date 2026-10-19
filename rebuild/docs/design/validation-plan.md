@@ -3114,3 +3114,18 @@ same-length/rehashed streams, foreign anchor/Work, changed operation/snapshot,
 extended retention, unsupported copies, deletion and anchor forgetting, including
 old-render publication. This is an actual production correction with adversarial
 regressions, not a renderer workaround or a retrospective fix to old evidence.
+
+
+Focused reader presentation checks extend `citation_reading_browser.cjs` with one
+persistent section navigator, actual destination existence, native fragment target
+clearance, offscreen scrolling, mobile focus containment, a delayed permitted
+response after close/switch, shared-Source invalidation and script-free navigation.
+Exact-candidate screenshots and process/result identities stay ignored locally.
+`work_history` compares every typed row directly with canonical Checkpoint facts;
+`work_explanation` executes identically labelled distinct runs and checks separate
+numeric outcomes, unobserved assertion/environment and complete optional originals.
+Optional `VOLICORD_READER_CONTROL_CAPTURE` preserves an actual script-free stale
+read after a synthetic correction, explicitly separate from normal host articles.
+These controls do not supply a genuine prospective host integration, native zoom,
+screen-reader use, independent semantic approval or human acceptance. Prior rejection
+remains preserved; fresh Product review is pending feedback for its exact artifact.

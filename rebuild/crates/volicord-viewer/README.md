@@ -599,7 +599,7 @@ copy; dependent generated fields become unavailable. `repository explain delete
 --analysis ANALYSIS_ID` deletes every language/history for that subject. Explicit
 fresh observation/preparation/composition/recording is recovery after changed,
 expired, deleted, withheld, corrupt or unsupported evidence. Reads never refill a
-copy from current files. Current explanation format is 4; non-current content is
+copy from current files. Current explanation format is 5; non-current content is
 Unsupported, with no historical conversion or compatibility decoder.
 
 Focused public contract control (authored support, no model/user assessment):
@@ -652,3 +652,31 @@ live/offline output, including when explanation is absent. Reports display at mo
 and CLI/MCP keep complete originals. Retained execution metadata is revalidated at
 publication separately from article dependencies; a deleted copy cannot leave an
 old verification-only snapshot publishable.
+
+
+## Reading articles and evidence
+
+Work, Decision and repository documents use authored section names and order.
+One compact native section navigator stays available while scrolling; narrow
+screens let the global header scroll away so its wrapping cannot cover targets.
+Live and script-free exports share section labels, warnings, verification and
+admitted excerpts. Missing articles remain explicitly unavailable.
+
+Warnings distinguish the latest reported failure, historical adverse observations,
+partial/unestablished coverage, Source limitations and rejected acceptance. They
+qualify recorded observations; they do not establish current code failure or a
+comparable retest. Decision reading preserves the original recommendation reason
+independently from missing user rationale or unavailable supporting Source.
+
+Verification joins reports by exact Command Source identity, never by label, result
+or nearby time. Each run separates process termination/exit, observed times/target,
+Source state, assertion/environment availability and original Checkpoint quotations.
+Stream completeness and retention are under native disclosure. The purpose-led
+Evidence index connects admitted statements to exact Sources and original records;
+complete JSON and raw audit remain behind intentional inspection. Source panels put
+code before optional observation metadata, retaining bounded reads and exact return.
+
+Focused browser checks cover five widths, section fragments, delayed reads, shared
+Sources, deletion, keyboard and offline navigation. They do not establish native
+zoom, screen-reader usability, semantic adequacy or human acceptance. The previous
+reader was rejected; new review output remains pending exact-artifact feedback.

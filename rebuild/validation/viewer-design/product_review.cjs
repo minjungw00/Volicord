@@ -30,8 +30,8 @@ async function serve(c){const p=spawn(config.viewer,['--runtime',c.runtime,'--pr
  return {base,async stop(){p.kill('SIGTERM');const termination=await exited;fs.writeFileSync(path.join(output,c.key+'-viewer.stdout'),stdout);fs.writeFileSync(path.join(output,c.key+'-viewer.stderr'),stderr);return termination;}};}
 async function fits(page){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),JSON.stringify(await page.evaluate(()=>({url:location.href,width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('main *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(n=>({tag:n.tagName,cls:n.className,width:n.getBoundingClientRect().width}))}))));}
 async function capture(page,c,name,width){await fits(page);await page.screenshot({path:path.join(output,`${c.key}-${name}-${width}.png`)});}
-async function sourceJourney(page,c,width,offline=false){
- const article=page.locator('#repository-explanation .doc');
+async function sourceJourney(page,c,width,offline=false,selector='#repository-explanation .doc'){
+ const article=page.locator(selector);
  const links=article.locator('a.evidence-link:visible');if(!await links.count())return {state:'unavailable'};
  // A reading point selected by the real document, rather than any historical case.
  const link=links.last(),target=(await link.getAttribute('href')).slice(1);
@@ -128,12 +128,29 @@ async function sourceJourney(page,c,width,offline=false){
    if(c.work){const card=page.locator(`.work-card[data-work-id="${c.work}"]`);assert.equal(await card.locator('a').count(),1);
     await card.locator('.card-action').click();assert.equal(new URL(page.url()).searchParams.get('work'),c.work);
     assert.equal(await page.locator('.doc').getAttribute('data-work-id'),c.work);if(c.normal_work){assert.equal(await page.locator('.doc h1').textContent(),row.reading_title);assert.equal(await page.locator('.doc .lead[data-question="Synopsis"]').textContent(),row.synopsis);}
+    const sectionNav=page.locator('.doc .document-nav');assert.equal(await sectionNav.count(),1);
+    assert.equal(await page.locator('.audit-links,.opening-limits,.limit-shortcut').count(),0);
+    const workReport=status.work_history.find(w=>w.work_item_id===c.work).verification_report;
+    assert.equal(await page.locator('.verification-report .verification-execution').count(),Math.min(32,workReport.executions.length));
+    assert.equal(await page.locator('.verification-report .verification-check').count(),Math.min(64,workReport.checks.length));
+    for(const run of workReport.executions.slice(0,32)){
+     const execution=page.locator(`[data-execution-source="${run.source_id}"]`);
+     assert.equal(await execution.locator('h3').textContent(),run.command_label);
+     assert.ok(!(await execution.textContent()).includes('Some('),'numeric facts do not use Rust debug option syntax');
+    }
+    for(const id of await sectionNav.locator('a').evaluateAll(a=>a.map(n=>n.hash.slice(1))))assert.equal(await page.locator(`[id="${id}"]`).count(),1);
     await capture(page,c,'work',width);
+    row.work_source=await sourceJourney(page,c,width,false,'.doc');
     await page.reload();assert.equal(await page.locator('.doc').getAttribute('data-work-id'),c.work);
     await page.locator('.breadcrumb a').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');
    }else assert.ok((await page.locator('#works').textContent()).match(/No Work|기록된 작업이 없/));
    if(!await page.locator('.tools-menu').evaluate(n=>n.open))await page.locator('.tools-menu>summary').click();await page.locator('.tools-menu a[href*="view=decisions"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'decisions');
-   if(c.decision){await page.locator(`.decision-summary[data-decision-id="${c.decision}"] a`).click();assert.equal(new URL(page.url()).searchParams.get('decision'),c.decision);assert.equal(await page.locator('.doc').count(),1);await capture(page,c,'decision',width);}
+   if(c.decision){await page.locator(`.decision-summary[data-decision-id="${c.decision}"] a`).click();assert.equal(new URL(page.url()).searchParams.get('decision'),c.decision);assert.equal(await page.locator('.doc').count(),1);if(c.source_bundle){
+     const b=JSON.parse(fs.readFileSync(c.source_bundle));const t=b.payload.tables.find(t=>t.name==='decisions');
+     const original=t.rows.map(row=>Object.fromEntries(t.columns.map((key,n)=>[key,row[n].value]))).find(d=>d.id===c.decision);
+     const records=page.locator('.recorded-choice');assert.ok((await records.textContent()).includes(original.recommendation_rationale));
+     if(original.user_rationale===null)assert.ok((await records.textContent()).match(/User rationale is not recorded|사용자 근거가 기록되지/));
+    }await capture(page,c,'decision',width);}
    else assert.ok((await page.locator('#decision-reading').textContent()).match(/No Decisions|기록된 결정이 없/));
    for(const tool of ['status','documents','memory','evidence']){
     const menu=page.locator('.tools-menu');if(!await menu.evaluate(n=>n.open))await menu.locator('summary').click();

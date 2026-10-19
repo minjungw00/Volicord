@@ -2034,3 +2034,23 @@ Viewer publication carries exact Work/source observation fingerprints, including
 retention metadata, separately from article provenance. Mutation-locked publication
 rechecks those dependencies even when no article exists. Expiry/deletion/change
 rejects the old render; it never silently drops fields to publish that generation.
+
+
+### Reader presentation of independent reports
+
+Viewer joins original verification rows only by exact Command Source identity.
+Recorded labels are presentation, not parsed check names. Numeric exit/termination,
+window, selected target/not-rechecked limitation, body state, environment/assertion
+availability, timeout/signal/cancellation and stream capture each retain separate
+attribution. Record-only outcomes remain honest quotations. All report originals,
+including rows beyond display bounds, remain in an explicitly disclosed JSON read
+model and independent canonical audit. No assertion or comparable retest is derived.
+
+The shared live/offline article renderer uses one bounded sticky native section
+navigator. Material warning labels distinguish latest reported failure, prior adverse
+observations, coverage uncertainty, Source unavailability and rejected acceptance;
+missing prose alone is not critical. Claim-purpose evidence disclosures point to
+exact admitted Source selections and original records, with code before optional
+observation metadata in the focused pane. These presentation changes alter no
+retained format, authority, public route, protected action or generation policy.
+Technical browser results remain separate from semantic and human acceptance.

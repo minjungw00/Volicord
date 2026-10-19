@@ -558,7 +558,7 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             2 // article plus exact evidence-index quotation behind disclosure
         );
         assert!(page.contains("<span>main.py:1–2</span></a>"));
-        assert!(page.contains("Change / investigation · Source 1 ↗"));
+        assert!(page.contains("Observed file in selected snapshot · Source 1 ↗"));
         assert!(page.contains("Observed file in selected snapshot"));
         assert_eq!(
             page.contains("Before: historical observation"),
@@ -569,7 +569,7 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         let korean = ViewerAdapter::new(ops(&f)?)
             .render(&korean_request, "test-authenticity")?
             .html;
-        assert!(korean.contains("구조와 동작 · 근거 1 ↗"));
+        assert!(korean.contains("선택 스냅샷에서 관측한 파일 · 근거 1 ↗"));
         assert!(korean.contains("선택 스냅샷에서 관측한 파일"));
         assert!(
             page.find("class=\"record-facts\"").ok_or("facts")?

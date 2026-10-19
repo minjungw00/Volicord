@@ -101,7 +101,7 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
 .decision-summary { padding:20px 0; border-bottom:1px solid var(--line); }
 .badge { font-size:.8rem; color:var(--muted); }
 .source-point { margin:32px 0; padding:0; scroll-margin-top:20px; }
-.source-point:focus-visible { outline:none; }
+.source-point:focus-visible { outline:3px solid var(--focus); outline-offset:-3px; }
 .point-title { font-size:.85rem; color:var(--accent); font-weight:700; }
 .claim-quote { border-left:2px solid var(--accent); padding:8px 16px; margin:16px 0; font-size:.95rem; max-height:24vh; overflow:auto; }
 .source-path { font-family:ui-monospace,monospace; font-size:.8rem; margin:16px 0 6px; }
@@ -241,4 +241,23 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
  .appendix,.source-point { display:block!important; position:static!important; width:auto!important; }
  .doc { width:auto!important; }
  .reading-warning { break-inside:avoid; border:1px solid; }
+}
+
+.verification-execution,.verification-record-only { padding:24px; margin:20px 0; background:var(--surface); border:1px solid var(--line); border-radius:9px; }
+.verification-report dl { display:grid; grid-template-columns:minmax(9em,1fr) 2fr; gap:6px 20px; font-size:.9rem; }
+.verification-report dt { font-weight:600; color:var(--muted); }
+.verification-report dd { margin:0; white-space:pre-wrap; }
+.verification-check { border-top:1px solid var(--line); padding-top:16px; margin-top:20px; }
+.verification-check h4 { font-size:1rem; margin:0 0 14px; }
+.verification-check blockquote { border-left:3px solid var(--line); padding:12px 16px; max-height:18em; overflow:auto; white-space:pre-wrap; }
+.evidence-entry>summary>span { display:grid; gap:6px; }
+.evidence-entry summary small { font-weight:500; color:var(--muted); }
+.evidence-records { padding-left:20px; }
+.evidence-records li { margin-block:12px; }
+.source-point>.source-context { margin-top:16px; }
+@media(max-width:600px) {
+ .verification-execution,.verification-record-only { padding:16px; }
+ .verification-report dl { grid-template-columns:1fr; gap:4px; }
+ .verification-report dd { margin-bottom:10px; }
+ .source-point .claim-quote { margin-block:10px; }
 }
