@@ -2054,3 +2054,15 @@ exact admitted Source selections and original records, with code before optional
 observation metadata in the focused pane. These presentation changes alter no
 retained format, authority, public route, protected action or generation policy.
 Technical browser results remain separate from semantic and human acceptance.
+
+### Purpose-led local inspection
+
+D-24 / AC-22 uses a bounded Operations query over already authorized Project read
+models, with class, role, lifecycle, literal visible-summary search and stable
+identity pagination. Exact revision/field reads reuse existing evidence readers;
+relations use explicit canonical IDs and independently admitted endpoints. Full
+raw envelopes belong behind intentional inspection. Analysis health/recovery and
+Documents preview/export remain specialized tools. Memory and Evidence entry
+routes remain reachable; Work/Decision evidence indices retain their article
+context and return paths. See the [inspection threat model](privacy-and-provider-boundary.md#bounded-project-data-inspection-threat-model).
+No durable schema or format changes are needed for this request-local projection.

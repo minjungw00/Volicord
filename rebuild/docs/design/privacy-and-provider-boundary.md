@@ -709,3 +709,51 @@ artifact locator grants no repository-file access; only the existing same-Work
 command-copy reader can expose permitted bytes. The copy and dependent article
 links include this anchor, so canonical forgetting withholds dependent content.
 Current Work copies use the single exact v3 format; old copies are Unsupported.
+
+### Bounded Project data inspection threat model
+
+The local inspector reuses launched-Project authority. A Project selector may show
+only that authorized Project; switching to another Project requires a separately
+launched viewer. It grants no global inventory, database file, SQL, OS path reader,
+new role, credentials, provider permission or record mutation. Persisted bytes are
+not read authority. Search is literal substring matching over the displayed,
+permitted summary and identity only, after admission. No body/full-text index,
+hidden-field filter, relevance ranking or hidden aggregate participates.
+
+| User task / existing route | Operations owner and exact scope | Permitted output | Deny / lifetime control |
+| --- | --- | --- | --- |
+| Analysis / `?view=tools&tool=status` | `health_profiled`, Project projection, `privacy_status`; launched Project and selected analysis | capability, coverage, freshness, failure and recovery guidance; provider state | no automatic repair/analyze/provider call; keep polyglot unsupported states |
+| Documents / `?view=tools&tool=documents`, `POST /documents/export` | `project_documents_read_profiled`, `publish_document`; Project, language, current read fingerprint | grounded preview, explicit bounded publication and adoption guidance | authenticate export; publication recheck; generation never implies adoption |
+| Memory / `?view=tools&tool=memory` | bounded inspection query over `canonical_basis`; current record identity/revision | class, role, lifecycle, bounded canonical quotation, explicit same-Project relations | no Source body in summary, no cross-Project join; exact detail must recheck revision |
+| Evidence / `?view=tools&tool=evidence` | same inspector plus retained evidence disclosures; Project/snapshot | Source metadata, Checkpoint and explicit relation inspection | preserve diagnostic/inventory access; never infer association by path/text/time/commit |
+| Candidate inspection | `candidate_basis`, `inspect_candidate`, `candidate_evidence_detail`; Project, Candidate/revision | existing inspectable metadata and admitted bounded summary; explicit omission | expiry, cleanup and canonical-forgetting admission before search, counts, relations and paging; no withheld content hashes |
+| Derived inspection | `privacy_status`; Project and managed identity | kind, lifecycle, expiry and exact admitted canonical links only | no general Derived body endpoint; SourceObservation body still requires existing exact Work/revision scope; deleted/withheld content never searched |
+| Exact field / Source body | `canonical_evidence_detail`, `candidate_evidence_detail`; Project, class, identity, current revision, field and optional Work | bounded UTF-8 chunk, current disclosure state, continuation fingerprint | no locator evaluation; Source copy retention/deletion/Work barrier on every chunk; not-found and foreign identity indistinguishable |
+| Correction / `POST /memory/context/correct`, `/memory/decision/correct` | `correct_context_item`, `correct_decision`; current identity/revision and explicit user Source | existing domain receipt and refreshed current target | same Host/Origin, authenticity; no raw UPDATE; stale revision rejected |
+| Supersession / `POST /memory/decision/supersede` | `supersede_decision`; exact Decision and explicit user Source | new canonical identity and explicit supersedes link | no inferred choice, scope or user rationale |
+| Forget / `POST /memory/forget` | `forget_record`; exact canonical target, explicit user Source | completion or repair-required receipt | canonical + Candidate + managed Derived cleanup barrier; no DELETE endpoint |
+| Guarded / `/guarded/ID`, `POST /guarded/confirm` | `guarded_request`, `record_confirmation`; Project, request/revision/effect fingerprint | exact effect, confirm/deny and receipt | Origin + authenticity + exact scope; inspection never dispatches |
+| Static Viewer snapshot | existing snapshot publication and source readers | explicitly included bounded records, disclosure/omission and native anchors | no live queries/forms/script/authenticity; no new default bulk export |
+
+All query stages operate on admitted rows, including count, snippet, stable sort,
+page continuation, related targets and exact detail. Canonical Source rows use safe
+observation metadata rather than the legacy user-turn summary. Candidate omission
+permits identity/status metadata already owned by Candidate Inspection, not its
+content or content-derived relations. Derived metadata excludes purpose/body and
+provider-private material. Relationship targets must independently exist in the
+same admitted Project view; missing targets are explicitly omitted without naming
+foreign identities. No relation is synthesized from textual similarity.
+
+Queries have fixed record-class/state/role choices, a 128-byte literal term, page
+size at most 20 and bounded numeric offsets. Continuation binds query and admitted
+visible basis; changed correction, forgetting or expiry rejects continuation with
+conflict. Hidden content cannot affect a public fingerprint. Reads hold existing
+inspection coordination, use no persistent cache and emit `Cache-Control: no-store`.
+Malformed input is 400, wrong Host 421, wrong Origin/authenticity 403, unavailable
+exact identity 404, changed continuation/revision 409, failed dependency 503; errors
+contain no private values or database diagnostics. Stored strings and terms are
+escaped; no executable/user-controlled URL or external asset is introduced.
+
+Stronger multi-Project browsing, general Derived body reads, raw SQL or historical
+source restoration would expand authority and require a separate human decision.
+None is authorized by this dashboard.

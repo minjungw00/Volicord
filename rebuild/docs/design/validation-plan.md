@@ -3129,3 +3129,24 @@ read after a synthetic correction, explicitly separate from normal host articles
 These controls do not supply a genuine prospective host integration, native zoom,
 screen-reader use, independent semantic approval or human acceptance. Prior rejection
 remains preserved; fresh Product review is pending feedback for its exact artifact.
+
+### Bounded inspection security and review matrix
+
+Before browser polishing, exercise the actual public HTTP consumer against the
+[privacy deny/allow table](privacy-and-provider-boundary.md#bounded-project-data-inspection-threat-model).
+`volicord-viewer/tests/inspection.rs` owns the independent Product matrix: mixed
+Projects; withheld/expired/cleaned Candidate text; Derived content exclusion and
+pending canonical forgetting; Source body expiration and exact Work scope; hidden
+match counts, snippets, ordering and fingerprints; cross-Project relation targets;
+malformed terms/SQL-like literal input, paging overflow/ties and stale continuations;
+wrong Host/Origin and stored HTML escaping; correction/forget after listing; export
+barriers and protected-action authentication. Reuse existing lifetime and Guarded
+fixtures rather than invent an authority store. Allow and deny checks inspect HTTP
+status, actual body and returned identity, not merely hidden widgets.
+
+Then run retained route/function tests plus desktop/mobile browser review with
+representative records, empty, restricted and unavailable states. Keep original
+stdout/stderr and numeric exits via `validate focused`; no Final/V11. Record route
+coverage and actual results under `validation/viewer-design/inspection-review.md`.
+Synthetic records establish technical/presentation controls only; human acceptance
+and any proposed authority expansion remain separate.

@@ -539,3 +539,14 @@ AC-17/18 real semantic adequacy and AC-23 genuine prospective capture remain
 unestablished without current trusted host activation and source authority; no
 historical or authored control replaces those positives. Human comprehension is
 unobserved. The independent verification responsibility remains separately tested.
+
+### Local data inspection acceptance detail
+
+The secondary Tools disclosure exposes purpose-led inspection: select the authorized
+Project and record class, search displayed quotations/metadata, narrow typed state
+or role, page and open exact identities and permitted fields. Show why a row matters
+through role, state and explicit relationship labels. Keep raw envelopes closed by
+default. The launched viewer authorizes one Project; do not present a global Project
+catalog. Analysis and Documents keep their specialized journeys, and protected
+memory actions remain explicit. Static snapshots describe their included subset
+and keep native evidence links without live search or mutation controls.
