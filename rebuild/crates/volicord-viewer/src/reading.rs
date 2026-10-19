@@ -145,7 +145,7 @@ pub(super) fn runtime_blockers(
     if issues.is_empty() {
         return;
     }
-    html.push_str("<aside class=\"runtime-blocker\" aria-label=\"");
+    html.push_str("<aside class=\"runtime-blocker reading-warning\" role=\"note\" data-warning=\"runtime\" data-severity=\"danger\" aria-label=\"");
     html.push_str(text(r.locale, "Runtime blocker", "런타임 차단 문제"));
     html.push_str("\"><h2>");
     html.push_str(text(
@@ -1013,7 +1013,11 @@ fn reading_warning(
     title: &str,
     message: &str,
 ) {
-    html.push_str(&format!("<aside class=\"reading-warning\" role=\"note\" aria-label=\"{}\" data-warning=\"{}\" data-severity=\"{}\"><strong>{}</strong><p>{}</p></aside>", escape(title),escape(kind),escape(severity),escape(title),escape(message)));
+    if kind == "source" {
+        html.push_str(&format!("<details class=\"reading-warning\" data-warning=\"source\" data-severity=\"{}\"><summary>{}</summary><p>{}</p></details>", escape(severity),escape(title),escape(message)));
+    } else {
+        html.push_str(&format!("<aside class=\"reading-warning\" role=\"note\" aria-label=\"{}\" data-warning=\"{}\" data-severity=\"{}\"><strong>{}</strong><p>{}</p></aside>", escape(title),escape(kind),escape(severity),escape(title),escape(message)));
+    }
 }
 
 fn opening_context(
@@ -1066,12 +1070,14 @@ fn opening_context(
     {
         reading_warning(html, r,"partial","caution",text(r.locale,"Partial verification", "부분 검증"),
             text(r.locale,"The latest report covers only part of the intended verification. Inspect the original report for its stated limits.","최근 보고는 의도한 검증의 일부만 다룹니다. 원래 보고에서 명시된 한계를 확인하세요."));
-    } else if answers.cautions.iter().any(|c| {
-        matches!(
-            c.kind,
-            Kind::NotRun | Kind::CoverageUnknown | Kind::HistoricalCoverage
-        )
-    }) {
+    } else if failed.is_empty()
+        && answers.cautions.iter().any(|c| {
+            matches!(
+                c.kind,
+                Kind::NotRun | Kind::CoverageUnknown | Kind::HistoricalCoverage
+            )
+        })
+    {
         reading_warning(html,r,"unverified","note",text(r.locale,"Coverage remains unestablished", "검증 범위 미확인"),
             text(r.locale,"A reported pass or process exit does not establish current assertion coverage. Skips, historical results and unresolved comparison remain separate in the report.","보고된 통과나 프로세스 종료만으로 현재 assertion coverage를 확정하지 않습니다. 미실행·과거 결과·비교 미해결은 보고에서 구분됩니다."));
     }
@@ -1103,8 +1109,8 @@ fn opening_context(
                 "caution",
                 text(
                     r.locale,
-                    "Source verification unavailable",
-                    "Source 확인 불가",
+                    "Supporting record Source gap",
+                    "원래 기록의 Source 한계",
                 ),
             ),
             "UserAcceptance" => (

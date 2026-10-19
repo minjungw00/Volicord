@@ -342,6 +342,8 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     assert_eq!(opening.matches("data-warning=\"failure\"").count(), usize::from(case != "blank_later"),
                         "one latest-reported failure notice; full original outcomes remain inspectable");
                 }
+                assert!(!opening.contains("data-warning=\"unverified\""),
+                    "general coverage uncertainty belongs in the report when failures are already prominent");
                 assert!(selected.contains("data-question=\"ReportedResult\""));
                 check_primary(
                     selected,

@@ -261,3 +261,7 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
  .verification-report dd { margin-bottom:10px; }
  .source-point .claim-quote { margin-block:10px; }
 }
+
+/* Supporting-record gaps keep a visible caution title and intentional detail;
+   current explanation invalidation and reported failures remain expanded. */
+details.reading-warning>summary { color:inherit; font-size:.9rem; font-weight:650; padding:0; }
