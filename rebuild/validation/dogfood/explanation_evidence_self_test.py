@@ -167,7 +167,7 @@ class ReaderApplicabilityTests(unittest.TestCase):
     def read(self, *, source='04' * 16, kind='file', before=None, observed=10, until=100):
         p, _, _, _ = lifecycle()
         plan = p['plan']
-        obs = {'format_kind': 'volicord_source_observation', 'format_version': 2,
+        obs = {'format_kind': 'volicord_source_observation', 'format_version': 3,
             'project_id': plan['project_id'], 'work_item_id': plan['subject']['identity'],
             'work_revision': 1, 'source_id': source, 'source_revision': 1,
             'analysis_snapshot_id': 'analysis', 'repository_snapshot_id': 'repository',

@@ -939,7 +939,8 @@ fn changed_and_deleted_sources_cannot_publish_current_prose_and_recovery_is_expl
             &stale_destination,
             f.project,
             &projection_before.canonical_read_fingerprint,
-            &[provenance]
+            &[provenance],
+            &[],
         )
         .is_err());
     assert!(!stale_destination.exists());
@@ -1919,5 +1920,73 @@ fn editorial_fragments_are_grounded_before_public_read_and_cannot_survive_source
         .prose
         .iter()
         .all(|p| p.role != AnswerRole::GeneratedInterpretation));
+    Ok(())
+}
+
+#[test]
+fn verification_report_is_a_public_read_without_a_generation_request() -> Result<(), Box<dyn Error>>
+{
+    let mut f = Fixture::new()?;
+    let analysis = f
+        .host
+        .operations()
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let mut sources = Vec::new();
+    for (label, script) in [
+        ("observed failure", "raise AssertionError('failed')"),
+        ("independent pass", "assert 2 + 2 == 4"),
+    ] {
+        sources.push(
+            f.host
+                .operations()
+                .run_work_command(volicord_operations::WorkCommandRequest {
+                    project_id: f.project,
+                    work_item_id: f.work,
+                    analysis_snapshot_id: analysis,
+                    command_label: label.into(),
+                    program: "python3".into(),
+                    arguments: vec!["-B".into(), "-c".into(), script.into()],
+                    timeout: std::time::Duration::from_secs(3),
+                    retain_seconds: 3600,
+                })?
+                .source_id,
+        );
+    }
+    let before = f
+        .host
+        .operations()
+        .privacy_status(f.project)?
+        .managed_derived;
+    let args = f.args("verification");
+    let read = success(&mut f.host, args.clone())?;
+    assert_eq!(read["read_only"], true);
+    assert!(read["verification_report"]["checks"]
+        .as_array()
+        .ok_or("checks")?
+        .is_empty());
+    let runs = read["verification_report"]["executions"]
+        .as_array()
+        .ok_or("executions")?;
+    assert_eq!(runs.len(), 2);
+    assert_eq!(runs[0]["source_id"], sources[0].to_string());
+    assert_eq!(runs[0]["exit_code"], 1);
+    assert_eq!(runs[1]["source_id"], sources[1].to_string());
+    assert_eq!(runs[1]["exit_code"], 0);
+    assert_eq!(runs[0]["observation"]["state"], "observed");
+    assert_eq!(runs[1]["assertion_result"]["state"], "not_observed");
+    let mut wrong = args;
+    wrong["work_item_id"] = json!("01".repeat(16));
+    assert_eq!(call(&mut f.host, wrong)["result"]["isError"], true);
+    assert_eq!(
+        before,
+        f.host
+            .operations()
+            .privacy_status(f.project)?
+            .managed_derived
+    );
     Ok(())
 }

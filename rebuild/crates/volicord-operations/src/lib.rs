@@ -25,6 +25,7 @@ mod recall;
 mod repository_explanation;
 mod source_observations;
 mod work_explanation;
+mod work_verification;
 pub use repository_explanation::{
     RepositoryClaimRange, RepositoryExplanationDraft, RepositoryFileObservationRequest,
     RepositoryReaderUnit,

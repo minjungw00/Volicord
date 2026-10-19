@@ -541,3 +541,17 @@ notice. Reopening a current permitted explanation is read recovery, never automa
 observation, retention renewal, generation or a fallback to another realization.
 Offline clipping remains an explicit inclusion limit rather than a promise of live
 retrieval. Source/claim hashes continue to establish binding rather than entailment.
+
+Independent Work verification reads preserve canonical reports and Command Source
+outcomes when retained observation metadata is unavailable. They never infer test
+assertions, environment, intended test IDs, comparable retest or recovery from prose.
+Typed observation unavailability does not erase the original report. Viewer snapshot
+publication rejects changed/expired/deleted execution-copy dependencies under the
+mutation lock, independently of article validity. Re-render is explicit recovery;
+reads never reacquire bodies or invoke a host/model.
+
+Command observation v3 reads additionally validate the immutable artifact Source
+hash and original expiry. Mutating streams, provenance, operation identity or
+retention cannot establish a fresh execution. Missing/forgotten integrity Source
+withholds the copy; canonical Command outcome remains historical. Earlier copy
+formats are Unsupported with explicit new-observation recovery, never conversion.

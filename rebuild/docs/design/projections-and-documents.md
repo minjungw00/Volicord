@@ -1999,3 +1999,38 @@ grant no Work Source authority. Preparation, compose and record never dispatch a
 model; the authorized active host supplies semantics. All public readers carry the
 same admitted units. Viewer uses actual section names and typed comparisons/flows
 in live/offline output, without fixed enum-titled sections or additional generation.
+
+### Independent verification and evidence reads
+
+`WorkReading.verification_report` is a read model over original Checkpoint facts,
+Command Sources and permitted same-Work SourceObservation metadata. It is independent
+of article presence, language, generation and excerpt selection. Each report row
+retains Checkpoint/revision/original vector position (not a test ID), observation
+time, reported state, exact original quotation, exact Command Source link, later
+recorded changes and typed Unknown/Historical applicability. Free text is not
+parsed into authoritative intended checks, assertion details or repair causality.
+NotRun remains distinct from absence. No typed comparable target/run relation is
+retained by current producers, so comparison is explicitly Unresolved. A subsequent
+unrelated pass never repairs a failure or grants current coverage.
+
+Canonical execution metadata survives unavailable disposable bodies as separately
+qualified historical evidence. Permitted command copies add exact operation/window,
+Work revision, selected Repository/Analysis Snapshot, target-not-rechecked limit,
+expiry, stream representation/count/completeness, timeout/cancellation/signal.
+Environment and assertion detail remain NotObserved; exit zero alone supplies none.
+Unavailable, deleted, expired and changed copies remove observation-derived fields.
+Every enriched execution uses the existing exact Work/source read barrier.
+
+CLI `work verification --work ID`, MCP `work_explanation action=verification`, and
+ordinary public Work reads expose this same typed report without a generation
+request. Viewer live/offline and CLI display at most 64 reports and 32 executions,
+show totals/displayed counts and retain full original inspection. Review/acceptance
+remain independent original dimensions. `QuestionAnswers.evidence_index` maps exact
+unit indices to admitted keys/citations; typed `cautions` expose verification risks
+without a packed status string. The index quotes admitted wording behind disclosure,
+never authors new claims. Canonical originals and full audit remain inspectable.
+
+Viewer publication carries exact Work/source observation fingerprints, including
+retention metadata, separately from article provenance. Mutation-locked publication
+rechecks those dependencies even when no article exists. Expiry/deletion/change
+rejects the old render; it never silently drops fields to publish that generation.

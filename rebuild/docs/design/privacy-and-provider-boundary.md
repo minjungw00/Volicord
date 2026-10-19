@@ -695,3 +695,17 @@ existing confirmation. GET, navigation, export and Source reads never capture,
 generate, transmit, renew retention or mutate canonical state. Inspector UI remains
 pending; this contract does not authorize SQL, ambient filesystem/DB access or a
 new background provider.
+
+Independent verification reading uses existing permitted same-Work observations.
+It exposes process metadata and stream counts, not ambient environment or new raw
+output copies. Canonical Command Sources remain historical when copies disappear;
+observation-derived execution window/target/operation fields do not survive body
+unavailability. Viewer publication rechecks exact observation/retention fingerprints
+even without an article. Reads neither capture nor renew retention; the scoped
+inspector and original forgetting barriers remain authoritative.
+
+Command-copy integrity Source hashes contain no command body. Their managed
+artifact locator grants no repository-file access; only the existing same-Work
+command-copy reader can expose permitted bytes. The copy and dependent article
+links include this anchor, so canonical forgetting withholds dependent content.
+Current Work copies use the single exact v3 format; old copies are Unsupported.

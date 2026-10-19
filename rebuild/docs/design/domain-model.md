@@ -732,3 +732,12 @@ suffice for bounded state/command inspection; no speculative canonical Attempt e
 or schema field is introduced. Structured attempt/retest coverage remains unsupported
 unless an explicit observed relation and coverage basis exist. Ordinary error-free,
 no-change or Decision-less work needs no invented events or forced Checkpoint.
+
+Command observation integrity reuses an immutable File Source identifying the
+serialized managed artifact at `volicord-observation:COMMAND_SOURCE`. The hash seals
+its observed metadata, bounded streams and expiry. This is a generated artifact
+Source, not a repository file, execution, user adoption, Checkpoint assertion or
+Decision. Command Source and invocation identity remain distinct and unchanged.
+Managed canonical links include the artifact anchor; forgetting it makes the copy
+and dependent interpretations unavailable. Disposable copy format/version is owned
+by versioning-policy.md. No output bodies enter Canonical Context.

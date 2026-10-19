@@ -1047,6 +1047,7 @@ fn viewer_snapshot_publication_is_absolute_atomic_no_replace_and_noncanonical(
         project,
         &volicord_projections::canonical_read_fingerprint(&canonical_before),
         &[],
+        &[],
     )?;
     assert_eq!(published.destination, destination);
     assert_eq!(published.bytes, html.len() as u64);
@@ -1059,6 +1060,7 @@ fn viewer_snapshot_publication_is_absolute_atomic_no_replace_and_noncanonical(
             &destination,
             project,
             &volicord_projections::canonical_read_fingerprint(&canonical_before),
+            &[],
             &[],
         )
         .expect_err("snapshot publication must not replace an existing file");
@@ -1073,6 +1075,7 @@ fn viewer_snapshot_publication_is_absolute_atomic_no_replace_and_noncanonical(
             Path::new("viewer-snapshot.html"),
             project,
             &volicord_projections::canonical_read_fingerprint(&canonical_before),
+            &[],
             &[],
         )
         .expect_err("relative snapshot destination must be rejected");

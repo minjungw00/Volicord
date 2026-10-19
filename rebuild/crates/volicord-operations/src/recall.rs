@@ -176,6 +176,7 @@ pub fn work_reading_json(
     let answers = volicord_projections::work_answers(work, language, locale);
     json!({"work_item_id":work.work_item_id.to_string(),"state":understanding_work_state_name(work.state),
         "reading_title":answers.reading_title(),"answers":answers,
+        "verification_report":work.reading.verification_report,
         "creation_event":work.creation_event,"latest_work_record_event":work.latest_work_record_event,
         "changed_paths":work.changed_paths,"changed_components":work.changed_components,"checkpoint_ids":work.checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
         "decision_ids":work.decision_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),"open_question_ids":work.open_question_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),

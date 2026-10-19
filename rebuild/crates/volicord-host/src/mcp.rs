@@ -1595,6 +1595,14 @@ impl HostAdapter {
             ExplanationSubject::Work(parse_context_item(required_str(args, "work_item_id")?)?)
         };
         match required_str(args, "action")? {
+            "verification" => {
+                let ExplanationSubject::Work(work) = subject else {
+                    return Err(HostError::new("Work subject required"));
+                };
+                Ok(
+                    json!({"project_id":project.to_string(),"work_item_id":work.to_string(),"verification_report":self.operations.read_work_verification(project,work).map_err(operation_error)?,"read_only":true}),
+                )
+            }
             "prepare" | "generate" => {
                 let language = required_str(args, "language")?;
                 let plan = self
@@ -2736,7 +2744,15 @@ fn work_explanation_schema() -> Value {
         "action",
         enum_schema("Delete subject explanation history", &["delete"]),
     ));
-    json!({"oneOf":[object_schema(prepare,&["action","project_id","work_item_id","language"]),
+    let mut verification = scope();
+    verification.push((
+        "action",
+        enum_schema(
+            "Read independent typed verification without generation",
+            &["verification"],
+        ),
+    ));
+    json!({"oneOf":[object_schema(verification,&["action","project_id","work_item_id"]),object_schema(prepare,&["action","project_id","work_item_id","language"]),
         object_schema(read,&["action","project_id","work_item_id","generation_id","source_id"]),
         object_schema(record,&["action","project_id","work_item_id","generation_id","realization"]),
         object_schema(compose,&["action","project_id","work_item_id","generation_id","draft"]),
@@ -2746,7 +2762,10 @@ fn work_explanation_schema() -> Value {
 fn decision_explanation_schema() -> Value {
     let mut schema = work_explanation_schema();
     if let Some(variants) = schema["oneOf"].as_array_mut() {
-        variants.retain(|v| v["properties"]["action"]["enum"] != json!(["read_source"]));
+        variants.retain(|v| {
+            v["properties"]["action"]["enum"] != json!(["read_source"])
+                && v["properties"]["action"]["enum"] != json!(["verification"])
+        });
         for variant in variants {
             if let Some(properties) = variant["properties"].as_object_mut() {
                 properties.remove("work_item_id");

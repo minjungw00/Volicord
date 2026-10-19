@@ -20,7 +20,7 @@ use volicord_repository_intelligence::{
 };
 
 const KIND: &str = "volicord_source_observation";
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 const FILE_BYTES: usize = 16_384;
 const STREAM_BYTES: usize = 8_192;
 const MAX_RETENTION_SECONDS: u64 = 7 * 24 * 60 * 60;
@@ -82,6 +82,10 @@ pub(crate) struct SourceObservation {
     repository_snapshot_id: String,
     repository_source_id: SourceId,
     observed_at_unix_micros: i64,
+    retained_until_unix_micros: i64,
+    /// Immutable File Source for the serialized local command observation
+    /// artifact, NOT a repository file or a second command execution.
+    integrity_source_id: Option<SourceId>,
     pub(crate) detail: Value,
 }
 
@@ -540,10 +544,7 @@ impl LocalOperations {
             )
             .map_err(|e| Error::with_source("cannot record observed Source", e))?
             .value;
-        let current = self.canonical_basis(basis.project.id)?;
-        let grounding = CanonicalGrounding::from_read_basis(&current)
-            .map_err(|e| Error::with_source("Source grounding failed", e))?;
-        let observation = SourceObservation {
+        let mut observation = SourceObservation {
             format_kind: KIND.into(),
             format_version: VERSION,
             project_id: basis.project.id,
@@ -555,14 +556,38 @@ impl LocalOperations {
             repository_snapshot_id: analysis.repository_snapshot.to_string(),
             repository_source_id: analysis.repository_source.identity(),
             observed_at_unix_micros: observed_at.as_unix_micros(),
+            retained_until_unix_micros: retained_until.as_unix_micros(),
+            integrity_source_id: None,
             detail,
         };
+        // A command's invocation fingerprint identifies argv, not its output.
+        // Seal the independently retained observation artifact in an immutable
+        // File Source. No raw bytes enter canonical storage and the locator is
+        // a managed artifact coordinate, never a repository read capability.
+        if matches!(source.payload, SourcePayload::CommandExecution { .. }) {
+            let integrity = canonical.record_source(new_operation_id()?, basis.project.id,
+                SourceDraft {
+                    expected_project_revision:basis.project.revision,
+                    payload:SourcePayload::File {locator:command_observation_locator(source.id),snapshot:command_observation_hash(&observation)?},
+                    actor:Principal {kind:PrincipalKind::Generator,identity:"volicord-local-source-observer".into()},
+                    observer:Some(Principal {kind:PrincipalKind::Agent,identity:"volicord-local-operations".into()}),
+                    availability:Availability::Available,
+                }).map_err(|e|Error::with_source("cannot seal command observation artifact; command Source survives but body was not retained",e))?.value;
+            observation.integrity_source_id = Some(integrity.id);
+        }
+        let current = self.canonical_basis(basis.project.id)?;
+        let grounding = CanonicalGrounding::from_read_basis(&current)
+            .map_err(|e| Error::with_source("Source grounding failed", e))?;
         let mut links = vec![
             ManagedCanonicalLink::Source(source.id),
             ManagedCanonicalLink::Source(analysis.repository_source.identity()),
             ManagedCanonicalLink::ContextItem(work),
         ];
         let mut sources = vec![source.id, analysis.repository_source.identity()];
+        if let Some(id) = observation.integrity_source_id {
+            links.push(ManagedCanonicalLink::Source(id));
+            sources.push(id);
+        }
         if let Some(before) = observation.detail["before_source_id"].as_str() {
             let id = SourceId::from_bytes(crate::operations::parse_identity(before)?);
             links.push(ManagedCanonicalLink::Source(id));
@@ -682,6 +707,8 @@ fn decode_observation(
         || observation.source_id != source
         || observation.work_revision != work_revision(basis, work)?
         || observation.source_revision != 1
+        || record.retained_until.map(|t| t.as_unix_micros())
+            != Some(observation.retained_until_unix_micros)
         || record.analysis_snapshot != Some(observation.analysis_snapshot_id)
         || !record
             .included_sources
@@ -694,6 +721,28 @@ fn decode_observation(
     {
         return Err(Error::new(
             "Source copy identity/revision binding is incompatible",
+        ));
+    }
+    if observation.detail["kind"] == "command" {
+        let integrity = observation
+            .integrity_source_id
+            .and_then(|id| basis.sources.iter().find(|s| s.source.id == id))
+            .filter(|s| s.availability == Availability::Available)
+            .ok_or_else(|| Error::new("command observation integrity Source unavailable"))?;
+        if !record
+            .included_sources
+            .iter()
+            .any(|s| s.identity() == integrity.source.id)
+            || !matches!(&integrity.source.payload, SourcePayload::File {locator,snapshot}
+                if *locator==command_observation_locator(source) && *snapshot==command_observation_hash(&observation)?)
+        {
+            return Err(Error::new(
+                "command observation artifact hash or identity mismatch",
+            ));
+        }
+    } else if observation.integrity_source_id.is_some() {
+        return Err(Error::new(
+            "file observation cannot claim command artifact integrity",
         ));
     }
     let Some(canonical) = basis.sources.iter().find(|s| s.source.id == source) else {
@@ -730,6 +779,17 @@ fn decode_observation(
     }
     verify_body(&canonical.source, &observation)?;
     Ok(Some(observation))
+}
+
+fn command_observation_locator(source: SourceId) -> String {
+    format!("volicord-observation:{source}")
+}
+fn command_observation_hash(observation: &SourceObservation) -> Result<String, Error> {
+    let mut artifact = observation.clone();
+    artifact.integrity_source_id = None; // the anchor cannot include its own ID
+    serde_json::to_string(&artifact)
+        .map(|text| format!("sha256:{:x}", Sha256::digest(text.as_bytes())))
+        .map_err(|e| Error::with_source("cannot hash command observation artifact", e))
 }
 
 fn verify_body(source: &Source, observation: &SourceObservation) -> Result<(), Error> {

@@ -93,7 +93,32 @@ pub struct QuestionAnswer {
     pub recorded_action: Option<RecordedActionBasis>,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ReaderEvidenceEntry {
+    pub unit_index: usize,
+    pub evidence_keys: Vec<String>,
+    pub citations: Vec<ExplanationCitation>,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadingCautionKind {
+    FailedCheck,
+    PartialCheck,
+    NotRun,
+    CoverageUnknown,
+    HistoricalCoverage,
+    SourceBodyUnavailable,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ReadingCaution {
+    pub kind: ReadingCautionKind,
+    pub checkpoint: Option<VerificationReference>,
+    pub source_id: Option<String>,
+    pub historical: bool,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct QuestionAnswers {
+    pub evidence_index: Vec<ReaderEvidenceEntry>,
+    pub cautions: Vec<ReadingCaution>,
     pub prose: Vec<QuestionAnswer>,
     pub facts: Vec<QuestionAnswer>,
     pub explanation_state: ExplanationState,
@@ -176,7 +201,7 @@ pub fn explanation_answers(
     let current = reading
         .filter(|e| e.state == ExplanationState::Current)
         .and_then(|e| e.content.as_ref());
-    let prose = if let Some(e) = current {
+    let prose: Vec<QuestionAnswer> = if let Some(e) = current {
         e.realization
             .paragraphs
             .iter()
@@ -209,6 +234,20 @@ pub fn explanation_answers(
         }]
     };
     let mut result = QuestionAnswers {
+        evidence_index: if current.is_some() {
+            prose
+                .iter()
+                .enumerate()
+                .map(|(unit_index, p)| ReaderEvidenceEntry {
+                    unit_index,
+                    evidence_keys: p.evidence_keys.clone(),
+                    citations: p.citations.clone(),
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
+        cautions: Vec::new(),
         prose,
         facts: Vec::new(),
         explanation_state: state,
@@ -379,6 +418,43 @@ pub fn work_answers(
     locale: FixedLocale,
 ) -> QuestionAnswers {
     let mut result = explanation_answers(&work.reading.explanations, language, locale);
+    for check in &work.reading.verification_report.checks {
+        let historical = work
+            .reading
+            .answers
+            .verification
+            .as_ref()
+            .is_none_or(|s| s.checkpoint_id.to_string() != check.original.checkpoint_id);
+        let kind = match check.reported_state {
+            ReportedCheckState::Failed => ReadingCautionKind::FailedCheck,
+            ReportedCheckState::Partial => ReadingCautionKind::PartialCheck,
+            ReportedCheckState::NotRun => ReadingCautionKind::NotRun,
+            ReportedCheckState::Passed => {
+                if check.applicability == VerificationApplicability::HistoricalAfterRecordedChange {
+                    ReadingCautionKind::HistoricalCoverage
+                } else {
+                    ReadingCautionKind::CoverageUnknown
+                }
+            }
+        };
+        result.cautions.push(ReadingCaution {
+            kind,
+            checkpoint: Some(check.original.clone()),
+            source_id: check.source_id.clone(),
+            historical,
+        });
+    }
+    for execution in &work.reading.verification_report.executions {
+        if execution.body_state != CommandBodyState::Available {
+            result.cautions.push(ReadingCaution {
+                kind: ReadingCautionKind::SourceBodyUnavailable,
+                checkpoint: None,
+                source_id: Some(execution.source_id.clone()),
+                historical: true,
+            });
+        }
+    }
+
     // A permitted command excerpt is an execution observation even before any
     // Checkpoint. Exit status says nothing about unreported test assertions.
     let mut executions = std::collections::BTreeSet::new();
@@ -582,90 +658,39 @@ pub fn work_answers(
             |s| key(s, "work_state"),
         ),
     ));
-    let verification = answers.verification.as_ref().map_or_else(
-        || {
+    if work.reading.verification_report.checks.is_empty() {
+        result.facts.push(fact(
+            "VerificationState",
             fixed(
                 locale,
-                "No verification recorded in a Checkpoint",
-                "Checkpoint에 기록된 검증 없음",
-            )
-        },
-        |s| {
-            s.verification
-                .iter()
-                .map(|v| verification_state_label(v.state, locale))
-                .collect::<Vec<_>>()
-                .join(", ")
-        },
-    );
-    result.facts.push(fact(
-        "VerificationState",
-        format!(
-            "{}: {verification}",
-            fixed(locale, "Checkpoint verification", "Checkpoint 검증")
-        ),
-        answers
-            .verification
-            .as_ref()
-            .map_or_else(Vec::new, |s| key(s, "verification")),
-    ));
-    for observation in &work.reading.states {
-        if observation.verification.is_empty() {
-            continue;
-        }
-        let historical = answers
-            .verification
-            .as_ref()
-            .is_none_or(|selected| selected.checkpoint_id != observation.checkpoint_id);
-        let details = observation
-            .verification
-            .iter()
-            .map(|v| {
-                let label = v.source_id.and_then(|id| {
-                    work.reading
-                        .evidence_source_status
-                        .iter()
-                        .find(|source| source.source_id == id)
-                });
-                // Outcome is the retained reported observation, never recovered stdout.
-                format!(
-                    "{}{}{}",
-                    verification_state_label(v.state, locale),
-                    v.outcome
-                        .as_ref()
-                        .map_or(String::new(), |outcome| format!(": {outcome}")),
-                    if label.is_some_and(|source| source.availability
-                        != Some(volicord_context::Availability::Available))
-                    {
-                        fixed(locale, " (Source unavailable)", " (Source 이용 불가)")
-                    } else {
-                        String::new()
-                    }
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("; ");
-        result.facts.push(fact(
-            if historical {
-                "HistoricalVerification"
-            } else {
-                "VerificationObservation"
-            },
-            format!(
-                "{}: {details}. {}",
-                if historical {
-                    fixed(locale, "Historical verification", "과거 검증")
-                } else {
-                    fixed(locale, "Recorded verification", "기록된 검증")
-                },
-                fixed(
-                    locale,
-                    "This observation does not establish user acceptance or unrecorded coverage.",
-                    "이 관찰로 사용자 수락이나 기록되지 않은 검증 범위를 확정하지 않습니다."
-                )
+                "Checkpoint verification: No verification recorded in a Checkpoint",
+                "Checkpoint 검증: Checkpoint에 기록된 검증 없음",
             ),
-            key(observation, "verification"),
+            Vec::new(),
         ));
+    }
+    for check in &work.reading.verification_report.checks {
+        let keys = vec![format!(
+            "checkpoint:{}@{}:verification[{}]",
+            check.original.checkpoint_id,
+            check.original.checkpoint_revision,
+            check.original.verification_index
+        )];
+        result.facts.push(fact(
+            "VerificationState",
+            format!(
+                "{}: {}",
+                fixed(locale, "Reported check state", "보고된 검증 상태"),
+                check.reported_state.label(locale)
+            ),
+            keys.clone(),
+        ));
+        let historical = answers.verification.as_ref().is_none_or(|selected| {
+            selected.checkpoint_id.to_string() != check.original.checkpoint_id
+        });
+        result.facts.push(fact(if historical {"HistoricalVerification"} else {"VerificationObservation"},
+            format!("{}: {} · {} · {}",fixed(locale,"Recorded verification quotation","기록된 검증 인용"),check.reported_state.label(locale),check.original_outcome.as_deref().unwrap_or(""),
+                fixed(locale,"Assertion detail and comparable retest are not recorded; this report establishes no user acceptance or unrecorded coverage.","assertion 상세와 비교 가능한 재검증은 기록되지 않았습니다. 이 보고로 사용자 수락이나 미기록 coverage를 확정하지 않습니다.")),keys));
     }
     for (field, state) in [
         ("UserReview", answers.review.as_ref()),

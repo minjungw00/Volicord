@@ -66,6 +66,7 @@ pub struct ViewerRequest {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViewerPage {
+    pub verification_basis: Vec<volicord_projections::WorkVerificationBasis>,
     pub canonical_read_fingerprint: String,
     pub explanations: Vec<volicord_projections::ExplanationProvenance>,
     pub project_id: ProjectId,
@@ -269,6 +270,7 @@ impl ViewerAdapter {
                 page.project_id,
                 &page.canonical_read_fingerprint,
                 &page.explanations,
+                &page.verification_basis,
             )
             .map_err(|error| ViewerError::new(error.to_string()))
     }
@@ -512,6 +514,9 @@ impl ViewerAdapter {
         let html_render = render_started.elapsed();
         Ok((
             ViewerPage {
+                verification_basis: volicord_projections::work_verification_publication_basis(
+                    &projection,
+                ),
                 canonical_read_fingerprint: projection.canonical_read_fingerprint.clone(),
                 explanations: projection
                     .work_history

@@ -645,3 +645,10 @@ name, `narrative` supplies prose, adjacent `comparison_condition`/`comparison_re
 supply individually grounded comparison entries, and `flow_step` supplies cited
 ordered reading labels. These share the ordinary citation pane and script-free
 export; the reader creates no content or Source observations.
+
+Work documents expose an independent Verification report and Evidence index in
+live/offline output, including when explanation is absent. Reports display at most
+64 original check observations and 32 executions with exact totals. Canonical audit
+and CLI/MCP keep complete originals. Retained execution metadata is revalidated at
+publication separately from article dependencies; a deleted copy cannot leave an
+old verification-only snapshot publishable.

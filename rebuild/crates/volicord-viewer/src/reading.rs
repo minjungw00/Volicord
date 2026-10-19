@@ -655,9 +655,19 @@ fn render_document(
             "original",
             text(r.locale, "Original instructions", "원래 지시"),
         ),
+        (
+            "verification",
+            text(r.locale, "Verification report", "검증 보고"),
+        ),
+        (
+            "evidence-index",
+            text(r.locale, "Evidence index", "근거 색인"),
+        ),
         ("audit", text(r.locale, "Full evidence", "전체 근거")),
     ] {
-        if (section == "original" && work.is_none()) || (section == "limits" && !has_limits) {
+        if ((section == "original" || section == "verification") && work.is_none())
+            || (section == "limits" && !has_limits)
+        {
             continue;
         }
         html.push_str(&format!(
@@ -708,6 +718,10 @@ fn render_document(
         html.push_str("</ol>");
     }
     html.push_str("</div>");
+    if let Some(work) = work {
+        render_verification(html, r, answers, &work.reading.verification_report);
+    }
+    render_evidence_index(html, r, answers);
     if has_limits {
         html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><aside class=\"guard\"><h2>{}</h2>",document_anchor(answers,"limits"),answer_title("Limits",r.locale)));
         for (index, _) in answers
@@ -822,6 +836,100 @@ fn render_document(
     html.push_str(records);
     html.push_str("</details></div></article>");
     render_source_excerpts(html, r, answers, snapshot);
+}
+
+fn render_evidence_index(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+) {
+    html.push_str(&format!(
+        "<section class=\"reading-section\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2>",
+        document_anchor(answers, "evidence-index"),
+        text(r.locale, "Evidence index", "근거 색인")
+    ));
+    for entry in &answers.evidence_index {
+        let Some(unit) = answers.prose.get(entry.unit_index) else {
+            continue;
+        };
+        let preview: String = unit.text.chars().take(120).collect();
+        let omitted = unit.text.len().saturating_sub(preview.len());
+        html.push_str(&format!(
+            "<details class=\"record-box\"><summary>{}</summary><a href=\"#{}\">{}</a>",
+            escape(&preview),
+            reader_claim_anchor(answers, entry.unit_index),
+            text(r.locale, "Return to exact unit", "해당 문장으로 돌아가기")
+        ));
+        if omitted > 0 {
+            html.push_str(&format!(
+                "<p>{}: {omitted} UTF-8 bytes</p>",
+                text(r.locale, "Index quotation omitted", "색인 인용 생략")
+            ));
+        }
+        if let Some(provenance) = &answers.provenance {
+            for evidence in provenance
+                .evidence
+                .iter()
+                .filter(|e| entry.evidence_keys.contains(&e.key))
+            {
+                html.push_str(&format!(
+                    "<p>{} · {} {}@{} · {}</p>",
+                    escape(&evidence.key),
+                    escape(&evidence.record_kind),
+                    escape(&evidence.identity),
+                    evidence.revision,
+                    escape(&evidence.field)
+                ));
+            }
+        }
+        reader_citations(html, r, answers, entry.unit_index);
+        html.push_str("</details>");
+    }
+    html.push_str("</section>");
+}
+fn render_verification(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+    report: &volicord_projections::WorkVerificationReport,
+) {
+    use volicord_projections::EvidenceDetail;
+    html.push_str(&format!("<section class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2><p>{}</p>",document_anchor(answers,"verification"),text(r.locale,"Verification report","검증 보고"),text(r.locale,"Checkpoint reports and observed executions are separate. Exit status proves no assertions. Unrecorded test IDs, environment, coverage and comparable retest stay unknown.","Checkpoint 보고와 실행 관측은 별개입니다. 종료 코드만으로 assertion을 확정하지 않습니다. 미기록 테스트 ID·환경·coverage·비교 가능한 재검증은 미관측입니다.")));
+    for check in report.checks.iter().take(64) {
+        html.push_str(&format!("<article class=\"verification-check\"><h3>{}</h3><dl><dt>{}</dt><dd>{}</dd><dt>Checkpoint</dt><dd>{}@{} verification[{}]</dd><dt>Source</dt><dd>{}</dd><dt>{}</dt><dd>{:?}</dd></dl>",check.reported_state.label(r.locale.fixed()),text(r.locale,"Reported at","보고 시각"),timestamp_label(TimestampMicros::from_unix_micros(check.reported_at_unix_micros),r.locale),check.original.checkpoint_id,check.original.checkpoint_revision,check.original.verification_index,escape(check.source_id.as_deref().unwrap_or("—")),text(r.locale,"Applicability","적용성"),check.applicability));
+        if let Some(quote) = &check.original_outcome {
+            html.push_str(&format!(
+                "<details><summary>{}</summary><blockquote lang=\"\">{}</blockquote></details>",
+                text(
+                    r.locale,
+                    "Original verification report quotation",
+                    "원래 검증 보고 인용"
+                ),
+                escape(quote)
+            ));
+        }
+        html.push_str(&format!("<p>{}</p></article>",text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Later independent success does not repair this observation.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 나중의 독립 성공은 이 관측을 복구하지 않습니다.")));
+    }
+    for execution in report.executions.iter().take(32) {
+        html.push_str(&format!("<article class=\"verification-execution\"><h3>{}</h3><dl><dt>Source</dt><dd>{}@{}</dd><dt>{}</dt><dd>{}</dd><dt>Exit / termination</dt><dd>{:?} / {:?}</dd><dt>{}</dt><dd>{:?}</dd></dl>",escape(&execution.command_label),execution.source_id,execution.source_revision,text(r.locale,"Recorded at","기록 시각"),timestamp_label(TimestampMicros::from_unix_micros(execution.recorded_at_unix_micros),r.locale),execution.exit_code,execution.termination,text(r.locale,"Retained observation","보존 관측"),execution.body_state));
+        if let EvidenceDetail::Observed(o) = &execution.observation {
+            html.push_str(&format!("<dl><dt>{}</dt><dd>{} → {}</dd><dt>Operation</dt><dd>{}</dd><dt>Analysis / Repository Snapshot</dt><dd>{} / {}</dd><dt>{}</dt><dd>{}</dd><dt>stdout / stderr</dt><dd>{:?} ({} bytes) / {:?} ({} bytes)</dd></dl>",text(r.locale,"Execution window","실행 시각"),timestamp_label(TimestampMicros::from_unix_micros(o.started_at_unix_micros),r.locale),timestamp_label(TimestampMicros::from_unix_micros(o.ended_at_unix_micros),r.locale),escape(&o.operation_id),escape(&o.analysis_snapshot_id),escape(&o.repository_snapshot_id),text(r.locale,"Target limitation","대상 한계"),text(r.locale,"Selected analysis only; execution-time tree was not rechecked","선택된 분석이며 실행 시점의 트리는 재확인하지 않았습니다"),o.stdout.representation,o.stdout.observed_bytes,o.stderr.representation,o.stderr.observed_bytes));
+        }
+        html.push_str("</article>");
+    }
+    html.push_str(&format!(
+        "<p>{}: {} / {}. {}: {} / {}.</p></section>",
+        text(r.locale, "Checks / executions", "보고 / 실행"),
+        report.checks.len(),
+        report.executions.len(),
+        text(
+            r.locale,
+            "Displayed; full originals in evidence disclosure and CLI/MCP report",
+            "표시 수; 전체 원본은 근거 상세와 CLI/MCP 보고"
+        ),
+        report.checks.len().min(64),
+        report.executions.len().min(32)
+    ));
 }
 
 fn repository_boundaries(

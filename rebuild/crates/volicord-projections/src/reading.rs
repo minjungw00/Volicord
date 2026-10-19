@@ -145,6 +145,7 @@ pub struct WorkAnswers {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkReading {
+    pub verification_report: crate::WorkVerificationReport,
     pub evidence_source_status: Vec<ReadingSourceStatus>,
     pub explanations: Vec<crate::ExplanationReading>,
     pub answers: WorkAnswers,
@@ -577,6 +578,7 @@ impl WorkHistory<'_> {
                 .collect(),
             source_basis: source_basis.clone(),
             reading: WorkReading {
+                verification_report: crate::verification::verification_report(canonical, &states),
                 evidence_source_status: reading_sources(canonical, &source_basis),
                 explanations: Vec::new(),
                 answers,

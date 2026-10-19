@@ -95,5 +95,24 @@ fn recorded_recommendation_article_preserves_missing_user_reason_and_scope(
         public["evidence"]["recommendation_rationale"],
         "Prefer a bounded local boundary"
     );
+    if let Some(root) = std::env::var_os("VOLICORD_DECISION_CONTROL_CAPTURE") {
+        let root = std::path::PathBuf::from(root);
+        if !root.is_absolute() {
+            return Err("control capture must be absolute".into());
+        }
+        std::fs::create_dir(&root)?;
+        for (name, value) in [
+            ("preparation", &generated),
+            ("composed", &composed),
+            ("recorded", &recorded),
+            ("public-read", &public),
+        ] {
+            std::fs::write(
+                root.join(format!("{name}.json")),
+                serde_json::to_vec_pretty(value)?,
+            )?;
+        }
+        std::fs::write(root.join("origin.txt"),"Authored recorded recommendation control, absent user rationale. No live model generation, genuine user Decision, semantic approval or human acceptance.\n")?;
+    }
     Ok(())
 }

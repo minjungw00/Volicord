@@ -1115,3 +1115,27 @@ record/pair/command controls and missing, foreign, expired, deleted, unsupported
 blocked-capture distinctions. Optional `VOLICORD_WORK_SOURCE_CAPTURE=/absolute/new/path`
 on the Operations `cli_work_sources` integration test retains labeled authored
 readbacks under an ignored directory. It creates no genuine prospective Work.
+
+## Flexible Work/Decision articles and independent verification
+
+Focused article controls use Host `work_explanation` / `decision_explanation`,
+Operations `explanation_cli` / `cli_work_sources` / `explanation_budgets`, and Viewer
+`work_explanation` / `grounded_reader` / `citation_reading`. They exercise the sole
+exact-current v5 writer/reader, authored section order, individually grounded
+comparison/flow/reading labels, missing user rationale and existing recommendation
+rationale. Earlier immutable v4 outputs remain historical/Unsupported.
+
+Operations `work_verification` adds real disposable failing, independent passing
+and output-only executions, original Checkpoint failure/pass/NotRun history,
+unknown assertion/environment/retest, text/JSON CLI, wrong Work, deletion and
+adversarial expired/unsupported/corrupt/changed-snapshot copies. Host verification
+reads need no generation request. Viewer verification-only publication rejects
+changed retention dependencies with no article. Full raw originals remain behind
+inspection; ordinary report display is bounded to 64 checks / 32 runs with totals.
+Run each via `scripts/validate focused`; inspect its retained numeric result and
+streams. The source-first oracles are authored fixture inputs, not model output.
+
+These controls do not supply genuine current-host prospective Work capture, live
+model article quality, independent semantic review or human comprehension. Current
+trusted Volicord activation/source authority must exist for that separate positive;
+its absence is Blocked, never a synthetic substitute. No authoritative gate ran.

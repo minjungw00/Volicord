@@ -3093,3 +3093,24 @@ prospective capture nor independent semantic assessment or human comprehension.
 No trusted Volicord SessionStart/MCP activation is present in the editing session;
 the real-task capture is precisely Blocked, not substituted with fixture prose.
 Original historical recommendations support record reading only. No gate runs here.
+
+Independent verification controls: Operations `work_verification` executes real
+disposable failing, independent passing and output-only commands through the
+existing local caller; public JSON/text reads retain exact Source/operation/window
+and selected snapshots without promoting exit to assertion results. Authored
+Checkpoint histories preserve free-text quotation, historical failure/pass, skip,
+unresolved comparison and current-coverage uncertainty. Host `work_explanation`
+reads the report with no generation request; Viewer `work_explanation` reads it
+without an article and rejects source-only deletion between render/publication.
+Existing Source, retention, forgetting, scoped reads and public consumer regressions
+remain direct support. These runs are authored technical controls, not an authentic
+prospective user Work, root-cause semantic evaluation or human comprehension.
+
+The new independent-command report reproduced acceptance of a mutated retained
+stream by the prior outcome-only command copy reader. Current Work observation
+format 3 seals the entire command artifact and expiry in an immutable File Source
+using an explicit managed-artifact locator. Focused `work_verification` rejects
+same-length/rehashed streams, foreign anchor/Work, changed operation/snapshot,
+extended retention, unsupported copies, deletion and anchor forgetting, including
+old-render publication. This is an actual production correction with adversarial
+regressions, not a renderer workaround or a retrospective fix to old evidence.

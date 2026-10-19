@@ -805,4 +805,4 @@ Source manifest enumerates copies. The authorized host explicitly reads them and
 binds ranges. Repository preparation uses a separate Work-less exact analysis subject.
 Decision preparation reads recorded reasons; it does not borrow Work body authority.
 No new canonical Attempt/Verification schema is needed for bounded observed state
-and process facts. Rich typed retest/coverage and narrative/UI remain pending.
+and process facts. Independent typed report/execution reading now consumes these existing producers; explicit comparable retest/coverage remains unsupported without retained relationships.

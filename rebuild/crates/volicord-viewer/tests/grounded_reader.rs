@@ -555,7 +555,7 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         assert_eq!(
             page.matches("Understand the constant return in value().")
                 .count(),
-            1
+            2 // article plus exact evidence-index quotation behind disclosure
         );
         assert!(page.contains("<span>main.py:1–2</span></a>"));
         assert!(page.contains("Change / investigation · Source 1 ↗"));
@@ -1164,7 +1164,8 @@ fn large_excerpt_reaches_cli_mcp_live_and_snapshot_without_surrounding_bytes(
             &denied,
             project(&f)?,
             &projection.canonical_read_fingerprint,
-            &[provenance]
+            &[provenance],
+            &[],
         )
         .is_err());
     assert!(!denied.exists());
@@ -1515,7 +1516,8 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             &old_publication,
             project(&f)?,
             &projection.canonical_read_fingerprint,
-            &[answers.provenance.ok_or("identity")?]
+            &[answers.provenance.ok_or("identity")?],
+            &[],
         )
         .is_err());
     assert!(!old_publication.exists());
@@ -1536,7 +1538,8 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             &denied,
             project(&f)?,
             &current.canonical_read_fingerprint,
-            &[revised.provenance.ok_or("identity")?]
+            &[revised.provenance.ok_or("identity")?],
+            &[],
         )
         .is_err());
     assert!(!denied.exists());

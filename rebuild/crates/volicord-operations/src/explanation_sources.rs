@@ -326,6 +326,13 @@ impl LocalOperations {
                     }
                 }
             }
+            if !observation["integrity_source_id"].is_null() {
+                let integrity: SourceId =
+                    serde_json::from_value(observation["integrity_source_id"].clone()).map_err(
+                        |_| Error::new("command observation integrity Source binding unavailable"),
+                    )?;
+                dependencies.insert(integrity);
+            }
             dependencies.insert(source);
             dependencies.insert(SourceId::from_bytes(parse_identity(
                 &citation.repository_source_id,

@@ -408,3 +408,10 @@ of user rationale and cannot read Work Source bodies. CLI `decision explain comp
 operation invokes a model automatically; generation requests await the authorized
 active host. Section titles, narrative, comparisons and flow labels are grounded
 units, with whole-article invalidation and unchanged byte budgets.
+
+Read independent typed verification with `work_explanation` action `verification`,
+Project and exact Work identity; no generation_id is needed. CLI: `work verification
+--work ID` (use `--json` for the complete typed report). Report quotations, process
+observations, assertions, current coverage, review and acceptance remain separate.
+Unavailable bodies do not erase historical Command Sources. No command execution
+authority is added to MCP.

@@ -19,7 +19,9 @@ mod recall;
 mod selection;
 mod trigger;
 mod understanding;
+mod verification;
 pub use explanation::*;
+pub use verification::*;
 
 pub use candidate_inspection::{
     build_learning_explanation_basis, inspect_candidate, learning_resume_projection,

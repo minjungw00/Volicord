@@ -608,7 +608,8 @@ fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_public
             &snapshot_path,
             f.project,
             &page.canonical_read_fingerprint,
-            &page.explanations
+            &page.explanations,
+            &[],
         )
         .is_err());
     assert!(!snapshot_path.exists());
@@ -1366,5 +1367,105 @@ fn authored_sections_and_comparisons_reach_live_and_offline_without_enum_titles(
         );
         assert!(!page.contains(">Change / investigation</h2>"));
     }
+    Ok(())
+}
+
+#[test]
+fn independent_verification_report_is_readable_with_no_article(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let work = f.goals["relay"];
+    let before = f.operations.canonical_basis(f.project)?;
+    let report = f.operations.read_work_verification(f.project, work)?;
+    assert!(!report.checks.is_empty());
+    let request = volicord_viewer::ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::English,
+        view: ViewerView::Work { work: Some(work) },
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let offline = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()))
+        .render_snapshot(&request, TimestampMicros::from_unix_micros(1))?
+        .html;
+    for page in [get(&f, &format!("/?view=work&work={work}")), offline] {
+        assert!(page.contains("verification-report"));
+        assert!(page.contains("verification-check"));
+        assert!(page.contains("Original verification report quotation"));
+        assert!(page.contains("Comparison unresolved"));
+        assert!(page.contains("Exit status proves no assertions"));
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn verification_only_snapshot_revalidates_retention_without_any_article(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let work = f.goals["goal_only"];
+    let analysis = f
+        .operations
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let source = f
+        .operations
+        .run_work_command(volicord_operations::WorkCommandRequest {
+            project_id: f.project,
+            work_item_id: work,
+            analysis_snapshot_id: analysis,
+            command_label: "Observed independent command".into(),
+            program: "python3".into(),
+            arguments: vec!["-B".into(), "-c".into(), "print('not an assertion')".into()],
+            timeout: std::time::Duration::from_secs(3),
+            retain_seconds: 3600,
+        })?
+        .source_id;
+    let request = volicord_viewer::ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::English,
+        view: ViewerView::Work { work: Some(work) },
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let page = viewer.render_snapshot(&request, TimestampMicros::from_unix_micros(1))?;
+    assert!(page.explanations.is_empty());
+    assert!(!page.verification_basis.is_empty());
+    assert!(page.html.contains("verification-execution"));
+    assert!(page.html.contains("execution-time tree was not rechecked"));
+    let permitted = f._temporary.path().join("permitted.html");
+    f.operations.publish_viewer_snapshot(
+        &page.html,
+        &permitted,
+        f.project,
+        &page.canonical_read_fingerprint,
+        &page.explanations,
+        &page.verification_basis,
+    )?;
+    let canonical = f.operations.canonical_basis(f.project)?;
+    f.operations
+        .delete_work_source_observation(f.project, work, source)?;
+    let denied = f._temporary.path().join("deleted-execution.html");
+    assert!(f
+        .operations
+        .publish_viewer_snapshot(
+            &page.html,
+            &denied,
+            f.project,
+            &page.canonical_read_fingerprint,
+            &page.explanations,
+            &page.verification_basis
+        )
+        .is_err());
+    assert!(!denied.exists());
+    assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
+    let fresh = viewer.render_snapshot(&request, TimestampMicros::from_unix_micros(2))?;
+    assert!(fresh.verification_basis.is_empty());
+    assert!(!fresh.html.contains("execution-time tree was not rechecked"));
+    assert!(fresh.html.contains("Observed independent command")); // canonical label survives
     Ok(())
 }

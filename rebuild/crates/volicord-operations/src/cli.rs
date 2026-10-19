@@ -290,7 +290,7 @@ fn explanation_command(kind: &'static str) -> Command {
             )
         });
         if kind == "work" {
-            command = command.subcommand(work_source_command());
+            command = command.subcommand(work_source_command()).subcommand(Command::new("verification").about("Read independent typed verification and retained execution facts; never generates").arg(Arg::new("work").long("work").required(true)));
         }
     }
     command
@@ -994,6 +994,13 @@ fn dispatch_explanation(
     matches: &ArgMatches,
 ) -> Result<Value, Error> {
     if kind == "work" {
+        if let Some(args) = matches.subcommand_matches("verification") {
+            let project = resolve_project(operations, selection)?;
+            let work = ContextItemId::from_bytes(parse_identity(required(args, "work")?)?);
+            return Ok(
+                json!({"operation":"work_verification_read","project_id":project.to_string(),"work_item_id":work.to_string(),"verification_report":operations.read_work_verification(project,work)?,"read_only":true}),
+            );
+        }
         if let Some(actions) = matches.subcommand_matches("source") {
             return dispatch_work_source(operations, selection, actions);
         }
@@ -1530,6 +1537,9 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
     if matches!(operation, "analyze" | "analysis_rebuild") {
         return render_analysis_summary(value, mode.locale, stdout);
     }
+    if operation == "work_verification_read" {
+        return render_verification_report(stdout, &value["verification_report"], mode.locale);
+    }
     if operation == "repository_explanation_read" {
         return render_repository_answer(stdout, &value["answers"], mode.locale);
     }
@@ -1630,6 +1640,99 @@ fn render(value: &Value, mode: OutputMode, stdout: &mut dyn Write) -> Result<(),
         }
     }
     Ok(())
+}
+
+fn render_verification_report(
+    stdout: &mut dyn Write,
+    report: &Value,
+    locale: CliLocale,
+) -> Result<(), Error> {
+    let ko = matches!(locale, CliLocale::Korean);
+    write_line(
+        stdout,
+        if ko {
+            "검증 보고 · 실행과 assertion은 별개"
+        } else {
+            "Verification report · process exit is separate from assertions"
+        },
+    )?;
+    for check in report["checks"].as_array().into_iter().flatten().take(64) {
+        write_line(
+            stdout,
+            format!(
+                "  {}@{} verification[{}] · {} · {} · {}",
+                check["original"]["checkpoint_id"].as_str().unwrap_or(""),
+                check["original"]["checkpoint_revision"],
+                check["original"]["verification_index"],
+                check["reported_at_unix_micros"],
+                check["reported_state"].as_str().unwrap_or("unknown"),
+                check["applicability"].as_str().unwrap_or("unknown")
+            ),
+        )?;
+        if let Some(quote) = check["original_outcome"].as_str() {
+            write_line(
+                stdout,
+                format!(
+                    "    {}: {quote}",
+                    if ko {
+                        "원래 보고 인용"
+                    } else {
+                        "Original report quotation"
+                    }
+                ),
+            )?;
+        }
+    }
+    for execution in report["executions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .take(32)
+    {
+        write_line(
+            stdout,
+            format!(
+                "  {} · Source {}@{} · {} · exit {} · {} · body {}",
+                execution["command_label"].as_str().unwrap_or(""),
+                execution["source_id"].as_str().unwrap_or(""),
+                execution["source_revision"],
+                execution["recorded_at_unix_micros"],
+                execution["exit_code"],
+                execution["termination"].as_str().unwrap_or("unknown"),
+                execution["body_state"].as_str().unwrap_or("unknown")
+            ),
+        )?;
+        if execution["observation"]["state"] == "observed" {
+            let o = &execution["observation"]["value"];
+            write_line(
+                stdout,
+                format!(
+                    "    {} → {} · {} · analysis {} · {}",
+                    o["started_at_unix_micros"],
+                    o["ended_at_unix_micros"],
+                    o["operation_id"].as_str().unwrap_or(""),
+                    o["analysis_snapshot_id"].as_str().unwrap_or(""),
+                    o["target_state"].as_str().unwrap_or("unknown")
+                ),
+            )?;
+        }
+    }
+    let checks = report["checks"].as_array().map_or(0, Vec::len);
+    let runs = report["executions"].as_array().map_or(0, Vec::len);
+    write_line(
+        stdout,
+        format!(
+            "{}: checks {checks} / executions {runs}; displayed {}/{}. {}",
+            if ko { "전체" } else { "Total" },
+            checks.min(64),
+            runs.min(32),
+            if ko {
+                "테스트 ID·환경·현재 coverage·재검증 관계는 미관측입니다. 전체 원본: --json / canonical_inspect / work source read."
+            } else {
+                "Test IDs, environment, current coverage and retest relation are unobserved. Full originals: --json / canonical_inspect / work source read."
+            }
+        ),
+    )
 }
 
 fn render_repository_answer(
@@ -1935,6 +2038,9 @@ fn render_field(
                     answers["omitted_source_excerpt_count"]
                 ),
             )?;
+        }
+        if let Some(report) = value.get("verification_report") {
+            render_verification_report(stdout, report, locale)?;
         }
         return Ok(());
     }

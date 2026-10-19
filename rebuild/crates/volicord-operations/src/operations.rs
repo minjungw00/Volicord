@@ -2742,6 +2742,7 @@ impl LocalOperations {
         })
         .map_err(|error| Error::with_source("Work selection failed", error))?;
         self.attach_analysis_attempt(project_id, &mut projection.repository_analysis);
+        self.attach_work_verification(&canonical, &mut projection);
         let explanation_basis_preparations = self.attach_explanations(&canonical, &mut projection);
         let projection_build = projection_started.elapsed();
         let work_read_cost = projection.work_read_cost;
@@ -2913,9 +2914,11 @@ impl LocalOperations {
         project: ProjectId,
         canonical_read_fingerprint: &str,
         explanations: &[volicord_projections::ExplanationProvenance],
+        verification_basis: &[volicord_projections::WorkVerificationBasis],
     ) -> Result<PublicationOutcome, Error> {
         let _mutation = self.layout.acquire_mutation_lock()?;
         self.validate_read_publication(project, canonical_read_fingerprint, explanations)?;
+        self.validate_work_verification_publication(project, verification_basis)?;
         publish_bytes_no_replace(destination, html.as_bytes())
     }
 

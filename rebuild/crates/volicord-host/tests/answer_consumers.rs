@@ -750,7 +750,10 @@ fn historical_adversity_is_primary_summary_with_lossless_machine_audit(
                 "과거 문제 이력"
             }));
             for cp in &before.checkpoint_history {
-                assert!(!text.contains(&cp.recorded_at.as_unix_micros().to_string()));
+                assert!(
+                    text.contains(&cp.recorded_at.as_unix_micros().to_string()),
+                    "typed verification keeps each original event time readable"
+                );
             }
         }
     }
