@@ -1,6 +1,8 @@
 // Supporting browser review of the actual Rust Product, using maintained control records.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn,execFileSync}=require('node:child_process');
+
+function reviewedFiles(directory){const files={};for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name);if(!fs.lstatSync(file).isFile()||!['.png','.html'].includes(path.extname(name)))continue;const bytes=fs.readFileSync(file);files[name]={sha256:require('node:crypto').createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};}return files;}
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const fixture=JSON.parse(fs.readFileSync(config.fixture,'utf8'));
 const {chromium}=require(config.playwright);
@@ -46,10 +48,10 @@ async function serve(project){
   assert.ok((await page.locator('#field-detail pre').first().textContent()).length>0);await page.locator('#field-detail').scrollIntoViewIfNeeded();await shot('exact-field');
   await page.locator('.inspection-record a').filter({hasText:'Read Work document'}).click();assert.ok(await page.locator('.doc').count()>0);
   const evidence=page.locator('.doc .evidence-index a[href^="#"]');const evidenceLinks=await evidence.count();assert.ok(evidenceLinks>0);
-  await evidence.first().click();assert.ok(new URL(page.url()).hash);
+  await page.locator('.doc .evidence-index .evidence-entry>summary').first().click();await evidence.first().click();assert.ok(new URL(page.url()).hash);
   result.cases.push({width,journey:'Work evidence index deep link',identity:fixture.work,evidence_links:evidenceLinks});
   await open(`/inspection?class=decision&id=${fixture.decision}`);await page.locator('.inspection-record a').filter({hasText:'Read Decision document'}).click();assert.ok(await page.locator('.doc').count()>0);
-  const decisionEvidence=page.locator('.doc .evidence-index a[href^="#"]');assert.ok(await decisionEvidence.count()>0);await decisionEvidence.first().click();assert.ok(new URL(page.url()).hash);
+  const decisionEvidence=page.locator('.doc .evidence-index a[href^="#"]');assert.ok(await decisionEvidence.count()>0);await page.locator('.doc .evidence-index .evidence-entry>summary').first().click();await decisionEvidence.first().click();assert.ok(new URL(page.url()).hash);
   result.cases.push({width,journey:'Decision evidence index deep link',identity:fixture.decision,status:'passed'});
   await open(`/inspection?class=candidate&id=${fixture.expired}`);assert.ok((await page.locator('.inspection-record').textContent()).includes('expired'));assert.ok(!(await page.content()).includes('expired-review-secret'));await shot('expired-candidate');
   await open(`/inspection?class=derived&id=${fixture.derived}`);assert.ok(!(await page.content()).includes('derived-review-secret'));await shot('derived-metadata');
@@ -73,8 +75,9 @@ async function serve(project){
  await staticPage.goto(require('node:url').pathToFileURL(snapshot).href);const anchors=await staticPage.locator('a[href^="#"]').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href').slice(1)));for(const id of anchors)assert.ok(await staticPage.locator(`[id="${id}"]`).count(),id);await staticPage.close();
  result.cases.push({journey:'script-free offline permitted subset',status:'passed',native_anchors:anchors.length});result.status='passed';
  }catch(error){result.status='failed';result.error=error.stack;process.exitCode=1;}finally{
- if(listener)await listener.stop();if(browser)await browser.close();fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));
+ if(listener)await listener.stop();if(browser)await browser.close();
  fs.writeFileSync(path.join(output,'review.html'),'<!doctype html><meta charset="utf-8"><title>Project inspection review</title><h1>Actual Product inspection review</h1><p>Supporting synthetic controls; human acceptance pending. See result.json for candidate/executable identity.</p><p><a href="product-snapshot.html">Script-free Product snapshot</a> · <a href="result.json">Results</a></p>'+result.screenshots.map(s=>`<p><a href="${s}">${s}</a></p><img style="max-width:100%" src="${s}" alt="${s}">`).join(''));
+ result.files=reviewedFiles(output);fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));
  fs.writeFileSync(path.join(outputRoot,'current.json'),JSON.stringify({output,status:result.status,candidate:result.candidate},null,2));
  fs.writeFileSync(path.join(outputRoot,'current.html'),`<!doctype html><meta charset="utf-8"><title>Current inspection review</title><a href="${path.basename(output)}/review.html">Open current Product inspection review (${result.status})</a>`);
  console.log(JSON.stringify({status:result.status,cases:result.cases.length,error:result.error,output}));

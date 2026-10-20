@@ -726,6 +726,39 @@ fn seed_inspection_review() -> Result {
         .initialize_project("Empty inspection control", None)?
         .project
         .id;
+    // Authored technical fixture only: provide admitted claims for the existing
+    // browser's claim/evidence navigation assertions. No provider or user-quality claim.
+    {
+        use volicord_projections::*;
+        for subject in [
+            ExplanationSubject::Work(control.goals["older"]),
+            ExplanationSubject::Decision(control.decisions["explicit"]),
+        ] {
+            let plan = f.ops().prepare_explanation(f.project, subject, "en")?;
+            let questions = if matches!(subject, ExplanationSubject::Work(_)) {
+                vec![
+                    (ExplanationQuestion::Purpose, "goal"),
+                    (ExplanationQuestion::ReportedChange, "result"),
+                    (ExplanationQuestion::ExpectedEffect, "result"),
+                    (ExplanationQuestion::Verification, "verification"),
+                    (ExplanationQuestion::NextStep, "next_step"),
+                ]
+            } else {
+                vec![
+                    (ExplanationQuestion::UserRationale, "user_rationale"),
+                    (ExplanationQuestion::Recommendation, "recommendation"),
+                    (ExplanationQuestion::Consequences, "consequences"),
+                    (ExplanationQuestion::Applicability, "applicability"),
+                ]
+            };
+            f.ops().record_explanation(f.project, subject, "en", ExplanationRealization {
+                format_kind: EXPLANATION_KIND.into(), format_version: EXPLANATION_VERSION,
+                plan_fingerprint: plan.fingerprint, language: "en".into(),
+                generator: ExplanationGenerator { host: "authored-inspection-browser-control".into(), session: "synthetic".into(), agent: None, model: None },
+                paragraphs: questions.into_iter().map(|(question, key)| ExplanationParagraph { question, text: format!("Synthetic navigation control for {question:?}; not a user explanation evaluation."), evidence_keys: vec![key.into()], citations: Vec::new() }).collect(),
+            })?;
+        }
+    }
     let manifest = json!({"runtime":f.ops().layout().root(),"project":f.project.to_string(),"work":control.goals["older"].to_string(),
         "decision":control.decisions["explicit"].to_string(),"candidate":candidate.to_string(),"expired":expired.to_string(),"derived":derived.to_string(),
         "empty_project":empty.to_string(),"synthetic":true,"human_acceptance":"pending"});

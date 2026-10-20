@@ -3195,3 +3195,27 @@ task-owned controlled execution, never ordinary-user or trusted-host evidence.
 Use the focused runner and inspect original complete streams/numeric results.
 Canonical, Source and historical reader controls keep their separate responsibilities;
 these controls supply no Final/V11, semantic/human verdict or user acceptance.
+
+### Inspection resource and review-package follow-up
+
+Use the existing `volicord-viewer/tests/inspection.rs` controlled profiling cases
+through `validate focused`, with an absolute ignored root. Reuse unchanged stores
+for old/current runs sequentially; concurrent readers contend on the same health
+lock. Report actual Goal/class cardinalities, not generic Context counts. Ordinary
+scale fixtures must include Source/revision support and pass an owner mutation
+before measurement; missing-history/support fixtures remain partial-state controls.
+Keep query/fingerprint/index counters separate from process CPU/RSS and allocator
+counts. First-request measurements do not establish cold OS caches or a new SLA.
+
+`package_product_review_self_test.py` independently challenges raw neighbors,
+disguised databases, credentials, symlinks/parents/traversal, changed reviewed files,
+active content, PNG payloads, archive structure, candidate/manifest binding and
+original preservation. Run the actual Product/native browser drivers, then package
+and verify the exact clean committed candidate. File identities are sealed by the
+reviewing drivers; raw originals remain private. Use the current Product review
+builder/verifier for shareable material, not the historical private evidence copier.
+An absent admitted article is not a claim/evidence-navigation positive: technical
+fixtures may record explicitly synthetic articles through existing APIs and keep
+that origin visible. Native closed disclosures and catalog navigation are exercised
+as UI actions. Neither fake articles nor browser success establishes genuine user
+collection, semantic quality, human approval, Final or V11.

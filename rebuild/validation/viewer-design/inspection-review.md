@@ -162,3 +162,65 @@ wrong-endian/maximum-count controls pass. A separate public HTTP regression corr
 a real Goal's encoded applicability count: both HTML and JSON return 503 below
 2,048 bytes, with no record data or invented zero count. This is a reproduced local
 corrupt-state resource defect, not evidence of a remote SQL or file-read exploit.
+
+## Owner-valid scale, independent stress and packaging
+
+The first scaling matrix above is a read-side partial-state control: its cloned
+Checkpoint support and Context revision history were incomplete, so a later owner
+mutation rejected that state. It is not evidence of a healthy Project passing at
+that scale. The subsequent seed copies exact Goal/revision/Source support, avoids
+foreign-Work applied-Decision injection, and completes a real canonical Source
+mutation before preserving its measurement inputs. Original failed attempts and
+partial controls remain private, separately identified.
+
+On those owner-valid retained stores, `inspection-valid-baseline` and
+`inspection-valid-current` both exited 0. Thirty-six complete HTTP responses
+(Work/Checkpoint/Source × six datasets × two reads) match byte for byte, including
+counts, order, relationships and fingerprints. The current run also measures all
+other classes. The largest Project has 1,010 Works, 4,010 Checkpoints, 1,007 Sources
+and 1,001 additional Candidates/Derived records on the respective queried views.
+Spread warm Work: **6,009.078 → 405.722 ms**; Checkpoint: **6,040.342 → 567.706 ms**;
+Source: **5,814.055 → 429.169 ms**. Work first request: 5,941.790 → 445.309 ms.
+Payloads remain 8,623 / 9,554 / 5,109 bytes respectively.
+
+The current index has 6,039 canonical records and 26,200 admitted forward/reverse
+edges. Work visits/matches 1,010 rows, retains seven, hashes 1,141,127 bytes;
+Checkpoint visits 4,010 rows and hashes 5,079,570 bytes. Canonical read/index/hash
+samples were 333/31/40 ms for Work and 335/31/206 ms for Checkpoint. Process peak
+RSS was 117,428 KiB for the old three-class run and 106,080 KiB for the current
+all-class/counter run; CPU user/system was 82.32/0.56 s and 27.47/2.04 s. Those
+process workloads differ, so these are observations, not paired per-call deltas.
+No allocator counts, strict constant-time property or absolute resource SLA was
+measured. Canonical input decoding and high-degree relationship storage still
+scale with input.
+
+The paired actual HTML consumer also exits 0: warm old/current 7,255.250 /
+1,177.653 ms, 110,080 / 110,137 response bytes, seven rows, and unchanged canonical
+state. HTML byte identity is not asserted. Both native and Product browser drivers
+exercise real pages; technical articles are explicitly authored synthetic controls
+recorded through existing prepare/record APIs, not new generation or user approval.
+Closed evidence disclosures are opened natively and offline older-Work navigation
+uses the catalog. No Production UI or authority was changed for these fixtures.
+
+Independent HTTP/API cases now include 1,000 exact expected Goal IDs over 50 pages,
+typed overlapping Work/Source IDs, Unicode byte limits, hidden Source mutation,
+256 additional explicit Checkpoint edges with exact continuation, distinct recorded
+and current Question revisions, foreign Candidate/Derived envelopes, and concurrent
+correction/forgetting. Fifteen inspector tests plus a separate corrupt-count HTTP
+test pass. All 103 Canonical tests and 45 Projections tests pass. A full Viewer run
+found one duplicate-fragment snapshot test failure; the same test fails against
+original `c06468e9` Production sources. With only that independently reproduced
+baseline failure filtered, all 141 Viewer tests pass; the three explicit profiling
+cases are ignored by default and have their separately recorded executions.
+
+Packaging reproduced copying credential-looking stderr and SQLite bytes renamed
+to an allowed HTML name. The current boundary excludes raw logs/live HTML/status
+JSON and only copies driver-sealed, format-checked static outputs. Eighteen tests
+cover source/DB/log/credential-looking neighbors, disguised bodies, symlinks/parent
+paths, Unicode-safe literal names, traversal, changed outputs, active content,
+normalized PNGs, bounded reads, archive structure, candidate/manifest tampering,
+optimized-Python identity checks and immutable original bytes. Preview delivery
+independently verifies with 96 members; exact final candidate/archive identity and
+post-commit executions are reported in the conversation. No historical private
+archive was reclassified as a leak or rewritten; shareable output uses a new path.
+No legacy, schema, provider, Final/V11 or human-acceptance authority changed.

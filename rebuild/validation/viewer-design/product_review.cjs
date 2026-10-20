@@ -3,6 +3,8 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn,spawnSync,execFileSync}=require('node:child_process');
 const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
+
+function reviewedFiles(directory){const files={};for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name);if(!fs.lstatSync(file).isFile()||!['.png','.html'].includes(path.extname(name)))continue;const bytes=fs.readFileSync(file);files[name]={sha256:require('node:crypto').createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};}return files;}
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const {chromium}=require(config.playwright);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -184,7 +186,7 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
    assert.equal(await p.locator('.masthead nav').count(),1);
    assert.equal(await p.locator('#overview .repository-entry,#overview .related-decisions').count(),0);
    await capture(p,c,'offline-overview',width);
-   if(c.work){await p.locator(`.work-card[data-work-id="${c.work}"] .card-action`).first().click();
+   if(c.work){await p.locator('.masthead a[href="#works"]').click();await p.locator(`#works .work-card[data-work-id="${c.work}"] .card-action`).click();
     assert.equal(await p.locator(`article.doc[data-work-id="${c.work}"]:visible`).count(),1);
     await capture(p,c,'offline-work',width);}
    await p.locator('.masthead a[href="#repository-explanation"]').click();await capture(p,c,'offline-repository',width);await sourceJourney(p,c,width,true);
@@ -193,5 +195,5 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
   await offline.close();assert.equal(state(c.runtime),before,'GET/export changed canonical, retention, provider or Candidate rows');r.read_state_unchanged=true;
  }
  result.outcome='passed';
- }catch(e){result.outcome='failed';result.error=e.stack;process.exitCode=1;}finally{if(browser)await browser.close();fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({outcome:result.outcome,error:result.error,output}));}
+ }catch(e){result.outcome='failed';result.error=e.stack;process.exitCode=1;}finally{if(browser)await browser.close();result.files=reviewedFiles(output);fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({outcome:result.outcome,error:result.error,output}));}
 })();

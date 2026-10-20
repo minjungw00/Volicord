@@ -267,3 +267,32 @@ filters need no mutation token; protected POST forms and HTTP operations retain
 their dedicated authenticity tests. Inspector browser support checks 320 px as
 well as desktop/390 px and retains separate streams and numeric/signal termination
 for each Project listener. These controls supply no human comprehension verdict.
+
+### Shareable delivery and private originals
+
+`package_product_review.py --archive NEW.zip` writes only a verified, bounded
+Product review delivery. The exact browser driver now seals HTML/PNG output hashes
+and sizes in `result.json`; rerun the driver for the current candidate rather than
+adding that metadata to an old result. Packaging excludes raw streams, live page
+captures, CLI status JSON, neighboring Source/credential/database files and Runtime
+trees. Public result JSON retains selected numeric outcomes, identities and scope
+states, omitting argv, private errors, Runtime paths and private-store hashes.
+
+The existing 8 MiB HTML publication ceiling is also the review member ceiling;
+review delivery has a separate 128 MiB total/ZIP guard, 4,096-member guard and
+40-million-pixel normalized RGB/RGBA PNG guard. These are fail-closed review-tool
+limits, not Product runtime/Project latency or RSS promises. No file is silently
+truncated to pass. Database disguises, credential-looking text, active/external
+HTML, symlink components, escaping names, unsealed changes and raw metadata fail.
+ZIP directory counts are checked before allocation; contents, regular-file modes,
+paths, exact membership and hashes are checked without extraction. Extra archive
+bytes, comments, metadata payloads and duplicate members are refused.
+
+Run the packaging self-test through `validate focused`. Verify a moved directory
+with `package_product_review.verify_package(PATH, EXPECTED_COMMIT)` or a ZIP with
+`review_boundary.verify_archive(PATH, EXPECTED_COMMIT)`. Hashes bind the output;
+they do not supply authenticated authorship, general semantic secret detection,
+OCR or human approval. The old `package.py` remains a **private evidence copier**;
+its complete observation trees and historical archives are not shareable delivery.
+Retained original campaigns are not rewritten or deleted. Share the new verified
+ZIP, not the private parent directory that also holds runtime and raw evidence.

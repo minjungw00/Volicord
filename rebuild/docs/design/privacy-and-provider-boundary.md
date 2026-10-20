@@ -771,3 +771,30 @@ description, not captured variables. Raw argv/output remain disposable; canonica
 assertion evidence retains only coordinates/hash, declaration and measured run basis.
 Absent maintained trusted SessionStart activation leaves default trusted-host capture
 Blocked. Explicit local capture and task-owned controls cannot supply that claim.
+
+### User-shareable Product review boundary
+
+The maintained Product review builder is a separate local validation tool, not a
+Runtime/database export capability. It admits only browser-sealed static Product
+HTML/PNG outputs and a sanitized subset of numeric results and identities. Raw
+stdout/stderr, live HTML, CLI status envelopes, Source files, credentials, databases,
+Runtime trees and evaluator inputs remain private originals. Existing permitted
+quotations in a script-free Product export retain their original scope; packaging
+neither restores Source bodies nor grants live read/write/provider authority.
+
+Input/member reads refuse symlinks in every component and paths escaping their
+selected roots. Files require bounded regular-file reads, declared hashes/lengths,
+static HTML, normalized PNG data or closed metadata roles. Database signatures,
+credential-looking text, active/external HTML and unknown raw metadata are refused.
+The driver seals each reviewed output before packaging; replacement after review
+cannot acquire that review identity. Metadata exposes no raw command arguments,
+streams, private errors, Runtime paths or logical private-store fingerprints.
+
+The ZIP verifier checks the exact candidate and member manifest without extraction,
+including declared counts before directory allocation, duplicate/traversing names,
+symlinks, unbound bytes, comments/extra payloads and size limits. Integrity hashes
+bind bytes and provenance; they do not authenticate authorship or establish human
+acceptance. These mechanical controls are not semantic secret detection/OCR.
+Historical private evidence packages and originals are never sanitized in place;
+they do not become shareable by receiving a review filename or living beside a
+sanitized delivery.

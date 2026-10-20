@@ -3,6 +3,8 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn,spawnSync,execFileSync}=require('node:child_process');
 const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
+
+function reviewedFiles(directory){const files={};for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name);if(!fs.lstatSync(file).isFile()||!['.png','.html'].includes(path.extname(name)))continue;const bytes=fs.readFileSync(file);files[name]={sha256:require('node:crypto').createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};}return files;}
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const {chromium}=require(config.playwright);
 if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');
@@ -194,6 +196,7 @@ function command(label,args){
  finally {
   if(browser)await browser.close();if(!stopped){child.kill('SIGTERM');result.listener=await exit;}
   fs.writeFileSync(path.join(config.output,'viewer.stdout'),stdout);fs.writeFileSync(path.join(config.output,'viewer.stderr'),stderr);
+  result.files=reviewedFiles(config.output);
   fs.writeFileSync(path.join(config.output,'result.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify({outcome:result.outcome,error:result.error,reads:result.reads.length,output:config.output}));
  }

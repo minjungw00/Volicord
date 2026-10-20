@@ -5,8 +5,9 @@ import hashlib
 import html
 import json
 from pathlib import Path
-import shutil
+import os
 import subprocess
+import review_boundary as boundary
 
 
 # No case outcome, rationale, failure, code location or expected conclusion.
@@ -22,8 +23,13 @@ READER_TASKS = (
 )
 
 
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
 def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return boundary.hash_file(path)
 
 
 def case_scope(case):
@@ -63,44 +69,47 @@ def reader_entry(cases):
         + '<p><a href="technical.html">독해 후 기술 결과 확인</a> · <a href="manifest.json">정확한 전달물 identity</a></p></main></html>'
 
 
-def verify_package(root):
-    """Verify a relocated package; hashes attest bytes, never human approval."""
-    root = Path(root).resolve()
-    manifest = json.loads((root / 'manifest.json').read_text())
-    expected = manifest['files']
-    if any(p.is_symlink() for p in root.rglob('*')):
-        raise ValueError('review package contains a symlink')
-    actual = {str(p.relative_to(root)) for p in root.rglob('*') if p.is_file() and p != root / 'manifest.json'}
-    if actual != set(expected):
-        raise ValueError('review package membership changed')
-    for name, sha in expected.items():
-        relative = Path(name)
-        if relative.is_absolute() or '..' in relative.parts or digest(root / relative) != sha:
-            raise ValueError('review package bytes/path changed')
-    return manifest
+def verify_package(root, expected_candidate=None):
+    return boundary.verify_package(root, expected_candidate)
 
 
 def copy_product_outputs(observed, output, cases):
-    """Copy only maintained driver outputs, never evaluator keys or Runtime trees."""
-    output.mkdir()
-    allowed = {'result.json', 'korean-fonts.stdout', 'korean-fonts.stderr'}
+    """Deliver static Product exports/screenshots and sanitized numeric results only."""
+    meta = json.loads(boundary.read_member(observed, 'result.json'))
+    bindings = meta.get('files')
+    if not isinstance(bindings, dict):
+        raise ValueError('review driver must bind output files before packaging')
+    allowed = set()
     pages = ('overview', 'repository', 'works', 'work', 'decision', 'source',
         'status', 'documents', 'memory', 'evidence', 'offline-overview',
         'offline-work', 'offline-repository', 'offline-source')
     for case in cases:
         case_scope(case)
         key = case['key']
-        allowed.update(key + '-' + name for name in ('public-status.json', 'offline.html',
-            'viewer.stdout', 'viewer.stderr', 'status.stdout', 'status.stderr', 'export.stdout', 'export.stderr'))
+        allowed.add(key + '-offline.html')
         for width in (1440, 1024, 768, 390, 320):
-            allowed.add(f'{key}-repository-{width}.html')
             allowed.update(f'{key}-{page}-{width}.png' for page in pages)
-    for name in sorted(allowed):
-        source = observed / name
-        if source.is_symlink():
-            raise ValueError('Product output must not be a symlink')
-        if source.is_file():
-            shutil.copyfile(source, output / name)
+    boundary.copy_bound(observed, output, allowed, bindings)
+    boundary.write_new(output, 'result.json', json.dumps(boundary.sanitized_result(meta), ensure_ascii=False, indent=2).encode())
+
+
+def copy_supplement(source, destination):
+    meta = json.loads(boundary.read_member(source, 'result.json'))
+    bindings = meta.get('files')
+    if not isinstance(bindings, dict):
+        raise ValueError('supplement must bind reviewed output files')
+    allowed = {'review.html', 'product-snapshot.html'}
+    for name in bindings:
+        boundary.relative(name)
+        if len(Path(name).parts) == 1 and name.endswith('.png'):
+            allowed.add(name)
+    boundary.copy_bound(source, destination, allowed, bindings)
+    boundary.write_new(destination, 'result.json', json.dumps(boundary.sanitized_result(meta), ensure_ascii=False, indent=2).encode())
+
+
+def public_case(case):
+    return {key: value for key, value in case.items() if key in {
+        'key', 'project_name', 'project', 'work', 'decision', 'evidence_class', 'origin', 'language', 'locale'}}
 
 
 def main():
@@ -112,64 +121,73 @@ def main():
     parser.add_argument('--inspection-review', type=Path)
     parser.add_argument('--citation-review', type=Path)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--archive', type=Path, help='Optional new sanitized ZIP; verified without extraction')
     parser.add_argument('--early', action='store_true', help='Explicit dirty-source preview; no clean-candidate claim')
     args = parser.parse_args()
-    config = json.loads(args.config.read_text())
+    config = json.loads(boundary.read_member(args.config.absolute().parent, args.config.name))
     observed = Path(config['output'])
-    result = json.loads((observed / 'result.json').read_text())
-    assert result['outcome'] == 'passed'
+    result = json.loads(boundary.read_member(observed, 'result.json'))
+    require(result['outcome'] == 'passed', 'review precondition failed')
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-    assert result['candidate'] == head, 'review belongs to another candidate'
-    assert result['config_sha256'] == digest(args.config), 'review config changed'
-    assert result['executable_sha256'] == digest(Path(config['viewer'])), 'reviewed viewer changed'
-    assert result['cli_sha256'] == digest(Path(config['cli'])), 'reviewed CLI changed'
-    assert result['driver_sha256'] == digest(Path(__file__).with_name('product_review.cjs')), 'review driver changed'
-    assert len(result['cases']) == len(config['cases']), 'review case coverage changed'
+    require(result['candidate'] == head, 'review belongs to another candidate')
+    require(result['config_sha256'] == digest(args.config), 'review config changed')
+    require(result['executable_sha256'] == digest(Path(config['viewer'])), 'reviewed viewer changed')
+    require(result['cli_sha256'] == digest(Path(config['cli'])), 'reviewed CLI changed')
+    require(result['driver_sha256'] == digest(Path(__file__).with_name('product_review.cjs')), 'review driver changed')
+    require(len(result['cases']) == len(config['cases']), 'review case coverage changed')
     for case in config['cases']:
         case_scope(case)
         matches = [r for r in result['cases'] if r['key'] == case['key']]
-        assert len(matches) == 1 and all(matches[0].get(k) == case.get(k)
-            for k in ('project', 'work', 'decision', 'evidence_class', 'origin')), 'case identity/origin changed'
+        require(len(matches) == 1 and all(matches[0].get(k) == case.get(k)
+            for k in ('project', 'work', 'decision', 'evidence_class', 'origin')), 'case identity/origin changed')
     if not args.early:
-        assert result['diff_sha256'] == hashlib.sha256(b'').hexdigest(), 'reviewed tracked source was dirty'
-        assert not subprocess.check_output(['git', 'status', '--porcelain', '--', 'rebuild']), 'current source is dirty'
-    output = args.output.resolve()
-    output.mkdir(parents=True, exist_ok=False)
+        require(result['diff_sha256'] == hashlib.sha256(b'').hexdigest(), 'reviewed tracked source was dirty')
+        require(not subprocess.check_output(['git', 'status', '--porcelain', '--', 'rebuild']), 'current source is dirty')
+    if not config['cases'] or len({c['key'] for c in config['cases']}) != len(config['cases']):
+        raise ValueError('review requires unique explicit cases')
+    output = args.output.absolute()
+    os_fd = boundary.directory(output.parent)
+    os.close(os_fd)
+    for source in [observed, args.baseline, args.inspection_review, args.citation_review]:
+        if source is None: continue
+        fd = boundary.directory(source); os.close(fd)
+        root = source.absolute()
+        if output == root or output.is_relative_to(root) or root.is_relative_to(output):
+            raise ValueError('review output must be separate from retained evidence')
+    boundary.new_directory(output)
     copy_product_outputs(observed, output / 'product', config['cases'])
     for case in config['cases']:
-        assert (output / 'product' / (case['key'] + '-offline.html')).is_file(), 'missing Product export'
+        require((output / 'product' / (case['key'] + '-offline.html')).is_file(), 'missing Product export')
     # Historical visual references stay separate from the first reading.
     if args.baseline:
-        (output / 'comparison').mkdir()
-        for source in sorted(args.baseline.glob('*.png')):
-            shutil.copyfile(source, output / 'comparison' / source.name)
+        names = [p.name for p in args.baseline.iterdir() if p.suffix == '.png']
+        bindings = {name: {'sha256': hashlib.sha256(boundary.read_member(args.baseline, name)).hexdigest(), 'bytes': len(boundary.read_member(args.baseline, name))} for name in names}
+        boundary.copy_bound(args.baseline, output / 'comparison', names, bindings)
     if args.reference_manifest:
-        reference = json.loads(args.reference_manifest.read_text())
+        reference = json.loads(boundary.read_member(args.reference_manifest.absolute().parent, args.reference_manifest.name))
+        selected = {}
         for name, metadata in reference['files'].items():
-            relative = Path(name)
-            assert not relative.is_absolute() and '..' not in relative.parts
-            original = args.reference_manifest.parent / relative
-            assert digest(original) == metadata['sha256'] and original.stat().st_size == metadata['bytes'], 'changed reference'
-        shutil.copyfile(args.reference_manifest, output / 'selected-reference-manifest.json')
-    (output / 'index.html').write_text(reader_entry(config['cases']))
+            original = boundary.read_member(args.reference_manifest.absolute().parent, name)
+            if hashlib.sha256(original).hexdigest() != metadata['sha256'] or len(original) != metadata['bytes']:
+                raise ValueError('changed reference')
+            if name.endswith('.png'): selected[name] = metadata
+        boundary.write_new(output, 'selected-reference-manifest.json', json.dumps({'files': selected}, ensure_ascii=False, indent=2).encode())
+    boundary.write_new(output, 'index.html', reader_entry(config['cases']).encode())
     normal_basis = config.get('normal_source_rich_article', 'not_observed; no genuine positive supplied')
     technical = '<!doctype html><meta charset="utf-8"><h1>Technical observations</h1><p>Candidate: ' + head + '</p><a href="product/result.json">Browser results and measurements</a><p>Independent and human comprehension: not_observed. Normal source-rich prospective article: ' + html.escape(normal_basis) + '. No Final/V11 or Phase 8 qualification.</p><p>Offline files retain only the evidence admitted at publication. Original Source retention is unchanged; later live reads must recheck it. These files grant no live query, write, host or provider authority.</p>'
     supplements = {}
     for name, source in [('inspection', args.inspection_review), ('citation', args.citation_review)]:
         if source is None:
             continue
-        meta = json.loads((source / 'result.json').read_text())
-        assert meta.get('outcome', meta.get('status')) == 'passed' and meta['candidate'] == head, 'supplement candidate/result mismatch'
-        assert meta.get('executable_sha256', meta.get('viewer_sha256')) == result['executable_sha256'], 'supplement viewer changed'
+        meta = json.loads(boundary.read_member(source, 'result.json'))
+        require(meta.get('outcome', meta.get('status')) == 'passed' and meta['candidate'] == head, 'supplement candidate/result mismatch')
+        require(meta.get('executable_sha256', meta.get('viewer_sha256')) == result['executable_sha256'], 'supplement viewer changed')
         driver = Path(__file__).with_name('inspection_browser.cjs') if name == 'inspection' else Path(__file__).parents[1] / 'end-to-end/multi-repository/citation_reading_browser.cjs'
-        assert meta['driver_sha256'] == digest(driver), 'supplement driver changed'
+        require(meta['driver_sha256'] == digest(driver), 'supplement driver changed')
         if not args.early:
-            assert meta.get('worktree_diff_sha256', meta.get('diff_sha256')) == hashlib.sha256(b'').hexdigest(), 'supplement source was dirty'
+            require(meta.get('worktree_diff_sha256', meta.get('diff_sha256')) == hashlib.sha256(b'').hexdigest(), 'supplement source was dirty')
         destination = output / name
-        destination.mkdir()
-        for p in sorted(source.iterdir()):
-            if p.is_file() and not p.is_symlink() and (p.name in {'result.json', 'review.html', 'product-snapshot.html'} or p.suffix in {'.png', '.stdout', '.stderr'}):
-                shutil.copyfile(p, destination / p.name)
+        copy_supplement(source, destination)
         supplements[name] = {'result_sha256': digest(source / 'result.json'), 'classification': 'synthetic technical/browser controls only'}
         technical += f'<p><a href="{name}/result.json">{name}: synthetic technical controls</a></p>'
         if (destination / 'review.html').exists():
@@ -177,7 +195,7 @@ def main():
     for p in sorted((output / 'product').glob('*.png')):
         name = p.relative_to(output).as_posix()
         technical += f'<p><a href="{html.escape(name)}">{html.escape(p.name)}</a></p>'
-    (output / 'technical.html').write_text(technical)
+    boundary.write_new(output, 'technical.html', technical.encode())
     manifest = {'candidate': head, 'classification': 'current Product consumer review; per-case origin limits apply',
         'human_acceptance': 'pending', 'independent_review': 'not_observed', 'source_first_answer_keys': 'excluded',
         'normal_source_rich_article': normal_basis,
@@ -186,10 +204,12 @@ def main():
         'source_diff_sha256': result['diff_sha256'], 'source_review_result_sha256': digest(observed / 'result.json'),
         'selected_reference_manifest_sha256': digest(args.reference_manifest) if args.reference_manifest else None,
         'canonical_bundle_sha256': digest(args.bundle) if args.bundle else None,
-        'cases': config['cases'], 'supplements': supplements,
+        'cases': [public_case(c) for c in config['cases']], 'supplements': supplements,
         'files': {str(p.relative_to(output)): digest(p) for p in sorted(output.rglob('*')) if p.is_file()}}
-    (output / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-    verify_package(output)
+    boundary.write_new(output, 'manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2).encode())
+    verify_package(output, head)
+    if args.archive:
+        boundary.write_archive(output, args.archive, head)
     print(f'Actual Product review package: {output / "index.html"}')
 
 
