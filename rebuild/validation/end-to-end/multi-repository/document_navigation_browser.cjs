@@ -70,6 +70,9 @@ async function fragments(page) {
  }else assert.equal(await target.evaluate(n=>document.activeElement===n),true,'native script-free fragment focus');
  }
  await page.goto(url);
+ // A same-file offline fragment change retains disclosures deliberately
+ // opened above. Check initial defaults on a fresh document, not that history.
+ await page.reload();
  const supplemental=doc.locator('details.verification-report,details.evidence-index,.audit > details');
  assert.ok(await supplemental.count()>0);assert.equal(await supplemental.evaluateAll(ns=>ns.every(n=>!n.open)),true);
  assert.equal(await doc.locator('.verification-execution > header h3:visible').count(),0,'command labels are secondary');
