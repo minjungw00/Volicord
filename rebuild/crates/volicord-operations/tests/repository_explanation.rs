@@ -919,6 +919,218 @@ fn repository_reading_uses_verified_inventory_without_claiming_graph_integrity(
 }
 
 #[test]
+fn same_named_populated_and_workless_projects_keep_their_own_repository_articles(
+) -> Result<(), Box<dyn Error>> {
+    use volicord_context::*;
+    let f = fixture()?;
+    let mut store = Store::open(f.ops.layout().canonical_store())?;
+    let revision = f.ops.canonical_basis(f.project)?.project.revision;
+    let principal = Principal {
+        kind: PrincipalKind::User,
+        identity: "authored-contract-control".into(),
+    };
+    let user = store
+        .record_source(
+            OperationId::from_bytes([31; 16]),
+            f.project,
+            SourceDraft {
+                expected_project_revision: revision,
+                payload: SourcePayload::CurrentHostUserTurn {
+                    host: "test".into(),
+                    session: "synthetic".into(),
+                    turn: "Inspect the greeting function; this is an authored contract control."
+                        .into(),
+                },
+                actor: principal.clone(),
+                observer: None,
+                availability: Availability::Available,
+            },
+        )?
+        .value
+        .id;
+    let goal = store
+        .record_context_item(
+            OperationId::from_bytes([32; 16]),
+            f.project,
+            ContextItemDraft {
+                expected_project_revision: revision,
+                role: ContextItemRole::Goal,
+                statement: "Inspect the greeting function".into(),
+                provenance_role: StatementProvenanceRole::UserStatement,
+                author: principal,
+                source_basis: vec![user],
+                applicability: ApplicabilityScope {
+                    paths: vec!["main.py".into()],
+                    components: vec![],
+                    work_contexts: vec![],
+                },
+            },
+        )?
+        .value
+        .id;
+    drop(store);
+    let plan = f
+        .ops
+        .prepare_explanation(f.project, ExplanationSubject::Work(goal), "en")?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Work(goal),
+        "en",
+        ExplanationRealization {
+            format_kind: EXPLANATION_KIND.into(),
+            format_version: EXPLANATION_VERSION,
+            plan_fingerprint: plan.fingerprint,
+            language: "en".into(),
+            generator: ExplanationGenerator {
+                host: "authored-contract-control".into(),
+                session: "synthetic".into(),
+                agent: None,
+                model: None,
+            },
+            paragraphs: vec![ExplanationParagraph {
+                question: ExplanationQuestion::Purpose,
+                text: "Inspect the greeting function; no outcome is recorded.".into(),
+                evidence_keys: vec!["goal".into()],
+                citations: vec![],
+            }],
+        },
+    )?;
+    let first_source = source(&observe(&f, "main.py", None)?)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        response(&f, first_source)?,
+    )?;
+    let root = f._temp.path().join("same-name-workless");
+    fs::create_dir(&root)?;
+    fs::write(root.join("main.py"), "def value():\n    return 7\n")?;
+    let other = f
+        .ops
+        .initialize_project("source reading", Some(&root))?
+        .project
+        .id;
+    let analysis = f
+        .ops
+        .analyze(other, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let receipt = f
+        .ops
+        .observe_repository_file(RepositoryFileObservationRequest {
+            project_id: other,
+            analysis_snapshot_id: analysis,
+            path: "main.py".into(),
+            byte_range: None,
+            retain_seconds: 3600,
+        })?;
+    let other_source = source(&receipt)?;
+    let other_plan =
+        f.ops
+            .prepare_explanation(other, ExplanationSubject::Repository(analysis), "en")?;
+    let draft = RepositoryExplanationDraft {
+        plan_fingerprint: other_plan.fingerprint,
+        language: "en".into(),
+        generator: ExplanationGenerator {
+            host: "authored-contract-control".into(),
+            session: "synthetic".into(),
+            agent: None,
+            model: None,
+        },
+        paragraphs: vec![RepositoryReaderUnit {
+            question: ExplanationQuestion::Observation,
+            text: "The independent value function returns seven.".into(),
+            evidence_keys: vec!["repository_basis".into()],
+            sources: vec![RepositoryClaimRange {
+                source_id: other_source,
+                start_byte: 0,
+                end_byte: 25,
+                claim: None,
+            }],
+        }],
+    };
+    let mut foreign = draft.clone();
+    foreign.paragraphs[0].sources[0].source_id = first_source;
+    assert!(f
+        .ops
+        .compose_repository_explanation(other, analysis, foreign)
+        .is_err());
+    let realization = f
+        .ops
+        .compose_repository_explanation(other, analysis, draft)?;
+    f.ops.record_explanation(
+        other,
+        ExplanationSubject::Repository(analysis),
+        "en",
+        realization,
+    )?;
+    let before = f.ops.canonical_basis(f.project)?;
+    let other_before = f.ops.canonical_basis(other)?;
+    assert_eq!(
+        before.project.display_name,
+        other_before.project.display_name
+    );
+    assert_ne!(f.project, other);
+    assert!(other_before.context_items.is_empty());
+    let populated = f
+        .ops
+        .project_projection_selected(f.project, WorkSelector::ExactWork(goal))?;
+    assert_eq!(
+        populated.selected_work.as_ref().ok_or("Work")?.work_item_id,
+        goal
+    );
+    assert_eq!(
+        explanation_answers(
+            &populated
+                .selected_work
+                .as_ref()
+                .ok_or("Work")?
+                .reading
+                .explanations,
+            "en",
+            FixedLocale::English
+        )
+        .explanation_state,
+        ExplanationState::Current
+    );
+    for (project, snapshot, text) in [
+        (f.project, f.analysis, "greet builds"),
+        (other, analysis, "returns seven"),
+    ] {
+        let answers = f.ops.read_repository_explanation(project, "en")?;
+        assert_eq!(answers.explanation_state, ExplanationState::Current);
+        let provenance = answers.provenance.ok_or("provenance")?;
+        assert_eq!(provenance.project_id, project.to_string());
+        assert_eq!(provenance.subject, ExplanationSubject::Repository(snapshot));
+        assert!(answers.prose.iter().any(|p| p.text.contains(text)));
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_volicord"))
+            .args([
+                "--runtime",
+                f.ops.layout().root().to_str().ok_or("runtime")?,
+                "--project",
+                &project.to_string(),
+                "--json",
+                "repository",
+                "explain",
+                "read",
+            ])
+            .output()?;
+        assert!(output.status.success(), "{:?}", output);
+        let read: Value = serde_json::from_slice(&output.stdout)?;
+        assert_eq!(
+            read["answers"]["provenance"]["project_id"],
+            project.to_string()
+        );
+        assert_eq!(read["answers"]["explanation_state"], "current");
+    }
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    assert_eq!(other_before, f.ops.canonical_basis(other)?);
+    Ok(())
+}
+
+#[test]
 fn repository_copy_metadata_tampering_is_rejected_before_disclosure() -> Result<(), Box<dyn Error>>
 {
     for key in [

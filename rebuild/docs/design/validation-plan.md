@@ -3240,6 +3240,20 @@ collection, semantic quality, human approval, Final or V11.
 
 ### Focused three-destination Viewer validation
 
+Repository explanation scope regressions live in Operations
+`--test repository_explanation`: same-display-name populated/Workless Projects
+retain their exact Project, Work and Analysis subjects through record/read and
+CLI; an 800-file Rust/JavaScript/Python inventory exercises complete scope
+commitments and unchanged byte limits. Verified metadata supports bounded Source
+interpretation independently of a corrupt unrelated graph; corrupt metadata still
+withholds it. These are authored technical controls, not real host prose or
+independent semantic approval. Use the existing Viewer navigation/citation/
+publication and Host repository-reading targets for actual downstream controls.
+Real host review packages must bind the same populated Project as its actual
+Works, preserve first missing/failed preparation attempts, distinguish old copy
+expiry from new observation, and measure large preparation/HTML/time/RSS separately
+from small JavaScript results. No read/export creates prose or renews retention.
+
 [Reader AC-26–31](reader-experience-design.md) supersedes Viewer inspector/Tools
 acceptance in earlier support reports. Preserve those historical reports unchanged.
 Use `validate focused` only here, never Final, aggregate, gate or ordered V11.
