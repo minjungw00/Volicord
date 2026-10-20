@@ -317,3 +317,10 @@ bytes include browser requests and the driver's explicit byte-verification reads
 they are not a count of filesystem opens. CPU is Chromium task time, not server
 CPU or human response time. `node --test product_review_controls_self_test.cjs`
 checks admission and original-output preservation without generating any article.
+
+The shareable boundary rejects recognizable private host paths in HTML text and
+attributes and decoded JSON strings, including paths split by syntax spans and
+escaped entities. Delivery fails without rewriting original exports. Generic
+system interpreter paths, HTTP endpoints and relative Source locators remain
+usable. This is a bounded path/credential guard, not a general secret detector or
+OCR: screenshot pixels and arbitrary project names still need operator review.

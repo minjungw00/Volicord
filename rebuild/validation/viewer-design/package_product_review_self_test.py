@@ -137,6 +137,32 @@ class BoundaryAttackTests(unittest.TestCase):
                 with self.assertRaises(ValueError): package.copy_product_outputs(source, root / 'delivery', [case()])
                 self.assertEqual((source / 'recorded-offline.html').read_bytes(), data)
 
+    def test_private_host_paths_are_refused_without_rewriting_original_exports(self):
+        samples = [
+            '<!doctype html><p>/home/alice/private/worktree.rs</p>',
+            '<!doctype html><code>/tmp/private/runtime.sqlite3</code>',
+            '<!doctype html><p>&#47;Users&#47;alice&#47;project</p>',
+            '<!doctype html><code>/ho<span>me/alice/private</span></code>',
+            '<!doctype html><p>C:\\Users\\alice\\project</p>',
+            '<!doctype html><p>file:///var/tmp/private/output</p>',
+        ]
+        for text in samples:
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp); source = self.observed(root)
+                original = text.encode(); (source / 'recorded-offline.html').write_bytes(original); seal(source)
+                with self.assertRaisesRegex(ValueError, 'private.*path'):
+                    package.copy_product_outputs(source, root / 'delivery', [case()])
+                self.assertEqual((source / 'recorded-offline.html').read_bytes(), original)
+
+    def test_decoded_metadata_paths_and_credentials_are_refused(self):
+        for data in [b'{"label":"\\u002fhome/alice/private"}',
+                b'{"label":"/run/user/1000/private"}',
+                b'{"label":"password\\u003dsynthetic-credential"}']:
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                package.boundary.validate('result.json', data)
+        # Public Source locators, HTTP paths and portable relative paths survive.
+        package.boundary.validate('index.html', b'<!doctype html><pre>#!/bin/sh\npost("/sync")\nrebuild/crates/article.rs\n../source.rs</pre>')
+
     def test_sealed_output_cannot_change_after_review(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); source = self.observed(root); seal(source)

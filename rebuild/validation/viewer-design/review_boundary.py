@@ -19,6 +19,7 @@ MEMBER_BYTES = 8 * 1024 * 1024
 PACKAGE_BYTES = 128 * 1024 * 1024
 MAX_MEMBERS = 4096
 CREDENTIAL = re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bAKIA[A-Z0-9]{16}\b|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}|\b(?:AWS_SECRET_ACCESS_KEY|api[_-]?key|access[_-]?token|password)\s*[=:]\s*[\"\']?[^\s\"\'<>]{4,}|Authorization\s*:\s*Bearer\s+\S+', re.I)
+PRIVATE_PATH = re.compile(r'/(?:home|Users|root|tmp|private|mnt|media)(?:/|$)|/var/(?:folders|tmp|run)(?:/|$)|/run/user(?:/|$)|(?<![A-Za-z0-9])[A-Za-z]:[\\/]', re.I)
 RAW_KEYS = {'argv', 'runtime', 'body', 'content', 'record_json', 'stdout', 'stderr', 'user_turn', 'source_bundle', 'error'}
 
 
@@ -105,15 +106,25 @@ def read_member(root, name, limit=MEMBER_BYTES):
         os.close(root_fd)
 
 
+def safe_text(text):
+    if PRIVATE_PATH.search(text):
+        raise ValueError('private host path in review delivery')
+    if CREDENTIAL.search(text) or 'request_authenticity' in text:
+        raise ValueError('credential-looking content or live authenticity in review delivery')
+
+
 def safe_json(data):
     value = json.loads(data)
     def walk(item):
         if isinstance(item, dict):
             if RAW_KEYS.intersection(item):
                 raise ValueError('raw private fields in review metadata')
-            for value in item.values(): walk(value)
+            for key, value in item.items():
+                safe_text(key)
+                walk(value)
         elif isinstance(item, list):
             for value in item: walk(value)
+        elif isinstance(item, str): safe_text(item)
     walk(value)
     return value
 
@@ -135,12 +146,14 @@ class StaticHtml(HTMLParser):
     def __init__(self):
         super().__init__()
         self.style = None
+        self.text = []
 
     def handle_starttag(self, tag, attrs):
         if tag in {'script', 'form', 'iframe', 'object', 'embed', 'base'}:
             raise ValueError('review HTML must be script-free and without live authority')
         for key, value in attrs:
             value = value or ''
+            safe_text(value)
             if key == 'style': static_css(value)
             if key.startswith('on') or key in {'srcdoc', 'srcset', 'poster', 'background', 'formaction'} or (tag == 'meta' and key == 'http-equiv' and value.lower() == 'refresh'):
                 raise ValueError('active review HTML')
@@ -153,6 +166,7 @@ class StaticHtml(HTMLParser):
         if tag == 'style': self.style = []
 
     def handle_data(self, data):
+        if self.style is None: self.text.append(data)
         if self.style is not None: self.style.append(data)
 
     def handle_endtag(self, tag):
@@ -163,6 +177,8 @@ class StaticHtml(HTMLParser):
     def close(self):
         super().close()
         if self.style is not None: raise ValueError('unclosed review style element')
+        # Syntax spans must not split a private path past the delivery check.
+        safe_text(''.join(self.text))
 
     handle_startendtag = handle_starttag
 
@@ -216,8 +232,7 @@ def validate(name, data):
         raise ValueError('raw/runtime/log/source files are excluded from review delivery')
     text = data.decode('utf-8')
     decoded = html.unescape(text)
-    if CREDENTIAL.search(decoded) or 'request_authenticity' in decoded:
-        raise ValueError('credential-looking content or live authenticity in review delivery')
+    safe_text(decoded)
     if suffix == '.html':
         if not text.lstrip().lower().startswith('<!doctype html'):
             raise ValueError('review HTML requires its static export envelope')
