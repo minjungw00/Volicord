@@ -1126,6 +1126,13 @@ blocked-capture distinctions. Optional `VOLICORD_WORK_SOURCE_CAPTURE=/absolute/n
 on the Operations `cli_work_sources` integration test retains labeled authored
 readbacks under an ignored directory. It creates no genuine prospective Work.
 
+The same diagnostic optionally accepts `verification_read=` with an exact public
+`work verification` JSON receipt. Missing receipt/comparable relation remains
+unobserved. Product-computed comparable rows can be assessed without deleting
+unresolved/non-comparable controls or renewing expired command bodies. Receipt
+hash/scope checking is not host authentication, assertion interpretation or
+semantic approval. Bind actual collection and candidate identities separately.
+
 ## Flexible Work/Decision articles and independent verification
 
 Independent card publications use the exact-current explanation format 6.

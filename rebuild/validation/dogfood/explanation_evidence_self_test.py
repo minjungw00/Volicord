@@ -297,9 +297,53 @@ class ReaderApplicabilityTests(unittest.TestCase):
         passed['observation']['detail']['exit_code'] = passed['command_source']['exit_code'] = 0
         value = self.assess(failed, passed)['claims']
         self.assertEqual(value['named_command']['state'], 'eligible_for_assessment')
-        self.assertEqual(value['retest_coverage']['state'], 'unsupported')
+        self.assertEqual(value['retest_coverage']['state'], 'not_observed')
         self.assertEqual(failed, original)
         self.assertEqual(value['task_time_capture']['state'], 'not_established')
+
+    def verification(self):
+        plan = lifecycle()[0]['plan']
+        def row(checkpoint, source):
+            return {'original': {'checkpoint_id': checkpoint, 'checkpoint_revision': 1, 'verification_index': 0},
+                'source_id': source, 'scoped_run': {'state': 'observed', 'value': {
+                    'work_item_id': bytes(plan['subject']['identity']).hex(), 'work_revision': 1}},
+                'retest_comparison': {'state': 'unresolved'}}
+        first, later = row('10' * 16, '11' * 16), row('12' * 16, '13' * 16)
+        later['retest_comparison'] = {'state': 'comparable', 'previous': first['original'],
+            'source_id': first['source_id']}
+        return {'operation': 'work_verification_read', 'read_only': True,
+            'project_id': plan['project_id'], 'work_item_id': bytes(plan['subject']['identity']).hex(),
+            'verification_report': {'checks': [first, later], 'executions': []}}
+
+    def test_public_comparison_is_eligible_without_renewing_expired_bodies_or_capture(self):
+        read = self.verification()
+        original = copy.deepcopy(read)
+        value = self.assess(self.read(until=50), verification_read=read)
+        self.assertEqual(value['claims']['retest_coverage']['state'], 'eligible_for_assessment')
+        self.assertEqual([r['state'] for r in value['claims']['retest_coverage']['comparisons']], ['unresolved', 'comparable'])
+        self.assertEqual(value['claims']['code_body_read']['reason'], 'expired_retention')
+        self.assertEqual(value['claims']['task_time_capture']['state'], 'not_established')
+        self.assertEqual(value['input_bindings']['verification_read'], e.binding(e.compact_bytes(read)))
+        self.assertEqual(read, original)
+
+    def test_noncomparable_and_unresolved_rows_cannot_be_dropped_to_manufacture_positive(self):
+        read = self.verification()
+        read['verification_report']['checks'][1]['retest_comparison'] = {
+            'state': 'not_comparable', 'reason': 'environment_missing_or_different'}
+        result = self.assess(verification_read=read)['claims']['retest_coverage']
+        self.assertEqual(result['state'], 'not_observed')
+        self.assertEqual(result['comparisons'][1]['reason'], 'environment_missing_or_different')
+
+    def test_foreign_or_inconsistent_public_comparison_is_rejected(self):
+        for mutate in [lambda r: r.update(project_id='foreign'), lambda r: r.update(work_item_id='foreign'),
+                lambda r: r.update(read_only=False), lambda r: r.update(operation='status'),
+                lambda r: r['verification_report']['checks'][1]['scoped_run']['value'].update(work_item_id='foreign'),
+                lambda r: r['verification_report']['checks'][1]['scoped_run']['value'].update(work_revision=2),
+                lambda r: r['verification_report']['checks'][1]['retest_comparison'].update(source_id='foreign'),
+                lambda r: r['verification_report']['checks'].pop(0)]:
+            read = self.verification(); mutate(read)
+            with self.assertRaisesRegex(ValueError, 'reader verification'):
+                self.assess(verification_read=read)
 
     def test_historical_format_not_rewritten_as_current_article(self):
         p, response, _, _ = lifecycle()

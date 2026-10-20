@@ -146,3 +146,46 @@ unspecified assertions and unchanged canonical/Derived state. Existing adverse
 scope/expiry/corruption/empty/protected-action controls stay in the focused suite.
 Presentation-first tasks are separate answer-free questions; actual human answers,
 misunderstandings and acceptance remain `not_observed`.
+
+## Claim reassessment at a8bd352f
+
+Execution baseline: `a8bd352f` (initially clean). Earlier sections retain their
+original producer and observation scope. Their references to current v5/v3 or
+unsupported retests are historical: this candidate uses explanation 6, Work copy
+4, canonical schema 18 and portable bundle 11. Explicit scoped comparisons now
+exist; missing input is `not_observed`, not an implementation-wide unsupported
+claim. No historical quotation acquires that new relation.
+
+The append-only private inventory at
+`rebuild/.local/reader-requalification-a8bd352f/original-bindings.json` seals
+16,643 files / 2,931,364,420 bytes across fourteen prior material roots. It includes
+original manifests, failures, exports, review archives and Source artifacts.
+Identity hashing grants no Source retention or permission. Current reads use
+separate Runtime copies; no frozen original package is opened for mutation.
+
+| Evidence / exact subject | Positive claim retained | Current applicability and missing condition |
+| --- | --- | --- |
+| B/Click editorial and rejected review_101901 material identified above | Historical layout/citation and record-only/missing controls | Original producers/bytes remain positive within those bounds. Schema-16 runtimes cannot be current schema-18 reads. Source bodies are not recovered through archives; original rejection persists. |
+| Earlier explicit-local correction and no-change campaigns identified above | Original actual code/command chains, failures and generated articles | Their schema-16 stores and older explanation/copy formats are historical. Current technical Source/body reading is blocked by current-only admission, independently of any original retention date. Old host-authority strings and provider grants supply no new authority. |
+| Historical Decision `04bd432a…` | Original recommendation reason, selected option and absent user reason | Real current Decision reading is blocked by schema 16 / bundle 9. No conversion, fabricated choice or user rationale supplies a replacement positive. Controlled current Decision tests have separate provenance. |
+| Coherent article correction Project `95bc6cf4…`, Work `97795bc4…`; original review candidate `c06468e9` | Current reader replays the retained v6 article; Source and original producer identities remain unchanged | Public current-candidate read returns `current`; this is a replay, not fresh generation, original task-time capture or a recorded result Checkpoint. Independent and human quality remain unestablished. |
+| Coherent no-change Project `4b54e5a9…`, Work `bc0d77d3…`; same preserved review | Current reader replays its distinct bounded investigation article | Public read returns `current`; original source permissions/expiry remain unchanged. No patch, failed check, comparable retest or Decision is invented. |
+| Prior Workless repository preparation and inspection-cost review | Original byte-budget rejection and synthetic inspector/privacy/presentation controls | A degraded repository fallback is not a normal repository article. Technical inspection success supplies no repository semantics, genuine capture or human acceptance. |
+| Fresh Music Deck Project `0f92697b…`, Work `76808dca…`; source repository `716d77d3c2140f84203534ced68216fde0e09d0d` | Explicit local task-time file observations and real existing JavaScript VM tests, two adopted Checkpoints, actual same-artifact comparable repeat | Three existing tests pass in each explicitly reported run; no implementation change. Default isolated run only exposed one file aggregate and was not adopted as a three-test assertion. Generation, source-first/presentation-first assessment and final display receive separate later bindings. No trusted automatic activation or real-device behavior is claimed. |
+
+`reader_applicability(..., verification_read=...)` accepts the existing public
+`work_verification_read` receipt as an optional candidate-bound assessment input.
+It checks Project/Work/revision and exact prior report/Source identity, retains
+unresolved/non-comparable rows beside eligible comparisons, and hashes the entire
+supplied receipt. It consumes Product comparison states instead of implementing a
+second comparability algorithm. The collector still owns actual receipt/candidate
+authenticity; shaped JSON is no authentication or semantic verdict. Canonical
+comparison eligibility does not restore expired output-body access. Campaign
+inspection without that optional receipt honestly leaves the claim unobserved.
+
+Required normal correction, investigation, Decision, Workless repository,
+verification, inspector, genuine activation and human criteria stay in the
+denominator. No numerical pass percentage or whole-AC success is derived here.
+Current explicit local user permission and interactive-host interpretation do not
+require trusted automatic activation; that stronger host claim remains separate.
+No external provider call, aggregate Final/V11 or naturalistic qualification runs.

@@ -248,7 +248,7 @@ def validate_lifecycle(preparation, response, receipt, after):
     return observation
 
 
-def reader_applicability(plan, response=None, *, source_reads=(), origin='post_session_replay',
+def reader_applicability(plan, response=None, *, source_reads=(), verification_read=None, origin='post_session_replay',
                          host_authority='unknown', now_unix_micros=None):
     """Per-claim assessment inputs, never semantic approval or capture attestation.
 
@@ -274,7 +274,7 @@ def reader_applicability(plan, response=None, *, source_reads=(), origin='post_s
         'code_body_read': result('not_observed', 'no_scoped_file_body_read_supplied'),
         'two_observed_states': result('not_observed', 'missing_before_state'),
         'named_command': result('not_observed', 'no_named_execution_read_supplied'),
-        'retest_coverage': result('unsupported', 'no_explicit_typed_retest_coverage_relation'),
+        'retest_coverage': result('not_observed', 'no_public_typed_verification_read_supplied'),
         'task_time_capture': result('blocked' if host_authority == 'unavailable' else 'not_established',
             'current_trusted_activation_or_source_authority_unavailable' if host_authority == 'unavailable'
             else 'origin_and_readback_do_not_attest_authenticated_task_time_capture'),
@@ -375,12 +375,65 @@ def reader_applicability(plan, response=None, *, source_reads=(), origin='post_s
                 and command.get('exit_code') == detail.get('exit_code')
                 and command.get('termination') == detail.get('termination')):
             claims['named_command'] = result('eligible_for_assessment', 'observed_named_outcome_not_assertion_coverage_or_retest')
+    if verification_read is not None:
+        claims['retest_coverage'] = verification_applicability(plan, verification_read)
     return {'project_id': plan['project_id'], 'subject': subject, 'plan_fingerprint': plan['fingerprint'],
         'origin': origin, 'host_authority': host_authority, 'claims': claims,
         'input_bindings': {'plan': binding(compact_bytes(plan)),
             'response': None if response is None else binding(compact_bytes(response)),
+            'verification_read': None if verification_read is None else binding(compact_bytes(verification_read)),
             'source_reads': [binding(compact_bytes(v)) for v in source_reads]},
         'qualification': 'not_established', 'source_lifetime_recheck': 'required_at_every_product_read'}
+
+
+def verification_applicability(plan, read):
+    """Assess the existing public comparison, never recompute Product semantics.
+
+    The supplied receipt still needs collector/candidate authentication. Canonical
+    comparisons survive body expiry; eligibility grants no original-stream access.
+    Keep every unresolved/non-comparable row alongside an eligible comparison.
+    """
+    work = plan['subject']['identity']
+    work = bytes(work).hex() if isinstance(work, list) else work
+    report = read.get('verification_report', {})
+    if (plan['subject']['kind'] != 'work' or read.get('operation') != 'work_verification_read'
+            or read.get('project_id') != plan['project_id'] or read.get('work_item_id') != work
+            or read.get('read_only') is not True or not isinstance(report, dict)
+            or not isinstance(report.get('checks'), list) or not isinstance(report.get('executions'), list)):
+        raise api().CampaignError('reader verification scope/public receipt mismatch')
+    rows = []
+    originals = {}
+    for check in report['checks']:
+        original = check.get('original', {})
+        if (set(original) != {'checkpoint_id', 'checkpoint_revision', 'verification_index'}
+                or not isinstance(original['checkpoint_id'], str)
+                or type(original['checkpoint_revision']) is not int or original['checkpoint_revision'] < 1
+                or type(original['verification_index']) is not int or original['verification_index'] < 0):
+            raise api().CampaignError('reader verification original identity malformed')
+        key = compact_bytes(original)
+        if key in originals:
+            raise api().CampaignError('reader verification duplicate original identity')
+        originals[key] = check
+    for check in report['checks']:
+        comparison = check.get('retest_comparison', {})
+        state = comparison.get('state')
+        if state not in {'unresolved', 'not_comparable', 'comparable'}:
+            raise api().CampaignError('reader verification comparison state malformed')
+        if state == 'comparable':
+            prior = originals.get(compact_bytes(comparison.get('previous')))
+            if prior is None or prior is check or comparison.get('source_id') != prior.get('source_id'):
+                raise api().CampaignError('reader verification prior comparison identity mismatch')
+            for row in (prior, check):
+                scoped = row.get('scoped_run', {})
+                run = scoped.get('value', {})
+                if (scoped.get('state') != 'observed' or run.get('work_item_id') != work
+                        or run.get('work_revision') != next((e['revision'] for e in plan['evidence'] if e['key'] == 'goal'), None)):
+                    raise api().CampaignError('reader verification scoped Work/revision mismatch')
+        rows.append({'original': check['original'], 'state': state,
+            'reason': comparison.get('reason')})
+    return {'state': 'eligible_for_assessment' if any(r['state'] == 'comparable' for r in rows) else 'not_observed',
+        'reason': 'public_typed_comparison_not_capture_or_semantic_approval' if any(r['state'] == 'comparable' for r in rows)
+            else 'no_comparable_relation_in_public_report', 'comparisons': rows}
 
 
 def preparations(root):
