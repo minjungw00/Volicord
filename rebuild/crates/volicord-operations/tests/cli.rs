@@ -415,6 +415,11 @@ fn concurrent_repository_selected_cli_writers_preserve_committed_sources(
     let records = inspected["records"]
         .as_array()
         .ok_or("missing canonical records")?;
+    let project_hex = project["project_id"].as_str().ok_or("Project identity")?;
+    let mut project_bytes = [0; 16];
+    for (index, byte) in project_bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&project_hex[index * 2..index * 2 + 2], 16)?;
+    }
     for (identity, text) in committed {
         let matches = records
             .iter()
@@ -427,9 +432,22 @@ fn concurrent_repository_selected_cli_writers_preserve_committed_sources(
         );
         assert_eq!(matches[0]["kind"], "source");
         assert_eq!(matches[0]["revision"], 1);
-        assert!(matches[0]["summary"]
+        // User-turn bodies remain private in the safe public list. Verify the
+        // concurrent commits against their exact retained canonical records.
+        assert!(!matches[0]["summary"]
             .as_str()
             .is_some_and(|summary| summary.contains(&text)));
+        let mut bytes = [0; 16];
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&identity[index * 2..index * 2 + 2], 16)?;
+        }
+        let project_id = volicord_context::ProjectId::from_bytes(project_bytes);
+        let retained =
+            volicord_context::Store::open(RuntimeLayout::new(&runtime)?.canonical_store())?
+                .get_source(project_id, volicord_context::SourceId::from_bytes(bytes))?;
+        assert!(
+            matches!(retained.payload,volicord_context::SourcePayload::CurrentHostUserTurn {turn,..} if turn==text)
+        );
     }
     Ok(())
 }
@@ -635,4 +653,17 @@ fn analyze_json_keeps_all_parse_diagnostics_above_host_bounds(
     assert!(text.contains("Affected areas:"));
     assert!(text.contains("src/broken_"));
     Ok(())
+}
+
+#[test]
+fn viewer_help_exposes_only_the_three_reader_destinations() {
+    let (exit, help, error) = cli(["viewer", "open", "--help"]);
+    assert_eq!(exit, CliExit::SUCCESS);
+    assert!(error.is_empty());
+    assert!(help.contains("overview") && help.contains("repository") && help.contains("work"));
+    for retired in ["code", "decisions", "tools"] {
+        let (exit, _, error) = cli(["viewer", "open", "--view", retired]);
+        assert_ne!(exit, CliExit::SUCCESS);
+        assert!(error.contains("invalid value"), "{error}");
+    }
 }

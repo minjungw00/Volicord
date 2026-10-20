@@ -526,9 +526,14 @@ fn seed_reader_scope_review() -> Result<(), Box<dyn Error>> {
         f.repository.join("runtime/query_boundary.ts"),
         workless_repository.join("runtime/query_boundary.ts"),
     )?;
+    let name = f
+        .operations
+        .canonical_basis(f.project)?
+        .project
+        .display_name;
     let workless = f
         .operations
-        .initialize_project("Reader sample", Some(&workless_repository))?
+        .initialize_project(&name, Some(&workless_repository))?
         .project
         .id;
     let mut cases = Vec::new();
@@ -563,7 +568,7 @@ fn seed_reader_scope_review() -> Result<(), Box<dyn Error>> {
                 .record_explanation(project, subject, language, realization)?;
         }
         let name = f.operations.canonical_basis(project)?.project.display_name;
-        cases.push(json!({"key":key,"runtime":f.operations.layout().root(),"project":project.to_string(),"project_name":name,"purpose_count":if key=="populated" {1}else{0},"locale":"en","language":"en","evidence_class":"authored technical control; human acceptance unassessed","origin":"fresh Product fixture and current renderer","source_root":if key=="populated" {&f.repository}else{&workless_repository},"work":if key=="populated" {Some(f.goals["relay"].to_string())}else{None},"normal_work":if key=="populated" {Some(f.goals["relay"].to_string())}else{None}}));
+        cases.push(json!({"key":key,"runtime":f.operations.layout().root(),"project":project.to_string(),"project_name":name,"purpose_count":if key=="populated" {1}else{0},"locale":"en","language":"en","evidence_class":"authored technical control; human acceptance unassessed","origin":"fresh Product fixture and current renderer","source_root":if key=="populated" {&f.repository}else{&workless_repository},"decision":if key=="populated" {Some(f.decisions["explicit"].to_string())}else{None},"work":if key=="populated" {Some(f.goals["relay"].to_string())}else{None},"normal_work":if key=="populated" {Some(f.goals["relay"].to_string())}else{None}}));
     }
     std::fs::write(
         output.join("cases.json"),

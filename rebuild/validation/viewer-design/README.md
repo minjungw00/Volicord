@@ -212,8 +212,10 @@ Work/Decision identity; an original portable bundle may be imported into a separ
 local Runtime using Product operations. Preserve its checksum and original hash.
 Do not substitute authored historical card text or a different control Work.
 
-The runner follows Overview → repository explanation, Work catalog → exact detail,
-Decisions and each Tools destination, then returns through ordinary navigation.
+The runner follows Overview → Repository explanation → Work list/exact detail,
+its actual contextual Decisions and cited Sources, then returns through ordinary
+navigation. It verifies retired selectors, inspection GETs and management POSTs
+return 404. No Tools or standalone Decision/Code destination remains.
 It captures actual HTML/screens, checks missing/malformed identities and Host/Origin
 rejection, reads exact code against `source_root` when supplied, exercises source
 refresh/history/return, and reads the actual exported snapshot without script or
@@ -262,11 +264,12 @@ through `validate focused` for separation and moved/tampered package controls.
 membership and hashes; this is integrity verification, not authenticated authorship.
 
 The browser driver also admits real Works with no Checkpoint: it checks absence
-of a latest-work date instead of forcing an invented event. Native GET inspection
-filters need no mutation token; protected POST forms and HTTP operations retain
-their dedicated authenticity tests. Inspector browser support checks 320 px as
-well as desktop/390 px and retains separate streams and numeric/signal termination
-for each Project listener. These controls supply no human comprehension verdict.
+of a latest-work date instead of forcing an invented event. Request-scoped guarded
+confirmation retains dedicated authenticity tests outside reader navigation.
+`inspection_browser.cjs` and `inspection-review.md` are historical inspector
+references with superseded Viewer routes; preserve them unchanged and do not use
+them as current Product acceptance. Current browser support uses `product_review.cjs`
+and exact claim-specific citation tests. None supplies a human comprehension verdict.
 
 ### Shareable delivery and private originals
 

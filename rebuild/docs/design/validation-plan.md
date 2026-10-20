@@ -3174,7 +3174,8 @@ status, actual body and returned identity, not merely hidden widgets.
 Then run retained route/function tests plus desktop/mobile browser review with
 representative records, empty, restricted and unavailable states. Keep original
 stdout/stderr and numeric exits via `validate focused`; no Final/V11. Record route
-coverage and actual results under `validation/viewer-design/inspection-review.md`.
+coverage and actual results in the focused runner output and conversation; preserve
+`validation/viewer-design/inspection-review.md` as historical evidence.
 Synthetic records establish technical/presentation controls only; human acceptance
 and any proposed authority expansion remain separate.
 
