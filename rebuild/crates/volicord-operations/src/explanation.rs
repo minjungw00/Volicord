@@ -220,8 +220,15 @@ impl LocalOperations {
         project: ProjectId,
         language: &str,
     ) -> Result<volicord_projections::QuestionAnswers, Error> {
-        let projection = self
-            .project_projection_selected(project, volicord_projections::WorkSelector::Repository)?;
+        let (projection, _) = self.project_projection_read_profiled(
+            project,
+            WorkSelector::Repository,
+            ProjectionDetail::default(),
+            ProjectionReadRequirements {
+                code: false,
+                inspection: false,
+            },
+        )?;
         Ok(explanation_answers(
             &projection.repository_explanations,
             language,
