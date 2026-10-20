@@ -644,11 +644,16 @@ impl HostAdapter {
         if args["reading_focus"] == "repository_explanation" {
             let project = project(args)?;
             let language = args["requested_language"].as_str().unwrap_or("en");
-            let projection = self
+            let (projection, _) = self
                 .operations
-                .project_projection_selected(
+                .project_projection_read_profiled(
                     project,
                     volicord_projections::WorkSelector::Repository,
+                    volicord_projections::ProjectionDetail::default(),
+                    volicord_projections::ProjectionReadRequirements {
+                        code: false,
+                        inspection: false,
+                    },
                 )
                 .map_err(operation_error)?;
             let answers = volicord_projections::explanation_answers(

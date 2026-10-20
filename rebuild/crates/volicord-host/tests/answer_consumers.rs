@@ -9,6 +9,88 @@ use volicord_operations::LocalOperations;
 use volicord_projections::*;
 
 #[test]
+fn focused_repository_mcp_preserves_exact_article_scope_and_source_deletion(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_operations::{
+        RepositoryClaimRange, RepositoryExplanationDraft, RepositoryFileObservationRequest,
+        RepositoryReaderUnit,
+    };
+    let f = reading_fixture::fixture()?;
+    let analysis = f
+        .operations
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let path = "runtime/query_boundary.ts";
+    let body = std::fs::read(f.repository.join(path))?;
+    let observation = f
+        .operations
+        .observe_repository_file(RepositoryFileObservationRequest {
+            project_id: f.project,
+            analysis_snapshot_id: analysis,
+            path: path.into(),
+            byte_range: None,
+            retain_seconds: 3600,
+        })?;
+    let text = observation["source_id"].as_str().ok_or("Source")?;
+    let mut bytes = [0; 16];
+    for (n, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&text[n * 2..n * 2 + 2], 16)?;
+    }
+    let source = volicord_context::SourceId::from_bytes(bytes);
+    let plan = f.operations.prepare_explanation(
+        f.project,
+        ExplanationSubject::Repository(analysis),
+        "en",
+    )?;
+    let realization = f.operations.compose_repository_explanation(f.project,analysis,RepositoryExplanationDraft {
+        plan_fingerprint:plan.fingerprint.clone(),language:"en".into(),
+        generator:ExplanationGenerator {host:"authored-transport-control".into(),session:"synthetic".into(),agent:None,model:None},
+        paragraphs:vec![RepositoryReaderUnit {question:ExplanationQuestion::Observation,text:"This authored control reads the query boundary; it establishes no runtime execution or whole repository understanding.".into(),evidence_keys:vec!["repository_basis".into()],sources:vec![RepositoryClaimRange {source_id:source,start_byte:0,end_byte:body.len(),claim:None}]}],
+    })?;
+    f.operations.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(analysis),
+        "en",
+        realization,
+    )?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let request = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"repository_understanding","arguments":{"project_id":f.project.to_string(),"requested_language":"en","reading_focus":"repository_explanation"}}});
+    let response = host.handle(request.clone()).ok_or("response")?;
+    assert_eq!(response["result"]["isError"], false, "{response}");
+    let data = &response["result"]["structuredContent"];
+    assert_eq!(data["project_id"], f.project.to_string());
+    assert_eq!(data["read_only"], true);
+    assert!(data.get("selected_work").is_none());
+    let answers = &data["repository_explanation"];
+    assert_eq!(answers["explanation_state"], "current");
+    assert_eq!(answers["provenance"]["subject"]["kind"], "repository");
+    assert_eq!(
+        answers["provenance"]["subject"]["identity"],
+        analysis.to_string()
+    );
+    assert_eq!(answers["provenance"]["fingerprint"], plan.fingerprint);
+    assert_eq!(
+        answers["prose"][0]["citations"][0]["source_id"],
+        source.to_string()
+    );
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    f.operations
+        .delete_repository_source_observation(f.project, analysis, source)?;
+    let response = host.handle(request).ok_or("response")?;
+    let unavailable = &response["result"]["structuredContent"]["repository_explanation"];
+    assert_ne!(unavailable["explanation_state"], "current");
+    assert!(unavailable["provenance"].is_null());
+    assert!(!unavailable["prose"]
+        .to_string()
+        .contains("authored control reads"));
+    Ok(())
+}
+
+#[test]
 fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut input = reading_fixture::rich_scenario()?;
