@@ -8699,7 +8699,7 @@ fn interaction_review_json(reviews: &[volicord_inquiry::InteractionReview]) -> V
 
 fn work_check_recording_schema() -> Value {
     let nullable = |v: Value| json!({"oneOf":[v,{"type":"null"}]});
-    object_schema(
+    let mut schema = object_schema(
         vec![
             ("work_item_id", identity_schema("Exact Goal-backed Work")),
             (
@@ -8787,7 +8787,23 @@ fn work_check_recording_schema() -> Value {
             "outcome",
             "next_step",
         ],
-    )
+    );
+    schema["description"] = json!("Explicit operator check report bound to a retained Command Source; records no new execution");
+    schema["properties"]["assertion_evidence"]["description"] = json!(
+        "Exact retained output interval supporting the operator assertion, or null when unobserved"
+    );
+    let evidence = &mut schema["properties"]["assertion_evidence"]["oneOf"][0];
+    evidence["properties"]["start_byte"]["description"] =
+        json!("Inclusive UTF-8 byte offset in the retained stream");
+    evidence["properties"]["end_byte"]["description"] =
+        json!("Exclusive UTF-8 byte offset in the retained stream");
+    schema["properties"]["retest"]["description"] = json!("Explicit comparison with one exact earlier same-Work check, or null when no comparable rerun is claimed");
+    let retest = &mut schema["properties"]["retest"]["oneOf"][0];
+    retest["properties"]["checkpoint_revision"]["description"] =
+        json!("Exact recorded revision of the prior Checkpoint");
+    retest["properties"]["verification_index"]["description"] =
+        json!("Zero-based position of the prior check in that Checkpoint");
+    schema
 }
 
 #[cfg(test)]

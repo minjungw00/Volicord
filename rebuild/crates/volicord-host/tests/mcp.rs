@@ -7387,6 +7387,10 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
         "repository_analyze" => vec![shape(&["project_id", "excluded_paths"], &["project_id"])],
         "work_source" => vec![
             shape(
+                &["action", "project_id", "work_item_id", "recording"],
+                &["action", "project_id", "work_item_id", "recording"],
+            ),
+            shape(
                 &[
                     "action",
                     "project_id",
