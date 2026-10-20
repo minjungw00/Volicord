@@ -7,6 +7,9 @@ use volicord_operations::*;
 use volicord_projections::*;
 use volicord_repository_intelligence::AnalysisSnapshotId;
 use volicord_viewer::*;
+#[path = "support/code_text.rs"]
+mod code_text;
+use code_text::code_texts;
 
 struct Fixture {
     temp: tempfile::TempDir,
@@ -26,6 +29,13 @@ impl Fixture {
     fn new_kind(
         parent: Option<&std::path::Path>,
         production: bool,
+    ) -> Result<Self, Box<dyn Error>> {
+        Self::new_sources(parent, production, None)
+    }
+    fn new_sources(
+        parent: Option<&std::path::Path>,
+        production: bool,
+        custom: Option<Vec<(String, String)>>,
     ) -> Result<Self, Box<dyn Error>> {
         let temp = match parent {
             Some(path) => tempfile::tempdir_in(path)?,
@@ -65,6 +75,11 @@ impl Fixture {
                 }
             })
             .collect();
+        if let Some(custom) = custom {
+            assert_eq!(custom.len(), 11);
+            names = custom.iter().map(|(name, _)| name.clone()).collect();
+            originals = custom.into_iter().map(|(_, source)| source).collect();
+        }
         let mut files = originals.clone();
         let mut intervals: Vec<_> = originals.iter().map(|s| (0, s.len())).collect();
         if production {
@@ -80,10 +95,10 @@ impl Fixture {
                 ),
                 (
                     9,
-                    "explanation_sources.rs",
-                    include_str!("../../volicord-operations/src/explanation_sources.rs"),
-                    "    pub(crate) fn validate_subject_sources_selected(",
-                    "            match citation.use_kind {",
+                    "reading.js",
+                    include_str!("../src/reading.js"),
+                    "  async function readCitation(",
+                    "  const fragmentNotice =",
                 ),
                 (
                     10,
@@ -237,7 +252,9 @@ fn important_late_multi_citation_survives_initial_and_offline_bounds() -> Result
         "return value !== null",
         "accepted ? 1 : 0",
     ] {
-        assert!(f.get("/?view=repository")?.contains(needle));
+        assert!(code_texts(&f.get("/?view=repository")?)
+            .iter()
+            .any(|s| s.contains(needle)));
     }
     let destination = f.temp.path().join("offline.html");
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
@@ -249,7 +266,7 @@ fn important_late_multi_citation_survives_initial_and_offline_bounds() -> Result
         "return value !== null",
         "accepted ? 1 : 0",
     ] {
-        assert!(offline.contains(needle));
+        assert!(code_texts(&offline).iter().any(|s| s.contains(needle)));
     }
     assert!(!offline.contains("<script"));
     assert!(offline.contains("Omitted UTF-8 bytes in this cited range"));
@@ -309,6 +326,161 @@ fn body(response: &str) -> Result<Value, Box<dyn Error>> {
     let raw = response.split_once("\r\n\r\n").ok_or("body")?.1;
     assert!(raw.len() <= 32768);
     Ok(serde_json::from_str(raw)?)
+}
+
+fn highlighting_sources() -> Vec<(String, String)> {
+    [
+        ("pages.py", format!("# page boundary\r\n{}", "# 한국어 🦀 repeated context\r\n".repeat(240))),
+        ("untrusted.js", "export function render(value) {\r\n\tconst s = \"</code><script>alert('x')</script>&amp; 🦀\";\r\n\t// <img src=x onerror=alert(1)>\r\n\treturn s + value;\r\n}\r\n".into()),
+        ("raw.rs", "pub fn text<'a>(v: &'a str) -> &'a str {\n /* outer /* inner */ done */\n let raw = r##\"</span><script>🦀</script>\"##;\n let ch = '한'; // 0/1/many tokens\n v\n}\n".into()),
+        ("strings.py", "def render(값):\r\n\ttext = r'''<script>\n한국어 🐍\n'''\n\treturn text + 값 # not a claim\n# incomplete\n\"unterminated".into()),
+        ("script.sh", "#!/bin/sh\nif [ \"$x\" = 'it\\s' ]; then\n  export value=${name}\n  printf '%s\\n' \"$value\" # comment\nfi\n".into()),
+        ("value.json", "{\"key\": \"<script>🦀&amp;\", \"ok\": true, \"n\": 42}\n".into()),
+        ("stdout.log", "\u{1b}[31mERROR\u{1b}[0m <script>alert(1)</script>\r\nnot Rust: fn main() {}\n".into()),
+        ("dense.ts", "let x=1; ".repeat(450)),
+        ("admit.rs", "pub fn admit(value: Option<&str>) -> bool {\n    // 한국어 🦀\n    let quoted = r#\"<script> ' \\\" &amp;\"#;\n    value.is_some()\n}\n".into()),
+        ("verify.js", "export function verify(value) {\n    // 🦀 literal Source\n    const text = `</code><script>alert('x')</script>`;\n    return value !== null;\n}\n".into()),
+        ("output.unknown", "return <script>plain 🦀</script>\n\nlast line without newline".into()),
+    ].into_iter().map(|(name, source)|(name.into(),source)).collect()
+}
+
+#[test]
+fn highlighting_preserves_static_offline_and_live_admitted_text() -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new_sources(None, false, Some(highlighting_sources()))?;
+    let before = f.ops.privacy_status(f.project)?;
+    let canonical = f.ops.canonical_basis(f.project)?;
+    let answers = f.answers()?;
+    let destination = f.temp.path().join("highlighting.html");
+    ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .export_snapshot(&f.request(), &destination)?;
+    for output in [
+        f.get("/?view=repository")?,
+        fs::read_to_string(destination)?,
+    ] {
+        let codes = code_texts(&output);
+        for excerpt in &answers.source_excerpts {
+            assert!(
+                codes.contains(&excerpt.text),
+                "{}",
+                excerpt.citation.locator
+            );
+        }
+        for class in [
+            "keyword", "comment", "string", "type", "function", "variable", "number",
+        ] {
+            assert!(
+                output.contains(&format!("class=\"syn-{class}\"")),
+                "{class}"
+            );
+        }
+        assert!(output.contains("data-syntax=\"shell\""));
+        assert!(output.contains("data-syntax=\"json\""));
+        assert!(
+            output.contains("&#13;"),
+            "HTML must not normalize original CRLF"
+        );
+        assert!(!output.contains("<script>alert"));
+        assert!(!output.contains("<img src=x"));
+        assert!(output.contains("Observed cited range"));
+    }
+    for (unit, citation, index, language) in [
+        (0, 0, 0, "python"),
+        (0, 1, 1, "javascript"),
+        (0, 2, 2, "rust"),
+        (0, 3, 3, "python"),
+        (0, 4, 4, "shell"),
+        (0, 5, 5, "json"),
+        (0, 6, 6, "plain"),
+        (0, 7, 7, "typescript"),
+        (1, 0, 8, "rust"),
+        (1, 1, 9, "javascript"),
+        (1, 2, 10, "plain"),
+    ] {
+        let s = selection(&f, unit, citation, 0)?;
+        let response = body(&f.get(&citation_target(&f, &s))?)?;
+        let text = response["chunk"]["text"].as_str().ok_or("text")?;
+        assert_eq!(text, &f.originals[index][..text.len()]);
+        let decoration = &response["highlight"];
+        assert_eq!(decoration["language"].as_str().unwrap_or("plain"), language);
+        let tokens = decoration["tokens"].as_array().ok_or("tokens")?;
+        assert!(tokens.len() <= 256);
+        if language == "plain" || index == 7 {
+            assert!(
+                tokens.is_empty(),
+                "unknown/log and token overflow stay plain"
+            );
+        } else {
+            assert!(!tokens.is_empty(), "{language}");
+        }
+        let units: Vec<_> = text.encode_utf16().collect();
+        let mut previous = 0;
+        for t in tokens {
+            let start = t[0].as_u64().ok_or("start")? as usize;
+            let end = t[1].as_u64().ok_or("end")? as usize;
+            assert!(previous <= start && start < end && end <= units.len());
+            String::from_utf16(&units[start..end])?;
+            previous = end;
+        }
+    }
+    assert_eq!(before, f.ops.privacy_status(f.project)?);
+    assert_eq!(canonical, f.ops.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn decoration_yields_to_the_existing_http_response_budget() -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new_kind(None, true)?;
+    let mut realization = f.realization.clone();
+    let mut unit = realization.paragraphs[1].clone();
+    unit.text = "한".repeat(8500);
+    unit.citations.truncate(1);
+    unit.citations[0].claim_end_byte = unit.text.len();
+    unit.citations[0].claim_sha256 = explanation_text_hash(&unit.text);
+    realization.paragraphs = vec![unit];
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization,
+    )?;
+    let s = selection(&f, 0, 0, 0)?;
+    let original = f.ops.read_explanation_citation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        &s,
+    )?;
+    let response = body(&f.get(&citation_target(&f, &s))?)?;
+    assert!(
+        response["highlight"].is_null(),
+        "decoration must yield instead of widening the bound"
+    );
+    assert_eq!(
+        response, original,
+        "Source, claim and all coordinates stay exact"
+    );
+    Ok(())
+}
+
+#[test]
+fn nul_transport_remains_exact_and_offline_discloses_html_parser_limit(
+) -> Result<(), Box<dyn Error>> {
+    let mut sources = highlighting_sources();
+    sources[10].1.push('\0');
+    let f = Fixture::new_sources(None, false, Some(sources))?;
+    let chosen = selection(&f, 1, 2, 0)?;
+    let result = body(&f.get(&citation_target(&f, &chosen))?)?;
+    assert_eq!(result["chunk"]["text"], f.originals[10]);
+    let destination = f.temp.path().join("nul.html");
+    ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .export_snapshot(&f.request(), &destination)?;
+    let output = fs::read_to_string(destination)?;
+    assert!(output.contains("HTML parsing displays replacement characters for NUL"));
+    assert!(
+        code_texts(&output).contains(&f.originals[10]),
+        "raw HTML retains original bytes; parser limitation is disclosed"
+    );
+    Ok(())
 }
 #[test]
 fn selected_citation_reads_original_bytes_in_bounded_pages_without_writes(
@@ -434,9 +606,7 @@ fn exact_citation_rejects_changed_output_wrong_subject_origin_and_deleted_suppor
     let unavailable = f.get(&citation_target(&f, &current))?;
     assert!(unavailable.starts_with("HTTP/1.1 409"));
     assert!(!unavailable.contains("return verify"));
-    assert!(!f
-        .get("/?view=repository")?
-        .contains("<code lang=\"\">def admit"));
+    assert!(code_texts(&f.get("/?view=repository")?).is_empty());
     assert_eq!(canonical, f.ops.canonical_basis(f.project)?);
     assert_eq!(privacy, f.ops.privacy_status(f.project)?);
     Ok(())
@@ -555,12 +725,20 @@ fn selected_citation_withholds_expired_corrupt_unsupported_and_changed_file_evid
 }
 #[test]
 fn seed_citation_browser_runtime() -> Result<(), Box<dyn Error>> {
-    let Some(output) = std::env::var_os("VOLICORD_CITATION_REVIEW_ROOT") else {
+    let custom = std::env::var_os("VOLICORD_HIGHLIGHT_REVIEW_ROOT");
+    let Some(output) = custom
+        .clone()
+        .or_else(|| std::env::var_os("VOLICORD_CITATION_REVIEW_ROOT"))
+    else {
         return Ok(());
     };
     let output = std::path::Path::new(&output);
     fs::create_dir_all(output)?;
-    let f = Fixture::new_kind(Some(output), true)?;
+    let f = Fixture::new_sources(
+        Some(output),
+        custom.is_none(),
+        custom.map(|_| highlighting_sources()),
+    )?;
     let answers = f.answers()?;
     let path = output.join("offline.html");
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
@@ -630,8 +808,12 @@ fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
         .export_snapshot(&f.request(), &destination)?;
     let html = fs::read_to_string(destination)?;
-    assert!(html.contains("self.validate_subject_sources_selected("));
-    assert!(html.contains("bytes.len() &gt; 32_768"));
+    assert!(code_texts(&html)
+        .iter()
+        .any(|s| s.contains("self.validate_subject_sources_selected(")));
+    assert!(code_texts(&html)
+        .iter()
+        .any(|s| s.contains("bytes.len() > 32_768")));
     assert!(!html.contains("<script"));
     Ok(())
 }

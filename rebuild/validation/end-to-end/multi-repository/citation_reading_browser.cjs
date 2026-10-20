@@ -11,6 +11,11 @@ if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file
 const fixture=JSON.parse(fs.readFileSync(path.join(config.fixture,'fixture.json'),'utf8'));
 fs.mkdirSync(config.output,{recursive:true});
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
+function utf8Prefix(source,offset=0){
+ const b=Buffer.from(source);let end=Math.min(b.length,offset+4096);
+ while(end<b.length && (b[end]&0xc0)===0x80)end--;
+ return b.subarray(offset,end).toString('utf8');
+}
 function state(){
  return execFileSync('python3',['-c',`import sqlite3,json,hashlib,sys,pathlib
 result={}
@@ -32,6 +37,68 @@ function command(label,args){
  commands.push(receipt);
  if(child.status!==0 || child.error)throw Error(JSON.stringify(receipt));
  return receipt;
+}
+async function initialCode(page) {
+ const observed=await page.locator('.source-point > .code-region code').evaluateAll(codes=>codes.map(code=>({
+  source:code.closest('.source-point').dataset.sourceId,text:code.textContent,syntax:code.dataset.syntax,
+  spans:code.querySelectorAll('span').length,numbers:code.parentElement.querySelector('.source-line-numbers').children.length,
+  tags:[...code.querySelectorAll('*')].map(n=>n.tagName),html:code.innerHTML,
+ })));
+ assert.equal(observed.length,12,'all original and shared claim excerpts remain present');
+ for(const code of observed){
+  const expected=fixture.answers.source_excerpts.find(e=>e.citation.source_id===code.source);
+  assert.ok(expected);assert.equal(code.text,expected.text,'parsed static/offline code equals original admitted UTF-8');
+  assert.equal(code.numbers,code.text.split('\n').length-Number(code.text.endsWith('\n')));
+  assert.ok(code.spans<=256);assert.ok(code.tags.every(tag=>tag==='SPAN'),'captured text never becomes HTML');
+ }
+ return {code_elements:observed.length,code_utf8_bytes:observed.reduce((n,c)=>n+Buffer.byteLength(c.text),0),
+  token_spans:observed.reduce((n,c)=>n+c.spans,0),highlight_markup_bytes:observed.reduce((n,c)=>n+Buffer.byteLength(c.html)-Buffer.byteLength(c.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')),0)};
+}
+async function selectedCode(point, expected) {
+ const code=point.locator('.citation-inspection code');
+ assert.equal(await code.textContent(),expected);
+ const data=await code.evaluate(code=>{
+  const range=document.createRange();range.selectNodeContents(code);
+  const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+  const selected=selection.toString();selection.removeAllRanges();
+  const exactRange=range.toString();
+  // Compare native copy/selection with an otherwise identical plain-text pane:
+  // Chromium may omit a final empty rendered line or normalize CR line endings.
+  const plain=code.cloneNode(false);plain.textContent=code.textContent;code.replaceWith(plain);
+  const plainRange=document.createRange();plainRange.selectNodeContents(plain);selection.addRange(plainRange);
+  const plainSelected=selection.toString();selection.removeAllRanges();plain.replaceWith(code);
+  return {range:exactRange,selected,plainSelected,spans:code.querySelectorAll('span').length,html:code.innerHTML};
+ });
+ assert.equal(data.range,expected,'DOM range preserves exact characters without gutter text');
+ assert.equal(data.selected,data.plainSelected,'native selection/copy behaves exactly as the original plain Source pane');
+ assert.ok(data.spans<=256);
+ const initial=point.locator(':scope > pre.code-region code');
+ if(await initial.count() && await initial.textContent()===expected)
+  assert.equal(data.html,await initial.innerHTML(),'equivalent exact chunks get identical static/live token markup');
+}
+async function openSource(page,index,keyboard=false) {
+ const link=page.locator('.doc a.evidence-link').nth(index);
+ const target=page.locator(`[id="${(await link.getAttribute('href')).slice(1)}"]`);
+ const expected=new URL(await target.locator('.citation-inspection').getAttribute('data-citation-url'),page.url()).href;
+ const fetched=page.waitForResponse(r=>r.url()===expected);
+ if(keyboard){await link.focus();await page.keyboard.press('Enter');}else await link.click();
+ await fetched;
+ await target.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
+ await target.locator('.citation-inspection pre.code-region:not([hidden])').waitFor({state:'visible'});
+ return target;
+}
+async function syntaxContrast(page) {
+ return page.evaluate(()=>{
+  const region=document.querySelector('.source-point:target .code-region:not([hidden])') || document.querySelector('.code-region');
+  const rgb=s=>s.match(/[\d.]+/g).slice(0,3).map(Number);
+  const luminance=c=>c.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0);
+  const bg=luminance(rgb(getComputedStyle(region).backgroundColor));
+  return ['keyword','comment','string','type','function','number','variable'].map(kind=>{
+   const span=document.createElement('span');span.className='syn-'+kind;span.textContent='contrast sample';region.append(span);
+   const color=getComputedStyle(span).color,fg=luminance(rgb(color));span.remove();
+   return {kind,color,ratio:(Math.max(bg,fg)+.05)/(Math.min(bg,fg)+.05)};
+  });
+ });
 }
 (async()=>{
  const fontCheck=spawnSync('fc-list',[':lang=ko'],{encoding:'utf8',env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
@@ -60,9 +127,26 @@ function command(label,args){
   result.browser_version=browser.version();
   const before=state();result.state_before_sha256=hash(before);
   const context=await browser.newContext();
+  await context.addInitScript(()=>{
+   window.codePaints=[];
+   const create=document.createDocumentFragment.bind(document);
+   document.createDocumentFragment=()=>{const f=create();f.paintStart=performance.now();return f;};
+   const replace=Element.prototype.replaceChildren;
+   Element.prototype.replaceChildren=function(...args){
+    const start=args[0]?.paintStart;
+    const value=replace.apply(this,args);
+    if(this.matches('code') && Number.isFinite(start)){
+     const end=performance.now();this.getBoundingClientRect();
+     window.codePaints.push({dom_ms:end-start,layout_ms:performance.now()-end,spans:this.children.length,utf8_bytes:new TextEncoder().encode(this.textContent).length});
+    }
+    return value;
+   };
+  });
   const measured=[];
   await context.route('**/*',route=>new URL(route.request().url()).origin===new URL(base).origin?route.continue():route.abort());
   const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  result.code_paints=[];result.initial_code=[];result.external_requests=[];result.syntax_contrast=[];
+  page.on('request',r=>{if(new URL(r.url()).origin!==new URL(base).origin)result.external_requests.push(r.url());});
   page.on('response',r=>{if(new URL(r.url()).pathname==='/citation'){measured.push((async()=>{
    try { const bytes=await r.body();result.reads.push({status:r.status(),bytes:bytes.length,url:r.url(),duration_ms:r.request().timing().responseEnd}); }
    catch(e){result.reads.push({status:r.status(),body_measurement:'unavailable after navigation/abort',url:r.url(),error:e.message});}
@@ -92,12 +176,17 @@ function command(label,args){
    const sticky=await navigation.boundingBox();assert.ok(sticky.y>=-1 && sticky.y<100,'bounded navigation persists after offscreen scrolling');
    await page.goto(base+`?view=repository&locale=${locale}&language=en`);
    const html=await page.content();result.initial_html_bytes=Buffer.byteLength(html);fs.writeFileSync(path.join(config.output,`live-${locale}-${width}.html`),html);
+   result.initial_code.push({locale,width,...await initialCode(page),...await page.evaluate(()=>({
+    dom_elements:document.querySelectorAll('*').length,dom_content_loaded_ms:performance.getEntriesByType('navigation')[0].domContentLoadedEventEnd,
+   }))});
    const points=page.locator('.source-point');assert.equal(await points.count(),12);
    const link=page.locator('.doc a.evidence-link').nth(8);exactPoint=(await link.getAttribute('href')).slice(1);
-   await link.focus();await page.keyboard.press('Enter');
+   await openSource(page,8,true);
    const point=page.locator(`[id="${exactPoint}"]`);
    await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
-   assert.equal(await point.locator('.citation-inspection code').textContent(),fixture.originals[8]);
+   await selectedCode(point,fixture.originals[8]);
+   assert.equal(await point.locator('.citation-inspection code').getAttribute('data-syntax'),'rust');
+   assert.ok(await point.locator('.citation-inspection .syn-keyword').count());
    assert.equal(await point.locator('.claim-quote').textContent(),fixture.answers.prose[1].text);
    assert.equal(await page.evaluate(()=>document.activeElement.id),exactPoint);
    assert.equal(await page.locator('.doc').evaluate(n=>n.inert),width<900);
@@ -105,15 +194,40 @@ function command(label,args){
    assert.equal(await point.locator('.citation-inspection pre').evaluate(n=>getComputedStyle(n).fontSize),width<=600?'12px':width<=900?'13px':'15px');
    assert.equal(await point.getAttribute('role'),width<900?'dialog':null);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+   const codePane=point.locator('.citation-inspection pre');
+   await codePane.focus();assert.equal(await codePane.evaluate(n=>document.activeElement===n),true,'code overflow is keyboard focusable');
+   const overflow=await codePane.evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth}));
+   if(width<=390)assert.ok(overflow.scroll>overflow.width,'long original identifiers/lines scroll within compact Source pane');
+   if(width<=390){await page.keyboard.press('ArrowRight');await page.waitForFunction(()=>document.querySelector('.source-point:target .citation-inspection pre').scrollLeft>0);await codePane.evaluate(n=>n.scrollLeft=0);}
    const box=await point.boundingBox();if(width>900)assert.ok(box.x>500,'desktop right evidence pane');
    const screenshot=path.join(config.output,`${locale}-${width}.png`);await page.screenshot({path:screenshot});result.screens.push({path:screenshot,sha256:hash(fs.readFileSync(screenshot))});
    for(const n of [9,10]) {
-    await point.locator('.return').click();await page.locator('.doc a.evidence-link').nth(n).click();
-    const other=page.locator('.source-point:target');await other.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
+    await point.locator('.return').click();
+    const other=await openSource(page,n);
     const text=await other.locator('.citation-inspection code').textContent();
     assert.equal(text,Buffer.from(fixture.originals[n]).subarray(0,Buffer.byteLength(text)).toString('utf8'));
-    assert.ok(Buffer.byteLength(text)<=4096);await other.locator('.return').click();await link.click();
+    assert.ok(Buffer.byteLength(text)<=4096);await other.locator('.return').click();await openSource(page,8);
     await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
+   }
+   if(locale==='en' && [1440,390,320].includes(width)) {
+    await point.locator('.return').click();
+    const js=await openSource(page,9);
+    const original=Buffer.from(fixture.originals[9]);const displayed=await js.locator('.citation-inspection code').textContent();
+    await selectedCode(js,original.subarray(0,Buffer.byteLength(displayed)).toString());
+    assert.equal(await js.locator('.citation-inspection code').getAttribute('data-syntax'),'javascript');
+    assert.ok(await js.locator('.citation-inspection .syn-keyword').count());
+    for(const scheme of ['light','dark']) {
+     await page.emulateMedia({colorScheme:scheme});await page.screenshot({path:path.join(config.output,`javascript-${width}-${scheme}.png`)});
+     const colors=await syntaxContrast(page);assert.ok(colors.every(c=>c.ratio>=4.5),'small code tokens contrast at least 4.5:1');
+     result.syntax_contrast.push({width,scheme,colors});
+    }
+    await page.emulateMedia({forcedColors:'active'});
+    assert.equal(await js.locator('.citation-inspection .syn-keyword').first().evaluate(n=>getComputedStyle(n).fontWeight),'650');
+    assert.ok(await js.locator('.citation-inspection pre').evaluate(n=>parseFloat(getComputedStyle(n).borderLeftWidth)>0),'observed-range rule survives without syntax colors');
+    await page.emulateMedia({forcedColors:'none'});
+    await page.emulateMedia({colorScheme:'light'});await js.locator('.return').click();await openSource(page,8);
+    await point.locator('.citation-status').filter({hasText:/Displayed/}).waitFor();
+    await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:path.join(config.output,`rust-${width}-dark.png`)});await page.emulateMedia({colorScheme:'light'});
    }
    await page.reload();await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
    assert.equal(await point.locator('.citation-inspection code').textContent(),fixture.originals[8]);
@@ -121,12 +235,43 @@ function command(label,args){
    await page.goBack();await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
    await point.locator('.return').click();
    // A second claim sharing the same Source must keep its own quote/return target.
-   await page.locator('.doc a.evidence-link').nth(11).click();
-   const shared=page.locator('.source-point:target');await shared.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
+   const shared=await openSource(page,11);
    assert.equal(await shared.locator('.claim-quote').textContent(),fixture.answers.prose[2].text);
    assert.equal(await shared.locator('.citation-inspection code').textContent(),fixture.originals[8]);
+   result.code_paints.push(...await page.evaluate(()=>window.codePaints));
   }
   // A permitted response delayed in transport cannot paint a closed or switched claim.
+  await page.goto(base+'?view=repository');
+  for(let index=0;index<11;index++) {
+   const point=await openSource(page,index);
+   const displayed=await point.locator('.citation-inspection code').textContent();
+   await selectedCode(point,Buffer.from(fixture.originals[index]).subarray(0,Buffer.byteLength(displayed)).toString());
+   assert.equal(await point.locator('code script,code img,code a').count(),0);
+   const locator=fixture.answers.prose[index<8?0:1].citations[index<8?index:index-8].locator;
+   if(/\.(log|unknown)$/.test(locator))assert.equal(await point.locator('.citation-inspection code span').count(),0,'unknown/log fallback');
+   await point.locator('.return').click();
+  }
+  // Bad decoration is a neutral fallback, never executable captured markup.
+  for(const tokens of [[[0,1,'</span><script>bad</script>']],[[2,4,'keyword'],[0,1,'string']],[[0,999999,'string']]]){
+   await context.route('**/citation?*',async route=>{
+    const response=await route.fetch();const result=await response.json();result.highlight={language:'rust',tokens};
+    await route.fulfill({response,json:result});
+   });
+   const fetched=page.waitForResponse(r=>new URL(r.url()).pathname==='/citation');
+   await page.locator('.doc a.evidence-link').nth(8).click();await fetched;
+   const point=page.locator('.source-point:target');await point.locator('.citation-status').filter({hasText:/Displayed/}).waitFor();
+   assert.equal(await point.locator('.citation-inspection code').textContent(),fixture.originals[8]);
+   assert.equal(await point.locator('.citation-inspection code span').count(),0);
+   await point.locator('.return').click();await context.unroute('**/citation?*');
+  }
+  // A valid Source in the wrong requested page cannot overwrite this selection.
+  await context.route('**/citation?*',async route=>{
+   const response=await route.fetch();const result=await response.json();result.chunk.omitted_before_utf8_bytes=1;
+   await route.fulfill({response,json:result});
+  });
+  await page.locator('.doc a.evidence-link').nth(8).click();
+  const wrongPage=page.locator('.source-point:target');await wrongPage.locator('.citation-status').filter({hasText:/unavailable or changed/}).waitFor();
+  assert.equal(await wrongPage.locator('code').count(),0);await wrongPage.locator('.return').click();await context.unroute('**/citation?*');
   await page.setViewportSize({width:390,height:900});
   await page.goto(base+'?view=repository');
   let release, intercepted;
@@ -146,16 +291,18 @@ function command(label,args){
   await active.locator('.citation-status').filter({hasText:/Displayed/}).waitFor();
   assert.equal(await active.locator('.claim-quote').textContent(),fixture.answers.prose[2].text);
   assert.equal(await active.locator('.citation-read').isEnabled(),true,'aborted request does not strand its button');
-  const modalControls=active.locator('a.return');await modalControls.focus();
+   const modalControls=active.locator('a.return');await modalControls.focus();
   await page.keyboard.press('Shift+Tab');assert.ok(await active.evaluate(n=>n.contains(document.activeElement)),'mobile focus remains inside the Source dialog');
   await page.keyboard.press('Escape');assert.ok(originFocus);
   // Pagination replaces a bounded chunk rather than appending retained file bytes.
   await page.goto(base+'?view=repository');await page.locator('.doc a.evidence-link').first().click();
   let selected=page.locator('.source-point:target');await selected.locator('.citation-status').filter({hasText:/Displayed/}).waitFor();
-  assert.equal(await selected.locator('.citation-inspection code').textContent(),fixture.originals[0].slice(0,4096));
-  await selected.locator('.citation-read').click();await selected.locator('.citation-status').filter({hasText:/bytes 4096/}).waitFor();
-  assert.equal(await selected.locator('.citation-inspection code').textContent(),fixture.originals[0].slice(4096));
+  await selectedCode(selected,utf8Prefix(fixture.originals[0]));
+  const nextOffset=Number(await selected.locator('.citation-read').getAttribute('data-next-offset'));
+  await selected.locator('.citation-read').click();await selected.locator('.citation-status').filter({hasText:new RegExp('bytes '+nextOffset+'–')}).waitFor();
+  await selectedCode(selected,utf8Prefix(fixture.originals[0],nextOffset));
   assert.deepEqual(errors,[]);
+  assert.deepEqual(result.external_requests,[],'no external fetch, grammar, font or telemetry');
   assert.equal(state(),before,'GETs preserve all canonical, retention, provider and Derived rows');result.get_state_unchanged=true;
   // Keep the exact old page open while actual Product deletion removes its support.
   await page.goto(base+'?view=repository#'+exactPoint);selected=page.locator('.source-point:target');
@@ -179,6 +326,7 @@ function command(label,args){
    for(const width of [1440,1024,768,390,320]){
     await p.setViewportSize({width,height:900});await p.goto(pathToFileURL(path.join(config.fixture,'offline.html')).href+'#repository-explanation');
     assert.equal(await p.locator('script,.citation-inspection,[data-citation-url]').count(),0);
+    result.offline_code=await initialCode(p);
     const nav=p.locator('#repository-explanation .document-nav');assert.equal(await nav.count(),1);
     for(const href of await nav.locator('a').evaluateAll(a=>a.map(n=>n.getAttribute('href')))){
      if(!await nav.evaluate(n=>n.open))await nav.locator(':scope > summary').click();
@@ -190,6 +338,15 @@ function command(label,args){
     const point=p.locator('.source-point:target');assert.equal(await point.locator('code').textContent(),fixture.originals[8],'complete representative mechanism embedded offline');
     assert.ok((await point.textContent()).includes('Offline: only the displayed bytes are included'));
     await p.screenshot({path:path.join(config.output,`offline-${width}.png`)});await point.locator('.return').click();
+    if([1440,390,320].includes(width)) {
+     await p.locator('#repository-explanation .doc a.evidence-link').nth(9).click();
+     const js=p.locator('.source-point:target');
+     assert.ok(await js.locator('code .syn-keyword').count(),'script-free JavaScript tokens already in HTML');
+     for(const scheme of ['light','dark']){
+      await p.emulateMedia({colorScheme:scheme});await p.screenshot({path:path.join(config.output,`offline-javascript-${width}-${scheme}.png`)});
+     }
+     await p.emulateMedia({colorScheme:'light'});await js.locator('.return').click();
+    }
    }
    await offline.close();
   } finally {fs.renameSync(fixture.runtime+'.unavailable',fixture.runtime);}

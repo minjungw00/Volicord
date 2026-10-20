@@ -9,6 +9,7 @@ mod http;
 mod interaction;
 mod render;
 mod selection;
+mod source_highlight;
 pub use selection::ViewerView;
 
 pub use http::ViewerServer;

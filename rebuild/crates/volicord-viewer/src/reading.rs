@@ -1319,7 +1319,28 @@ fn render_source_excerpts(
                 if e.source_representation.as_deref() == Some("bounded_excerpt") {
                     context.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.","제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
                 }
-                html.push_str(&format!("<pre class=\"code-region\" tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\">{}</code></pre>",text(r.locale,"Original Source","Source 원문"),escape(&c.locator),c.start_line,e.displayed_end_line,e.text.split_inclusive('\n').enumerate().map(|(line,_)|format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(),escape(&e.text)));
+                let syntax = crate::source_highlight::language(
+                    c,
+                    e.source_representation.as_deref(),
+                    e.execution.is_some(),
+                );
+                if e.text.contains('\0') {
+                    html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"This excerpt contains NUL characters. HTML parsing displays replacement characters for NUL; exact NUL text is available only in the permitted live citation response.","이 발췌에는 NUL 문자가 있습니다. HTML 파서는 NUL을 대체 문자로 표시합니다. 정확한 NUL 텍스트는 허용된 실시간 인용 응답에서만 읽을 수 있습니다.")));
+                }
+                html.push_str(&format!(
+                    "<p class=\"code-caption\">{} · {}</p>",
+                    syntax.map(|s| s.label()).unwrap_or(text(
+                        r.locale,
+                        "Plain text",
+                        "일반 텍스트"
+                    )),
+                    text(
+                        r.locale,
+                        "Observed cited range · syntax colors are a reading aid",
+                        "관측된 인용 범위 · 구문 색상은 읽기 보조 표시"
+                    )
+                ));
+                html.push_str(&format!("<pre class=\"code-region\" tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\" data-syntax=\"{}\">{}</code></pre>",text(r.locale,"Original Source","Source 원문"),escape(&c.locator),c.start_line,e.displayed_end_line,e.text.split_inclusive('\n').enumerate().map(|(line,_)|format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(),syntax.map(|s|s.key()).unwrap_or("plain"),crate::source_highlight::html(&e.text,syntax)));
                 if e.omitted_utf8_bytes > 0 {
                     html.push_str(&format!(
                         "<p class=\"source-note initial-range-omission\">{}: {} · {}–{} · bytes {}–{}</p>",

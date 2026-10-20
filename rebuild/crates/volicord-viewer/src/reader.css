@@ -101,11 +101,31 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
 .claim-quote { border-left:2px solid var(--accent); padding:8px 16px; margin:16px 0; font-size:.95rem; max-height:24vh; overflow:auto; }
 .source-path { font-family:ui-monospace,monospace; font-size:.8rem; margin:16px 0 6px; }
 .source-note { margin-bottom:16px; }
-.code-region { display:flex; padding:16px 0; background:var(--soft); margin:0; max-height:48vh; white-space:pre; overflow-wrap:normal; }
+.code-region { display:flex; padding:16px 0; background:var(--soft); margin:0; max-height:48vh; white-space:pre; overflow-wrap:normal; border-left:3px solid var(--accent); tab-size:4; }
 .code-region code { display:block; flex-shrink:0; padding-right:24px; white-space:pre; overflow-wrap:normal; font-size:inherit; }
 .source-line-numbers { display:block; flex-shrink:0; position:sticky; left:0; background:var(--soft); user-select:none; }
 .source-line-numbers>span { display:block; width:5em; text-align:right; padding-right:1.4em; height:1.8em; color:var(--muted); }
 .source-line-numbers>span::before { content:attr(data-line); }
+.code-caption { font-size:.75rem; color:var(--muted); margin:12px 0 6px; }
+/* Lexical color is decorative. The labeled range and left rule carry observed
+   scope even without color; before/after and warnings have separate semantics. */
+.syn-keyword { color:#344f91; font-weight:650; }
+.syn-comment { color:#536579; font-style:italic; }
+.syn-string { color:#27605e; }
+.syn-type { color:#644977; }
+.syn-function { color:#285678; }
+.syn-number,.syn-variable { color:#76502c; }
+@media(prefers-color-scheme:dark) {
+ .syn-keyword { color:#b2c9ff; }
+ .syn-comment { color:#b0bdd0; }
+ .syn-string { color:#a0d4c9; }
+ .syn-type { color:#d2bce8; }
+ .syn-function { color:#a2cee9; }
+ .syn-number,.syn-variable { color:#e3c397; }
+}
+@media(forced-colors:active) {
+ .code-region code span { color:CanvasText; }
+}
 .point-bar { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:16px; }
 .point-counter { font-size:.75rem; color:var(--muted); }
 .appendix { margin-top:60px; }

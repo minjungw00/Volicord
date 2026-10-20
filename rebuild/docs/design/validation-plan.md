@@ -2974,7 +2974,7 @@ Optional absolute `VOLICORD_CITATION_REVIEW_ROOT` retains a disposable authored
 fixture via `seed_citation_browser_runtime`. The maintained
 `end-to-end/multi-repository/citation_reading_browser.cjs CONFIG` consumes exact
 fixture, executable, Playwright, Chromium/fontconfig and private output paths.
-The browser fixture copies exact current candidate Operations source files and
+The browser fixture copies exact current candidate Operations and reader source files and
 explicitly observes three function regions, with separately authored claims; its
 prose is not imported from historical feedback or a design prototype. The independent
 polyglot regression remains separate. It exercises actual loopback HTTP, en/ko at
@@ -2988,6 +2988,23 @@ hashes and screenshots. Navigation-aborted body measurements remain explicitly
 unavailable rather than zero or success. This is technical browser review; human
 comprehension, semantic entailment and design acceptance remain pending. No new
 campaign, provider invocation, aggregate gate or historical-artifact rewrite occurs.
+
+`VOLICORD_HIGHLIGHT_REVIEW_ROOT` instead seeds independently authored adversarial
+Source controls for JS/TS, Rust, Python, Shell, JSON, unknown/log fallback,
+Unicode/emoji, CRLF, escaped HTML, incomplete fragments and dense token overflow.
+The same browser driver checks initial/static and selected live DOM/range text,
+equivalent token markup for equal chunks, native selection against the original
+plain pane, byte-based pagination, malformed-token fallback and wrong-page denial.
+Its 1440/1024/768/390/320 en/ko matrix preserves light/dark JS/Rust and script-free
+offline captures, code keyboard scrolling, forced-color scope cues, measured
+contrast, DOM/HTML growth and chunk DOM/layout timings. Browser native selection
+may normalize line endings or omit a trailing empty rendered line; exact DOM
+range/text fidelity and unchanged native selection are checked separately.
+The NUL control preserves live JSON and raw HTML bytes while explicitly disclosing
+the HTML parser's script-free U+0000 replacement limitation; it is not an assertion
+of universal offline DOM byte fidelity. `source_highlight::tests` logs bounded
+lexer/render cost without a timing SLA. Existing HTTP budget/Source privacy and
+unsupported retained-format controls remain independent and authoritative.
 
 ### Historical Product reading/navigation integration support
 

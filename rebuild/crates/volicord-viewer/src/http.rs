@@ -220,11 +220,34 @@ impl ViewerServer {
             citation_index: integer("citation")?,
             offset: integer("offset")?,
         };
-        let result = self.adapter.operations().read_explanation_citation(self.project_id,
+        let mut result = self.adapter.operations().read_explanation_citation(self.project_id,
             subject,q.required("language")?,&selection).map_err(|_|
                 HttpFailure::new(409,"Conflict","This exact citation is unavailable or changed. Return to the explanation and reopen its current permitted version."))?;
-        let body = serde_json::to_vec(&result)
+        // Decorate only the bytes returned by the scoped, current Source reader.
+        // This ephemeral presentation metadata has no retained format/authority.
+        let chunk = &result["chunk"];
+        if let (Ok(citation), Some(source)) = (
+            serde_json::from_value::<volicord_projections::ExplanationCitation>(
+                chunk["citation"].clone(),
+            ),
+            chunk["text"].as_str(),
+        ) {
+            let language = crate::source_highlight::language(
+                &citation,
+                chunk["source_representation"].as_str(),
+                !chunk["execution"].is_null(),
+            );
+            result["highlight"] = crate::source_highlight::decoration(source, language);
+        }
+        let mut body = serde_json::to_vec(&result)
             .map_err(|_| HttpFailure::bad_request("citation encoding failed"))?;
+        if body.len() > 32_768 {
+            // Decoration must fit the existing transport budget. Plain text is
+            // an honest visual fallback, never a reason to truncate Source.
+            result.as_object_mut().map(|o| o.remove("highlight"));
+            body = serde_json::to_vec(&result)
+                .map_err(|_| HttpFailure::bad_request("citation encoding failed"))?;
+        }
         Ok(HttpResponse {
             status: 200,
             reason: "OK",

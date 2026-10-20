@@ -14,6 +14,10 @@ use volicord_operations::{
 use volicord_projections::*;
 use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerRequest, ViewerServer, ViewerView};
 
+#[path = "support/code_text.rs"]
+mod code_text;
+use code_text::code_texts;
+
 fn seed(root: &Path, comparison: &str) -> Result<Value, Box<dyn Error>> {
     seed_with_goal(root, comparison, "Explain why value returns 5, using observed code and any retained comparison. Do not infer execution success.")
 }
@@ -550,7 +554,9 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         assert!(mcp.to_string().contains(fingerprint));
         assert!(mcp.to_string().contains("return 5"));
         let page = get(&f)?;
-        assert!(page.contains("<code lang=\"\">def value():\n    return 5\n</code>"));
+        assert!(code_texts(&page)
+            .iter()
+            .any(|s| s == "def value():\n    return 5\n"));
         assert!(page.contains("data-title-basis=\"neutral-label\" lang=\"en\">Recorded Work</h1>"));
         assert_eq!(
             page.matches("Understand the constant return in value().")
@@ -589,7 +595,9 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         let code = ViewerAdapter::new(ops(&f)?)
             .render(&code_request, "test-form-authenticity")?
             .html;
-        assert!(code.contains("<code lang=\"\">def value():\n    return 5\n</code>"));
+        assert!(code_texts(&code)
+            .iter()
+            .any(|s| s == "def value():\n    return 5\n"));
         assert!(code
             .contains("data-question=\"ReportedChange\" lang=\"en\" data-content-language=\"en\""));
         assert!(code.contains(fingerprint));
@@ -597,7 +605,7 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         ViewerAdapter::new(ops(&f)?).export_snapshot(&request(&f)?, &destination)?;
         let snapshot = fs::read_to_string(destination)?;
         assert!(snapshot.contains(fingerprint));
-        assert!(snapshot.contains("return 5"));
+        assert!(code_texts(&snapshot).iter().any(|s| s.contains("return 5")));
         assert!(!snapshot.contains("<script"));
         assert!(!snapshot.contains("<form"));
         assert_eq!(before, ops(&f)?.canonical_basis(project(&f)?)?);
@@ -608,7 +616,7 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             "def value():\n    return 6\n",
         )?;
         let stale = get(&f)?;
-        assert!(!stale.contains("<code lang=\"\">def value():"));
+        assert!(code_texts(&stale).is_empty());
         assert!(stale.contains("Explanation is stale"));
     }
     Ok(())
@@ -1029,7 +1037,7 @@ fn forgetting_barrier(excerpt: bool) -> Result<(), Box<dyn Error>> {
     );
     let page = get(&f)?;
     assert!(page.contains("withheld by the canonical forgetting read barrier"));
-    assert!(!page.contains("<code lang=\"\">def value():"));
+    assert!(code_texts(&page).is_empty());
     assert!(!page.contains("Understand the constant return in value()."));
     assert_eq!(privacy, ops(&f)?.privacy_status(project)?);
     blocker.execute_batch("ROLLBACK")?;
@@ -1133,7 +1141,9 @@ fn large_excerpt_reaches_cli_mcp_live_and_snapshot_without_surrounding_bytes(
     let page = get(&f)?;
     assert!(page.contains("main.py:2001–2002"));
     assert!(page.contains("Bounded file observation: surrounding code was not retained"));
-    assert!(page.contains("<code lang=\"\">def value():\n    return 5\n</code>"));
+    assert!(code_texts(&page)
+        .iter()
+        .any(|s| s == "def value():\n    return 5\n"));
     assert!(!page.contains("# unretained"));
     let destination = temp.path().join("large.html");
     ViewerAdapter::new(ops(&f)?).export_snapshot(&request(&f)?, &destination)?;
@@ -1168,7 +1178,7 @@ fn large_excerpt_reaches_cli_mcp_live_and_snapshot_without_surrounding_bytes(
         )
         .is_err());
     assert!(!denied.exists());
-    assert!(!get(&f)?.contains("<code lang=\"\">def value():"));
+    assert!(code_texts(&get(&f)?).is_empty());
     Ok(())
 }
 
@@ -1424,15 +1434,7 @@ fn representative_production_code_preserves_grounding_across_public_readers(
     let snapshot = fs::read_to_string(snapshot)?;
     assert!(snapshot.contains(identity));
     for expected in f["expected_sources"].as_array().ok_or("sources")? {
-        let escaped = expected["text"]
-            .as_str()
-            .ok_or("text")?
-            .replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;")
-            .replace('"', "&quot;")
-            .replace('\'', "&#39;");
-        let code = format!("<code lang=\"\">{escaped}</code>");
+        let source = expected["text"].as_str().ok_or("text")?;
         let lines = format!(
             "{}:{}–{}",
             f["path"].as_str().ok_or("path")?,
@@ -1440,7 +1442,7 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             expected["end_line"]
         );
         for output in [&page, &snapshot] {
-            assert!(output.contains(&code));
+            assert!(code_texts(output).iter().any(|s| s == source));
             assert!(output.contains(&lines));
             assert!(output.contains(expected["source_id"].as_str().ok_or("Source")?));
         }
@@ -1723,7 +1725,7 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
                     "def value():"
                 };
                 assert!(
-                    point.contains(&format!("<code lang=\"\">{code}</code>")),
+                    code_texts(point).iter().any(|s| s == code),
                     "claim keeps its exact range"
                 );
             }
@@ -2127,9 +2129,20 @@ fn work_selected_citations_keep_observed_pairs_and_missing_before_distinct(
             )?;
             let response = String::from_utf8(response)?;
             assert!(response.starts_with("HTTP/1.1 200"));
+            let mut decorated: Value =
+                serde_json::from_str(response.split_once("\r\n\r\n").ok_or("body")?.1)?;
+            assert_eq!(decorated["highlight"]["language"], "python");
+            assert!(!decorated["highlight"]["tokens"]
+                .as_array()
+                .ok_or("tokens")?
+                .is_empty());
+            decorated
+                .as_object_mut()
+                .ok_or("object")?
+                .remove("highlight");
             assert_eq!(
-                serde_json::from_str::<Value>(response.split_once("\r\n\r\n").ok_or("body")?.1)?,
-                result
+                decorated, result,
+                "presentation preserves all scoped evidence fields"
             );
             assert_eq!(
                 result["chunk"]["text"],

@@ -1934,6 +1934,41 @@ script and cannot retrieve omitted evidence. Initial unique text bytes, per-rang
 limits and additional selected-read byte limits are visible in their own context;
 HTML transfer size includes markup, repeated claim panels and escaped text separately.
 
+### Admitted Source syntax presentation
+
+Viewer decorates only the exact initial excerpt or selected `/citation` chunk
+after Operations has validated its authority, lifetime and complete grounding.
+`source_highlight.rs` is an in-tree, bounded lexical reading aid, with no new
+dependency, external grammar, I/O, retained state or semantic parsing authority.
+Current excerpt metadata has no explicit programming-language field: admitted
+file `body` plus `whole_file`/`bounded_excerpt` representation and recorded locator
+suffix select JavaScript/TypeScript, Rust, Python, Shell or JSON decoration.
+Execution/stdout/stderr and unrecognized formats remain plain text regardless of
+their locator. This display hint neither opens a path nor establishes capability.
+
+The same lexer produces escaped static markup (including script-free offline
+HTML) and bounded UTF-16 token ranges for live DOM text nodes/spans. Identical
+admitted chunks receive equivalent decoration. Each chunk starts without outside
+lexical context: incomplete strings/comments, regex/JSX/template interpolation,
+Shell heredocs and identifiers classified as types/functions remain approximate.
+No surrounding Source may be obtained to improve colors. Input is at most 4,096
+UTF-8 bytes; more than 256 colored runs falls back to the full plain chunk.
+Live decoration must fit the existing 32,768-byte response limit or is omitted.
+Invalid client token hints also fall back to the complete text. No token metadata
+enters canonical/portable/retained explanation formats or changes their versions.
+
+Original newlines, indentation, Unicode and half-open byte coordinates remain
+Source-owned. Static CR uses an HTML character reference to avoid parser CRLF
+normalization. Line numbers stay outside `code`; spans add no copied text. The
+HTML parser cannot represent U+0000 in script-free DOM text: such an excerpt
+explicitly discloses the replacement-character limitation, while the permitted
+live JSON/text-node path retains NUL. Rendering never changes the retained bytes
+or silently declares that exceptional offline text a byte-faithful DOM copy.
+The range label and left rule identify the observed cited extent without inferring
+more precise claim-to-line entailment or a patch. Colors are decorative, with
+keyword weight/comment style, light/dark palettes and forced-color fallback;
+horizontal scrolling preserves original line geometry at narrow widths.
+
 ### Explicit Work content composition
 
 #### Independently admitted Work publications

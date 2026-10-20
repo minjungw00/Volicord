@@ -7,6 +7,33 @@
   let pendingRead = null;
   const reads = new WeakMap();
   const ko = document.documentElement.lang === 'ko';
+  const syntaxNames = {javascript:'JavaScript', typescript:'TypeScript', rust:'Rust', python:'Python', shell:'Shell', json:'JSON'};
+  const tokenKinds = new Set(['keyword','comment','string','type','function','number','variable']);
+  function paintCode(code, source, highlight) {
+    // The server's bounded lexer is shared with script-free rendering. Treat
+    // ranges as untrusted presentation hints: malformed hints fall back to text.
+    const runs = highlight?.tokens;
+    const language = Object.hasOwn(syntaxNames, highlight?.language) ? highlight.language : 'plain';
+    const boundary = i => i === 0 || i === source.length ||
+      !(source.charCodeAt(i) >= 0xdc00 && source.charCodeAt(i) <= 0xdfff && source.charCodeAt(i-1) >= 0xd800 && source.charCodeAt(i-1) <= 0xdbff);
+    let end = 0;
+    const valid = language !== 'plain' && Array.isArray(runs) && runs.length <= 256 && runs.every(run => {
+      if (!Array.isArray(run) || run.length !== 3) return false;
+      const [start, stop, kind] = run;
+      if (!Number.isInteger(start) || !Number.isInteger(stop) || start < end || stop <= start || stop > source.length ||
+          !tokenKinds.has(kind) || !boundary(start) || !boundary(stop)) return false;
+      end = stop; return true;
+    });
+    const fragment = document.createDocumentFragment(); end = 0;
+    if (valid) for (const [start, stop, kind] of runs) {
+      if (start > end) fragment.append(document.createTextNode(source.slice(end,start)));
+      const span = document.createElement('span'); span.className = 'syn-' + kind;
+      span.textContent = source.slice(start,stop); fragment.append(span); end = stop;
+    }
+    fragment.append(document.createTextNode(source.slice(end)));
+    code.replaceChildren(fragment); code.dataset.syntax = language;
+    return syntaxNames[language] || (ko ? '일반 텍스트' : 'Plain text');
+  }
   async function readCitation(point, offset = 0) {
     const control = point.querySelector('.citation-inspection');
     if (!control) return;
@@ -17,7 +44,7 @@
     const status = control.querySelector('.citation-status');
     const button = control.querySelector('button');
     button.disabled = true;
-    point.querySelectorAll('pre.code-region').forEach(n => n.hidden = true);
+    point.querySelectorAll('pre.code-region,.code-caption').forEach(n => n.hidden = true);
     status.textContent = ko ? '현재 허용된 인용 바이트 확인 중…' : 'Checking current permitted cited bytes…';
     try {
       const url = new URL(control.dataset.citationUrl, location.href);
@@ -28,21 +55,37 @@
       const raw = await response.text();
       if (new TextEncoder().encode(raw).length > 32768) throw Error('bound');
       const result = JSON.parse(raw), chunk = result.chunk;
+      const textBytes = typeof chunk?.text === 'string' ? new TextEncoder().encode(chunk.text).length : 0;
+      const subjectIdentity = Array.isArray(result.subject?.identity)
+        ? result.subject.identity.map(b => Number.isInteger(b) && b >= 0 && b <= 255 ? b.toString(16).padStart(2,'0') : '?').join('')
+        : result.subject?.identity;
       if (result.realization_fingerprint !== control.dataset.realization ||
           String(result.unit_index) !== control.dataset.unit || String(result.citation_index) !== control.dataset.citation ||
+          `${result.subject?.kind}:${subjectIdentity}` !== url.searchParams.get('subject') ||
+          result.language !== url.searchParams.get('language') || chunk.citation?.source_id !== point.dataset.sourceId ||
           result.claim !== point.querySelector('.claim-quote').textContent ||
-          new TextEncoder().encode(chunk.text).length > 4096) throw Error('binding');
+          !textBytes || textBytes > 4096 || chunk.omitted_before_utf8_bytes !== offset ||
+          chunk.displayed_start_byte !== chunk.citation.start_byte + offset ||
+          chunk.displayed_end_byte !== chunk.displayed_start_byte + textBytes ||
+          chunk.displayed_end_byte > chunk.citation.end_byte ||
+          !Number.isSafeInteger(chunk.displayed_start_line) || chunk.displayed_start_line < 1 ||
+          chunk.displayed_end_line - chunk.displayed_start_line + 1 !== chunk.text.split('\n').length - Number(chunk.text.endsWith('\n'))) throw Error('binding');
       if (controller.signal.aborted || reads.get(control) !== controller || selected !== point || !point.isConnected) return;
-      point.querySelectorAll('pre.code-region,.initial-range-omission').forEach(n => n.hidden = true);
+      point.querySelectorAll('pre.code-region,.code-caption,.initial-range-omission').forEach(n => n.hidden = true);
       let region = control.querySelector('pre');
       if (!region) {
         region = document.createElement('pre'); region.className = 'code-region';
         region.tabIndex = 0; region.setAttribute('role','region');
         const numbers = document.createElement('span'); numbers.className = 'source-line-numbers'; numbers.setAttribute('aria-hidden','true');
-        region.append(numbers, document.createElement('code')); control.prepend(region);
+        const code = document.createElement('code'); code.lang = '';
+        region.append(numbers, code);
+        const caption = document.createElement('p'); caption.className = 'code-caption';
+        control.prepend(caption, region);
       }
       region.hidden = false;
-      region.querySelector('code').textContent = chunk.text;
+      const syntaxName = paintCode(region.querySelector('code'), chunk.text, result.highlight);
+      control.querySelector('.code-caption').textContent = `${syntaxName} · ${ko ? '관측된 인용 범위 · 구문 색상은 읽기 보조 표시' : 'Observed cited range · syntax colors are a reading aid'}`;
+      control.querySelector('.code-caption').hidden = false;
       const numbers = region.querySelector('.source-line-numbers'); numbers.replaceChildren();
       for (let line = chunk.displayed_start_line; line <= chunk.displayed_end_line; line++) {
         const marker = document.createElement('span'); marker.dataset.line = line; numbers.append(marker);
@@ -59,7 +102,7 @@
       // A deleted shared Source must not leave an earlier claim's cached code.
       document.querySelectorAll('.source-point').forEach(other => {
         if (other.dataset.sourceId === point.dataset.sourceId)
-          other.querySelectorAll('pre.code-region').forEach(n => n.remove());
+          other.querySelectorAll('pre.code-region,.code-caption').forEach(n => n.remove());
       });
       point.querySelectorAll('.initial-range-omission').forEach(n => n.hidden = true);
       status.textContent = ko ? '이 정확한 인용은 이용할 수 없거나 변경되었습니다. 설명으로 돌아가 현재 버전을 다시 여세요.'
