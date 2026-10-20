@@ -2,8 +2,10 @@
 use crate::{Error, LocalOperations};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+use volicord_context::*;
 use volicord_context::{ContextItemRole, DecisionWorkScope, ProjectId, SourcePayload};
-use volicord_projections::{inspect_candidate, CandidateContentAccess, CanonicalInspectionKind};
+use volicord_projections::{CandidateContentAccess, CandidateContentAdmission};
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq, Ord, PartialOrd)]
 #[serde(rename_all = "snake_case")]
@@ -191,6 +193,23 @@ pub struct InspectionPage {
     pub omitted_match_count: usize,
     pub read_only: bool,
 }
+/// Request-local observations, separate from the public row/page representation.
+/// Byte/row counters are work performed, not allocation or RSS measurements.
+#[derive(Clone, Debug, Default)]
+pub struct InspectionReadCost {
+    pub indexed_records: usize,
+    pub indexed_relationships: usize,
+    pub visited_rows: usize,
+    pub matched_rows: usize,
+    pub retained_rows: usize,
+    pub fingerprint_bytes: usize,
+    pub maximum_row_relationships: usize,
+    pub canonical_read: std::time::Duration,
+    pub auxiliary_read: std::time::Duration,
+    pub index_build: std::time::Duration,
+    pub query_and_fingerprint: std::time::Duration,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InspectionFailure {
     Invalid,
@@ -231,42 +250,117 @@ impl LocalOperations {
         project: ProjectId,
         query: &InspectionQuery,
     ) -> Result<InspectionPage, InspectionFailure> {
+        self.inspect_project_records_profiled(project, query)
+            .map(|(page, _)| page)
+    }
+    pub fn inspect_project_records_profiled(
+        &self,
+        project: ProjectId,
+        query: &InspectionQuery,
+    ) -> Result<(InspectionPage, InspectionReadCost), InspectionFailure> {
         query.validate()?;
         let _read = self.layout().acquire_health_lock()?;
-        self.inspect_project_records_unlocked(project, query)
+        self.inspection_page(project, query, None)
     }
     fn inspect_project_records_unlocked(
         &self,
         project: ProjectId,
         query: &InspectionQuery,
     ) -> Result<InspectionPage, InspectionFailure> {
-        let (name, mut rows) = self.inspection_rows(project, query.class)?;
+        self.inspection_page(project, query, None)
+            .map(|(page, _)| page)
+    }
+
+    fn inspection_page(
+        &self,
+        project: ProjectId,
+        query: &InspectionQuery,
+        relationship_offset: Option<usize>,
+    ) -> Result<(InspectionPage, InspectionReadCost), InspectionFailure> {
+        let start = std::time::Instant::now();
+        let basis = self.canonical_basis(project)?;
+        let mut cost = InspectionReadCost {
+            canonical_read: start.elapsed(),
+            ..Default::default()
+        };
+        let auxiliary = std::time::Instant::now();
+        let candidates = (query.class == InspectionClass::Candidate)
+            .then(|| self.candidate_basis(project))
+            .transpose()?;
+        let privacy = (query.class == InspectionClass::Derived)
+            .then(|| self.privacy_status(project))
+            .transpose()?;
+        let now = volicord_context::Clock::now(&mut volicord_context::SystemClock)
+            .map_err(|_| InspectionFailure::Unavailable)?;
+        cost.auxiliary_read = auxiliary.elapsed();
+        let indexing = std::time::Instant::now();
+        let index = InspectionIndex::new(&basis, candidates.as_ref(), privacy.as_ref(), now);
+        cost.index_build = indexing.elapsed();
+        cost.indexed_records = index.nodes.len();
+        cost.indexed_relationships = index.nodes.values().map(|n| n.links.len()).sum();
+        let querying = std::time::Instant::now();
         let term = query.term.to_lowercase();
-        rows.retain(|r| {
-            r.class == query.class
-                && query.state.as_ref().is_none_or(|s| *s == r.state)
-                && query.role.as_ref().is_none_or(|s| *s == r.role)
-                && (term.is_empty()
-                    || r.summary.to_lowercase().contains(&term)
-                    || r.identity.contains(&term))
-        });
-        rows.sort_by(|a, b| (a.class, &a.identity).cmp(&(b.class, &b.identity)));
-        // Bind query independently of offset/selection, never hash excluded body bytes.
-        let fingerprint = format!(
-            "{:x}",
-            Sha256::digest(
-                serde_json::to_vec(&(
-                    project.to_string(),
-                    query.class,
-                    &query.term,
-                    &query.state,
-                    &query.role,
-                    query.limit,
-                    &rows
-                ))
-                .map_err(|_| InspectionFailure::Unavailable)?
-            )
-        );
+        // Stream the exact previous JSON fingerprint encoding. No full matched
+        // row vector or serialized copy, and offset/identity do not affect it.
+        let mut hash = HashWriter(Sha256::new(), 0);
+        hash.write(b"[")?;
+        let header = serde_json::to_vec(&(
+            project.to_string(),
+            query.class,
+            &query.term,
+            &query.state,
+            &query.role,
+            query.limit,
+        ))
+        .map_err(|_| InspectionFailure::Unavailable)?;
+        hash.write(&header[1..header.len() - 1])?;
+        hash.write(b",[")?;
+        let mut count = 0usize;
+        let mut selected = Vec::new();
+        let mut invalid_relationship_offset = false;
+        for ((class, identity), node) in &index.nodes {
+            if *class != query.class {
+                continue;
+            }
+            cost.visited_rows += 1;
+            let mut row = index.row(*class, identity, node);
+            cost.maximum_row_relationships =
+                cost.maximum_row_relationships.max(row.relationships.len());
+            if query.state.as_ref().is_some_and(|s| *s != row.state)
+                || query.role.as_ref().is_some_and(|s| *s != row.role)
+                || !(term.is_empty()
+                    || row.summary.to_lowercase().contains(&term)
+                    || row.identity.contains(&term))
+            {
+                continue;
+            }
+            if count > 0 {
+                hash.write(b",")?;
+            }
+            serde_json::to_writer(&mut hash, &row).map_err(|_| InspectionFailure::Unavailable)?;
+            let keep = query.identity.as_ref().map_or_else(
+                || count >= query.offset && count - query.offset < query.limit,
+                |id| *id == row.identity,
+            );
+            count += 1;
+            if keep {
+                let offset = relationship_offset.unwrap_or(0);
+                if offset > row.relationships.len() {
+                    invalid_relationship_offset = true;
+                    continue;
+                }
+                let end = offset.saturating_add(8).min(row.relationships.len());
+                row.next_relationship_offset = (end < row.relationships.len()).then_some(end);
+                row.relationships = row.relationships.drain(offset..end).collect();
+                selected.push(row);
+            }
+        }
+        hash.write(b"]]")?;
+        cost.fingerprint_bytes = hash.1;
+        cost.matched_rows = count;
+        cost.retained_rows = selected.len();
+        cost.query_and_fingerprint = querying.elapsed();
+        let fingerprint = format!("{:x}", hash.0.finalize());
         if query.offset > 0 && query.expected_fingerprint.is_none()
             || query
                 .expected_fingerprint
@@ -275,33 +369,33 @@ impl LocalOperations {
         {
             return Err(InspectionFailure::Changed);
         }
-        if let Some(id) = &query.identity {
-            rows.retain(|r| r.identity == *id);
-        }
-        if query.identity.is_some() && rows.is_empty() {
-            return Err(InspectionFailure::NotFound);
-        }
-        if query.offset > rows.len() {
+        if invalid_relationship_offset {
             return Err(InspectionFailure::Invalid);
         }
-        let count = rows.len();
-        let end = query.offset.saturating_add(query.limit).min(count);
-        let mut selected = rows[query.offset..end].to_vec();
-        for row in &mut selected {
-            row.next_relationship_offset = (row.relationships.len() > 8).then_some(8);
-            row.relationships.truncate(8);
+        if query.identity.is_some() {
+            if selected.is_empty() {
+                return Err(InspectionFailure::NotFound);
+            }
+            count = 1;
         }
-        Ok(InspectionPage {
-            project_id: project.to_string(),
-            project_name: name,
-            rows: selected,
-            fingerprint,
-            offset: query.offset,
-            next_offset: (end < count).then_some(end),
-            permitted_match_count: count,
-            omitted_match_count: count - end,
-            read_only: true,
-        })
+        if query.offset > count {
+            return Err(InspectionFailure::Invalid);
+        }
+        let end = query.offset.saturating_add(query.limit).min(count);
+        Ok((
+            InspectionPage {
+                project_id: project.to_string(),
+                project_name: basis.project.display_name,
+                rows: selected,
+                fingerprint,
+                offset: query.offset,
+                next_offset: (end < count).then_some(end),
+                permitted_match_count: count,
+                omitted_match_count: count - end,
+                read_only: true,
+            },
+            cost,
+        ))
     }
 
     /// The selected row and field share coordination with correction/forgetting.
@@ -369,426 +463,59 @@ impl LocalOperations {
         {
             return Err(InspectionFailure::Invalid);
         }
-        // Hold coordination through both basis reads. No mutation can interleave.
+        // Hold coordination through selection, fingerprinting and relationship paging.
         let _read = self.layout().acquire_health_lock()?;
-        let mut page = self.inspect_project_records_unlocked(project, query)?;
-        let (_, rows) = self.inspection_rows(project, query.class)?;
-        let row = rows
-            .into_iter()
-            .find(|r| Some(&r.identity) == query.identity.as_ref())
-            .ok_or(InspectionFailure::NotFound)?;
-        if offset > row.relationships.len() {
-            return Err(InspectionFailure::Invalid);
-        }
-        let end = offset.saturating_add(8).min(row.relationships.len());
-        page.rows[0].relationships = row.relationships[offset..end].to_vec();
-        page.rows[0].next_relationship_offset = (end < row.relationships.len()).then_some(end);
-        Ok(page)
-    }
-
-    fn inspection_rows(
-        &self,
-        project: ProjectId,
-        class: InspectionClass,
-    ) -> Result<(String, Vec<InspectionRow>), InspectionFailure> {
-        let basis = self.canonical_basis(project)?;
-        let mut rows = Vec::new();
-        for item in
-            volicord_projections::build_canonical_inspection(&basis, usize::MAX, &mut Vec::new())
-        {
-            let c = match item.kind {
-                CanonicalInspectionKind::Project => continue,
-                CanonicalInspectionKind::ContextItem
-                    if item.statement_role.as_deref() == Some("goal") =>
-                {
-                    InspectionClass::Work
-                }
-                CanonicalInspectionKind::ContextItem => InspectionClass::Context,
-                CanonicalInspectionKind::Checkpoint => InspectionClass::Checkpoint,
-                CanonicalInspectionKind::Decision => InspectionClass::Decision,
-                CanonicalInspectionKind::Question => InspectionClass::Question,
-                CanonicalInspectionKind::Source => InspectionClass::Source,
-            };
-            let mut summary = item.summary;
-            if c == InspectionClass::Checkpoint {
-                if let Some(cp) = basis
-                    .checkpoint_history
-                    .iter()
-                    .chain(basis.latest_checkpoint.iter())
-                    .find(|cp| cp.id.to_string() == item.identity)
-                {
-                    if let Some(change) = &cp.state_change {
-                        summary = change.clone();
-                    }
-                }
-            }
-            if c == InspectionClass::Decision {
-                if let Some(d) = basis
-                    .active_decisions
-                    .iter()
-                    .chain(&basis.superseded_decisions)
-                    .find(|d| d.decision.id.to_string() == item.identity)
-                {
-                    if let Some(q) = basis
-                        .active_questions
-                        .iter()
-                        .chain(&basis.terminal_question_history)
-                        .find(|q| q.id == d.decision.question_id)
-                    {
-                        summary = format!("{} · {}", q.prompt_basis, summary);
-                    }
-                }
-            }
-            let mut disclosure = "permitted_canonical_quotation".to_owned();
-            if c == InspectionClass::Source {
-                let s = basis
-                    .sources
-                    .iter()
-                    .find(|s| s.source.id.to_string() == item.identity)
-                    .ok_or(InspectionFailure::Unavailable)?;
-                summary = match &s.source.payload {
-                    SourcePayload::CurrentHostUserTurn { .. } => {
-                        "User input · body withheld".into()
-                    }
-                    SourcePayload::CommandExecution {
-                        command_label,
-                        outcome,
-                        ..
-                    } => format!("Command {command_label} · exit {:?}", outcome.exit_code),
-                    SourcePayload::File { locator, .. } => format!("File observation · {locator}"),
-                    SourcePayload::Symbol { locator, .. } => {
-                        format!("Symbol observation · {locator}")
-                    }
-                    SourcePayload::RepositorySnapshot { .. } => "Repository snapshot".into(),
-                    SourcePayload::RepositoryCommit { .. } => "Repository commit".into(),
-                    SourcePayload::Url { .. } => "URL reference · body not retained".into(),
-                    SourcePayload::AdoptedArtifact { .. } => "Adopted artifact reference".into(),
-                };
-                disclosure = "metadata_only_body_requires_exact_scoped_reader".into();
-            }
-            let mut row = new_row(
-                c,
-                item.identity,
-                Some(item.revision),
-                item.statement_role.unwrap_or_default(),
-                item.lifecycle_state,
-                summary,
-                disclosure,
-            );
-            if c == InspectionClass::Source {
-                if let Some(source) = basis
-                    .sources
-                    .iter()
-                    .find(|s| s.source.id.to_string() == row.identity)
-                {
-                    row.metadata = serde_json::json!({"recorded_at_unix_micros":source.source.recorded_at.as_unix_micros(),
-                        "availability":format!("{:?}",source.availability).to_lowercase(),"freshness":row.state});
-                }
-            }
-            if c == InspectionClass::Work {
-                if let Some(cp) = basis
-                    .checkpoint_history
-                    .iter()
-                    .chain(basis.latest_checkpoint.iter())
-                    .filter(|cp| {
-                        cp.work_item_id
-                            .is_some_and(|id| id.to_string() == row.identity)
-                    })
-                    .max_by_key(|cp| (cp.recorded_at, cp.id))
-                {
-                    row.state = match cp.work_state {
-                        volicord_context::WorkState::InProgress => "in_progress",
-                        volicord_context::WorkState::Paused => "paused",
-                        volicord_context::WorkState::Completed => "completed",
-                        volicord_context::WorkState::Abandoned => "abandoned",
-                        volicord_context::WorkState::Superseded => "superseded",
-                    }
-                    .into();
-                }
-            }
-            row.fields = crate::evidence::canonical_fields(c.evidence_kind().unwrap_or_default())
-                .iter()
-                .map(|s| (*s).into())
-                .collect();
-            for source in item.source_basis {
-                if c != InspectionClass::Source {
-                    link(
-                        &mut row,
-                        "supported_by",
-                        InspectionClass::Source,
-                        source.to_string(),
-                    );
-                }
-            }
-            rows.push(row);
-        }
-        // Only explicit canonical relations; endpoint admission below rejects foreign IDs.
-        for cp in basis
-            .checkpoint_history
-            .iter()
-            .chain(basis.latest_checkpoint.iter())
-        {
-            if let Some(row) = rows
-                .iter_mut()
-                .find(|r| r.class == InspectionClass::Checkpoint && r.identity == cp.id.to_string())
-            {
-                if let Some(work) = cp.work_item_id {
-                    link(
-                        row,
-                        "records_state_of",
-                        InspectionClass::Work,
-                        work.to_string(),
-                    );
-                }
-                for d in &cp.applied_decisions {
-                    link(
-                        row,
-                        "applied_decision",
-                        InspectionClass::Decision,
-                        d.to_string(),
-                    );
-                }
-                for s in cp
-                    .changed_source_basis
-                    .iter()
-                    .copied()
-                    .chain(cp.verification.iter().filter_map(|v| v.source_id))
-                    .chain(cp.user_review.source_id)
-                    .chain(cp.user_acceptance.source_id)
-                {
-                    link(
-                        row,
-                        "observed_source",
-                        InspectionClass::Source,
-                        s.to_string(),
-                    );
-                }
-                for q in &cp.open_questions {
-                    link(
-                        row,
-                        "open_question",
-                        InspectionClass::Question,
-                        q.question_id.to_string(),
-                    );
-                    if let Some(relation) = row.relationships.last_mut() {
-                        relation.recorded_revision = Some(q.revision);
-                    }
-                }
-            }
-        }
-        for d in basis
-            .active_decisions
-            .iter()
-            .chain(&basis.superseded_decisions)
-        {
-            if let Some(row) = rows.iter_mut().find(|r| {
-                r.class == InspectionClass::Decision && r.identity == d.decision.id.to_string()
-            }) {
-                link(
-                    row,
-                    "answers",
-                    InspectionClass::Question,
-                    d.decision.question_id.to_string(),
-                );
-                if let Some(relation) = row.relationships.last_mut() {
-                    relation.recorded_revision = Some(d.decision.question_revision);
-                }
-                if let DecisionWorkScope::WorkItem(work) = d.decision.work_scope {
-                    link(row, "applies_to", InspectionClass::Work, work.to_string());
-                }
-                if let Some(id) = d.superseded_by {
-                    link(
-                        row,
-                        "superseded_by",
-                        InspectionClass::Decision,
-                        id.to_string(),
-                    );
-                }
-            }
-        }
-        let now = volicord_context::Clock::now(&mut volicord_context::SystemClock)
-            .map_err(|_| InspectionFailure::Unavailable)?;
-        if class == InspectionClass::Candidate {
-            let candidates = self.candidate_basis(project)?;
-            for c in &candidates.candidates {
-                let i = inspect_candidate(
-                    &candidates,
-                    c.id,
-                    CandidateContentAccess::AllowBoundedSummary,
-                    now,
-                );
-                let state = match i.content_omission {
-                    Some(volicord_projections::CandidateContentOmission::RetentionExpired) => {
-                        "expired"
-                    }
-                    Some(volicord_projections::CandidateContentOmission::RetentionCleaned) => {
-                        "deleted"
-                    }
-                    Some(_) => "withheld",
-                    None => match c.disposition {
-                        volicord_inquiry::CandidateDisposition::PendingOrRetained => "pending",
-                        volicord_inquiry::CandidateDisposition::Promoted { .. } => "promoted",
-                        volicord_inquiry::CandidateDisposition::Dismissed { .. } => "dismissed",
-                        volicord_inquiry::CandidateDisposition::ExpiredOrRetentionCleaned => {
-                            "expired"
-                        }
-                    },
-                }
-                .to_owned();
-                let mut row = new_row(
-                    class,
-                    c.id.to_string(),
-                    i.revision,
-                    "candidate_metadata".into(),
-                    state,
-                    i.bounded_summary
-                        .unwrap_or_else(|| format!("{:?} · content withheld", c.kind)),
-                    i.content_omission.as_ref().map_or_else(
-                        || "permitted_bounded_candidate_summary".into(),
-                        |o| format!("{o:?}"),
-                    ),
-                );
-                row.metadata = serde_json::json!({"candidate_kind":format!("{:?}",c.kind),
-                    "created_at_unix_micros":c.created_at.as_unix_micros(),"observed_at_unix_micros":c.observed_at.as_unix_micros(),
-                    "retained_until_unix_micros":c.retention.retained_until.map(|t|t.as_unix_micros())});
-                if i.content_omission.is_none() {
-                    row.fields = [
-                        "summary",
-                        "engineering_choice_discovery",
-                        "materiality_review",
-                        "learning_deliberation",
-                        "repository_research_basis",
-                        "source_status",
-                    ]
-                    .iter()
-                    .map(|s| (*s).into())
-                    .collect();
-                    for source in &c.observation_basis.source_basis {
-                        link(
-                            &mut row,
-                            "derived_from",
-                            InspectionClass::Source,
-                            source.to_string(),
-                        );
-                    }
-                    let work = i
-                        .learning_deliberation
-                        .map(|d| d.goal_context_id)
-                        .or_else(|| i.materiality_review.map(|r| r.goal_context_id))
-                        .or_else(|| i.engineering_choice_discovery.map(|d| d.goal_context_id));
-                    if let Some(work) = work {
-                        link(
-                            &mut row,
-                            "candidate_for",
-                            InspectionClass::Work,
-                            work.to_string(),
-                        );
-                    }
-                }
-                rows.push(row);
-            }
-        }
-        if class == InspectionClass::Derived {
-            let privacy = self.privacy_status(project)?;
-            for d in privacy.managed_derived {
-                let state = if privacy.withheld_for_canonical_forgetting.contains(&d.id) {
-                    "withheld".into()
-                } else if d.state == volicord_privacy::ManagedDerivedState::Deleted {
-                    "deleted".into()
-                } else if d.retained_until.is_some_and(|t| t <= now) {
-                    "expired".into()
-                } else {
-                    serde_json::to_value(d.state)
-                        .ok()
-                        .and_then(|v| v.as_str().map(str::to_owned))
-                        .unwrap_or_else(|| "unavailable".into())
-                };
-                let mut row = new_row(
-                    class,
-                    d.id.to_string(),
-                    None,
-                    "derived_metadata".into(),
-                    state.clone(),
-                    format!("{:?} · {state}", d.kind),
-                    "metadata_only_no_general_body_reader".into(),
-                );
-                row.metadata = serde_json::json!({"derived_kind":d.kind,"created_at_unix_micros":d.created_at.as_unix_micros(),
-                    "retained_until_unix_micros":d.retained_until.map(|t|t.as_unix_micros()),"analysis_snapshot":d.analysis_snapshot.map(|a|a.to_string())});
-                if !["withheld", "deleted", "expired"].contains(&state.as_str()) {
-                    for l in d.canonical_links {
-                        use volicord_privacy::ManagedCanonicalLink::*;
-                        let (c, id) = match l {
-                            Project(_) => continue,
-                            Source(id) => (InspectionClass::Source, id.to_string()),
-                            Question(id) => (InspectionClass::Question, id.to_string()),
-                            Decision(id) => (InspectionClass::Decision, id.to_string()),
-                            ContextItem(id) => (
-                                if basis
-                                    .context_items
-                                    .iter()
-                                    .any(|i| i.id == id && i.role == ContextItemRole::Goal)
-                                {
-                                    InspectionClass::Work
-                                } else {
-                                    InspectionClass::Context
-                                },
-                                id.to_string(),
-                            ),
-                            Checkpoint(id) => (InspectionClass::Checkpoint, id.to_string()),
-                        };
-                        link(&mut row, "derived_from", c, id);
-                    }
-                }
-                rows.push(row);
-            }
-        }
-        let endpoints = rows
-            .iter()
-            .map(|r| ((r.class, r.identity.clone()), r.revision))
-            .collect::<std::collections::BTreeMap<_, _>>();
-        for row in &mut rows {
-            row.relationships.retain_mut(|r| {
-                if let Some(revision) = endpoints.get(&(r.class, r.identity.clone())) {
-                    r.revision = *revision;
-                    true
-                } else {
-                    row.relationships_omitted = true;
-                    false
-                }
-            });
-            row.relationships.sort();
-            row.relationships.dedup();
-        }
-        // Reverse only admitted explicit edges, useful for Work/Source drill-down.
-        let edges = rows
-            .iter()
-            .flat_map(|r| {
-                r.relationships
-                    .iter()
-                    .map(|l| (r.class, r.identity.clone(), r.revision, l.clone()))
-            })
-            .collect::<Vec<_>>();
-        for (class, id, revision, l) in edges {
-            if let Some(target) = rows
-                .iter_mut()
-                .find(|r| r.class == l.class && r.identity == l.identity)
-            {
-                target.relationships.push(InspectionRelation {
-                    recorded_revision: None,
-                    relation: format!("referenced_by_{}", l.relation),
-                    class,
-                    identity: id,
-                    revision,
-                });
-            }
-        }
-        for row in &mut rows {
-            row.relationships.sort();
-            row.relationships.dedup();
-        }
-        Ok((basis.project.display_name, rows))
+        self.inspection_page(project, query, Some(offset))
+            .map(|(page, _)| page)
     }
 }
+
+struct HashWriter(Sha256, usize);
+impl HashWriter {
+    fn write(&mut self, bytes: &[u8]) -> Result<(), InspectionFailure> {
+        self.0.update(bytes);
+        self.1 += bytes.len();
+        Ok(())
+    }
+}
+impl std::io::Write for HashWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.update(bytes);
+        self.1 += bytes.len();
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+type Key = (InspectionClass, String);
+/// Only borrowed record payloads and admitted identity/edge metadata live here.
+/// O(N + E) index storage; rich rows are transient plus at most the requested page.
+struct InspectionIndex<'a> {
+    nodes: BTreeMap<Key, InspectionNode<'a>>,
+    questions: BTreeMap<QuestionId, &'a Question>,
+    latest_work: BTreeMap<ContextItemId, &'a Checkpoint>,
+}
+struct InspectionNode<'a> {
+    record: InspectionRecord<'a>,
+    revision: Option<u64>,
+    links: Vec<InspectionRelation>,
+    omitted: bool,
+}
+enum InspectionRecord<'a> {
+    Context(&'a ContextItem),
+    Checkpoint(&'a Checkpoint),
+    Decision(&'a DecisionLifecycle),
+    Question(&'a Question),
+    Source(&'a SourceReadBasis),
+    Candidate(
+        &'a volicord_inquiry::CandidateRecord,
+        Option<volicord_projections::CandidateContentOmission>,
+    ),
+    Derived(&'a volicord_privacy::ManagedDerivedRecord, String),
+}
+
 fn new_row(
     class: InspectionClass,
     identity: String,
@@ -815,12 +542,565 @@ fn new_row(
         relationships_omitted: false,
     }
 }
-fn link(row: &mut InspectionRow, relation: &str, class: InspectionClass, identity: String) {
-    row.relationships.push(InspectionRelation {
-        recorded_revision: None,
-        relation: relation.into(),
-        class,
-        identity,
-        revision: None,
-    });
+impl<'a> InspectionIndex<'a> {
+    fn new(
+        basis: &'a CanonicalReadBasis,
+        candidates: Option<&'a volicord_inquiry::CandidateReadBasis>,
+        privacy: Option<&'a volicord_privacy::ProjectPrivacyInspection>,
+        now: TimestampMicros,
+    ) -> Self {
+        let mut index = Self {
+            nodes: BTreeMap::new(),
+            questions: BTreeMap::new(),
+            latest_work: BTreeMap::new(),
+        };
+        for item in &basis.context_items {
+            index.insert(
+                context_class(item),
+                item.id.to_string(),
+                Some(item.revision),
+                InspectionRecord::Context(item),
+            );
+        }
+        for q in basis
+            .active_questions
+            .iter()
+            .chain(&basis.terminal_question_history)
+        {
+            index.questions.insert(q.id, q);
+            index.insert(
+                InspectionClass::Question,
+                q.id.to_string(),
+                Some(q.revision),
+                InspectionRecord::Question(q),
+            );
+        }
+        for d in basis
+            .active_decisions
+            .iter()
+            .chain(&basis.superseded_decisions)
+        {
+            index.insert(
+                InspectionClass::Decision,
+                d.decision.id.to_string(),
+                Some(d.decision.revision),
+                InspectionRecord::Decision(d),
+            );
+        }
+        // History already includes latest; do not index its duplicate or synthesize duplicate edges.
+        let checkpoints: Box<dyn Iterator<Item = &Checkpoint>> =
+            if basis.checkpoint_history.is_empty() {
+                Box::new(basis.latest_checkpoint.iter())
+            } else {
+                Box::new(basis.checkpoint_history.iter())
+            };
+        for cp in checkpoints {
+            if let Some(work) = cp.work_item_id {
+                let latest = index.latest_work.entry(work).or_insert(cp);
+                if (cp.recorded_at, cp.id) > (latest.recorded_at, latest.id) {
+                    *latest = cp;
+                }
+            }
+            index.insert(
+                InspectionClass::Checkpoint,
+                cp.id.to_string(),
+                Some(cp.revision),
+                InspectionRecord::Checkpoint(cp),
+            );
+        }
+        let source_revisions: BTreeMap<_, _> = basis
+            .revisions
+            .iter()
+            .filter(|r| r.record_kind == CanonicalRecordKind::Source)
+            .map(|r| {
+                (
+                    r.record_identity.as_str(),
+                    r.revisions.last().copied().unwrap_or(1),
+                )
+            })
+            .collect();
+        for source in &basis.sources {
+            let id = source.source.id.to_string();
+            let revision = source_revisions.get(id.as_str()).copied().unwrap_or(1);
+            index.insert(
+                InspectionClass::Source,
+                id,
+                Some(revision),
+                InspectionRecord::Source(source),
+            );
+        }
+        if let Some(candidates) = candidates {
+            let admission = CandidateContentAdmission::new(candidates);
+            for c in &candidates.candidates {
+                if c.project_id != basis.project.id {
+                    continue;
+                }
+                let omission =
+                    admission.omission(c, CandidateContentAccess::AllowBoundedSummary, now);
+                index.insert(
+                    InspectionClass::Candidate,
+                    c.id.to_string(),
+                    Some(c.revision),
+                    InspectionRecord::Candidate(c, omission),
+                );
+            }
+        }
+        if let Some(privacy) = privacy {
+            let withheld: std::collections::BTreeSet<_> = privacy
+                .withheld_for_canonical_forgetting
+                .iter()
+                .copied()
+                .collect();
+            for d in &privacy.managed_derived {
+                if d.project_id != basis.project.id {
+                    continue;
+                }
+                let state = if withheld.contains(&d.id) {
+                    "withheld".into()
+                } else if d.state == volicord_privacy::ManagedDerivedState::Deleted {
+                    "deleted".into()
+                } else if d.retained_until.is_some_and(|t| t <= now) {
+                    "expired".into()
+                } else {
+                    serde_json::to_value(d.state)
+                        .ok()
+                        .and_then(|v| v.as_str().map(str::to_owned))
+                        .unwrap_or_else(|| "unavailable".into())
+                };
+                index.insert(
+                    InspectionClass::Derived,
+                    d.id.to_string(),
+                    None,
+                    InspectionRecord::Derived(d, state),
+                );
+            }
+        }
+        // Resolve each endpoint by class AND identity. Hidden endpoints never enter
+        // reverse edges, hashes, counts or public relationship pagination.
+        let mut edges = Vec::new();
+        let mut omitted = Vec::new();
+        for (key, node) in &index.nodes {
+            let mut missing = false;
+            for mut relation in index.forward(node) {
+                if let Some(target) = index
+                    .nodes
+                    .get(&(relation.class, relation.identity.clone()))
+                {
+                    relation.revision = target.revision;
+                    edges.push((key.clone(), relation));
+                } else {
+                    missing = true;
+                }
+            }
+            if missing {
+                omitted.push(key.clone());
+            }
+        }
+        for key in omitted {
+            if let Some(n) = index.nodes.get_mut(&key) {
+                n.omitted = true;
+            }
+        }
+        for (key, relation) in edges {
+            let revision = index.nodes.get(&key).and_then(|n| n.revision);
+            if let Some(target) = index
+                .nodes
+                .get_mut(&(relation.class, relation.identity.clone()))
+            {
+                target.links.push(InspectionRelation {
+                    recorded_revision: None,
+                    relation: format!("referenced_by_{}", relation.relation),
+                    class: key.0,
+                    identity: key.1.clone(),
+                    revision,
+                });
+            }
+            if let Some(source) = index.nodes.get_mut(&key) {
+                source.links.push(relation);
+            }
+        }
+        for node in index.nodes.values_mut() {
+            node.links.sort();
+            node.links.dedup();
+        }
+        index
+    }
+    fn insert(
+        &mut self,
+        class: InspectionClass,
+        id: String,
+        revision: Option<u64>,
+        record: InspectionRecord<'a>,
+    ) {
+        self.nodes.insert(
+            (class, id),
+            InspectionNode {
+                record,
+                revision,
+                links: Vec::new(),
+                omitted: false,
+            },
+        );
+    }
+    fn forward(&self, node: &InspectionNode<'_>) -> Vec<InspectionRelation> {
+        let mut links = Vec::new();
+        let mut add = |name: &str, class, identity: String, recorded_revision| {
+            links.push(InspectionRelation {
+                recorded_revision,
+                relation: name.into(),
+                class,
+                identity,
+                revision: None,
+            })
+        };
+        match &node.record {
+            InspectionRecord::Context(c) => {
+                for s in &c.source_basis {
+                    add("supported_by", InspectionClass::Source, s.to_string(), None);
+                }
+            }
+            InspectionRecord::Question(q) => {
+                for s in &q.source_basis {
+                    add("supported_by", InspectionClass::Source, s.to_string(), None);
+                }
+            }
+            InspectionRecord::Decision(d) => {
+                for s in d
+                    .decision
+                    .displayed_recommendation
+                    .source_basis
+                    .iter()
+                    .copied()
+                    .chain([d.decision.user_turn_source_id])
+                {
+                    add("supported_by", InspectionClass::Source, s.to_string(), None);
+                }
+                add(
+                    "answers",
+                    InspectionClass::Question,
+                    d.decision.question_id.to_string(),
+                    Some(d.decision.question_revision),
+                );
+                if let DecisionWorkScope::WorkItem(work) = d.decision.work_scope {
+                    add("applies_to", InspectionClass::Work, work.to_string(), None);
+                }
+                if let Some(id) = d.superseded_by {
+                    add(
+                        "superseded_by",
+                        InspectionClass::Decision,
+                        id.to_string(),
+                        None,
+                    );
+                }
+            }
+            InspectionRecord::Checkpoint(cp) => {
+                for s in &cp.source_basis {
+                    add("supported_by", InspectionClass::Source, s.to_string(), None);
+                }
+                if let Some(work) = cp.work_item_id {
+                    add(
+                        "records_state_of",
+                        InspectionClass::Work,
+                        work.to_string(),
+                        None,
+                    );
+                }
+                for d in &cp.applied_decisions {
+                    add(
+                        "applied_decision",
+                        InspectionClass::Decision,
+                        d.to_string(),
+                        None,
+                    );
+                }
+                for s in cp
+                    .changed_source_basis
+                    .iter()
+                    .copied()
+                    .chain(cp.verification.iter().filter_map(|v| v.source_id))
+                    .chain(cp.user_review.source_id)
+                    .chain(cp.user_acceptance.source_id)
+                {
+                    add(
+                        "observed_source",
+                        InspectionClass::Source,
+                        s.to_string(),
+                        None,
+                    );
+                }
+                for q in &cp.open_questions {
+                    add(
+                        "open_question",
+                        InspectionClass::Question,
+                        q.question_id.to_string(),
+                        Some(q.revision),
+                    );
+                }
+            }
+            InspectionRecord::Candidate(c, omission) if omission.is_none() => {
+                for s in &c.observation_basis.source_basis {
+                    add("derived_from", InspectionClass::Source, s.to_string(), None);
+                }
+                if let Some(content) = &c.content {
+                    let work = content
+                        .learning_deliberation
+                        .as_ref()
+                        .map(|d| d.goal_context_id)
+                        .or_else(|| {
+                            content
+                                .materiality_review
+                                .as_ref()
+                                .map(|d| d.goal_context_id)
+                        })
+                        .or_else(|| {
+                            content
+                                .engineering_choice_discovery
+                                .as_ref()
+                                .map(|d| d.goal_context_id)
+                        });
+                    if let Some(work) = work {
+                        add(
+                            "candidate_for",
+                            InspectionClass::Work,
+                            work.to_string(),
+                            None,
+                        );
+                    }
+                }
+            }
+            InspectionRecord::Derived(d, state)
+                if !["withheld", "deleted", "expired"].contains(&state.as_str()) =>
+            {
+                for l in &d.canonical_links {
+                    use volicord_privacy::ManagedCanonicalLink::*;
+                    let (class, id) = match l {
+                        Project(_) => continue,
+                        Source(id) => (InspectionClass::Source, id.to_string()),
+                        Question(id) => (InspectionClass::Question, id.to_string()),
+                        Decision(id) => (InspectionClass::Decision, id.to_string()),
+                        Checkpoint(id) => (InspectionClass::Checkpoint, id.to_string()),
+                        ContextItem(id) => {
+                            let id = id.to_string();
+                            (
+                                if self
+                                    .nodes
+                                    .contains_key(&(InspectionClass::Work, id.clone()))
+                                {
+                                    InspectionClass::Work
+                                } else {
+                                    InspectionClass::Context
+                                },
+                                id,
+                            )
+                        }
+                    };
+                    add("derived_from", class, id, None);
+                }
+            }
+            _ => {}
+        }
+        links
+    }
+    fn row(&self, class: InspectionClass, id: &str, node: &InspectionNode<'_>) -> InspectionRow {
+        let (role, state, summary, disclosure) = match &node.record {
+            InspectionRecord::Context(c) => (
+                context_role(c.role).into(),
+                self.latest_work
+                    .get(&c.id)
+                    .filter(|_| class == InspectionClass::Work)
+                    .map_or_else(|| "current".into(), |cp| work_state(cp.work_state).into()),
+                clip(&c.statement),
+                "permitted_canonical_quotation".into(),
+            ),
+            InspectionRecord::Question(q) => (
+                "material_question".into(),
+                if q.state == QuestionState::Open {
+                    "open"
+                } else {
+                    "terminal"
+                }
+                .into(),
+                clip(&q.prompt_basis),
+                "permitted_canonical_quotation".into(),
+            ),
+            InspectionRecord::Decision(d) => {
+                let choice = match &d.decision.choice {
+                    DecisionChoice::Alternative { alternative_key } => {
+                        format!("Alternative: {}", clip(alternative_key))
+                    }
+                    DecisionChoice::Delegation { delegate_to } => {
+                        format!("Delegated to: {}", clip(delegate_to))
+                    }
+                };
+                let summary = self.questions.get(&d.decision.question_id).map_or_else(
+                    || choice.clone(),
+                    |q| format!("{} · {}", clip(&q.prompt_basis), choice),
+                );
+                (
+                    "user_judgment".into(),
+                    if d.superseded_by.is_some() {
+                        "superseded"
+                    } else if d.review_due.is_some() {
+                        "review_due"
+                    } else {
+                        "active"
+                    }
+                    .into(),
+                    summary,
+                    "permitted_canonical_quotation".into(),
+                )
+            }
+            InspectionRecord::Checkpoint(cp) => (
+                "source_grounded_checkpoint".into(),
+                work_state(cp.work_state).into(),
+                clip(cp.state_change.as_ref().unwrap_or(&cp.goal)),
+                "permitted_canonical_quotation".into(),
+            ),
+            InspectionRecord::Source(s) => {
+                let summary = match &s.source.payload {
+                    SourcePayload::CurrentHostUserTurn { .. } => {
+                        "User input · body withheld".into()
+                    }
+                    SourcePayload::CommandExecution {
+                        command_label,
+                        outcome,
+                        ..
+                    } => format!(
+                        "Command {} · exit {:?}",
+                        clip(command_label),
+                        outcome.exit_code
+                    ),
+                    SourcePayload::File { locator, .. } => {
+                        format!("File observation · {}", clip(locator))
+                    }
+                    SourcePayload::Symbol { locator, .. } => {
+                        format!("Symbol observation · {}", clip(locator))
+                    }
+                    SourcePayload::RepositorySnapshot { .. } => "Repository snapshot".into(),
+                    SourcePayload::RepositoryCommit { .. } => "Repository commit".into(),
+                    SourcePayload::Url { .. } => "URL reference · body not retained".into(),
+                    SourcePayload::AdoptedArtifact { .. } => "Adopted artifact reference".into(),
+                };
+                (
+                    "source_basis".into(),
+                    format!("{:?}", s.freshness).to_lowercase(),
+                    summary,
+                    "metadata_only_body_requires_exact_scoped_reader".into(),
+                )
+            }
+            InspectionRecord::Candidate(c, omission) => {
+                use volicord_projections::CandidateContentOmission::*;
+                let state = match omission {
+                    Some(RetentionExpired) => "expired",
+                    Some(RetentionCleaned) => "deleted",
+                    Some(_) => "withheld",
+                    None => match c.disposition {
+                        volicord_inquiry::CandidateDisposition::PendingOrRetained => "pending",
+                        volicord_inquiry::CandidateDisposition::Promoted { .. } => "promoted",
+                        volicord_inquiry::CandidateDisposition::Dismissed { .. } => "dismissed",
+                        volicord_inquiry::CandidateDisposition::ExpiredOrRetentionCleaned => {
+                            "expired"
+                        }
+                    },
+                };
+                let summary = if omission.is_none() {
+                    c.content.as_ref().map(|v| clip(&v.bounded_summary))
+                } else {
+                    None
+                }
+                .unwrap_or_else(|| format!("{:?} · content withheld", c.kind));
+                (
+                    "candidate_metadata".into(),
+                    state.into(),
+                    summary,
+                    omission.as_ref().map_or_else(
+                        || "permitted_bounded_candidate_summary".into(),
+                        |o| format!("{o:?}"),
+                    ),
+                )
+            }
+            InspectionRecord::Derived(d, state) => (
+                "derived_metadata".into(),
+                state.clone(),
+                format!("{:?} · {state}", d.kind),
+                "metadata_only_no_general_body_reader".into(),
+            ),
+        };
+        let mut row = new_row(
+            class,
+            id.into(),
+            node.revision,
+            role,
+            state,
+            summary,
+            disclosure,
+        );
+        // clip keeps one extra character so new_row computes the exact omission bit.
+        match &node.record {
+            InspectionRecord::Candidate(c, omission) => {
+                row.metadata = serde_json::json!({"candidate_kind":format!("{:?}",c.kind),"created_at_unix_micros":c.created_at.as_unix_micros(),"observed_at_unix_micros":c.observed_at.as_unix_micros(),"retained_until_unix_micros":c.retention.retained_until.map(|t|t.as_unix_micros())});
+                if omission.is_none() {
+                    row.fields = [
+                        "summary",
+                        "engineering_choice_discovery",
+                        "materiality_review",
+                        "learning_deliberation",
+                        "repository_research_basis",
+                        "source_status",
+                    ]
+                    .map(str::to_owned)
+                    .to_vec();
+                }
+            }
+            InspectionRecord::Derived(d, _) => {
+                row.metadata = serde_json::json!({"derived_kind":d.kind,"created_at_unix_micros":d.created_at.as_unix_micros(),"retained_until_unix_micros":d.retained_until.map(|t|t.as_unix_micros()),"analysis_snapshot":d.analysis_snapshot.map(|a|a.to_string())})
+            }
+            _ => {
+                row.fields =
+                    crate::evidence::canonical_fields(class.evidence_kind().unwrap_or_default())
+                        .iter()
+                        .map(|s| (*s).into())
+                        .collect();
+                if let InspectionRecord::Source(s) = &node.record {
+                    row.metadata = serde_json::json!({"recorded_at_unix_micros":s.source.recorded_at.as_unix_micros(),"availability":format!("{:?}",s.availability).to_lowercase(),"freshness":row.state});
+                }
+            }
+        }
+        row.relationships = node.links.clone();
+        row.relationships_omitted = node.omitted;
+        row
+    }
+}
+fn clip(text: &str) -> String {
+    text.chars().take(241).collect()
+}
+fn context_class(item: &ContextItem) -> InspectionClass {
+    if item.role == ContextItemRole::Goal {
+        InspectionClass::Work
+    } else {
+        InspectionClass::Context
+    }
+}
+fn work_state(state: WorkState) -> &'static str {
+    match state {
+        WorkState::InProgress => "in_progress",
+        WorkState::Paused => "paused",
+        WorkState::Completed => "completed",
+        WorkState::Abandoned => "abandoned",
+        WorkState::Superseded => "superseded",
+    }
+}
+
+fn context_role(role: ContextItemRole) -> &'static str {
+    match role {
+        ContextItemRole::ProjectPurpose => "project_purpose",
+        ContextItemRole::Goal => "goal",
+        ContextItemRole::Fact => "fact",
+        ContextItemRole::Assumption => "assumption",
+        ContextItemRole::Constraint => "constraint",
+        ContextItemRole::Preference => "preference",
+        ContextItemRole::Risk => "risk",
+        ContextItemRole::Learning => "learning",
+        ContextItemRole::KnownLimit => "known_limit",
+    }
 }

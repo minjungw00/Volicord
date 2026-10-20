@@ -18,8 +18,8 @@ mod forgetting;
 mod guarded;
 mod inspection;
 pub use inspection::{
-    InspectionClass, InspectionFailure, InspectionPage, InspectionQuery, InspectionRelation,
-    InspectionRow, INSPECTION_ROLES, INSPECTION_STATES,
+    InspectionClass, InspectionFailure, InspectionPage, InspectionQuery, InspectionReadCost,
+    InspectionRelation, InspectionRow, INSPECTION_ROLES, INSPECTION_STATES,
 };
 mod check_capture;
 mod layout;

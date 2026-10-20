@@ -184,12 +184,59 @@ fn inspection_content_omission(
     content_access: CandidateContentAccess,
     observed_at: TimestampMicros,
 ) -> Option<CandidateContentOmission> {
-    if basis.project_id != candidate.project_id {
+    content_omission(
+        basis.project_id,
+        candidate,
+        basis
+            .withheld_for_canonical_forgetting
+            .contains(&candidate.id),
+        content_access,
+        observed_at,
+    )
+}
+
+/// Bulk read admission shares exact inspection precedence without repeated ID scans
+/// or cloning content graphs. This is a projection over a supplied owner read basis.
+pub struct CandidateContentAdmission {
+    project_id: volicord_context::ProjectId,
+    withheld: std::collections::BTreeSet<CandidateId>,
+}
+impl CandidateContentAdmission {
+    pub fn new(basis: &CandidateReadBasis) -> Self {
+        Self {
+            project_id: basis.project_id,
+            withheld: basis
+                .withheld_for_canonical_forgetting
+                .iter()
+                .copied()
+                .collect(),
+        }
+    }
+    pub fn omission(
+        &self,
+        candidate: &CandidateRecord,
+        access: CandidateContentAccess,
+        observed_at: TimestampMicros,
+    ) -> Option<CandidateContentOmission> {
+        content_omission(
+            self.project_id,
+            candidate,
+            self.withheld.contains(&candidate.id),
+            access,
+            observed_at,
+        )
+    }
+}
+fn content_omission(
+    project_id: volicord_context::ProjectId,
+    candidate: &CandidateRecord,
+    withheld: bool,
+    content_access: CandidateContentAccess,
+    observed_at: TimestampMicros,
+) -> Option<CandidateContentOmission> {
+    if project_id != candidate.project_id {
         Some(CandidateContentOmission::ContentUnavailable)
-    } else if basis
-        .withheld_for_canonical_forgetting
-        .contains(&candidate.id)
-    {
+    } else if withheld {
         Some(CandidateContentOmission::CanonicalForgettingPending)
     } else if candidate.cleanup.is_some() {
         Some(CandidateContentOmission::RetentionCleaned)

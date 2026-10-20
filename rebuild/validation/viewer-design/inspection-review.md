@@ -94,3 +94,61 @@ Remaining limits: one Project per viewer; metadata-only Derived inspection; sear
 on visible bounded summaries; existing missing document-adoption endpoint; human,
 screen-reader and native-zoom acceptance remain separate. The inspector does not
 replace repository/Work explanatory documents or claim their semantic quality.
+
+## Internal query scaling follow-up
+
+Execution baseline: clean `c06468e9ede07619b81eac205344fdddf307978d`.
+The old inspection implementation was compiled with the same controlled profiling
+fixture/test driver; no old checkout or legacy workspace was used. Retained stores
+under ignored `inspection-cost-goals` were reused sequentially. All **96 complete
+HTTP JSON responses** (six datasets × eight classes × two reads), including counts,
+relationships and fingerprints, matched byte for byte. Fixtures explicitly assert
+20/110/1,010 Goal records; the corresponding Checkpoint counts are 50/410/4,010 and
+Source counts 16/106/1,006. Candidate and Derived queries each add 11/101/1,001
+records. Dense variants concentrate Checkpoint edges on one Work with unchanged
+record counts. These are synthetic store-scale controls cloned from maintained
+producer rows, including absent historical metadata, not genuine user Works.
+
+Warm HTTP query time, milliseconds (spread relationships; response limit seven):
+
+| Added scale | Work old → current | Checkpoint old → current | Candidate old → current |
+| --- | --- | --- | --- |
+| 10 | 11.049 → 7.865 | 11.131 → 10.040 | 10.197 → 9.928 |
+| 100 | 107.721 → 42.541 | 122.002 → 61.514 | 108.217 → 48.185 |
+| 1,000 | 6,081.856 → 441.248 | 6,298.231 → 613.634 | 6,187.169 → 443.965 |
+
+Largest first-read Work time was 6,156.643 → 442.106 ms; dense warm Work was
+6,085.471 → 431.574 ms. These are request-first/repeated reads, not cleared OS page
+caches or an isolated-host SLA. JSON sizes stayed identical: largest spread Work
+7,720 bytes, Checkpoint 10,521, Candidate 5,822, Derived 4,933 and Source 4,072.
+Actual large HTML GET returned seven rows in 110,137 bytes at 1,215.769/1,193.926 ms
+and left canonical state unchanged; this HTML measurement has no paired old timing.
+A separate 10/100/1,000-Goal-only family keeps the other classes small and reports
+its own timings without extrapolating the relationship-heavy improvement.
+
+Current cost counters for the largest spread dataset: 6,038 indexed canonical
+records, 32,200 forward/reverse admitted edges, 1,010 Work rows visited/matched,
+seven retained, and 1,012,127 fingerprint bytes. The Checkpoint query visits all
+4,010 matches and hashes 5,631,570 bytes. Canonical read was 351–359 ms; index build
+35–37 ms. Dense Work has 4,007 relationships on one transient row. Thus the rich
+page is bounded, while owner input, identity/edge index, exact scan/hash and one
+high-degree row retain the explicit input-dependent costs in the projection owner.
+There is no full matched-row JSON allocation, repeated full-row edge lookup or
+second relationship-query rebuild. Bulk Candidate admission indexes forgetting IDs
+and shares the existing content-omission precedence without graph/round cloning.
+
+`validate focused inspection-goal-baseline` exited 0; its process CPU user/system
+was 217.35/1.33 s and peak RSS 121,504 KiB. `inspection-goal-current` exited 0;
+CPU was 31.46/2.53 s and peak RSS 113,152 KiB. The latter additionally ran the
+counter passes, large HTML consumer and Goal-only family; these aggregate values
+are observations of those complete processes, not paired per-query allocation or
+RSS deltas. The per-query table compares equal HTTP requests. Allocator counts and
+constant-time side-channel guarantees remain unmeasured. Earlier setup failures,
+lock-contended runs and a Context-cloning fixture that failed to vary actual Goals
+remain preserved privately and are excluded from these comparative claims.
+
+Direct existing support: 11 inspection HTTP tests, 41 Operations consumer tests,
+45 Projections tests, strict Clippy on the three affected packages, and nested
+workspace package/dependency isolation. No provider, Final/V11, new authority,
+public schema, analyzer-language scope or legacy path changed. Independent stress
+and browser results remain separate from human acceptance.

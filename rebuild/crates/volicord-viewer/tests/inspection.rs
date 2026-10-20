@@ -815,3 +815,364 @@ fn decision_correction_and_supersession_use_domain_operations_and_exact_receipts
     );
     Ok(())
 }
+
+/// Controlled store scaling, not naturalistic evidence or a release SLA. The
+/// retained root reuses exactly the same SQLite inputs across old/new binaries.
+#[test]
+#[ignore = "explicit local profiling; retains synthetic inputs under the supplied ignored root"]
+fn profile_inspection_scaling() -> Result {
+    let root = std::path::PathBuf::from(
+        std::env::var_os("VOLICORD_INSPECTION_PROFILE_ROOT").ok_or("profile root required")?,
+    );
+    for n in [10usize, 100, 1000] {
+        let path = root.join(n.to_string());
+        let project = if path.join("project.json").exists() {
+            serde_json::from_slice(&std::fs::read(path.join("project.json"))?)?
+        } else {
+            std::fs::create_dir_all(&path)?;
+            let ops = LocalOperations::new(RuntimeLayout::new(path.join("runtime"))?);
+            let project = ops
+                .initialize_project("Controlled inspection scale", None)?
+                .project
+                .id;
+            ops.transition_work(
+                project,
+                WorkTransition::StartNew {
+                    host: "test".into(),
+                    session: "profile".into(),
+                    user_turn: "Controlled work".into(),
+                    statement: "Controlled work".into(),
+                },
+            )?;
+            let db = rusqlite::Connection::open(ops.layout().canonical_store())?;
+            // Clone the maintained producer's typed row, changing only identity/text.
+            for i in 1..n {
+                let id = (i as u128).to_be_bytes();
+                db.execute("INSERT INTO context_items SELECT ?1,project_id,revision,role,?2,provenance_role,author_kind,author_identity,applicability_paths,applicability_components,applicability_work_contexts,recorded_at FROM context_items LIMIT 1", rusqlite::params![id.as_slice(), format!("Controlled work {i:04} 한글")])?;
+                db.execute("INSERT INTO context_item_sources SELECT project_id,?1,source_id,position FROM context_item_sources LIMIT 1", [id.as_slice()])?;
+            }
+            std::fs::write(path.join("project.json"), serde_json::to_vec(&project)?)?;
+            project
+        };
+        let ops = LocalOperations::new(RuntimeLayout::new(path.join("runtime"))?);
+        let server = ViewerServer::new(
+            ViewerAdapter::new(ops),
+            project,
+            ViewerLocale::English,
+            ViewerView::Overview,
+            "en".into(),
+            AUTH.parse()?,
+        )?;
+        let f = Fixture {
+            _temp: tempfile::tempdir()?,
+            server,
+            project,
+        };
+        let mut fingerprints = Vec::new();
+        for run in 0..3 {
+            let start = std::time::Instant::now();
+            let response = f.get("class=work&limit=7")?;
+            let micros = start.elapsed().as_micros();
+            let page: Value =
+                serde_json::from_str(response.split_once("\r\n\r\n").ok_or("body")?.1)?;
+            assert_eq!(page["page"]["permitted_match_count"], n);
+            assert_eq!(page["page"]["rows"].as_array().ok_or("rows")?.len(), 7);
+            fingerprints.push(page["page"]["fingerprint"].clone());
+            println!(
+                "PROFILE n={n} run={run} elapsed_us={micros} http_bytes={} fingerprint={}",
+                response.len(),
+                fingerprints.last().unwrap()
+            );
+        }
+        assert!(fingerprints.windows(2).all(|w| w[0] == w[1]));
+    }
+    Ok(())
+}
+
+// Test-only controlled scale injection clones actual maintained producer rows.
+fn clone_row(
+    db: &rusqlite::Connection,
+    table: &str,
+    changes: &[(&str, rusqlite::types::Value)],
+) -> Result {
+    let columns = db
+        .prepare(&format!("PRAGMA table_info({table})"))?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let selects = columns
+        .iter()
+        .map(|c| {
+            changes
+                .iter()
+                .position(|(name, _)| c == name)
+                .map_or_else(|| c.clone(), |i| format!("?{}", i + 1))
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    db.execute(
+        &format!("INSERT INTO {table} SELECT {selects} FROM {table} LIMIT 1"),
+        rusqlite::params_from_iter(changes.iter().map(|(_, v)| v)),
+    )?;
+    Ok(())
+}
+
+#[test]
+#[ignore = "explicit controlled scale profiling on retained identical inputs"]
+fn profile_inspection_related_scaling() -> Result {
+    use rusqlite::types::Value as Sql;
+    use sha2::{Digest, Sha256};
+    let root = std::path::PathBuf::from(
+        std::env::var_os("VOLICORD_INSPECTION_PROFILE_ROOT").ok_or("root")?,
+    );
+    for dense in [false, true] {
+        if std::env::var("VOLICORD_INSPECTION_PROFILE_DENSE")
+            .ok()
+            .is_some_and(|v| v != dense.to_string())
+        {
+            continue;
+        }
+        for n in [10usize, 100, 1000] {
+            if std::env::var("VOLICORD_INSPECTION_PROFILE_SIZE")
+                .ok()
+                .is_some_and(|v| v != n.to_string())
+            {
+                continue;
+            }
+            let path = root.join(format!("related-{dense}-{n}"));
+            let project = if path.join("project.json").exists() {
+                serde_json::from_slice(&std::fs::read(path.join("project.json"))?)?
+            } else {
+                std::fs::create_dir_all(&path)?;
+                let control =
+                    reading_fixture::scenario_in(&path, reading_fixture::rich_scenario()?)?;
+                let project = control.project;
+                let ops = LocalOperations::new(control.operations.layout().clone());
+                let server = ViewerServer::new(
+                    ViewerAdapter::new(ops),
+                    project,
+                    ViewerLocale::English,
+                    ViewerView::Overview,
+                    "en".into(),
+                    AUTH.parse()?,
+                )?;
+                let f = Fixture {
+                    _temp: tempfile::tempdir()?,
+                    server,
+                    project,
+                };
+                let source = f.source(project, "controlled private source")?;
+                f.candidate(source, "Controlled candidate")?;
+                f.derived(source, "controlled private Derived")?;
+                let db = rusqlite::Connection::open(f.ops().layout().canonical_store())?;
+                let work = control.goals["older"];
+                for i in 1..=n {
+                    let wid = ContextItemId::from_bytes((i as u128).to_be_bytes());
+                    clone_row(
+                        &db,
+                        "context_items",
+                        &[
+                            ("id", Sql::Blob(wid.as_bytes().to_vec())),
+                            ("role", Sql::Text("goal".into())),
+                            ("statement", Sql::Text(format!("Scale work {i:04} 한글"))),
+                        ],
+                    )?;
+                    clone_row(
+                        &db,
+                        "sources",
+                        &[("id", Sql::Blob((i as u128).to_be_bytes().to_vec()))],
+                    )?;
+                    for j in 0..4 {
+                        let id = ((i * 4 + j) as u128).to_be_bytes();
+                        clone_row(
+                            &db,
+                            "checkpoints",
+                            &[
+                                ("id", Sql::Blob(id.to_vec())),
+                                (
+                                    "work_item_id",
+                                    Sql::Blob(if dense { work } else { wid }.as_bytes().to_vec()),
+                                ),
+                            ],
+                        )?;
+                        // Give every Checkpoint a permitted Source and Question/Decision edges.
+                        for table in [
+                            "checkpoint_source_relations",
+                            "checkpoint_decisions",
+                            "checkpoint_questions",
+                        ] {
+                            let count: usize =
+                                db.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| {
+                                    r.get(0)
+                                })?;
+                            if count > 0 {
+                                clone_row(
+                                    &db,
+                                    table,
+                                    &[("checkpoint_id", Sql::Blob(id.to_vec()))],
+                                )?;
+                            }
+                        }
+                    }
+                }
+                for (store, table) in [
+                    (f.ops().layout().candidate_store(), "candidates"),
+                    (f.ops().layout().privacy_store(), "managed_derived"),
+                ] {
+                    let db = rusqlite::Connection::open(store)?;
+                    let raw: String = db.query_row(
+                        &format!("SELECT record_json FROM {table} LIMIT 1"),
+                        [],
+                        |r| r.get(0),
+                    )?;
+                    for i in 1..=n {
+                        let mut record: Value = serde_json::from_str(&raw)?;
+                        let id = CandidateId::from_bytes((i as u128).to_be_bytes());
+                        record["id"] = json!(id);
+                        clone_row(
+                            &db,
+                            table,
+                            &[
+                                ("id", Sql::Blob(id.as_bytes().to_vec())),
+                                ("record_json", Sql::Text(record.to_string())),
+                            ],
+                        )?;
+                    }
+                }
+                std::fs::write(path.join("project.json"), serde_json::to_vec(&project)?)?;
+                std::fs::write(
+                    path.join("runtime-path.json"),
+                    serde_json::to_vec(f.ops().layout().root())?,
+                )?;
+                let _keep = control._temporary.keep();
+                project
+            };
+            let runtime: std::path::PathBuf =
+                serde_json::from_slice(&std::fs::read(path.join("runtime-path.json"))?)?;
+            let ops = LocalOperations::new(RuntimeLayout::new(runtime)?);
+            let server = ViewerServer::new(
+                ViewerAdapter::new(ops),
+                project,
+                ViewerLocale::English,
+                ViewerView::Overview,
+                "en".into(),
+                AUTH.parse()?,
+            )?;
+            let f = Fixture {
+                _temp: tempfile::tempdir()?,
+                server,
+                project,
+            };
+            let basis = f.ops().canonical_basis(project)?;
+            assert_eq!(
+                basis
+                    .context_items
+                    .iter()
+                    .filter(|c| c.role == volicord_context::ContextItemRole::Goal)
+                    .count(),
+                n + 10
+            );
+            println!(
+                "DATA dense={dense} n={n} works={} checkpoints={} sources={}",
+                basis
+                    .context_items
+                    .iter()
+                    .filter(|c| c.role == volicord_context::ContextItemRole::Goal)
+                    .count(),
+                basis.checkpoint_history.len(),
+                basis.sources.len()
+            );
+            for class in [
+                "work",
+                "checkpoint",
+                "decision",
+                "question",
+                "source",
+                "context",
+                "candidate",
+                "derived",
+            ] {
+                if std::env::var("VOLICORD_INSPECTION_PROFILE_CLASS")
+                    .ok()
+                    .is_some_and(|v| v != class)
+                {
+                    continue;
+                }
+                for run in 0..std::env::var("VOLICORD_INSPECTION_PROFILE_RUNS")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .unwrap_or(3)
+                {
+                    let start = std::time::Instant::now();
+                    let response = f.get(&format!("class={class}&limit=7"))?;
+                    let micros = start.elapsed().as_micros();
+                    if let Some(output) = std::env::var_os("VOLICORD_INSPECTION_PROFILE_OUTPUT") {
+                        let output = std::path::PathBuf::from(output);
+                        std::fs::create_dir_all(&output)?;
+                        std::fs::write(
+                            output.join(format!("{dense}-{n}-{class}-{run}.http")),
+                            &response,
+                        )?;
+                    }
+                    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+                    println!("RELATED dense={dense} n={n} class={class} run={run} elapsed_us={micros} bytes={} sha256={:x}", response.len(), Sha256::digest(response.as_bytes()));
+                }
+                let (_, cost) = f.ops().inspect_project_records_profiled(
+                    project,
+                    &volicord_operations::InspectionQuery {
+                        class: volicord_operations::InspectionClass::parse(class)?,
+                        limit: 7,
+                        ..Default::default()
+                    },
+                )?;
+                assert!(cost.retained_rows <= 7);
+                println!("COST dense={dense} n={n} class={class} {cost:?}");
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "actual HTML consumer on an explicitly retained large profiling Project"]
+fn profile_inspection_large_html() -> Result {
+    let root = std::path::PathBuf::from(
+        std::env::var_os("VOLICORD_INSPECTION_PROFILE_ROOT").ok_or("root")?,
+    )
+    .join("related-false-1000");
+    let project = serde_json::from_slice(&std::fs::read(root.join("project.json"))?)?;
+    let runtime: std::path::PathBuf =
+        serde_json::from_slice(&std::fs::read(root.join("runtime-path.json"))?)?;
+    let ops = LocalOperations::new(RuntimeLayout::new(runtime)?);
+    let server = ViewerServer::new(
+        ViewerAdapter::new(ops),
+        project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        AUTH.parse()?,
+    )?;
+    let f = Fixture {
+        _temp: tempfile::tempdir()?,
+        server,
+        project,
+    };
+    let before = f.ops().canonical_basis(project)?;
+    for run in 0..2 {
+        let start = std::time::Instant::now();
+        let response = f.raw(
+            "/inspection?class=work&limit=7",
+            &format!("Host: {AUTH}\r\n"),
+        )?;
+        let elapsed = start.elapsed();
+        assert!(response.starts_with("HTTP/1.1 200"));
+        assert_eq!(response.matches("class=\"inspection-record").count(), 7);
+        assert!(!response.contains("controlled private source"));
+        println!(
+            "HTML n=1000 run={run} elapsed_us={} http_bytes={}",
+            elapsed.as_micros(),
+            response.len()
+        );
+    }
+    assert_eq!(before, f.ops().canonical_basis(project)?);
+    Ok(())
+}

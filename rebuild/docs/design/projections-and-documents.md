@@ -2190,3 +2190,30 @@ offline publication use the same independent typed report. Viewer discloses orig
 run window, artifact hashes, declared scope/environment, assertion provenance and
 prior identity/rationale. No article, generation or citation selection is required.
 Existing bounded display and publication revalidation remain authoritative.
+
+#### Inspection query resource contract
+
+Exact permitted counts and continuation fingerprints require scanning the requested
+class and hashing every matching admitted row, including its complete admitted
+relationships. They are not constant-cost operations or limited to the displayed
+1–20 rows. Operations builds a request-local borrowed-record/identity/relationship
+index, resolves endpoints by class and identity, and streams rows in the existing
+stable identity order into the existing fingerprint encoding. Only one transient
+rich row and at most the requested page are retained; other record classes do not
+materialize quotation/field/metadata payloads. Relationship continuation uses that
+same read/index pass rather than rebuilding all rows a second time.
+
+For N admitted records, E explicit admitted relationships and B owner-read input
+bytes, index memory is O(N + E), separate from the existing O(B) owned store read
+bases. Index construction uses ordered lookups, O((N + E) log N), plus per-node
+relationship ordering; query work includes requested-class rows and serialized
+permitted matching relationship bytes. One high-degree row can still require O(E)
+transient relationship storage. No persisted cache, hidden body hash, arbitrary
+record cap, approximate/zero unavailable count or new source reader is introduced.
+Candidate bulk admission shares the existing omission precedence and indexes
+pending-forgetting identities without cloning complete Candidate content graphs.
+`InspectionReadCost` distinguishes canonical/auxiliary reads, index construction,
+visited/matched/retained rows, admitted edges and fingerprint byte work. Its counters
+are not allocator or RSS measurements. Existing store decoding and invalidation
+costs remain distinct; no constant-time side-channel guarantee or absolute Project
+size/latency SLA is established by this projection contract.
