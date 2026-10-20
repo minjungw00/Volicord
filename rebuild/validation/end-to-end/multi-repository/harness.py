@@ -485,180 +485,101 @@ def contains_hangul(value: str) -> bool:
 
 
 class ViewerUnderstandingMarkup(HTMLParser):
-    """Read the bounded snapshot's diagrams and native inspection records."""
-
-    def __init__(self) -> None:
+    """Current reader boundary; full catalog/diagnostic shapes are retired."""
+    def __init__(self):
         super().__init__()
-        self.records: list[dict[str, Any]] = []
-        self.stack: list[tuple[str, dict[str, Any] | None]] = []
+        self.ids, self.links, self.nav, self.labels = [], [], 0, []
+        self.in_nav = False
+        self.in_link = False
+        self.active = False
+        self.retired = False
+        self.reading = False
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-        classes = set(attrs.get("class", "").split())
-        narrative = tag == "p" and any(
-            r is not None and r["tag"] == "article" for _, r in self.stack)
-        capture = (
-            narrative or tag == "g" and bool(classes & {"diagram-node", "diagram-edge"})
-            or tag == "figure" and "grounded-diagram" in classes
-            or tag == "article" and "explanation-item" in classes
-            or tag == "details" and (
-                "data-entity-id" in attrs or "data-relation-id" in attrs
-                or "explanation-evidence" in classes
-            )
-        )
-        record = {"tag": tag, "attrs": attrs, "text": [], "summary": [], "diagram": next(
-            (r["attrs"].get("data-diagram") for _, r in reversed(self.stack)
-             if r is not None and r["tag"] == "figure"), None)} if capture else None
-        if record is not None:
-            self.records.append(record)
-        if tag not in {"area", "base", "br", "col", "embed", "hr", "img", "input",
-                       "link", "meta", "param", "source", "track", "wbr"}:
-            self.stack.append((tag, record))
+        if "id" in attrs:
+            self.ids.append(attrs["id"])
+        if tag == "nav" and attrs.get("aria-label") == "Viewer":
+            self.nav += 1
+            self.in_nav = True
+        if tag == "a":
+            href = attrs.get("href", "")
+            self.links.append(href)
+            self.in_link = self.in_nav
+            if self.in_link:
+                self.labels.append("")
+        if tag in {"form", "script", "iframe", "input", "button"}:
+            self.active = True
+        classes = attrs.get("class", "").split()
+        if any(c in classes for c in ("tools-menu", "inspection-query", "document-preview")):
+            self.retired = True
+        if tag == "article" and "doc" in classes:
+            self.reading = True
 
     def handle_endtag(self, tag):
-        for index in range(len(self.stack) - 1, -1, -1):
-            if self.stack[index][0] == tag:
-                del self.stack[index:]
-                break
+        if tag == "nav": self.in_nav = False
+        if tag == "a": self.in_link = False
 
     def handle_data(self, data):
-        for _, record in self.stack:
-            if record is not None:
-                record["text"].append(data)
-                if record["tag"] == "details" and any(t == "summary" for t, _ in self.stack):
-                    record["summary"].append(data)
+        if self.in_link: self.labels[-1] += data
 
 
-def viewer_project_understanding_evidence(
-    snapshot: Path,
-    understanding: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """Inspect snapshot repository scope, separately from MCP current-Work scope.
+def viewer_project_understanding_evidence(snapshot, understanding):
+    """Check current snapshot reading boundaries; no semantic/human qualification.
 
-    This conformance consumer checks inspectability and shared snapshot basis.
-    Independent canonical/source semantics and browser interaction belong to the
-    maintained browser runner; neither check establishes human comprehension.
+    Repository topology and general inspection remain CLI/MCP/Operations duties.
+    Their existence does not require a bulk catalog inside a reader snapshot.
     """
     if not snapshot.is_file():
-        return {
-            "status": "failed", "checks": {"snapshot_available": False},
-            "entity_count": 0, "explanation_count": 0, "diagram_count": 0,
-            "grounded_relation_count": 0,
-        }
+        return {"status":"failed", "checks":{"snapshot_available":False},
+                "entity_count":0,"explanation_count":0,"diagram_count":0,"grounded_relation_count":0}
     content = snapshot.read_text(encoding="utf-8")
     surface = ViewerUnderstandingMarkup()
     surface.feed(content)
-    records = surface.records
-    text = lambda record: " ".join("".join(record["text"]).split())
-    nodes = [r for r in records if r["tag"] == "g"
-             and "diagram-node" in r["attrs"].get("class", "").split()]
-    edges = [r for r in records if r["tag"] == "g"
-             and "diagram-edge" in r["attrs"].get("class", "").split()]
-    entities = {r["attrs"]["data-entity-id"]: r for r in records
-                if r["tag"] == "details" and "data-entity-id" in r["attrs"]}
-    relations = {r["attrs"]["data-relation-id"]: r for r in records
-                 if r["tag"] == "details" and "data-relation-id" in r["attrs"]}
-    diagrams = {r["attrs"].get("data-diagram"): r for r in records
-                if r["tag"] == "figure"}
-    explanations = [r for r in records if r["tag"] == "article"]
-    node_ids = {r["attrs"].get("data-entity-id") for r in nodes}
-    snapshot_ids = {s.get("analysis_snapshot_id") for s in
-                    (understanding or {}).get("evidence", {}).get("snapshots", [])
-                    if isinstance(s, dict) and s.get("analysis_snapshot_id")}
-    grounded_nodes = bool(nodes) and all(
-        n["attrs"].get("data-analysis-snapshot") in snapshot_ids
-        and n["attrs"].get("data-entity-id") in entities
-        and entities[n["attrs"]["data-entity-id"]]["attrs"].get("id")
-        == "entity-" + n["attrs"]["data-entity-id"].encode().hex()
-        and len("".join(entities[n["attrs"]["data-entity-id"]]["summary"]).strip()) >= 4
-        and " ".join("".join(entities[n["attrs"]["data-entity-id"]]["summary"]).split()) in text(n)
-        for n in nodes
-    )
-    # The native exact-evidence disclosure retains these typed endpoints. Do not
-    # infer an endpoint from a display name, unresolved target spelling, or graph.
-    resolved = {}
-    for identity, relation in relations.items():
-        source = re.search(r'source_entity: "([^"]+)"', text(relation))
-        target = re.search(r'target_entity: Some\("([^"]+)"\)', text(relation))
-        if source and target and source[1] in entities and target[1] in entities:
-            resolved[identity] = (source[1], target[1])
-    diagram_node_ids = {kind: {n["attrs"].get("data-entity-id") for n in nodes
-                             if n["diagram"] == kind} for kind in diagrams}
-    grounded_edges = all(
-        e["attrs"].get("data-relation-id") in resolved
-        and resolved[e["attrs"]["data-relation-id"]] == (
-            e["attrs"].get("data-source-entity"), e["attrs"].get("data-target-entity"))
-        and e["attrs"].get("data-relation-class") ==
-        relations[e["attrs"]["data-relation-id"]]["attrs"].get("data-relation-class")
-        and e["attrs"].get("data-source-entity") in diagram_node_ids.get(e["diagram"], set())
-        and e["attrs"].get("data-target-entity") in diagram_node_ids.get(e["diagram"], set())
-        for e in edges
-    )
-    architecture_edges = [e for e in edges if e["diagram"] == "architecture-topology"]
-    edge_ids = {e["attrs"].get("data-relation-id") for e in architecture_edges}
-    flow_edges = [e for e in edges if e["diagram"] == "flow-topology"]
-    # Dependency, symbol use and resolution never establish a static call.
-    call_relations = {identity for identity in resolved
-        if "".join(relations[identity]["summary"]).strip().startswith("CallsSyntactically: ")}
-    expected_flow = bool(call_relations)
-    call_edges_only = all(e["attrs"].get("data-relation-id") in call_relations for e in flow_edges)
-    preserved_relations = all(identity in edge_ids for identity, endpoints in
-                              resolved.items() if all(e in diagram_node_ids.get("architecture-topology", set())
-                                                     for e in endpoints))
-    gap_basis = any(
-        r["attrs"].get("data-explanation-kind") == "gap"
-        and "capability gap" in text(r)
-        and "no execution or data-flow path is inferred." in text(r)
-        for r in explanations
-    )
-    empty_message = (
-        "No stored repository entity is included in this scope; unavailable analysis "
-        "or missing grounding remains an explicit gap."
-    )
-    reduced = not nodes and not edges and not entities and gap_basis and all(
-        kind in diagrams and empty_message in text(diagrams[kind])
-        for kind in ("architecture-topology", "flow-topology")
-    )
-    architecture = diagrams.get("architecture-topology")
-    no_edges = (
-        not edges and not resolved and architecture is not None
-        and "No inspectable relationship of this kind is available; no edge was inferred."
-        in text(architecture)
-    )
+    retired_ids = {"code", "repository-code", "decision-reading", "analysis-tool",
+                   "documents-tool", "memory-tool", "evidence-tool"}
+    snapshots = {v.get("analysis_snapshot_id") for v in
+                 (understanding or {}).get("evidence",{}).get("snapshots",[]) if isinstance(v,dict)} - {None}
     checks = {
-        "snapshot_available": True,
-        "project_understanding_heading": "Project Understanding" in content
-        and "How the architecture and code connect" in content,
-        "repository_scope_separately_labeled": "Repository context" in content,
-        "readable_repository_entity_or_truthful_reduction": grounded_nodes or reduced,
-        "readable_grounded_explanation": any(
-            r["tag"] == "p" and len(text(r)) >= 24 for r in records),
-        "fact_interpretation_distinction": all(marker in content for marker in (
-            'data-statement-role="verified-fact"',
-            'data-statement-role="deterministic-derived"',
-            'data-statement-role="generated-interpretation"',
-        )),
-        "grounded_architecture_result": architecture is not None and (
-            grounded_nodes and grounded_edges and preserved_relations
-            and (bool(architecture_edges) or no_edges) or reduced
-        ),
-        "grounded_flow_diagram": "flow-topology" in diagrams and (
-            bool(flow_edges) and grounded_edges and call_edges_only or reduced or
-            not expected_flow and not flow_edges and
-            "No inspectable relationship of this kind connects the displayed entities; "
-            "no edge or unrelated node was inferred." in text(diagrams["flow-topology"])
-        ),
-        "inspectable_explanation_basis": any(
-            r["tag"] == "details" and "explanation-evidence" in
-            r["attrs"].get("class", "").split() and bool(text(r)) for r in records
-        ),
+        "snapshot_available":True,
+        "three_destinations":surface.nav == 1 and surface.labels in
+            (["Overview","Repository explanation","Work"],["개요","저장소 설명","작업"]),
+        "independent_repository_and_work":all(v in surface.ids for v in
+            ("overview","repository-explanation","works")),
+        "no_retired_surfaces":not surface.retired and not retired_ids.intersection(surface.ids),
+        "script_free_reading":not surface.active and surface.reading and "request_authenticity" not in content,
+        "exact_unique_fragments":len(surface.ids)==len(set(surface.ids)) and all(
+            href.startswith("#") and href[1:] in surface.ids for href in surface.links),
+        "snapshot_basis": "snapshot-basis" in surface.ids and all(str(v) in content for v in snapshots),
+        "retained_fact_distinction": 'data-statement-role="deterministic-derived"' in content,
     }
-    return {
-        "status": "passed" if all(checks.values()) else "failed", "checks": checks,
-        "entity_count": len(node_ids), "explanation_count": len(explanations),
-        "diagram_count": len(diagrams), "grounded_relation_count": len(edges)
-        if grounded_edges else 0,
-    }
+    return {"status":"passed" if all(checks.values()) else "failed","checks":checks,
+            "entity_count":0,"explanation_count":content.count('class="doc"'),
+            "diagram_count":0,"grounded_relation_count":0,
+            "scope":"reader boundary only; independent topology and semantic assessment remain outside this check"}
+
+
+def assert_viewer_reader_contract():
+    """Focused consumer sensitivity, independent of executing an ordered journey."""
+    with tempfile.TemporaryDirectory(prefix="volicord-reader-contract-") as directory:
+        snapshot = Path(directory)/"reader.html"
+        basis={"evidence":{"snapshots":[{"analysis_snapshot_id":"a"*64}]}}
+        positive=('<html><body><nav aria-label="Viewer"><a href="#overview">Overview</a>'
+            '<a href="#repository-explanation">Repository explanation</a><a href="#works">Work</a></nav>'
+            '<section id="overview">Canonical Purpose</section><section id="repository-explanation">'
+            '<article class="doc"><p data-statement-role="deterministic-derived">Current explanation availability.</p>'
+            '</article></section><section id="works">No Work recorded</section>'
+            '<details id="snapshot-basis">'+"a"*64+'</details></body></html>')
+        snapshot.write_text(positive)
+        assert viewer_project_understanding_evidence(snapshot,basis)["status"]=="passed"
+        for mutation in [positive.replace('href="#works"','href="http://127.0.0.1/"'),
+            positive.replace('id="works"','id="removed"'),positive.replace('>Work</a>','>Tools</a>'),
+            positive.replace('</body>','<section id="code">catalog</section></body>'),
+            positive.replace('</body>','<form></form></body>'),positive.replace("a"*64,"b"*64),
+            positive.replace('</body>','<section id="works"></section></body>')]:
+            snapshot.write_text(mutation)
+            assert viewer_project_understanding_evidence(snapshot,basis)["status"]=="failed"
+    print("Viewer reader consumer: positive and 7 independent negative controls passed")
 
 
 def cli_json(
@@ -4251,114 +4172,7 @@ def self_check() -> int:
         raise AssertionError("V11 materiality scenarios lost explicit Decision work scope")
     if source.count('"delegated_scope": ["internal-state"],') != 1:
         raise AssertionError("V11 retained a delegation narrower than the reviewed work scope")
-    with tempfile.TemporaryDirectory(prefix="volicord-v11-viewer-contract-") as directory:
-        viewer_contract = Path(directory) / "project-understanding.html"
-        snapshot_id = "a" * 64
-        # Current-work MCP is empty here; whole export separately reads repository
-        # scope. Match its shared snapshot, not an unrelated Work-name inventory.
-        current_work_basis = {"architecture": {"components": [], "relationships": []},
-                              "evidence": {"snapshots": [{"analysis_snapshot_id": snapshot_id}]}}
-        heading = (
-            '<!doctype html><html lang="en"><body><h1>Project Understanding</h1>'
-            '<h2>How the architecture and code connect</h2><p>Repository context</p>'
-            '<span data-statement-role="verified-fact">Verified fact</span>'
-            '<span data-statement-role="deterministic-derived">Deterministic explanation</span>'
-            '<span data-statement-role="generated-interpretation">Generated interpretation</span>'
-        )
-        explanation = (
-            '<article class="deterministic-derived explanation-item" '
-            'data-explanation-kind="component"><p>Service owns a grounded and readable '
-            'repository component responsibility.</p><details class="explanation-evidence">'
-            '<summary>Inspect evidence basis</summary></details></article>'
-        )
-        nodes = ''.join(
-            '<g data-selected="false" data-analysis-snapshot="' + snapshot_id
-            + '" class="diagram-node" data-entity-id="' + identity + '"><title>'
-            + identity + ' — src/' + identity + '.py</title></g>'
-            for identity in ("service", "client")
-        )
-        entities = ''.join(
-            '<details data-entity-id="' + identity + '" id="entity-'
-            + identity.encode().hex() + '"><summary>' + identity
-            + ' — src/' + identity + '.py</summary></details>'
-            for identity in ("service", "client")
-        )
-        edge = (
-            '<g data-target-entity="service" class="diagram-edge" '
-            'data-source-entity="client" data-relation-class="structural-fact" '
-            'data-relation-id="calls"></g>'
-        )
-        relation = (
-            '<details class="relationship" data-relation-class="structural-fact" '
-            'data-relation-id="calls"><summary>'
-            'CallsSyntactically: client → service</summary><p>MapRelation { '
-            'source_entity: "client", target_entity: Some("service") }</p></details>'
-        )
-        architecture = '<figure class="grounded-diagram" data-diagram="architecture-topology">'
-        flow = '<figure class="grounded-diagram" data-diagram="flow-topology">'
-        positive = (heading + explanation + architecture + nodes + edge + '</figure>'
-                    + flow + nodes + edge + '</figure>' + entities + relation + '</body></html>')
-        viewer_contract.write_text(positive, encoding="utf-8")
-        if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "passed":
-            raise AssertionError("grounded repository snapshot with empty current Work did not qualify")
-        for label, mutated in {
-            "removed edge class": positive.replace('class="diagram-edge"', 'class="ungrounded-edge"'),
-            "missing architecture edge": positive.replace(edge + '</figure>', '</figure>', 1),
-            "foreign snapshot": positive.replace(snapshot_id, "b" * 64),
-            "missing entity target": positive.replace('id="entity-' + 'service'.encode().hex(), 'id="missing-'),
-            "invented relation endpoint": positive.replace('data-target-entity="service"', 'data-target-entity="client"'),
-            "missing native relation": positive.replace('data-relation-id="calls"><summary>', 'data-relation-id="unrelated"><summary>'),
-            "unlabeled repository scope": positive.replace('Repository context', 'Unspecified context'),
-            "missing narrative": positive.replace('Service owns a grounded and readable '
-                                                  'repository component responsibility.', ''),
-            "changed list label": positive.replace('<summary>service — src/service.py', '<summary>unrelated'),
-        }.items():
-            viewer_contract.write_text(mutated, encoding="utf-8")
-            if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "failed":
-                raise AssertionError(f"invalid repository snapshot qualified: {label}")
-        no_edges_message = 'No inspectable relationship of this kind is available; no edge was inferred.'
-        no_flow_message = ('No inspectable relationship of this kind connects the displayed entities; '
-                           'no edge or unrelated node was inferred.')
-        for kind in ("References", "Imports", "Includes", "ResolvesTo", "InstantiatedBy", "Declares"):
-            foreign_flow = positive.replace('CallsSyntactically:', kind + ':')
-            viewer_contract.write_text(foreign_flow, encoding="utf-8")
-            if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "failed":
-                raise AssertionError("non-call relation qualified as static call flow: " + kind)
-            structural_only = (heading + explanation + architecture + nodes + edge + '</figure>'
-                + flow + '<p class="empty-state">' + no_flow_message + '</p></figure>'
-                + entities + relation.replace('CallsSyntactically:', kind + ':') + '</body></html>')
-            viewer_contract.write_text(structural_only, encoding="utf-8")
-            if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "passed":
-                raise AssertionError("grounded non-call structure demanded invented call flow: " + kind)
-            viewer_contract.write_text(structural_only.replace(no_flow_message, ''), encoding="utf-8")
-            if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "failed":
-                raise AssertionError("unexplained absent call flow qualified: " + kind)
-        node_only = (heading + explanation + architecture + nodes + '<p class="diagram-gap">'
-                     + no_edges_message + '</p></figure>' + flow + '<p class="empty-state">'
-                     + no_flow_message + '</p></figure>' + entities + '</body></html>')
-        viewer_contract.write_text(node_only, encoding="utf-8")
-        if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "passed":
-            raise AssertionError("inspectable disconnected repository entities did not qualify")
-        viewer_contract.write_text(node_only.replace(no_edges_message, ''), encoding="utf-8")
-        if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "failed":
-            raise AssertionError("unexplained absent relationships qualified")
-        reduced_message = ('No stored repository entity is included in this scope; unavailable analysis '
-                           'or missing grounding remains an explicit gap.')
-        reduced_explanation = (
-            '<article class="deterministic-derived explanation-item" data-explanation-kind="gap">'
-            '<p>No resolved flow is available; no execution or data-flow path is inferred.</p>'
-            '<details class="explanation-evidence"><summary>Inspect evidence basis</summary>'
-            '<dl><div><dt>Evidence class</dt><dd>capability gap</dd></div></dl></details></article>'
-        )
-        reduced = (heading + reduced_explanation + architecture + '<p class="empty-state">'
-                   + reduced_message + '</p></figure>' + flow + '<p class="empty-state">'
-                   + reduced_message + '</p></figure></body></html>')
-        viewer_contract.write_text(reduced, encoding="utf-8")
-        if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "passed":
-            raise AssertionError("truthful reduced repository snapshot did not qualify")
-        viewer_contract.write_text(reduced.replace('capability gap', 'uninspected absence'), encoding="utf-8")
-        if viewer_project_understanding_evidence(viewer_contract, current_work_basis)["status"] != "failed":
-            raise AssertionError("uninspectable reduced repository snapshot qualified")
+    assert_viewer_reader_contract()
     assert_recovery_recall_contract()
     assert_candidate_repository_source_contract()
     assert_qualification_publication()

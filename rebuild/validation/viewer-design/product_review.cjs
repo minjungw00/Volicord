@@ -129,9 +129,8 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
     row.normal_content='current public name and synopsis; author identity and semantic quality are not established by this browser';
    }
    if(c.unavailable_work)assert.equal(await page.locator(`.work-card[data-work-id="${c.unavailable_work}"] .content-unavailable`).count(),1);
-   const tools=page.locator('.tools-menu');await tools.locator('summary').focus();await tools.locator('summary').press('Enter');
-   assert.ok(await tools.evaluate(n=>n.open));await page.keyboard.press('Escape');assert.ok(!await tools.evaluate(n=>n.open));
-   assert.equal(await page.evaluate(()=>document.activeElement.matches('.tools-menu>summary')),true);
+   assert.equal(await page.locator('.tools-menu,.inspection-query').count(),0);
+   assert.equal(await page.locator('.masthead nav a').count(),3);
    await capture(page,c,'overview',width);
    await page.locator('.masthead a[href*="view=repository"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
    fs.writeFileSync(path.join(output,`${c.key}-repository-${width}.html`),await page.content());await capture(page,c,'repository',width);
@@ -139,17 +138,17 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
    await page.locator('.masthead a[href*="view=work"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');await capture(page,c,'works',width);
    if(c.work){const card=page.locator(`.work-card[data-work-id="${c.work}"]`);assert.equal(await card.locator('a').count(),1);
     await card.locator('.card-action').click();assert.equal(new URL(page.url()).searchParams.get('work'),c.work);
-    assert.equal(await page.locator('.doc').getAttribute('data-work-id'),c.work);
+    assert.equal(await page.locator('.doc[data-work-id]').getAttribute('data-work-id'),c.work);
     if(c.normal_work){
      // Name, summary and article are independently admitted publications. A
      // card cannot supply the expected title/lead for a different realization.
      const answers=status.work_history.find(w=>w.work_item_id===c.work).answers;
      if(answers.explanation_state==='current'){
-      assert.equal(await page.locator('.doc h1').textContent(),answers.prose.find(p=>p.question==='Heading').text);
-      assert.equal(await page.locator('.doc .lead[data-question="Synopsis"]').textContent(),answers.prose.find(p=>p.question==='Synopsis').text);
+      assert.equal(await page.locator('.doc[data-work-id] h1').textContent(),answers.prose.find(p=>p.question==='Heading').text);
+      assert.equal(await page.locator('.doc[data-work-id] .lead[data-question="Synopsis"]').textContent(),answers.prose.find(p=>p.question==='Synopsis').text);
      }else assert.ok(answers.prose.every(p=>p.role!=='generated_interpretation'),'unavailable article supplies only lifecycle notices');
     }
-    const sectionNav=page.locator('.doc .document-nav');assert.equal(await sectionNav.count(),1);
+    const sectionNav=page.locator('.doc[data-work-id] .document-nav');assert.equal(await sectionNav.count(),1);
     assert.equal(await page.locator('.audit-links,.opening-limits,.limit-shortcut').count(),0);
     const workReport=status.work_history.find(w=>w.work_item_id===c.work).verification_report;
     assert.equal(await page.locator('.verification-report .verification-execution').count(),Math.min(32,workReport.executions.length));
@@ -161,34 +160,25 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
     }
     for(const id of await sectionNav.locator('a').evaluateAll(a=>a.map(n=>n.hash.slice(1))))assert.equal(await page.locator(`[id="${id}"]`).count(),1);
     await capture(page,c,'work',width);
-    row.work_source=await sourceJourney(page,c,width,false,'.doc');
-    await page.reload();assert.equal(await page.locator('.doc').getAttribute('data-work-id'),c.work);
-    await page.locator('.breadcrumb a').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');
+    row.work_source=await sourceJourney(page,c,width,false,'.doc[data-work-id]');
+    await page.reload();assert.equal(await page.locator('.doc[data-work-id]').getAttribute('data-work-id'),c.work);
+    await page.locator('.doc[data-work-id] .breadcrumb a').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');
    }else assert.ok((await page.locator('#works').textContent()).match(/No Work|기록된 작업이 없/));
-   if(!await page.locator('.tools-menu').evaluate(n=>n.open))await page.locator('.tools-menu>summary').click();await page.locator('.tools-menu a[href*="view=decisions"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'decisions');
-   if(c.decision){await page.locator(`.decision-summary[data-decision-id="${c.decision}"] a`).click();assert.equal(new URL(page.url()).searchParams.get('decision'),c.decision);assert.equal(await page.locator('.doc').count(),1);if(c.source_bundle){
-     const b=JSON.parse(fs.readFileSync(c.source_bundle));const t=b.payload.tables.find(t=>t.name==='decisions');
-     const original=t.rows.map(row=>Object.fromEntries(t.columns.map((key,n)=>[key,row[n].value]))).find(d=>d.id===c.decision);
-     const records=page.locator('.recorded-choice');assert.ok((await records.textContent()).includes(original.recommendation_rationale));
-     if(original.user_rationale===null)assert.ok((await records.textContent()).match(/User rationale is not recorded|사용자 근거가 기록되지/));
-    }await capture(page,c,'decision',width);}
-   else assert.ok((await page.locator('#decision-reading').textContent()).match(/No Decisions|기록된 결정이 없/));
-   for(const tool of ['status','documents','memory','evidence']){
-    const menu=page.locator('.tools-menu');if(!await menu.evaluate(n=>n.open))await menu.locator('summary').click();
-    await menu.locator(`a[href*="tool=${tool}"]`).click();assert.equal(new URL(page.url()).searchParams.get('tool'),tool);
-    assert.equal(await page.locator('.page-head h1').count(),1);await capture(page,c,tool,width);
-    if(tool==='memory'){
-     assert.ok(await page.locator('form').evaluateAll(forms=>forms.every(f=>f.method==='get'||f.querySelector('input[name=request_authenticity]')?.value.length>0)),'mutation forms retain authenticity; native read-only GET filters require no write token');
-     assert.equal(await page.locator('.inspection-query').evaluate(f=>f.method),'get');
-    }
+   if(c.work && c.decision){
+    await page.goto(server.base+`?view=work&work=${c.work}`);
+    assert.equal(await page.locator(`.decision-reading[data-decision-id="${c.decision}"]`).count(),1);
+    await capture(page,c,'contextual-decision',width);
    }
    await page.locator('.brand').click();assert.equal(new URL(page.url()).searchParams.get('view'),'overview');
   }
   for(const selector of ['work=00000000000000000000000000000000','work=bad']){
    const response=await context.request.get(server.base+'?view=work&'+selector);assert.equal(response.status(),selector.endsWith('bad')?400:404);
   }
+  for(const query of ['?view=tools','?view=decisions','?view=code&scope=repository'])assert.equal((await context.request.get(server.base+query)).status(),404);
+  for(const route of ['inspection','inspection.json'])assert.equal((await context.request.get(server.base+route)).status(),404);
+  for(const route of ['memory/context/correct','memory/decision/correct','memory/decision/supersede','memory/forget','documents/export'])assert.equal((await context.request.post(server.base+route,{data:'x=1'})).status(),404);
   const host=await context.request.get(server.base,{headers:{Host:'foreign.invalid'}});assert.equal(host.status(),421);
-  const post=await context.request.post(server.base+'memory/context/correct',{headers:{Origin:'http://foreign.invalid'},data:'x=1'});assert.equal(post.status(),403);
+  const post=await context.request.post(server.base+'memory/context/correct',{headers:{Origin:'http://foreign.invalid'},data:'x=1'});assert.equal(post.status(),404);
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   }finally {await context.close();r.listener=await server.stop();}
   const offline=await browser.newContext({javaScriptEnabled:false});await offline.setOffline(true);const p=await offline.newPage();
@@ -202,7 +192,8 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
     assert.equal(await p.locator(`article.doc[data-work-id="${c.work}"]:visible`).count(),1);
     await capture(p,c,'offline-work',width);}
    await p.locator('.masthead a[href="#repository-explanation"]').click();await capture(p,c,'offline-repository',width);await sourceJourney(p,c,width,true);
-   for(const id of ['analysis-tool','documents-tool','memory-tool','evidence-tool']){await p.goto(pathToFileURL(offlinePath).href+'#'+id);assert.ok(await p.locator('#'+id).isVisible());await fits(p);}
+   for(const id of ['analysis-tool','documents-tool','memory-tool','evidence-tool','code','decision-reading','repository-code'])assert.equal(await p.locator('#'+id).count(),0);
+   assert.equal(await p.locator('.masthead nav a').count(),3);
   }
   await offline.close();assert.equal(state(c.runtime),before,'GET/export changed canonical, retention, provider or Candidate rows');r.read_state_unchanged=true;
  }

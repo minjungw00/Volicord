@@ -8,14 +8,7 @@ use std::{
     time::Duration,
 };
 use tempfile::TempDir;
-use volicord_context::{
-    ApplicabilityScope, Availability, Clock, ContextItemDraft, ContextItemRole, OperationId,
-    Principal, PrincipalKind, SourceDraft, SourcePayload, StatementProvenanceRole, Store,
-};
-use volicord_operations::{
-    ConfirmationDecision, GuardedEffectCategory, GuardedEffectDraft, GuardedRisk, GuardedStore,
-    LocalOperations, RequestingProvenance, RuntimeLayout,
-};
+use volicord_operations::{LocalOperations, RuntimeLayout};
 
 struct ViewerProcess {
     child: Child,
@@ -134,27 +127,6 @@ fn post_with_context(
     )
 }
 
-fn request_authenticity(response: &str) -> String {
-    let marker = "name=\"request_authenticity\" value=\"";
-    let start = response.find(marker).expect("request authenticity field") + marker.len();
-    let end = response[start..]
-        .find('"')
-        .map(|offset| start + offset)
-        .expect("request authenticity value end");
-    response[start..end].to_owned()
-}
-
-fn export(
-    operations: &LocalOperations,
-    project: volicord_context::ProjectId,
-    path: &Path,
-) -> Vec<u8> {
-    operations
-        .export_bundle(project, path)
-        .expect("export canonical bundle");
-    fs::read(path).expect("read canonical bundle")
-}
-
 #[test]
 fn client_reset_does_not_end_the_listener_or_change_canonical_memory() {
     let temporary = TempDir::new().expect("temporary root");
@@ -231,7 +203,10 @@ fn snapshot_mode_writes_one_static_file_and_exits_without_a_listener() {
     let html = fs::read_to_string(&destination).expect("read static snapshot");
     assert!(html.starts_with("<!doctype html>"));
     assert!(html.contains("data-viewer-mode=\"snapshot\""));
-    assert!(html.contains("main.py"));
+    assert!(
+        !html.contains("main.py"),
+        "uncited inventory is outside the reader snapshot"
+    );
     assert!(html.contains("Snapshot basis"));
     for forbidden in [
         "<form",
@@ -274,424 +249,50 @@ fn snapshot_mode_writes_one_static_file_and_exits_without_a_listener() {
 }
 
 #[test]
-fn real_listener_is_live_mutable_strict_and_exact_for_guarded_fallback() {
+fn real_listener_rejects_retired_surfaces_and_preserves_reading() {
     let temporary = TempDir::new().expect("temporary root");
     let runtime = temporary.path().join("runtime");
-    let repository = temporary.path().join("repository");
-    fs::create_dir(&repository).expect("repository");
-    fs::write(repository.join("main.py"), "VALUE = 1\n").expect("fixture source");
-    let operations = LocalOperations::new(RuntimeLayout::new(&runtime).expect("runtime layout"));
+    let operations = LocalOperations::new(RuntimeLayout::new(&runtime).expect("layout"));
     let project = operations
-        .initialize_project("Executable HTTP", Some(&repository))
-        .expect("initialize Project")
+        .initialize_project("Executable reader", None)
+        .expect("Project")
         .project
         .id;
-    operations
-        .analyze(project, Vec::new())
-        .expect("analyze fixture");
-
+    let before = operations.canonical_basis(project).expect("basis");
     let viewer = start_viewer(&runtime, &project.to_string());
-    let address = viewer.address.as_str();
-
-    let overview = get(address, "/?view=overview&locale=en&language=fr-CA");
-    let working = get(address, "/?view=tools&tool=documents&locale=ko&language=ko");
-    let deep = get(address, "/inspection?class=source&locale=en&language=ja");
-    assert!(overview.starts_with("HTTP/1.1 200 OK"), "{overview}");
-    assert!(overview.contains("data-view=\"overview\""));
-    assert!(working.contains("data-view=\"tools\""));
-    assert!(working.contains("문서 미리보기"));
-    assert!(deep.contains("data-view=\"tools\""));
-    assert!(overview.contains("No Project purpose has been recorded."));
-    assert!(overview.contains("Recent Work"));
-    assert!(
-        working.contains("main.py"),
-        "document preview must retain actual repository content"
-    );
-    assert!(!overview.contains("Material limitations"));
-    assert!(!overview.contains("id=\"diagnostics\""));
-    assert_ne!(overview, working);
-    assert_ne!(working, deep);
-    let request_authenticity = request_authenticity(&deep);
-    assert_eq!(request_authenticity.len(), 64);
-    assert!(!overview.contains("?request_authenticity="));
-    let rebound = exchange(
-        address,
-        "GET /?view=tools&tool=memory HTTP/1.1\r\nHost: attacker.example\r\nConnection: close\r\n\r\n",
-    );
-    assert!(rebound.starts_with("HTTP/1.1 421 Misdirected Request"));
-    assert!(!rebound.contains("request_authenticity"));
-
-    let mut store = Store::open(operations.layout().canonical_store()).expect("canonical store");
-    let project_revision = store.get_project(project).expect("Project").revision;
-    let basis = store
-        .record_source(
-            OperationId::from_bytes([81; 16]),
-            project,
-            SourceDraft {
-                expected_project_revision: project_revision,
-                payload: SourcePayload::CurrentHostUserTurn {
-                    host: "fixture-host".into(),
-                    session: "after-viewer-start".into(),
-                    turn: "remember the live viewer constraint".into(),
-                },
-                actor: Principal {
-                    kind: PrincipalKind::User,
-                    identity: "fixture-user".into(),
-                },
-                observer: Some(Principal {
-                    kind: PrincipalKind::Agent,
-                    identity: "viewer-executable-test".into(),
-                }),
-                availability: Availability::Available,
-            },
-        )
-        .expect("record source after launch")
-        .value;
-    let context = store
-        .record_context_item(
-            OperationId::from_bytes([82; 16]),
-            project,
-            ContextItemDraft {
-                expected_project_revision: project_revision,
-                role: ContextItemRole::Constraint,
-                statement: "viewer state created after startup".into(),
-                provenance_role: StatementProvenanceRole::UserStatement,
-                author: basis.actor.clone(),
-                source_basis: vec![basis.id],
-                applicability: ApplicabilityScope::default(),
-            },
-        )
-        .expect("record context after launch")
-        .value;
-    drop(store);
-    assert!(!overview.contains(&context.id.to_string()));
-    let refreshed = get(address, "/inspection?class=context&locale=en&language=en");
-    assert!(refreshed.contains(&context.id.to_string()));
-    assert!(refreshed.contains("viewer state created after startup"));
-
-    let corrected = post(
-        address,
+    for path in ["/?view=overview", "/?view=repository", "/?view=work"] {
+        let page = get(&viewer.address, path);
+        assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+        assert!(!page.contains("tools-menu"));
+        assert!(!page.contains("<form"));
+    }
+    for path in ["/inspection", "/inspection.json", "/code", "/decisions"] {
+        assert!(get(&viewer.address, path).starts_with("HTTP/1.1 404"));
+    }
+    for path in [
+        "/?view=tools",
+        "/?view=decisions",
+        "/?view=code&scope=repository",
+    ] {
+        assert!(get(&viewer.address, path).starts_with("HTTP/1.1 404"));
+    }
+    for path in [
         "/memory/context/correct",
-        &format!(
-            "record_id={}&expected_revision={}&corrected_text=state+created+after+viewer+startup&user_turn=Correct+this+viewer+memory&view=tools&tool=memory&locale=en&language=en",
-            context.id, context.revision
-        ),
-        &request_authenticity,
-    );
-    assert!(
-        corrected.starts_with("HTTP/1.1 303 See Other"),
-        "{corrected}"
-    );
-    let independent = LocalOperations::new(RuntimeLayout::new(&runtime).expect("second layout"));
-    let canonical = independent
-        .canonical_basis(project)
-        .expect("independent read");
-    let corrected_context = canonical
-        .context_items
-        .iter()
-        .find(|item| item.id == context.id)
-        .expect("corrected Context Item");
-    assert_eq!(corrected_context.revision, 2);
-    assert_eq!(
-        corrected_context.statement,
-        "state created after viewer startup"
-    );
-    assert!(
-        get(address, "/inspection?class=context").contains("state created after viewer startup")
-    );
-
-    let published_document = temporary.path().join("published").join("handoff.md");
-    let published = post(
-        address,
-        "/documents/export",
-        &format!(
-            "kind=handoff-resume&format=markdown&destination={}&view=tools&tool=documents&locale=en&language=en",
-            published_document.display()
-        ),
-        &request_authenticity,
-    );
-    assert!(
-        published.starts_with("HTTP/1.1 303 See Other"),
-        "{published}"
-    );
-    assert!(!published.contains(&request_authenticity));
-    assert!(published_document.is_file());
-    assert!(!fs::read_to_string(&published_document)
-        .expect("read viewer-published document")
-        .contains(&request_authenticity));
-
-    let before_invalid = export(
-        &independent,
-        project,
-        &temporary.path().join("before-invalid.json"),
-    );
-    assert!(get(address, "/?view=unsupported").starts_with("HTTP/1.1 400 Bad Request"));
-    assert!(get(address, "/missing").starts_with("HTTP/1.1 404 Not Found"));
-    assert!(post(
-        address,
+        "/memory/decision/correct",
+        "/memory/decision/supersede",
         "/memory/forget",
-        "record_kind=source&record_id=00000000000000000000000000000000&user_turn=no&unexpected=true",
-        &request_authenticity,
-    )
-    .starts_with("HTTP/1.1 400 Bad Request"));
-    let after_invalid = export(
-        &independent,
-        project,
-        &temporary.path().join("after-invalid.json"),
-    );
-    assert_eq!(before_invalid, after_invalid);
-
-    let now = volicord_context::SystemClock
-        .now()
-        .expect("clock")
-        .as_unix_micros();
-    let draft = |expected_effect: &str| GuardedEffectDraft {
-        project_id: project,
-        exact_action: "publish release".into(),
-        target: "registry/example".into(),
-        expected_effect: expected_effect.into(),
-        risk: GuardedRisk {
-            category: GuardedEffectCategory::ExternalDeploymentOrPublicPublication,
-            concrete_consequence: "public artifact".into(),
-        },
-        scope: vec!["release:example".into()],
-        expires_at: volicord_context::TimestampMicros::from_unix_micros(now + 600_000_000),
-        requesting_provenance: RequestingProvenance {
-            actor: Principal {
-                kind: PrincipalKind::Agent,
-                identity: "codex".into(),
-            },
-            host: Some("codex".into()),
-            session: Some("viewer-fallback".into()),
-            basis: vec!["executable listener validation".into()],
-        },
-    };
-    let first = independent
-        .create_guarded_request(draft("public release v1"))
-        .expect("initial Guarded request");
-    let current = independent
-        .revise_guarded_request(
-            first.confirmation_request_identity,
-            first.request_revision,
-            draft("public release v2"),
-        )
-        .expect("revised Guarded request");
-    let shown = get(
-        address,
-        &format!(
-            "/guarded/{}?view=tools&tool=documents",
-            current.confirmation_request_identity
-        ),
-    );
-    assert!(shown.contains(&current.confirmation_request_identity.to_string()));
-    assert!(shown.contains(&current.effect_fingerprint));
-    assert!(shown.contains(&format!(
-        "request_revision\" value=\"{}",
-        current.request_revision
-    )));
-
-    let rejected_destination = temporary.path().join("rejected").join("handoff.md");
-    let correction_body = format!(
-        "record_id={}&expected_revision=2&corrected_text=must+not+be+applied&user_turn=Rejected+viewer+mutation",
-        context.id
-    );
-    let guarded_body = format!(
-        "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&confirmation_decision=confirm&user_turn=Rejected+viewer+confirmation&guarded={}",
-        current.confirmation_request_identity,
-        current.request_revision,
-        current.effect_fingerprint,
-        current.confirmation_request_identity
-    );
-    let export_body = format!(
-        "kind=handoff-resume&format=markdown&destination={}",
-        rejected_destination.display()
-    );
-    let wrong_token = "00".repeat(32);
-    let rejected_requests = [
-        (
-            "missing authenticity value",
-            "/memory/context/correct",
-            correction_body.clone(),
-            address,
-            Some(format!("http://{address}")),
-            Some("same-origin".to_owned()),
-            "HTTP/1.1 403 Forbidden",
-        ),
-        (
-            "incorrect authenticity value",
-            "/guarded/confirm",
-            format!("{guarded_body}&request_authenticity={wrong_token}"),
-            address,
-            Some(format!("http://{address}")),
-            Some("same-origin".to_owned()),
-            "HTTP/1.1 403 Forbidden",
-        ),
-        (
-            "cross-origin request",
-            "/documents/export",
-            format!("{export_body}&request_authenticity={request_authenticity}"),
-            address,
-            Some("http://attacker.example".to_owned()),
-            Some("same-origin".to_owned()),
-            "HTTP/1.1 403 Forbidden",
-        ),
-        (
-            "alternate Host",
-            "/memory/context/correct",
-            format!("{correction_body}&request_authenticity={request_authenticity}"),
-            "attacker.example",
-            Some(format!("http://{address}")),
-            Some("same-origin".to_owned()),
-            "HTTP/1.1 421 Misdirected Request",
-        ),
-        (
-            "cross-site Fetch Metadata",
-            "/guarded/confirm",
-            format!("{guarded_body}&request_authenticity={request_authenticity}"),
-            address,
-            Some(format!("http://{address}")),
-            Some("cross-site".to_owned()),
-            "HTTP/1.1 403 Forbidden",
-        ),
-    ];
-    for (label, target, body, host, origin, fetch_site, expected) in rejected_requests {
-        let canonical_before = independent
-            .canonical_basis(project)
-            .expect("canonical basis before rejected request");
-        assert!(GuardedStore::open(independent.layout().guarded_store())
-            .expect("Guarded store before rejected request")
-            .response(
-                current.confirmation_request_identity,
-                current.request_revision,
-            )
-            .expect("Guarded response before rejected request")
-            .is_none());
-        assert!(!rejected_destination.exists());
-        assert!(!rejected_destination
-            .parent()
-            .expect("rejected destination parent")
-            .exists());
-
-        let response = post_with_context(
-            address,
-            target,
-            &body,
-            host,
-            origin.as_deref(),
-            fetch_site.as_deref(),
-        );
-        assert!(response.starts_with(expected), "{label}: {response}");
-        assert!(!response.contains(&request_authenticity));
-        assert_eq!(
-            independent
-                .canonical_basis(project)
-                .expect("canonical basis after rejected request"),
-            canonical_before,
-            "{label} changed canonical memory or recorded a current-host Source"
-        );
+        "/documents/export",
+    ] {
         assert!(
-            GuardedStore::open(independent.layout().guarded_store())
-                .expect("Guarded store after rejected request")
-                .response(
-                    current.confirmation_request_identity,
-                    current.request_revision,
-                )
-                .expect("Guarded response after rejected request")
-                .is_none(),
-            "{label} consumed a Guarded confirmation"
-        );
-        assert!(!rejected_destination.exists(), "{label} published a file");
-        assert!(
-            !rejected_destination
-                .parent()
-                .expect("rejected destination parent")
-                .exists(),
-            "{label} created a publication directory"
+            post(&viewer.address, path, "record_id=invalid", "unused").starts_with("HTTP/1.1 404")
         );
     }
-
-    let submit = |revision: u64, fingerprint: &str, turn: &str| {
-        post(
-            address,
-            "/guarded/confirm",
-            &format!(
-                "confirmation_request_id={}&request_revision={revision}&effect_fingerprint={fingerprint}&confirmation_decision=confirm&user_turn={turn}&guarded={}",
-                current.confirmation_request_identity, current.confirmation_request_identity
-            ),
-            &request_authenticity,
-        )
-    };
-    assert!(submit(
-        first.request_revision,
-        &first.effect_fingerprint,
-        "stale+response"
-    )
-    .starts_with("HTTP/1.1 422 Unprocessable Content"));
-    assert!(submit(
-        current.request_revision,
-        "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-        "mismatched+response",
-    )
-    .starts_with("HTTP/1.1 422 Unprocessable Content"));
-    let accepted = submit(
-        current.request_revision,
-        &current.effect_fingerprint,
-        "confirm+this+exact+revision",
-    );
-    assert!(accepted.starts_with("HTTP/1.1 303 See Other"), "{accepted}");
-    assert!(submit(
-        current.request_revision,
-        &current.effect_fingerprint,
-        "reused+response",
-    )
-    .starts_with("HTTP/1.1 422 Unprocessable Content"));
-
-    let guarded = GuardedStore::open(independent.layout().guarded_store()).expect("Guarded store");
-    assert!(guarded
-        .response(first.confirmation_request_identity, first.request_revision)
-        .expect("old response read")
-        .is_none());
-    let response = guarded
-        .response(
-            current.confirmation_request_identity,
-            current.request_revision,
-        )
-        .expect("current response read")
-        .expect("accepted exact response");
-    assert_eq!(response.decision, ConfirmationDecision::Confirmed);
     assert_eq!(
-        response.confirmation_request_identity,
-        current.confirmation_request_identity
+        before,
+        operations
+            .canonical_basis(project)
+            .expect("unchanged basis")
     );
-    assert_eq!(response.request_revision, current.request_revision);
-    assert_eq!(response.effect_fingerprint, current.effect_fingerprint);
-    assert!(independent
-        .canonical_basis(project)
-        .expect("response Source read")
-        .sources
-        .iter()
-        .any(|source| source.source.id == response.user_response_source_id));
-
-    let portable = temporary.path().join("request-authenticity.volicord.json");
-    assert!(!String::from_utf8(export(&independent, project, &portable))
-        .expect("portable bundle UTF-8")
-        .contains(&request_authenticity));
-    let projection = independent
-        .project_projection(project)
-        .expect("canonical inspection after viewer requests");
-    assert!(projection.canonical_inspection.iter().all(|record| {
-        !record.identity.contains(&request_authenticity)
-            && !record.lifecycle_state.contains(&request_authenticity)
-            && record
-                .statement_role
-                .as_deref()
-                .is_none_or(|role| !role.contains(&request_authenticity))
-            && !record.summary.contains(&request_authenticity)
-            && record
-                .source_basis
-                .iter()
-                .all(|source| !source.to_string().contains(&request_authenticity))
-    }));
 }
 
 #[test]

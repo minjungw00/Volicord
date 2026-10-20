@@ -15,7 +15,7 @@
       "projection_passes": 1,
       "graph_decodes": 0,
       "metadata_decodes": 1,
-      "candidate_reads": 1,
+      "candidate_reads": 0,
       "documents": 0,
       "health_graph_decodes": 0
     },
@@ -27,28 +27,20 @@
       "documents": 0,
       "health_graph_decodes": 0
     },
-    "decision": {
+    "snapshot": {
+      "projection_passes": 1,
+      "graph_decodes": 0,
+      "metadata_decodes": 1,
+      "candidate_reads": 1,
+      "documents": 0,
+      "health_graph_decodes": 0
+    },
+    "repository": {
       "projection_passes": 1,
       "graph_decodes": 0,
       "metadata_decodes": 1,
       "candidate_reads": 0,
       "documents": 0,
-      "health_graph_decodes": 0
-    },
-    "code": {
-      "projection_passes": 1,
-      "graph_decodes": 1,
-      "metadata_decodes": 0,
-      "candidate_reads": 0,
-      "documents": 0,
-      "health_graph_decodes": 0
-    },
-    "snapshot": {
-      "projection_passes": 1,
-      "graph_decodes": 1,
-      "metadata_decodes": 0,
-      "candidate_reads": 1,
-      "documents": 4,
       "health_graph_decodes": 0
     }
   },
@@ -77,30 +69,6 @@
       "privacy": 10000,
       "understanding": 3000
     },
-    "decision": {
-      "total": 65000,
-      "canonical": 30000,
-      "analysis": 18000,
-      "projection": 5000,
-      "documents": 0,
-      "html": 1500,
-      "candidate": 0,
-      "health": 12000,
-      "privacy": 10000,
-      "understanding": 3000
-    },
-    "code": {
-      "total": 135000,
-      "canonical": 30000,
-      "analysis": 95000,
-      "projection": 15000,
-      "documents": 0,
-      "html": 4000,
-      "candidate": 0,
-      "health": 12000,
-      "privacy": 10000,
-      "understanding": 4000
-    },
     "snapshot": {
       "total": 180000,
       "canonical": 30000,
@@ -112,7 +80,19 @@
       "health": 12000,
       "privacy": 10000,
       "understanding": 4000
+    },
+    "repository": {
+      "total": 65000,
+      "canonical": 30000,
+      "analysis": 18000,
+      "projection": 5000,
+      "documents": 0,
+      "html": 1500,
+      "candidate": 0,
+      "health": 12000,
+      "privacy": 10000,
+      "understanding": 3000
     }
   },
-  "count_basis": "Candidate reads for Overview/Work follow the maintained Learning inspection read contract introduced by db929dd1 and the independent Rust workload assertions: one read, as for snapshots. Timing ceilings remain unchanged; the earlier zero candidate-time ceilings do not qualify these pre-existing inspection reads."
+  "count_basis": "D-33: Overview/Repository skip Candidate inspection, Work retains contextual Learning; every reader/snapshot skips graph bodies, health/privacy scans and document previews. Timing ceilings are historical diagnostic limits only; candidate-time zero is not enforced for Work/snapshots."
 }

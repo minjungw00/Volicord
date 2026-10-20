@@ -154,14 +154,10 @@ function receipt(status,error=null){fs.writeFileSync(path.join(output,'result.js
             try{
               const page=await context.newPage();
               await inspect(page,f,basis,`${live.url}?locale=${locale}&language=${f.language}`,false,locale,width);
-              // Same maintained prose consumer and exact fragments on Code view.
-              const explore=page.locator(`a[href*="view=code"][href*="work=${f.work}"]`).last();
-              await explore.focus();await page.keyboard.press('Enter');
-              await page.waitForURL(url=>url.searchParams.get('view')==='code' && url.searchParams.get('work')===f.work);
-              const meaning=page.locator('.code-work-meaning');
-              assert.equal(await meaning.locator('h3').first().textContent(),f.expected_units[0].text);
-              assert.deepEqual(await meaning.locator('p[data-question=ReadingPoint]').allTextContents(),f.expected_units.filter(u=>u.role==='reading_point').map(u=>u.text));
-              assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+              // Contextual cited code is exercised by inspect(); the unrelated
+              // Code catalog is retired and must not become a second reader.
+              const retired=await context.request.get(`${live.url}?view=code&scope=work&work=${f.work}`);
+              assert.equal(retired.status(),404);
               await context.setOffline(true);
               const unavailable=f.runtime+'.offline-check';
               fs.renameSync(f.runtime,unavailable);

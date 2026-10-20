@@ -63,10 +63,10 @@
       ],
       "required_views": [
         {
-          "view": "decisions"
+          "view": "work"
         }
       ],
-      "prompt": "Describe the displayed choice, recommendation, consequences and scope. Distinguish the user's recorded reason from an absent reason and from the agent's rationale. Describe any difficulty understanding this Decision; you need not reconstruct the original conversation.",
+      "prompt": "Within the actual related Work, describe the recorded choice, alternatives, recommendation, consequences and scope. Distinguish the user’s recorded reason, an absent reason and the agent’s rationale. Unassociated Decisions remain outside Viewer.",
       "claims": [
         "displayed_decision_comprehension"
       ]
@@ -80,14 +80,10 @@
       ],
       "required_views": [
         {
-          "view": "code"
-        },
-        {
-          "view": "tools",
-          "tool": "status"
+          "view": "repository"
         }
       ],
-      "prompt": "Follow related code, relationships and Source details. Explain what they teach you about the actual Project and which static relationships support that explanation. Describe Analysis state/freshness, related limitations, usable remainder and refresh guidance; report where the presentation obscures these.",
+      "prompt": "Read Repository explanation and follow its exact cited code/Source details. Explain the supported responsibilities, mechanism, relevant analysis freshness/limitations and usable remainder. General diagnostics are available outside Viewer; do not seek a Code catalog or Analysis tool page.",
       "claims": [
         "architecture_flow_comprehension",
         "code_behavior_comprehension",
@@ -108,9 +104,6 @@
         },
         {
           "view": "work"
-        },
-        {
-          "view": "decisions"
         }
       ],
       "prompt": "First, does any meaning depend only on color with no text/shape cue? Separately, are Works, Decisions or information groups hard to distinguish despite other cues? Describe concrete examples of either.",
@@ -134,10 +127,7 @@
           "view": "work"
         },
         {
-          "view": "decisions"
-        },
-        {
-          "view": "code"
+          "view": "repository"
         }
       ],
       "prompt": "Navigate this same path by keyboard and describe reachability and visible focus. Inspect 390/768/1440 base widths and actual native browser 200% zoom; describe wrapping, readability, grouping and ordinary overflow, separately from diagram scrolling. State interactions you did not inspect.",
@@ -162,10 +152,7 @@
           "view": "work"
         },
         {
-          "view": "decisions"
-        },
-        {
-          "view": "code"
+          "view": "repository"
         }
       ],
       "prompt": "While selecting Works, following Decisions/code and opening evidence, describe the response to your input and resulting paint. Report delay or disruption you actually experienced and any uninspected interaction; server/export timings are separate evidence.",

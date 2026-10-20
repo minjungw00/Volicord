@@ -2449,7 +2449,7 @@ impl HostAdapter {
                 "confirmation_request_id":request.confirmation_request_identity.to_string(),"request_revision":request.request_revision,"effect_fingerprint":request.effect_fingerprint,
                 "exact_action":request.exact_action,"target":request.target,"expected_effect":request.expected_effect,"risk":format!("{:?}: {}",request.risk.category,request.risk.concrete_consequence),"scope":request.scope,"expiration_unix_micros":request.expires_at.as_unix_micros(),
                 "host_elicitation_available":self.client_supports_elicitation,
-                "fallback":if self.client_supports_elicitation { Value::Null } else { json!({"viewer":["volicord-viewer","--project",request.project_id.to_string()],"cli":["volicord","guarded","confirm",request.confirmation_request_identity.to_string(),request.request_revision.to_string(),request.effect_fingerprint.clone(),"codex",self.host_session.clone(),"EXPLICIT_USER_RESPONSE"]}) }
+                "fallback":if self.client_supports_elicitation { Value::Null } else { json!({"viewer":["volicord-viewer","--runtime",self.operations.layout().root().display().to_string(),"--project",request.project_id.to_string(),"--guarded",request.confirmation_request_identity.to_string()],"cli":["volicord","--runtime",self.operations.layout().root().display().to_string(),"--project",request.project_id.to_string(),"advanced","guarded","confirm",request.confirmation_request_identity.to_string(),"--revision",request.request_revision.to_string(),"--fingerprint",request.effect_fingerprint.clone(),"--host","codex","--session",self.host_session.clone(),"--response","EXPLICIT_USER_RESPONSE"]}) }
             }));
         }
         let revision = required_u64(args, "request_revision")?;

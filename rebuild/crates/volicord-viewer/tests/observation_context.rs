@@ -2,7 +2,7 @@
 #[path = "../../volicord-operations/tests/support/reading_fixture.rs"]
 #[allow(dead_code)]
 mod reading_fixture;
-use serde_json::{json, Value};
+use serde_json::Value;
 use volicord_context::*;
 use volicord_projections::*;
 use volicord_viewer::*;
@@ -175,21 +175,6 @@ fn rendered_context_preserves_absent_current_stale_regenerated_and_both_locales(
     assert_eq!(
         state(&read(&f, ViewerLocale::English, view)?, &work.to_string()),
         "deleted"
-    );
-    let decision = f.decisions["project"];
-    record(&f, ExplanationSubject::Decision(decision), "ko")?;
-    let detail = read(
-        &f,
-        ViewerLocale::Korean,
-        ViewerView::Decisions {
-            decision: Some(decision),
-        },
-    )?;
-    assert_eq!(detail["selected_decision"], decision.to_string());
-    assert_eq!(state(&detail, &decision.to_string()), "current");
-    assert_eq!(
-        detail["view"],
-        json!({"view":"decisions","decision":decision.to_string()})
     );
     Ok(())
 }

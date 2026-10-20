@@ -93,14 +93,16 @@ class ChangedSurfaceTests(unittest.TestCase):
             self.assertEqual(states["multi-work"], "insufficient_evidence")
         for locale in contexts:
             decisions = copy.deepcopy(contexts[locale][0])
-            decisions["context"].update(view={"view": "decisions"})
+            decisions["context"].update(view={"view": "repository"})
             contexts[locale].append(decisions)
         ready = p.block_readiness(inventory["observation_blocks"], contexts, subjects)
         self.assertEqual(next(b["state"] for b in ready["en"] if b["id"] == "color-grouping"), "ready")
         self.assertIn("not_color_only", p.prepared_claims({"readiness": ready, "subjects": subjects, "selection": p.select_blocks(ready, ("en", "ko"), ())}, "en", contexts["en"]))
         self.assertNotIn("multiple_work_comprehension", p.prepared_claims({"readiness": ready, "subjects": subjects, "selection": p.select_blocks(ready, ("en", "ko"), ())}, "en", contexts["en"]))
+        without_repository={locale:[v for v in values if v["context"]["view"]["view"]!="repository"] for locale,values in contexts.items()}
+        missing=p.block_readiness(inventory["observation_blocks"],without_repository,subjects)
         with self.assertRaisesRegex(ValueError, "prepared block"):
-            p.require_claim_context({"readiness": ready, "subjects": subjects, "selection": p.select_blocks(ready, ("en", "ko"), ())}, contexts, "en", "code_behavior_comprehension", "violated")
+            p.require_claim_context({"readiness": missing, "subjects": subjects, "selection": p.select_blocks(missing, ("en", "ko"), ())}, without_repository, "en", "code_behavior_comprehension", "violated")
 
     def test_changed_candidate_requires_new_context_and_no_screen_fixes_missing_execution(self):
         manifest = manifest_fixture("f" * 40)
@@ -129,13 +131,13 @@ class ChangedSurfaceTests(unittest.TestCase):
         self.assertEqual(next(b["state"] for b in readiness["en"] if b["id"] == "decision"), "insufficient_evidence")
         for locale in contexts:
             for view in ({"view": "work", "work": "1" * 32}, {"view": "work", "work": "2" * 32},
-                         {"view": "decisions"}, {"view": "code"}, {"view": "tools", "tool": "status"}):
+                         {"view": "repository"}):
                 display = display_fixture(manifest, locale)
                 display["context"]["view"] = view
                 if view["view"] == "work":
                     display["context"]["selected_work"] = view["work"]
-                if view["view"] == "decisions":
-                    display["context"]["selected_decision"] = "3" * 32
+                if view["view"] == "work":
+                    display["context"]["explanations"].append({"kind":"decision","identity":"3"*32,"state":"unavailable"})
                 contexts[locale].append(display)
         p.require_contexts(value, contexts, candidate, "a" * 64, subjects)
         tampered = copy.deepcopy(value)

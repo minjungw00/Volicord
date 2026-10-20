@@ -17,13 +17,13 @@ sha2 = "0.10.9"
 serde_json = "1.0"
 getrandom = { version = "0.3.4", features = ["std"] }
 volicord-context = { path = "../volicord-context" }
-volicord-inquiry = { path = "../volicord-inquiry" }
 volicord-operations = { path = "../volicord-operations" }
-volicord-privacy = { path = "../volicord-privacy" }
 volicord-projections = { path = "../volicord-projections" }
 volicord-repository-intelligence = { path = "../volicord-repository-intelligence" }
 
 [dev-dependencies]
+volicord-inquiry = { path = "../volicord-inquiry" }
+volicord-privacy = { path = "../volicord-privacy" }
 volicord-host = { path = "../volicord-host" }
 rustix = { version = "1.1.4", features = ["net"] }
 rusqlite = { version = "0.32.1", features = ["bundled"] }

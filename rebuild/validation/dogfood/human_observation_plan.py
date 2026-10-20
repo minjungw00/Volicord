@@ -95,8 +95,8 @@ def block_readiness(blocks, contexts, subjects):
             if block["id"] == "work" and not any(c["view"].get("view") == "work"
                     and c["selected_work"] is not None for c in displays):
                 reasons.append("selected_work_missing")
-            if block["id"] == "decision" and not any(c["view"].get("view") == "decisions"
-                    and c["selected_decision"] is not None for c in displays):
+            if block["id"] == "decision" and not any(c["view"].get("view") == "work" and c["selected_work"] is not None
+                    and any(e.get("kind")=="decision" and e.get("identity") in subjects["decision_ids"] for e in c["explanations"]) for c in displays):
                 reasons.append("selected_decision_missing_applicability_unresolved")
             result[locale].append({"id": block["id"], "claims": block["claims"],
                 "state": "insufficient_evidence" if reasons else "ready", "reasons": reasons,

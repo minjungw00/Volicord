@@ -179,131 +179,6 @@ async function ordinaryText(locator) {
 function claimGroups(body, groups, reason) {
   for(const terms of groups)requireFact(terms.some(t=>body.toLowerCase().includes(t.toLowerCase())),`${reason}:${terms}`);
 }
-async function readingHierarchy(state, locale) {
-  requireFact(await page.locator('nav[aria-label="Viewer"] a[aria-current="page"]').count()===1,'current_navigation_ambiguous');
-  requireFact(await page.locator('#limitations').count()===0,'global_limitations_dominate_reading');
-  const ordinary=await ordinaryText(page.locator('main'));
-  requireFact(!ordinary.includes('integrity diagnostics not requested'),'materialization_detail_as_warning');
-  if(state==='default') {
-    const heading=await page.locator('main > section').first().getAttribute('id');
-    requireFact(heading==='overview','project_purpose_not_first');
-    for(const card of await page.locator('#overview .work-summary').all()) {
-      requireFact(await card.locator('h4 a').count()===1,'work_title_not_distinct');
-      requireFact(await card.locator('.work-state .badge').count()===1,'work_status_missing');
-      requireFact(await card.locator('.next-action[data-question]').count()===1,'work_next_action_missing');
-      requireFact(await card.locator('details').count()===0,'list_expands_audit_or_full_explanation');
-    }
-  }
-  if(state==='analysis') {
-    const status=page.locator('#health .analysis-summary');
-    requireFact(await status.count()===1,'analysis_reading_missing');
-    requireFact(['absent','current','partial','stale','failed','unknown','unavailable'].includes(await status.getAttribute('data-analysis-state')),'analysis_state_unknown');
-    requireFact(await status.locator('[data-analysis-freshness]').count()===1,'freshness_conflated_with_coverage');
-    requireFact((await ordinaryText(status)).includes('volicord analyze'),'refresh_guidance_missing');
-    requireFact(await page.locator('.runtime-diagnostics[open],.global-diagnostics[open]').count()===0,'global_diagnostics_not_disclosed');
-  }
-  return {hierarchy:state,locale,diagnostics:'explicit_disclosure'};
-}
-async function overviewFacts(locale) {
-  const overview=page.locator('#overview');
-  const body=await ordinaryText(overview);
-  requireFact(body.includes(config.scenario.purpose_present),'purpose_not_source_grounded');
-  const categories=await overview.locator('.category-count').allTextContents();
-  requireFact(categories.length===3,'overview_category_counts_missing');
-  for(const count of categories) {
-    const values=count.match(/\d+/g)?.map(Number);
-    requireFact(values?.length===3 && values[0]===values[1]+values[2],'overview_omissions_dishonest');
-  }
-  for(const key of ['older','same_title','goal_only']) {
-    const card=overview.locator(`[data-work-id="${F.goals[key]}"]`).first();
-    if(key==='goal_only' && !await card.count()) {requireFact(Number(categories[2].match(/\d+/g)?.[2])>0,'overview_omitted_goal_without_count');continue;}
-    requireFact(await card.count()===1,`overview_work_missing:${key}`);
-    const text=await ordinaryText(card);
-    const expected=config.scenario.works.find(w=>w.key===key);
-    const state=expected.checkpoints.at(-1)?.work||'Open';
-    const labels=locale==='en'?{Completed:'completed',Paused:'paused',Open:'open',InProgress:'in progress'}:{Completed:'완료',Paused:'일시 중지',Open:'열림',InProgress:'진행 중'};
-    requireFact(text.includes(labels[state]),`overview_state_missing:${key}`);
-    if(key==='older')requireFact(text.includes(locale==='en'?'historical':'과거'),'overview_promotes_historical_pass');
-  }
-  return {categories,works:['older','same_title','goal_only']};
-}
-async function workFacts(key, locale) {
-  const section = page.locator(workSelector(key));
-  requireFact(await section.count() === 1, 'work_exact_identity');
-  const text = await ordinaryText(section);
-  const expected = config.scenario.works.find(w => w.key === key);
-  requireFact(text.includes(expected.title), 'work_title_source_mismatch');
-  const latest = expected.checkpoints.at(-1);
-  if (latest) {
-    const next=section.locator('details').filter({has:page.locator('summary')}).filter({hasText:latest.next_step});
-    requireFact(await next.count()>0, 'cross_work_next_step_substitution');
-    const state = await ordinaryText(section.locator('.fact-states').first());
-    const labels = locale === 'en'
-      ? {Completed:'completed',Paused:'paused',InProgress:'in progress',Passed:'passed',Failed:'failed',NotRun:'not run',Pending:'pending',NotRequested:'not requested',Reviewed:'reviewed',Accepted:'accepted',Rejected:'rejected'}
-      : {Completed:'완료',Paused:'일시 중지',InProgress:'진행 중',Passed:'통과',Failed:'실패',NotRun:'실행하지 않음',Pending:'대기 중',NotRequested:'요청하지 않음',Reviewed:'검토됨',Accepted:'수락됨',Rejected:'거부됨'};
-    for (const fact of [latest.work, latest.verification, latest.review, latest.acceptance]) requireFact(state.includes(labels[fact]), `work_state_source_mismatch:${fact}`);
-    for (const keyName of config.expected.exact_older.excluded_decision_keys) if (key === 'older') requireFact(!await section.locator(`a[href*="decision=${F.decisions[keyName]}"]`).count(), 'cross_work_decision_substitution');
-    if (key === 'older') {
-      requireFact(text.includes(locale === 'en' ? 'Prior adverse history' : '과거 문제 이력'), 'historical_adversity_notice_hidden');
-      const history = section.locator('details.work-state-history[data-reading-role="audit-history"]');
-      requireFact(await history.count() === 1, 'work_history_disclosure_missing');
-      requireFact(await history.getAttribute('open') === null, 'work_history_dominates_primary_reading');
-      await activate(history.locator(':scope > summary'), false);
-      const visibleHistory = await history.innerText();
-      requireFact(visibleHistory.includes(labels.Failed) && visibleHistory.includes(labels.Rejected)
-        && visibleHistory.includes(labels.Pending), 'historical_failure_or_pending_state_hidden');
-      // Exact retained records stay behind a second native disclosure.
-      for (const source of await history.locator('li > details > summary').all()) await activate(source, false);
-      const exactHistory = await history.innerText();
-      for (const cp of config.expected.exact_older.checkpoint_keys)
-        requireFact(exactHistory.includes(F.checkpoints[cp]), 'history_checkpoint_basis_missing');
-      await activate(history.locator(':scope > summary'), false);
-      requireFact(await history.getAttribute('open') === null, 'work_history_disclosure_did_not_close');
-      requireFact(text.includes(locale === 'en' ? 'Interpretation has not been generated' : '해석이 아직 생성되지'), 'summary_limit_hidden');
-      const source = await section.textContent();
-      for (const cp of config.expected.exact_older.checkpoint_keys) requireFact(source.includes(F.checkpoints[cp]), 'checkpoint_basis_missing');
-      for (const decision of ['explicit','project','unresolved']) requireFact(await section.locator(`a[href*="decision=${F.decisions[decision]}"]`).count() > 0, 'decision_scope_link_missing');
-    }
-  } else requireFact(text.includes(locale === 'en' ? 'Goal-only Work is open' : 'Goal만 있는 작업은 열림'), 'goal_only_gap_hidden');
-  return {identity:F.goals[key],latest:latest ? [latest.work,latest.verification,latest.review,latest.acceptance] : 'Goal only'};
-}
-async function labels() {
-  const facts = await page.evaluate(() => [...document.querySelectorAll('g.diagram-node')].map(e => {
-    const rect = e.querySelector('rect').getBBox();
-    const texts = [...e.querySelectorAll('text')].map(t => ({text:t.textContent,box:t.getBBox()}));
-    return {id:e.dataset.entityId,display:texts.map(t=>t.text).join(''),aria:e.closest('a').getAttribute('aria-label'),fit:texts.every(t=>t.box.x >= rect.x-1 && t.box.x+t.box.width <= rect.x+rect.width+1 && t.box.y >= rect.y-1 && t.box.y+t.box.height <= rect.y+rect.height+1)};
-  }));
-  requireFact(facts.length > 0, 'no_grounded_nodes');
-  for (const suffix of ['alpha','beta']) {
-    const node = facts.find(n => n.aria.includes(`distinguishing_labels_${suffix}`));
-    requireFact(node && node.display.includes(suffix), `common_prefix_truncation:${suffix}`);
-  }
-  requireFact(facts.every(n=>n.fit), `svg_label_outside_node:${JSON.stringify(facts.filter(n=>!n.fit))}`);
-  return facts;
-}
-async function graphIdentity() {
-  const evidence = await page.evaluate(() => ({nodes:[...document.querySelectorAll('g.diagram-node')].map(e=>({id:e.dataset.entityId,snapshot:e.dataset.analysisSnapshot})),edges:[...document.querySelectorAll('g.diagram-edge')].map(e=>({id:e.dataset.relationId,source:e.dataset.sourceEntity,target:e.dataset.targetEntity})),lists:[...document.querySelectorAll('details.relationship')].map(e=>e.dataset.relationId)}));
-  const relations = new Map(F.relations.map(r=>[r.identity,r]));
-  for (const n of evidence.nodes) requireFact(F.entities.some(e=>e.id===n.id) && n.snapshot === F.analysis_snapshot, 'graph_entity_basis_mismatch');
-  for (const e of evidence.edges) {
-    const source = relations.get(e.id);
-    requireFact(source && source.source_entity===e.source && source.target.resolution==='resolved_entity' && source.target.target===e.target && evidence.lists.includes(e.id), 'graph_relation_basis_mismatch');
-  }
-  return evidence;
-}
-async function evidenceOpen(root=page.locator('main')) {
-  // Native keyboard disclosures, including nested original evidence.
-  const summaries = root.locator('details > summary');
-  const count = await summaries.count();
-  for (let n=0;n<Math.min(count,4);n++) {
-    const summary = summaries.nth(n);
-    if (await summary.isVisible() && !await summary.evaluate(e=>e.parentElement.open)) {
-      await activate(summary, false);
-      requireFact(await summary.evaluate(e=>e.parentElement.open), 'native_disclosure_failed');
-    }
-  }
-  return {disclosures:count,...await overflow()};
-}
 async function copyMutation(name, mutate, verify, positiveUrl) {
   await go(positiveUrl);
   await verify();
@@ -331,359 +206,55 @@ async function snapshotSafety() {
   await fragments();
   return facts;
 }
-async function codeHierarchy(locale, scope='repository') {
-  const code=page.locator('#code');
-  const summary=code.locator('[data-code-reliability]');
-  const details=code.locator('#code-limit-details');
-  requireFact(await summary.count()===1 && await details.count()===1,'code_diagnostic_reading_missing');
-  requireFact(!await details.evaluate(e=>e.open),'code_diagnostics_initially_expanded');
-  const counts={issues:Number(await details.getAttribute('data-issue-count')),gaps:Number(await details.getAttribute('data-gap-count'))};
-  requireFact(counts.issues===await details.locator('[data-limit-kind="issue"]').count() && counts.gaps===await details.locator('[data-limit-kind="gap"]').count(),'code_diagnostic_counts_mismatch');
-  requireFact(counts.issues===Number(await summary.getAttribute('data-issue-count')) && counts.gaps===Number(await summary.getAttribute('data-gap-count')),'code_summary_counts_mismatch');
-  const ordinary=await ordinaryText(code);
-  const scopeLabel=locale==='en'?{repository:'Repository evidence',work:'Selected Work evidence',entity:'Selected entity evidence'}[scope]:{repository:'저장소 근거',work:'선택한 작업 근거',entity:'선택한 엔터티 근거'}[scope];
-  requireFact((await summary.textContent()).includes(scopeLabel),'code_scope_label_mismatch');
-  const heading=code.locator('h3').filter({hasText:locale==='en'?'How the architecture and code connect':'아키텍처와 코드의 연결'});
-  const geometry=await code.evaluate(root=>{
-    const detail=root.querySelector('#code-limit-details'),warning=root.querySelector('[data-code-reliability]');
-    const heading=[...root.querySelectorAll('h3')].find(e=>/How the architecture and code connect|아키텍처와 코드의 연결/.test(e.textContent));
-    const behavior=root.querySelector('[data-code-behavior]');
-    return {warning_height:warning.getBoundingClientRect().height,explanation_offset:heading.getBoundingClientRect().top-root.getBoundingClientRect().top,
-      detail_after_meaning:!!(heading.compareDocumentPosition(detail)&Node.DOCUMENT_POSITION_FOLLOWING) && !!(behavior.compareDocumentPosition(detail)&Node.DOCUMENT_POSITION_FOLLOWING),
-      diagnostic_list_visible:!!detail.querySelector('ul').getBoundingClientRect().height};
-  });
-  requireFact(geometry.detail_after_meaning && !geometry.diagnostic_list_visible,'code_diagnostic_reading_order');
-  requireFact(await code.locator('[data-code-behavior][data-explanation-state="Current"]').count()>0,'supported_behavior_missing_from_viewer');
-  if(scope==='repository') {
-    requireFact(counts.issues===30 && counts.gaps===15,'large_code_diagnostic_fixture_mismatch');
-    requireFact(ordinary.includes(locale==='en'?'Source unavailable: 30':'Source 사용 불가: 30'),'material_source_blocker_hidden');
-    requireFact((await details.textContent()).includes(locale==='en'?'Repository coverage (root)':'저장소 분석 범위 (루트)'),'generic_root_scope_not_readable');
-    for(const source of F.diagnostic_sources)requireFact(await details.locator(`[data-limit-id="${source}"]`).count()===1,'diagnostic_identity_lost');
-    if(await page.evaluate(()=>innerWidth)>=1400)requireFact(geometry.explanation_offset<1100 && geometry.warning_height<600,'code_meaning_displaced_by_diagnostics');
-  } else {
-    requireFact(counts.issues===0 && counts.gaps<15,'unrelated_scope_diagnostics_conflated');
-    requireFact(!(await details.locator('li > p').allTextContents()).join(' ').includes('outside_work'),'unrelated_work_scope_diagnostic');
-    requireFact(ordinary.includes(locale==='en'?'returns the result of calling `name.strip()`':'name.strip()'),'source_behavior_consumer_binding');
-  }
-  await overflow();
-  return {...counts,...geometry,heading:await heading.innerText()};
-}
-async function codeDisclosure(locale, key) {
-  const detail=page.locator('#code-limit-details');
-  const summary=detail.locator(':scope > summary');
-  const label=await summary.innerText();
-  requireFact(label.includes(locale==='en'?'Full Code diagnostics':'전체 코드 진단'),'code_disclosure_accessible_name');
-  const accessibility=await summary.ariaSnapshot();
-  requireFact(accessibility.includes(label),'code_disclosure_accessible_name_missing_from_browser');
-  const focus=await activate(summary,false);
-  requireFact(await detail.evaluate(e=>e.open),'code_diagnostics_keyboard_open_failed');
-  // Long authored diagnostic prose is layout stress only, separately restored.
-  const item=detail.locator('li p').first();const original=await item.innerText();
-  await item.evaluate(e=>e.textContent=('긴 한국어 진단 · English diagnostic · very_long_scope_without_spaces_').repeat(40));
-  await overflow();
-  await capture(`code-diagnostic-stress-${locale}-${mode}-${key}.png`,item,true);
-  await item.evaluate((e,text)=>e.textContent=text,original);
-  await capture(`code-diagnostics-${locale}-${mode}-${key}.png`,summary);
-  await page.keyboard.press('Space');await frames();
-  requireFact(!await detail.evaluate(e=>e.open),'code_diagnostics_keyboard_close_failed');
-  return {label,accessibility,focus,expanded_count:await detail.locator('li').count(),long_bilingual_reflow:'passed'};
+async function readerBoundary() {
+  const nav=page.locator('nav[aria-label="Viewer"]');
+  requireFact(await nav.count()===1&&await nav.locator('a').count()===3,'three_destinations_required');
+  requireFact(await page.locator('.tools-menu,.inspection-query,#code,#repository-code,#decision-reading,#analysis-tool,#documents-tool,#memory-tool,#evidence-tool').count()===0,'retired_surface_present');
+  const names=await nav.locator('a').allTextContents();
+  requireFact(JSON.stringify(names)===JSON.stringify(await page.evaluate(()=>document.documentElement.lang==='ko')?['개요','저장소 설명','작업']:['Overview','Repository explanation','Work']),'primary_destinations_changed');
+  requireFact(await page.locator('form').count()===0,'reader_mutation_form');
+  await overflow();await fragments();
 }
 async function live() {
-  const url = (view, locale, fields={}) => config.url+'?'+new URLSearchParams({view,locale,language:locale,...fields});
-  const entity = F.entities.find(e=>e.path==='unsafe<&>.py' && e.name==='unsafe<&>');
-  requireFact(entity, 'source_fixture_alpha_not_analyzed');
-  const routes = locale => ({default:config.url+'?locale='+locale,work:url('work',locale,{work:F.goals.older}),decision:url('decisions',locale,{decision:F.decisions.explicit}),detail:url('code',locale,{scope:'repository',entity:entity.id}),analysis:url('tools',locale,{tool:'status'}),catalog:url('work',locale)});
-  const callable=F.entities.find(e=>e.path==='python/worker.py' && e.name==='format_name');
-  requireFact(callable,'source_behavior_fixture_missing');
-  const parity={};
-  for(const locale of ['en','ko']) for(const width of [390,768,1440]) for(const factor of [1,2]) for(const scope of ['repository','work','entity']) {
+  for(const locale of ['en','ko'])for(const width of [1440,768,390,320])await check(`reader-${locale}-${width}`,async()=>{
     await page.setViewportSize({width,height:900});
-    await check(`code-hierarchy-${locale}-${width}-${factor}-${scope}`,async()=>{
-      await go(url('code',locale,scope==='repository'?{scope:'repository'}:{scope:'work',work:F.goals.older,...(scope==='entity'?{entity:callable.id}:{})}));
-      await zoom(1);if(factor===2)await zoom(2);
-      const hierarchy=await codeHierarchy(locale,scope);
-      if(scope==='repository')parity[locale]={diagnostics:await page.locator('#code-limit-details').textContent(),behaviors:await page.locator('#code [data-code-behavior]').evaluateAll(elements=>elements.map(e=>({id:e.dataset.codeBehavior,state:e.dataset.explanationState,ordinary:[...e.children].filter(c=>c.tagName!=='DETAILS').map(c=>c.textContent).join(' ')})))};
-      await capture(`code-${locale}-${width}-${factor}-${scope}.png`,page.locator('#code'));
-      return {hierarchy,disclosure:await codeDisclosure(locale,`${width}-${factor}-${scope}`)};
-    });
-  }
-  fs.writeFileSync(path.join(config.output,'code-live-reading.json'),JSON.stringify(parity,null,2));
-  const repositoryCode=url('code','en',{scope:'repository'});
-  await check('negative-code-expanded',()=>copyMutation('code_expanded',()=>document.querySelector('#code-limit-details').open=true,()=>codeHierarchy('en'),repositoryCode));
-  await check('negative-code-count',()=>copyMutation('code_count',()=>document.querySelector('#code-limit-details li').remove(),()=>codeHierarchy('en'),repositoryCode));
-  await check('negative-code-warning',()=>copyMutation('code_warning',()=>document.querySelector('[data-code-reliability]').hidden=true,()=>codeHierarchy('en'),repositoryCode));
-  for (const locale of ['en','ko']) {
-    for (const width of [390,768,1440]) {
-      await page.setViewportSize({width,height:900});
-      for (const factor of [1,2]) {
-        for (const [state,address] of Object.entries(routes(locale))) {
-          const reading=page.locator(state==='default'?'#overview':state==='work'?workSelector('older'):state==='decision'?idSelector(`decision-${F.decisions.explicit}`):state==='analysis'?'#health':state==='catalog'?'#works':'#code');
-          await check(`${locale}-${width}-${factor}-${state}`, async()=>{
-            await go(address);
-            await zoom(1);
-            if (factor===2) await zoom(2);
-            requireFact(await page.locator('html').getAttribute('lang') === locale, 'bundled_locale_mismatch');
-            await fragments();
-            requireFact(await page.locator('script,[onclick],[onerror]').count()===0,'escaping_security_boundary');
-            await readingHierarchy(state,locale);
-            if (state==='default') await overviewFacts(locale);
-            if (state==='work') await workFacts('older',locale);
-            if (state==='decision') {
-              const section = page.locator(idSelector(`decision-${F.decisions.explicit}`));
-              const body = await ordinaryText(section);
-              requireFact(body.includes(locale==='en'?'Agent recommendation: Remote':'에이전트 권고: Remote'), 'recommendation_attribution_missing');
-              requireFact(body.includes(locale==='en' ? 'User rationale is not recorded' : '사용자 근거가 기록되지 않았습니다'), 'missing_user_rationale_fabricated');
-              const stateText=await ordinaryText(section);
-              requireFact(stateText.includes(locale==='en' ? 'review required' : '검토 필요'), 'review_due_hidden');
-              requireFact(stateText.includes('Local') && body.includes('Remote'),'user_choice_and_recommendation_confused');
-              requireFact(await section.locator('xpath=..').getAttribute('data-decision-scope')==='work-item' && body.includes(locale==='en'?'Declared Work scope':'선언된 작업 범위') && body.includes('native/query.c'),'decision_scope_source_mismatch');
-              const retained=await section.textContent();
-              requireFact([F.decision_sources.explicit.user,...F.decision_sources.explicit.recommendation].every(id=>retained.includes(id)),'decision_source_basis_missing');
-            }
-            if (state==='detail') {await labels(); await graphIdentity();}
-            const geometry = await overflow();
-            await capture(`${locale}-${width}-${factor}-${state}.png`,reading);
-            return geometry;
-          });
-          await check(`${locale}-${width}-${factor}-${state}-evidence-open`, async()=>{
-            const evidence = await evidenceOpen(reading);
-            const opened=reading.locator('details[open] > summary').first();
-            await capture(`${locale}-${width}-${factor}-${state}-evidence.png`,await opened.count()?opened:reading);
-            return evidence;
-          });
-        }
-      }
+    for(const view of ['overview','repository','work']) {
+      await go(`${config.url}?view=${view}&locale=${locale}&language=${locale}`);
+      await readerBoundary();await capture(`reader-${view}-${locale}-${width}.png`);
     }
-    await page.setViewportSize({width:768,height:900});
-    await check(`keyboard-views-${locale}`, async()=>{
-      await go(routes(locale).default);await zoom(1);
-      const evidence=[];
-      for (const view of ['work','code','decisions','overview']) evidence.push(await activate(page.locator(`nav[aria-label="Viewer"] a[href*="view=${view}"]`)));
-      for(const tool of ['status','documents']) evidence.push(await activate(page.locator(`nav[aria-label="Viewer"] a[href*="tool=${tool}"]`)));
-      return evidence;
-    });
-    await check(`keyboard-reading-settings-${locale}`, async()=>{
-      const observed=[];
-      for (const address of [url('work',locale,{page:1}), routes(locale).decision, routes(locale).detail]) {
-        await go(address); await zoom(1);
-        await activate(page.locator('.skip-link'),false);
-        requireFact(await page.evaluate(()=>document.activeElement.id==='viewer-content'),'skip_link_did_not_focus_main');
-        const initial=new URL(page.url());
-        const settings=page.locator('.reading-settings');
-        await activate(settings.locator(':scope > summary'),false);
-        const input=settings.locator('input[name="language"]');
-        await keyboardReach(input);await page.keyboard.press('Control+A');await page.keyboard.type('fr-CA');
-        await activate(settings.locator('button[type="submit"]'));
-        const changed=new URL(page.url());
-        requireFact(changed.searchParams.get('language')==='fr-CA'&&changed.searchParams.get('locale')===locale,'reading_language_request_lost');
-        for (const key of ['view','page','work','decision','scope','entity']) requireFact(initial.searchParams.get(key)===changed.searchParams.get(key),`language_changed_subject:${key}`);
-        await activate(settings.locator(':scope > summary'),false);
-        const other=locale==='en'?'ko':'en';
-        await activate(settings.locator(`a[data-locale="${other}"]`));
-        const localized=new URL(page.url());
-        requireFact(localized.searchParams.get('language')==='fr-CA'&&await page.locator('html').getAttribute('lang')===other,'interface_locale_relabels_generation');
-        for (const key of ['view','page','work','decision','scope','entity']) requireFact(changed.searchParams.get(key)===localized.searchParams.get(key),`locale_changed_subject:${key}`);
-        await overflow();observed.push({before:initial.search,after:localized.search});
-      }
-      return {native_keyboard:true,read_only:true,observed};
-    });
-    await check(`keyboard-tools-${locale}`,async()=>{
-      await go(routes(locale).default);await zoom(1);
-      await activate(page.locator('.utility-navigation > summary'),false);
-      for (const tool of ['memory','evidence']) {
-        await activate(page.locator(`nav[aria-label="Tools"] a[href*="tool=${tool}"]`));
-        requireFact(await page.locator('nav[aria-label="Tools"] a[aria-current="page"]').count()===1,'secondary_navigation_state_ambiguous');
-        requireFact(await page.locator(tool==='memory'?'#memory-actions':'#diagnostics').count()===1,'tool_surface_missing');
-        await overflow();
-      }
-    });
-    for(const width of [390,768,1440])for(const factor of [1,2])await check(`latest-work-boundary-${locale}-${width}-${factor}`,async()=>{
-      await page.setViewportSize({width,height:900});
-      let address=routes(locale).catalog;
-      for(let n=0;n<3;n++) {
-        await go(address);await zoom(1);if(factor===2)await zoom(2);
-        if(await page.locator('.current-work').count())break;
-        const next=page.locator('nav[aria-label="List pages"] a').last();
-        requireFact(await next.count()===1,'highlighted_work_missing');
-        address=new URL(await next.getAttribute('href'),config.url).href;
-      }
-      const highlight=page.locator('.current-work');
-      requireFact(await highlight.count()===1&&await highlight.locator('.work-summary').getAttribute('data-work-id')===F.latest_work,'highlighted_work_identity_mismatch');
-      async function contained() {
-        await overflow();
-        const geometry=await highlight.evaluate(root=>{
-          const outer=root.getBoundingClientRect();const card=root.querySelector('.work-summary');const box=card.getBoundingClientRect();
-          const children=[...card.querySelectorAll('h4,p,span,a')].filter(e=>e.getClientRects().length).map(e=>e.getBoundingClientRect());
-          return {outer:outer.toJSON(),card:box.toJSON(),contained:box.bottom<=outer.bottom+1&&box.right<=outer.right+1&&children.every(r=>r.left>=box.left-1&&r.right<=box.right+1&&r.bottom<=box.bottom+1)};
-        });
-        requireFact(geometry.contained,'latest_work_highlight_overflow');return geometry;
-      }
-      const firstWord = await highlight.locator('.work-summary .empty-state').first().evaluate(e=>{
-        const node=e.firstChild;const match=node.textContent.match(/^\S+/);
-        const range=document.createRange();range.setStart(node,0);range.setEnd(node,match[0].length);
-        return {word:match[0],lines:range.getClientRects().length};
-      });
-      requireFact(firstWord.lines===1,'ordinary_word_fragmented_by_nested_padding');
-      const actual=await contained();await capture(`latest-work-${locale}-${width}-${factor}.png`,highlight);
-      // Labeled DOM stress is geometry support; it supplies no renderer/display receipt.
-      await highlight.locator('h4 a').evaluate(e=>e.textContent=('긴 작업 Unicode 🧭 / extremely_long_path_without_spaces_').repeat(20));
-      await contained();
-      // Reproduce the old nested 100% height error and require the actual check to detect it.
-      await highlight.evaluate(e=>{e.style.height=e.getBoundingClientRect().height+'px';e.querySelector('.work-summary').style.height='100%';});
-      let detected;try{await contained();}catch(e){detected=String(e);}
-      requireFact(detected?.includes('latest_work_highlight_overflow'),'highlight_overflow_regression_not_sensitive');
-      await go(address);await zoom(1);if(factor===2)await zoom(2);await contained();
-      return {actual,stress:'long Unicode title/path',negative_detected:detected,restored:true};
-    });
-    await check(`keyboard-paged-old-work-${locale}`, async()=>{
-      await go(url('work',locale));
-      requireFact(!await page.locator(`a[href*="work=${F.goals.older}"]`).count(), 'old_work_not_beyond_list_bound');
-      await activate(page.locator('nav a[href*="page=1"]'));
-      await activate(page.locator(`a[href*="work=${F.goals.older}"]`).first());
-      await workFacts('older',locale);
-      await activate(page.locator(`nav[aria-label="Viewer"] a[href*="scope=work"][href*="work=${F.goals.older}"]`));
-      requireFact((await page.locator('#code').innerText()).includes('python/worker.py'), 'work_source_scope_missing');
-    });
-    await check(`distinct-work-${locale}`, async()=>{await go(url('work',locale,{work:F.goals.same_title}));return workFacts('same_title',locale);});
-    await check(`goal-only-${locale}`, async()=>{await go(url('work',locale,{work:F.goals.goal_only}));return workFacts('goal_only',locale);});
-    await check(`keyboard-graph-source-${locale}`, async()=>{
-      await go(routes(locale).detail);
-      const anchor=page.locator('svg a').filter({has:page.locator(`g[data-entity-id="${entity.id}"]`)}).first();
-      await activate(anchor,false);
-      const target=await page.evaluate(()=>location.hash.slice(1));
-      requireFact(target && await page.locator(idSelector(target)).count()===1, 'svg_fragment_navigation_failed');
-      await activate(page.locator(idSelector(target)+' > summary'),false);
-      const relationship=page.locator('details.relationship > summary').first();
-      await activate(relationship,false);
-      const open=page.locator('details.relationship[open]').first();
-      const actual=await open.getAttribute('data-relation-id');
-      requireFact(F.relations.some(r=>r.identity===actual),'relationship_identity_missing');
-      await activate(open.locator('a').first());
-      const source=page.locator('summary').filter({hasText:locale==='en'?'Source locator and retained range':'Source 위치 및 보존된 범위'});
-      await activate(source,false);
-      const selected=F.entities.find(e=>e.id===new URL(page.url()).searchParams.get('entity'));
-      const retained=await source.locator('..').innerText();
-      requireFact(selected && retained.includes(F.analysis_snapshot) && retained.includes(selected.source.identity) && retained.includes(selected.path),'source_snapshot_locator_basis_missing');
-      requireFact(retained.includes(F.repository_snapshot),'source_repository_snapshot_basis_missing');
-      const coordinates={};
-      for(const point of ['start','end']) {
-        const match=retained.match(new RegExp(`${point}:\\s*\\w+\\s*\\{\\s*line:\\s*(\\d+),\\s*column:\\s*(\\d+)\\s*\\}`));
-        requireFact(match && Number(match[1])===selected.range[point].line && Number(match[2])===selected.range[point].column,'source_range_basis_mismatch');
-        coordinates[point]={line:Number(match[1]),column:Number(match[2])};
-      }
-      return {entity:selected.id,source:selected.source.identity,analysis_snapshot:F.analysis_snapshot,repository_snapshot:F.repository_snapshot,path:selected.path,coordinates};
-    });
-    await check(`graph-local-scroll-${locale}`,async()=>{
-      await go(routes(locale).detail);await page.setViewportSize({width:390,height:900});
-      const graph=page.locator('.grounded-diagram').first();
-      requireFact(await graph.evaluate(e=>e.scrollWidth>e.clientWidth),'narrow_graph_not_scrollable');
-      await graph.evaluate(e=>e.scrollIntoView({block:'start'}));
-      const box=await graph.boundingBox();await page.mouse.move(box.x+box.width/2,Math.min(850,Math.max(10,box.y+60)));await page.mouse.wheel(350,0);await page.waitForFunction(()=>document.querySelector('.grounded-diagram').scrollLeft>0);await frames();
-      requireFact(await graph.evaluate(e=>e.scrollLeft>0),'graph_wheel_scroll_failed');
-      return overflow();
-    });
-  }
-  for (const locale of ['en','ko']) {
-    await check(`stale-analysis-${locale}`,async()=>{
-      const source=path.join(F.repository,'native/query.c');const original=fs.readFileSync(source);
-      try {
-        fs.appendFileSync(source,'\n/* browser stale fixture */\n');
-        await go(url('code',locale,{scope:'work',work:F.goals.older}));
-        const body=await page.locator('main').innerText();
-        requireFact(/not confirmed|확인되지 않습니다/.test(body),'stale_state_hidden');
-        requireFact(await page.locator('#code [data-code-behavior][data-explanation-state="Current"]').count()===0,'stale_behavior_claimed_current');
-        requireFact(!(await ordinaryText(page.locator('#code'))).includes('returns the result of calling'),'stale_behavior_prose_not_withheld');
-        requireFact((await page.locator('main').textContent()).includes('state: Stale'),'stale_basis_missing');
-        await capture(`stale-${locale}.png`);
-      } finally {fs.writeFileSync(source,original);}
-      await go(routes(locale).work);await workFacts('older',locale);
-    });
-    await check(`unavailable-analysis-${locale}`,async()=>{
-      const saved=F.analysis_directory+'-browser-unavailable';fs.renameSync(F.analysis_directory,saved);
-      try {
-        await go(routes(locale).detail);
-        const body=await page.locator('main').innerText();
-        requireFact(/unavailable|unverifiable|이용 불가|사용 불가|검증할 수|없음/i.test(body),'unavailable_state_hidden');
-        requireFact(await page.locator('g.diagram-node').count()===0,'unavailable_analysis_fabricates_nodes');
-        await capture(`unavailable-${locale}.png`);
-      } finally {fs.renameSync(saved,F.analysis_directory);}
-      await go(routes(locale).work);await workFacts('older',locale);
-    });
-  }
-  await page.setViewportSize({width:390,height:900});
-  await check('negative-historical-summary',()=>copyMutation('historical',()=>document.querySelectorAll('#overview .work-summary [data-question="VerificationCoverage"]').forEach(e=>e.remove()),()=>overviewFacts('en'),routes('en').default));
-  await check('negative-work-history',()=>copyMutation('work_history',()=>document.querySelector('details.work-state-history').remove(),()=>workFacts('older','en'),routes('en').work));
-  await check('negative-fake-flow',()=>copyMutation('flow',()=>{const edge=document.querySelector('g.diagram-edge').cloneNode(true);edge.dataset.relationId='invented-flow-edge';document.querySelector('svg').appendChild(edge);},graphIdentity,routes('en').detail));
-  await check('negative-wrapping',()=>copyMutation('wrapping',()=>{document.querySelectorAll('style').forEach(e=>e.textContent=e.textContent.replace(/overflow-wrap\s*:\s*anywhere/g,'overflow-wrap:normal').replace(/white-space\s*:\s*pre-wrap/g,'white-space:pre'));document.querySelectorAll('details').forEach(e=>e.open=true);},overflow,routes('en').work));
-  await check('negative-prefix',()=>copyMutation('prefix',()=>{document.querySelectorAll('g.diagram-node text').forEach(e=>e.textContent=e.textContent.slice(0,12)+'…');},labels,routes('en').detail));
-  // Obtain another actual product Work body, retaining older identity for a semantic substitution.
-  await go(url('work','en',{work:F.goals.same_title}));
-  config.otherWork = await page.locator(workSelector('same_title')).innerHTML();
-  await check('negative-cross-work',async()=>{
-    await go(routes('en').work);await workFacts('older','en');
-    await page.locator(workSelector('older')).evaluate((e,html)=>e.innerHTML=html,config.otherWork);
-    const file=path.join(config.output,'live-mutation-substitution.html');fs.writeFileSync(file,await page.content());await go(pathToFileURL(file).href);
-    let reason;try{await workFacts('older','en');}catch(e){reason=String(e);}
-    requireFact(reason?.includes('cross_work_next_step_substitution'),'semantic_substitution_not_detected_for_expected_reason');
-    await page.screenshot({path:path.join(config.output,'live-negative-substitution.png')});await go(routes('en').work);await workFacts('older','en');
-    return {detected:true,reason,restored_positive:'passed',copy:file};
+    await go(`${config.url}?view=work&work=${F.goals.older}&locale=${locale}&language=${locale}`);
+    const work=page.locator(workSelector('older'));
+    requireFact(await work.count()===1,'exact_work_missing');
+    requireFact(await work.locator(`[data-decision-id="${F.decisions.explicit}"]`).count()===1,'related_decision_missing');
+    requireFact(await work.locator(`[data-decision-id="${F.decisions.other_work}"]`).count()===0,'foreign_work_decision');
+    requireFact((await work.textContent()).includes('recommendation_rationale'),'decision_reason_missing');
+    await readerBoundary();await capture(`reader-detail-${locale}-${width}.png`,work);
+  });
+  await check('retired_urls_and_authority',async()=>{
+    for(const target of ['?view=tools','?view=decisions','?view=code&scope=repository','inspection','inspection.json'])requireFact((await context.request.get(config.url+target)).status()===404,'retired_route_not_denied');
+    requireFact((await context.request.get(config.url,{headers:{Host:'foreign.invalid'}})).status()===421,'wrong_host_admitted');
+    requireFact((await context.request.get(config.url,{headers:{Origin:'https://foreign.invalid'}})).status()===403,'wrong_origin_admitted');
+    for(const target of ['?view=work&work=bad','?view=overview&work=bad'])requireFact((await context.request.get(config.url+target)).status()===400,'invalid_selector_fallback');
+  });
+  for(const locale of ['en','ko'])await check(`reader-native-zoom-${locale}`,async()=>{
+    await page.setViewportSize({width:1440,height:900});await go(`${config.url}?view=repository&locale=${locale}`);await zoom(1);await zoom(2);await readerBoundary();await capture(`reader-native-zoom-${locale}.png`);await zoom(1);
   });
 }
 async function offline() {
-  // Server has exited and Runtime was renamed by the parent before this process.
-  await check('runtime-unavailable',async()=>{requireFact(!fs.existsSync(F.runtime),'runtime_still_available');const probe=await context.newPage();let unavailable=false;try{await probe.goto(config.url,{timeout:3000});}catch{unavailable=true;}finally{await probe.close();}requireFact(unavailable,'listener_still_available');await context.setOffline(true);});
-  for (const locale of ['en','ko']) for (const width of [390,768,1440]) for (const factor of [1,2]) {
-    await check(`offline-${locale}-${width}-${factor}`,async()=>{
-      await page.setViewportSize({width,height:900});await go(pathToFileURL(config.snapshots[locale]).href);await zoom(1);if(factor===2)await zoom(2);
-      await snapshotSafety();await overflow();
-      const hierarchy=await codeHierarchy(locale);
-      const live=JSON.parse(fs.readFileSync(path.join(config.output,'code-live-reading.json')))[locale];
-      requireFact(await page.locator('#code-limit-details').textContent()===live.diagnostics,'snapshot_code_diagnostics_differ');
-      const behaviors=await page.locator('#code [data-code-behavior]').evaluateAll(elements=>elements.map(e=>({id:e.dataset.codeBehavior,state:e.dataset.explanationState,ordinary:[...e.children].filter(c=>c.tagName!=='DETAILS').map(c=>c.textContent).join(' ')})));
-      requireFact(JSON.stringify(behaviors)===JSON.stringify(live.behaviors),'snapshot_code_behavior_differs');
-      await capture(`offline-code-${locale}-${width}-${factor}.png`,page.locator('#code'));
-      await codeDisclosure(locale,`${width}-${factor}-repository`);
-      for(const id of ['works','code','decision-reading','overview']) {
-        const nav=page.locator(`nav[aria-label="Viewer"] a[href="#${id}"]`);await activate(nav,false);
-        requireFact(await page.evaluate(()=>location.hash)==='#'+id,'offline_fragment_navigation_failed');
-      }
-      await evidenceOpen();await snapshotSafety();
-      await capture(`offline-${locale}-${width}-${factor}.png`,page.locator('main details[open] > summary').first());
-      return {hierarchy,...await overflow()};
-    });
-  }
-  for(const f of config.prefix_snapshots) await check(`history-prefix-${f.prefix}-${f.locale}`,async()=>{
-    await go(pathToFileURL(f.snapshot).href);await zoom(1);
-    const card=page.locator(idSelector(`work-${f.work}`)).locator(':scope > article.work-item');
-    const locale=f.locale;
-    const current=await ordinaryText(card.locator('.fact-states [data-question="WorkState"]'));
-    const states=locale==='en'?['open','completed','paused','completed']:['열림','완료','일시 중지','완료'];
-    requireFact(current.includes(states[f.prefix]),'prefix_state_mismatch');
-    const verification=await ordinaryText(card.locator('.fact-states [data-question="VerificationState"]'));
-    const labels=locale==='en'?['No verification record','passed','failed','not run']:['검증 기록 없음','통과','실패','실행하지 않음'];
-    requireFact(verification.includes(labels[f.prefix]),'prefix_verification_mismatch');
-    const result=card.locator('.result-evidence');
-    if(f.prefix===0)requireFact(await result.count()===0,'goal_only_invents_result');
-    else {
-      await result.locator('summary').click();
-      const quote=await result.innerText();
-      const key=f.prefix===3?'later_change':'change';
-      requireFact(quote.includes(f.checkpoints[key]),'prefix_result_basis_mismatch');
-      requireFact(quote.includes(f.prefix===3?'Additional changes after the earlier successful check':'The implementation changed'),'prefix_result_content_mismatch');
-      await result.locator('summary').click();
+  await context.setOffline(true);
+  for(const locale of ['en','ko'])for(const width of [1440,768,390,320])await check(`offline-reader-${locale}-${width}`,async()=>{
+    await page.setViewportSize({width,height:900});await go(pathToFileURL(config.snapshots[locale]).href);await snapshotSafety();await readerBoundary();
+    for(const id of ['overview','repository-explanation','works']) {
+      await activate(page.locator(`nav[aria-label="Viewer"] a[href="#${id}"]`),false);
+      requireFact(await page.locator('#'+id).isVisible(),'offline_destination_hidden');
+      await capture(`offline-reader-${id}-${locale}-${width}.png`,page.locator('#'+id));
     }
-    await snapshotSafety();
-    return {prefix:f.prefix,visible_state:current,visible_verification:verification,result_role:'explicit_evidence_only; no host generation in this fixture'};
-  });
-  for(const locale of ['en','ko']) await check(`purpose-absent-${locale}`,async()=>{
-    await go(pathToFileURL(config.absent_snapshots[locale]).href);await zoom(1);
-    const purpose=page.locator('#overview h3').first();
-    requireFact((await purpose.locator('xpath=following-sibling::*[1]').innerText()).includes(locale==='en'?'No source-grounded Project purpose is recorded':'source-grounded 프로젝트 목적이 기록되지 않았습니다'),'goal_promoted_to_purpose');
-    requireFact((await page.locator('#works').innerText()).includes('Goal must not replace Project Purpose'),'absent_purpose_goal_unreadable');
-    await snapshotSafety();await capture(`purpose-absent-${locale}.png`);
+    const link=page.locator(`#works a[href="#work-${F.goals.older}"]`);
+    if(await link.count()){await link.click();requireFact(await page.locator(workSelector('older')).isVisible(),'offline_work_hidden');}
+    await snapshotSafety();await readerBoundary();
   });
   await check('negative-fragment',()=>copyMutation('fragment',()=>{const href=document.querySelector('nav[aria-label="Viewer"] a').getAttribute('href');document.getElementById(href.slice(1)).removeAttribute('id');},fragments,pathToFileURL(config.snapshots.en).href));
-  await check('negative-live-link',()=>copyMutation('live_link',()=>{document.querySelector('nav[aria-label="Viewer"] a').setAttribute('href','http://127.0.0.1:3219/?view=tools');},snapshotSafety,pathToFileURL(config.snapshots.en).href));
+  await check('negative-live-link',()=>copyMutation('live_link',()=>{document.querySelector('nav[aria-label="Viewer"] a').setAttribute('href','http://127.0.0.1:3219/');},snapshotSafety,pathToFileURL(config.snapshots.en).href));
 }
 async function explanationFacts(key,locale) {
   const surface=page.locator(workSelector(key));
@@ -805,7 +376,8 @@ async function workExplanations() {
   });
   for (const locale of ['en','ko']) for (const key of Object.keys(config.decision_terms)) {
     await check(`decision-answer-${key}-${locale}`,async()=>{
-      await go(`${config.url}?view=decisions&decision=${F.decisions[key]}&locale=${locale}&language=${locale}`);
+      requireFact(key==='explicit','unassociated_decision_requires_non_viewer_consumer');
+      await go(`${config.url}?view=work&work=${F.goals.older}&locale=${locale}&language=${locale}`);
       const answer=page.locator('.work-explanation').first();
       requireFact(await answer.count()===1,'current_decision_explanation_missing');
       requireFact(!(await answer.innerText()).includes('aabbccddeeff00112233445566778899'),'decision_audit_primary');
@@ -818,7 +390,7 @@ async function workExplanations() {
       requireFact(await answer.locator('details[open]').count()===0,'decision_requires_evidence_disclosure');
       await capture(`decision-answer-${key}-${locale}.png`,answer);
       await go(pathToFileURL(config.snapshots[locale]).href);
-      const offline=page.locator(idSelector(`decision-${F.decisions[key]}`)).locator(':scope > .work-explanation');
+      const offline=page.locator(idSelector(`work-${F.goals.older}-decision-${F.decisions[key]}`)).locator(':scope > .work-explanation');
       for (const [q,body] of Object.entries(observed)) requireFact(await ordinaryText(offline.locator(`p[data-question="${q}"]`))===body,`decision_snapshot_answer_diverged:${q}`);
       return {decision:F.decisions[key],ordinary_answers:observed,human_acceptance:'not_established'};
     });
@@ -852,10 +424,11 @@ async function contextLifecycle() {
     operation([kind,'explain','record',selector,identity,'--language',locale,'--input',input]);
     return plan;
   }
-  const work=F.goals.relay,decision=F.decisions.project;
+  const work=F.goals.relay;
   const phases={};
   async function display(phase,kind,identity,locale,state) {
-    const view=kind==='work'?'work':'decisions',selector=kind==='work'?'work':'decision';
+    requireFact(kind==='work','only_contextual_work_display');
+    const view='work',selector='work';
     await go(`${config.url}?view=${view}&${selector}=${identity}&locale=${locale}&language=${locale}`);
     await zoom(1);
     const surface=page.locator(idSelector(`${kind}-${identity}`));
@@ -878,7 +451,6 @@ async function contextLifecycle() {
     operation(['advanced','records','correct-context',work,'--revision',String(goal.revision),'--source',goal.sources[0],'--text',goal.content+'.']);
     for(const locale of ['en','ko'])await display('stale','work',work,locale,'stale');
     for(const locale of ['en','ko']){record('work',work,locale);await display('regenerated','work',work,locale,'current');}
-    for(const locale of ['en','ko']){await display('absent','decision',decision,locale,'unavailable');record('decision',decision,locale);await display('current','decision',decision,locale,'current');}
     for(const locale of ['en','ko']) {
       const before=phases[`current-work-${locale}`],after=phases[`regenerated-work-${locale}`];
       requireFact(before.context.canonical_read_fingerprint!==after.context.canonical_read_fingerprint&&before.dom_sha256!==after.dom_sha256,'changed_basis_reused');

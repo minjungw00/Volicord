@@ -1082,7 +1082,7 @@ fn large_retained_envelopes_reach_viewer_documents_and_offline_snapshot(
             assert!(page.contains(&expected));
             let decision_page = get(
                 &f,
-                &format!("/?view=decisions&decision={decision}&language={language}"),
+                &format!("/?view=work&work={}&language={language}", f.goals["older"]),
             );
             assert!(decision_page.contains("Authored Decision consumer control"));
             let request = DocumentRequest {
@@ -1405,7 +1405,7 @@ fn decision_context_is_exact_scoped_and_shared_with_documents_and_recall(
         .facts
         .iter()
         .any(|a| a.question == "QuestionContext" && a.text.contains(&q.prompt_basis)));
-    let page = get(&f, &format!("/?view=decisions&decision={id}"));
+    let page = get(&f, &format!("/?view=work&work={}", f.goals["older"]));
     assert!(page.contains("Recorded question context quotation"));
     assert!(page.contains("no user rationale is recorded"));
     assert!(page.contains("The agent recommended remote."));
@@ -1662,19 +1662,21 @@ fn recorded_decision_reason_remains_readable_without_generated_article(
     let request = volicord_viewer::ViewerRequest {
         project_id: f.project,
         locale: ViewerLocale::English,
-        view: ViewerView::Decisions { decision: Some(id) },
+        view: ViewerView::Work {
+            work: Some(f.goals["older"]),
+        },
         requested_language: "en".into(),
         guarded_request: None,
     };
     let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
     for page in [
-        get(&f, &format!("/?view=decisions&decision={id}")),
+        get(&f, &format!("/?view=work&work={}", f.goals["older"])),
         viewer
             .render_snapshot(&request, TimestampMicros::from_unix_micros(1))?
             .html,
     ] {
         let selected = page
-            .split(&format!("id=\"decision-{id}\""))
+            .split(&format!("id=\"work-{}-decision-{id}\"", f.goals["older"]))
             .nth(1)
             .ok_or("selected decision")?;
         let recorded = selected

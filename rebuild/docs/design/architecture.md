@@ -190,8 +190,11 @@ source record를 바꾸지 않는다. 상세 Recall selection, document groundin
 adoption과 output contract는 active
 [Projection과 document 계약](projections-and-documents.md)이 소유한다.
 
-The Viewer reading surface uses Overview, Work, Code Understanding and
-Decisions, with tools separate from reading. Selection and evidence-linked Work
+The Viewer is an explanation reader with precisely Overview / Repository
+explanation / Work ([D-28–33](reader-experience-design.md)). Decisions and code
+are contextual evidence; general inspection, diagnostics, document and memory
+management remain CLI/MCP/Operations capabilities outside Viewer. Exact guarded
+confirmation is a separate non-navigable request-scoped fallback. Selection and evidence-linked Work
 reading records belong to [Projection과 document 계약](projections-and-documents.md).
 Local Operations supplies complete canonical/analysis read bases before display
 bounds; adapters carry selectors without inventing canonical meaning. This

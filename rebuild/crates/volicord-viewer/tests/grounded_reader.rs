@@ -582,11 +582,8 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             comparison != "missing_before_state"
         );
         assert!(page.contains(fingerprint));
-        let mut code_request = request(&f)?;
-        code_request.view = ViewerView::Code {
-            scope: volicord_viewer::CodeScope::Work(Some(work(&f)?)),
-            entity: None,
-        };
+        let code_request = request(&f)?;
+
         let code = ViewerAdapter::new(ops(&f)?)
             .render(&code_request, "test-form-authenticity")?
             .html;
@@ -1409,10 +1406,7 @@ fn representative_production_code_preserves_grounding_across_public_readers(
     ] {
         let mut code_request = request(&f)?;
         code_request.locale = locale;
-        code_request.view = ViewerView::Code {
-            scope: volicord_viewer::CodeScope::Work(Some(work(&f)?)),
-            entity: None,
-        };
+
         let code = ViewerAdapter::new(ops(&f)?)
             .render(&code_request, "test-form-authenticity")?
             .html;

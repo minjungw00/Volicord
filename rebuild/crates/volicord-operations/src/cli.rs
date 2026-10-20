@@ -622,7 +622,7 @@ fn viewer_view() -> Arg {
     Arg::new("view")
         .long("view")
         .value_name("VIEW")
-        .value_parser(["overview", "work", "code", "decisions", "tools"])
+        .value_parser(["overview", "repository", "work"])
         .default_value("overview")
 }
 

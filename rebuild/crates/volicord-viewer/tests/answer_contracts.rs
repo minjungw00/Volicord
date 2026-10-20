@@ -267,12 +267,12 @@ fn decision_facts_name_user_choice_and_agent_recommendation_independently(
     ] {
         let page = get(
             &server(&f),
-            &format!(
-                "/?view=decisions&decision={}&locale={locale}",
-                f.decisions["explicit"]
-            ),
+            &format!("/?view=work&work={}&locale={locale}", f.goals["older"]),
         );
         let facts = page
+            .split(&format!("data-decision-id=\"{}\"", f.decisions["explicit"]))
+            .nth(1)
+            .ok_or("Decision")?
             .split("class=\"record-facts\"")
             .nth(1)
             .ok_or("facts")?

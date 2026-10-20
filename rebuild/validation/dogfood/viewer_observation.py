@@ -99,8 +99,8 @@ def validate_capture(value, *, candidate_head, viewer_sha256, runtime_binding=No
         and isinstance(proc['boot_id'],str) and re.fullmatch(r'[0-9a-f-]{36}',proc['boot_id'])
         and isinstance(proc['executable_path'],str) and Path(proc['executable_path']).is_absolute(),
         'Viewer process/executable binding mismatch')
-    view=c['view'];require(isinstance(view,dict) and view.get('view') in {'overview','work','decisions','code','tools'}
-        and set(view)<= {'view','work','decision','entity','scope','tool','page'}
+    view=c['view'];require(isinstance(view,dict) and view.get('view') in {'overview','repository','work'}
+        and set(view)<= {'view','work','page'}
         and all(isinstance(v,str) and len(v)<=1024 for v in view.values()), 'invalid Viewer view')
     parsed=local_url(value['url']);query=parse_qs(parsed.query,keep_blank_values=True)
     require(parsed.path=='/' and not parsed.fragment and all(len(v)==1 for v in query.values())
@@ -111,7 +111,7 @@ def validate_capture(value, *, candidate_head, viewer_sha256, runtime_binding=No
     for name in ['selected_work','selected_decision']:
         require(c[name] is None or hex_value(c[name],32),'invalid displayed subject')
     if 'work' in view: require(view['work']==c['selected_work'],'displayed Work mismatch')
-    if 'decision' in view: require(view['decision']==c['selected_decision'],'displayed Decision mismatch')
+    require(c['selected_decision'] is None,'standalone Decision selection is retired')
     if subjects is not None:
         require_subject_context(c, subjects)
     require(isinstance(c['analysis'],list) and len(c['analysis'])<=64,'invalid Analysis basis')
@@ -123,8 +123,8 @@ def validate_capture(value, *, candidate_head, viewer_sha256, runtime_binding=No
     identities=set()
     for e in c['explanations']:
         require(isinstance(e,dict) and set(e)=={'kind','identity','state','plan_fingerprint','generated_at_unix_micros','realization_sha256'}
-            and e['kind'] in {'work','decision'} and hex_value(e['identity'],32)
-            and e['state'] in {'current','stale','unavailable','unsupported','corrupt'}
+            and e['kind'] in {'work','work_name','work_summary','decision','repository'} and hex_value(e['identity'],64 if e['kind']=='repository' else 32)
+            and e['state'] in {'current','stale','missing','deleted','withheld','unavailable','unsupported','corrupt'}
             and (e['kind'],e['identity']) not in identities,'invalid explanation observation')
         identities.add((e['kind'],e['identity']))
         if e['state']=='current':

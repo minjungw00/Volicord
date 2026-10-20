@@ -293,7 +293,7 @@ def main():
         # Isolate actual HTTP completion from automation input/frame observations.
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         completions = []
-        for route, query in [("overview", "view=overview"), ("work", "view=work&work=" + fixture["goals"]["older"]), ("decision", "view=decisions&decision=" + fixture["decisions"]["explicit"]), ("code", "view=code&scope=repository")]:
+        for route, query in [("overview", "view=overview"), ("work", "view=work&work=" + fixture["goals"]["older"]), ("repository", "view=repository")]:
             for sample in range(9):
                 began = time.monotonic_ns()
                 with opener.open(url + "?" + query, timeout=15) as response:

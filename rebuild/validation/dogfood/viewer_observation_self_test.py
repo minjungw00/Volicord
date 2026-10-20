@@ -58,12 +58,13 @@ def prepared_context_directories(parent, name, manifest, *, campaign_root, decis
     for locale in ("en", "ko"):
         for number, view in enumerate([{"view": "overview"},
                 {"view": "work", "work": subjects['work_ids'][0]}, {"view": "work", "work": subjects['work_ids'][1]},
-                {"view": "decisions", **({"decision": subjects['decision_ids'][0]} if decision else {})},
-                {"view": "code"}, {"view": "tools", "tool": "status"}]):
+                {"view": "repository"}]):
             path = context_directory(parent, name + locale + str(number), manifest, locale)
             value = json.loads((path / "display-context.json").read_bytes())
             value["context"].update(view=view, selected_work=view.get("work"),
                 selected_decision=view.get("decision"), render_id=f"{number + (1 if locale == 'en' else 10):032x}")
+            if decision and view.get("work"):
+                value["context"]["explanations"].append({"kind":"decision","identity":subjects["decision_ids"][0],"state":"unavailable","plan_fingerprint":None,"generated_at_unix_micros":None,"realization_sha256":None})
             value["url"] = "http://127.0.0.1:3219/?" + "&".join(f"{k}={v}" for k,v in
                 {**view, "locale": locale, "language": locale}.items())
             (path / "display-context.json").write_text(json.dumps(value))
@@ -76,9 +77,8 @@ class ContextTests(unittest.TestCase):
         for subject, identity in (("work", "1" * 32), ("decision", "3" * 32)):
             for n, state in enumerate(("current", "stale", "unavailable")):
                 value = display_fixture(self.manifest, "en")
-                view = {"view": "work" if subject == "work" else "decisions", subject: identity}
-                value["context"].update(view=view, selected_work=identity if subject == "work" else None,
-                    selected_decision=identity if subject == "decision" else None,
+                view = {"view": "work", "work": "1" * 32}
+                value["context"].update(view=view, selected_work="1"*32, selected_decision=None,
                     canonical_read_fingerprint=str(n + 4) * 64, source_state_sha256=str(n + 7) * 64)
                 e = value["context"]["explanations"][0]
                 e.update(kind=subject, identity=identity, state=state)
@@ -87,6 +87,21 @@ class ContextTests(unittest.TestCase):
                 value["url"] = "http://127.0.0.1:3219/?" + "&".join(f"{k}={v}" for k,v in
                     {**view, "locale": "en", "language": "en"}.items())
                 observer.for_manifest(self.manifest, value, "en", self.subjects)
+
+    def test_current_reader_views_and_publications_exclude_retired_destinations(self):
+        for view in ("overview","work","repository"):
+            value=display_fixture(self.manifest,"en")
+            value["context"]["view"]={"view":view}
+            value["url"]=f"http://127.0.0.1:3219/?view={view}&locale=en&language=en"
+            for kind in ("work","work_name","work_summary","repository"):
+                value["context"]["explanations"][0].update(kind=kind,identity="a"*(64 if kind=="repository" else 32))
+                observer.for_manifest(self.manifest,value,"en",self.subjects)
+        for view in ("tools","code","decisions"):
+            value=display_fixture(self.manifest,"en")
+            value["context"]["view"]={"view":view}
+            value["url"]=f"http://127.0.0.1:3219/?view={view}&locale=en&language=en"
+            with self.assertRaisesRegex(ValueError,"invalid Viewer view"):
+                observer.for_manifest(self.manifest,value,"en",self.subjects)
 
     def test_canonical_subject_inventory_excludes_unmeasured_work_decisions(self):
         from codex_events import CanonicalBundle
@@ -104,7 +119,7 @@ class ContextTests(unittest.TestCase):
 
     def test_campaign_foreign_well_formed_subjects_are_rejected(self):
         for view in ({"view": "work", "work": "a" * 32}, {"view": "work", "work": "b" * 32},
-                {"view": "decisions", "decision": "d" * 32}):
+                {"view": "work", "work": "d" * 32}):
             value = display_fixture(self.manifest, "en")
             value["context"].update(view=view, selected_work=view.get("work"), selected_decision=view.get("decision"))
             value["url"] = "http://127.0.0.1:3219/?" + "&".join(f"{k}={v}" for k,v in

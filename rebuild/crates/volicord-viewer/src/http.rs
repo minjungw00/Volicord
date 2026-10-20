@@ -4,13 +4,9 @@ use std::{
     fmt,
     io::{self, Read, Write},
     net::SocketAddr,
-    path::PathBuf,
 };
-use volicord_context::{
-    CanonicalRecordId, CheckpointId, ContextItemId, DecisionId, ProjectId, QuestionId, SourceId,
-};
-use volicord_operations::{ConfirmationDecision, ConfirmationRequestId, ForgettingState};
-use volicord_projections::{DocumentKind, OutputFormat};
+use volicord_context::{ContextItemId, ProjectId};
+use volicord_operations::{ConfirmationDecision, ConfirmationRequestId};
 
 const MAX_HEADER_BYTES: usize = 16 * 1024;
 const MAX_BODY_BYTES: usize = 64 * 1024;
@@ -85,178 +81,24 @@ impl ViewerServer {
         {
             return Err(HttpFailure::forbidden());
         }
+        if matches!(
+            request.path.as_str(),
+            "/inspection"
+                | "/inspection.json"
+                | "/memory/context/correct"
+                | "/memory/decision/correct"
+                | "/memory/decision/supersede"
+                | "/memory/forget"
+                | "/documents/export"
+        ) {
+            return Err(HttpFailure::not_found());
+        }
         if request.method == "POST" {
             self.validate_mutation_request(&request)?;
         }
         match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/") => self.render(request.query, None),
             ("GET", "/citation") => self.read_citation(request),
-            ("GET", "/inspection") | ("GET", "/inspection.json") => self.read_inspection(request),
-            ("POST", "/memory/context/correct") => {
-                let form = request.form()?;
-                form.require_only(&[
-                    "record_id",
-                    "expected_revision",
-                    "corrected_text",
-                    "user_turn",
-                    "page",
-                    "view",
-                    "work",
-                    "scope",
-                    "entity",
-                    "decision",
-                    "tool",
-                    "locale",
-                    "language",
-                    "guarded",
-                    "request_authenticity",
-                    "inspection_class",
-                ])?;
-                let source = self.user_source(form.required("user_turn")?)?;
-                let outcome = self
-                    .adapter
-                    .correct_context(
-                        self.project_id,
-                        ContextItemId::from_bytes(identity(form.required("record_id")?)?),
-                        form.u64("expected_revision")?,
-                        form.required("corrected_text")?.to_owned(),
-                        source,
-                    )
-                    .map_err(domain_failure)?;
-                Ok(memory_response(
-                    &form,
-                    &outcome.identity,
-                    outcome.revision,
-                    "Record updated",
-                    false,
-                ))
-            }
-            ("POST", "/memory/decision/correct") => {
-                let form = request.form()?;
-                form.require_only(&[
-                    "record_id",
-                    "expected_revision",
-                    "corrected_text",
-                    "user_turn",
-                    "page",
-                    "view",
-                    "work",
-                    "scope",
-                    "entity",
-                    "decision",
-                    "tool",
-                    "locale",
-                    "language",
-                    "guarded",
-                    "request_authenticity",
-                    "inspection_class",
-                ])?;
-                let source = self.user_source(form.required("user_turn")?)?;
-                let outcome = self
-                    .adapter
-                    .correct_decision(
-                        self.project_id,
-                        DecisionId::from_bytes(identity(form.required("record_id")?)?),
-                        form.u64("expected_revision")?,
-                        form.required("corrected_text")?.to_owned(),
-                        source,
-                    )
-                    .map_err(domain_failure)?;
-                Ok(memory_response(
-                    &form,
-                    &outcome.identity,
-                    outcome.revision,
-                    "Record updated",
-                    false,
-                ))
-            }
-            ("POST", "/memory/decision/supersede") => {
-                let form = request.form()?;
-                form.require_only(&[
-                    "record_id",
-                    "alternative",
-                    "rationale",
-                    "user_turn",
-                    "page",
-                    "view",
-                    "work",
-                    "scope",
-                    "entity",
-                    "decision",
-                    "tool",
-                    "locale",
-                    "language",
-                    "guarded",
-                    "request_authenticity",
-                    "inspection_class",
-                ])?;
-                let source = self.user_source(form.required("user_turn")?)?;
-                let outcome = self
-                    .adapter
-                    .supersede_decision(
-                        self.project_id,
-                        DecisionId::from_bytes(identity(form.required("record_id")?)?),
-                        source,
-                        form.required("alternative")?.to_owned(),
-                        form.optional("rationale").map(ToOwned::to_owned),
-                    )
-                    .map_err(domain_failure)?;
-                Ok(memory_response(
-                    &form,
-                    &outcome.identity,
-                    outcome.revision,
-                    "Record updated",
-                    false,
-                ))
-            }
-            ("POST", "/memory/forget") => {
-                let form = request.form()?;
-                form.require_only(&[
-                    "record_kind",
-                    "record_id",
-                    "user_turn",
-                    "page",
-                    "view",
-                    "work",
-                    "scope",
-                    "entity",
-                    "decision",
-                    "tool",
-                    "locale",
-                    "language",
-                    "guarded",
-                    "request_authenticity",
-                    "inspection_class",
-                ])?;
-                let record = canonical_record(
-                    form.required("record_kind")?,
-                    identity(form.required("record_id")?)?,
-                )?;
-                let source = self.user_source(form.required("user_turn")?)?;
-                let outcome = self
-                    .adapter
-                    .forget(self.project_id, record, source)
-                    .map_err(domain_failure)?;
-                if outcome.state != ForgettingState::Completed {
-                    return Err(HttpFailure::new(
-                        409,
-                        "Conflict",
-                        outcome.diagnostic.unwrap_or_else(|| {
-                            format!(
-                                "canonical forgetting operation {} requires repair",
-                                outcome.operation_id
-                            )
-                        }),
-                    ));
-                }
-                Ok(memory_response(
-                    &form,
-                    &outcome.identity,
-                    None,
-                    "Forgetting completed",
-                    true,
-                ))
-            }
             ("POST", "/guarded/confirm") => {
                 let form = request.form()?;
                 form.require_only(&[
@@ -292,6 +134,13 @@ impl ViewerServer {
                 if target.project_id != self.project_id {
                     return Err(HttpFailure::not_found());
                 }
+                if let Some(id) = form.optional("guarded") {
+                    if identity(id)? != *target.confirmation_request_identity.as_bytes() {
+                        return Err(HttpFailure::bad_request(
+                            "Guarded return identity does not match target",
+                        ));
+                    }
+                }
                 self.adapter
                     .confirm_guarded(
                         ConfirmationRequestId::from_bytes(identity(
@@ -302,37 +151,6 @@ impl ViewerServer {
                         decision,
                         self.session.clone(),
                         form.required("user_turn")?.to_owned(),
-                    )
-                    .map_err(domain_failure)?;
-                Ok(HttpResponse::redirect(form.return_location()))
-            }
-            ("POST", "/documents/export") => {
-                let form = request.form()?;
-                form.require_only(&[
-                    "kind",
-                    "format",
-                    "destination",
-                    "page",
-                    "view",
-                    "work",
-                    "scope",
-                    "entity",
-                    "decision",
-                    "tool",
-                    "locale",
-                    "language",
-                    "guarded",
-                    "request_authenticity",
-                ])?;
-                let view = self.view_parameters(&form.values)?;
-                self.adapter
-                    .export_document(
-                        self.project_id,
-                        document_kind(form.required("kind")?)?,
-                        output_format(form.required("format")?)?,
-                        &PathBuf::from(form.required("destination")?),
-                        view.language,
-                        view.locale,
                     )
                     .map_err(domain_failure)?;
                 Ok(HttpResponse::redirect(form.return_location()))
@@ -353,114 +171,6 @@ impl ViewerServer {
             ("GET", _) | ("POST", _) => Err(HttpFailure::not_found()),
             _ => Err(HttpFailure::method_not_allowed("GET, POST")),
         }
-    }
-
-    fn read_inspection(&self, request: HttpRequest) -> Result<HttpResponse, HttpFailure> {
-        if request.origin.as_deref().is_some_and(|s| s != self.origin)
-            || request
-                .fetch_site
-                .as_deref()
-                .is_some_and(|s| !["same-origin", "none"].contains(&s))
-        {
-            return Err(HttpFailure::forbidden());
-        }
-        let q = &request.query;
-        q.require_only(&[
-            "class",
-            "q",
-            "state",
-            "role",
-            "offset",
-            "limit",
-            "basis",
-            "id",
-            "revision",
-            "field",
-            "field_offset",
-            "field_basis",
-            "work",
-            "relationships",
-            "locale",
-            "language",
-        ])?;
-        let number = |key, default| -> Result<usize, HttpFailure> {
-            if q.optional(key).is_none() {
-                return Ok(default);
-            }
-            usize::try_from(q.u64(key)?)
-                .map_err(|_| HttpFailure::bad_request("invalid bounded selector"))
-        };
-        let class =
-            volicord_operations::InspectionClass::parse(q.optional("class").unwrap_or("work"))
-                .map_err(inspection_failure)?;
-        let selection = crate::inspection::InspectionSelection {
-            query: volicord_operations::InspectionQuery {
-                class,
-                term: q.optional("q").unwrap_or_default().into(),
-                state: q.optional("state").map(str::to_owned),
-                role: q.optional("role").map(str::to_owned),
-                offset: number("offset", 0)?,
-                limit: number("limit", 10)?,
-                expected_fingerprint: q.optional("basis").map(str::to_owned),
-                identity: q.optional("id").map(str::to_owned),
-            },
-            revision: q
-                .optional("revision")
-                .map(|_| q.u64("revision"))
-                .transpose()?,
-            field: q.optional("field").map(str::to_owned),
-            field_offset: number("field_offset", 0)?,
-            field_basis: q.optional("field_basis").map(str::to_owned),
-            work: q
-                .optional("work")
-                .map(identity)
-                .transpose()?
-                .map(ContextItemId::from_bytes),
-            relationship_offset: number("relationships", 0)?,
-        };
-        if selection.field_offset > 147456
-            || selection.relationship_offset > 100000
-            || selection.field.is_none()
-                && (selection.revision.is_some()
-                    || selection.work.is_some()
-                    || selection.field_offset > 0
-                    || selection.field_basis.is_some())
-        {
-            return Err(HttpFailure::bad_request(
-                "invalid inspection detail selector",
-            ));
-        }
-        if request.path == "/inspection" {
-            let locale = match q.optional("locale") {
-                None => self.default_locale,
-                Some("en") => ViewerLocale::English,
-                Some("ko") => ViewerLocale::Korean,
-                _ => return Err(HttpFailure::bad_request("unsupported fixed locale")),
-            };
-            let language = q.optional("language").unwrap_or(&self.requested_language);
-            if language.is_empty() || language.len() > 128 {
-                return Err(HttpFailure::bad_request("invalid content language"));
-            }
-            let r = crate::inspection::request(self.project_id, locale, language.into(), class);
-            let page = self
-                .adapter
-                .render_inspection(&r, &selection, &self.request_authenticity)
-                .map_err(inspection_failure)?;
-            return Ok(HttpResponse::html(page.html));
-        }
-        let (page, detail) = self
-            .adapter
-            .inspection_read(self.project_id, &selection)
-            .map_err(inspection_failure)?;
-        let body = serde_json::to_vec(&serde_json::json!({"page":page,"detail":detail}))
-            .map_err(|_| HttpFailure::bad_request("inspection encoding failed"))?;
-        Ok(HttpResponse {
-            status: 200,
-            reason: "OK",
-            content_type: "application/json; charset=utf-8",
-            body,
-            location: None,
-        })
     }
 
     fn read_citation(&self, request: HttpRequest) -> Result<HttpResponse, HttpFailure> {
@@ -605,8 +315,13 @@ impl ViewerServer {
         &self,
         values: &BTreeMap<String, String>,
     ) -> Result<ViewParameters, HttpFailure> {
-        let view = ViewerView::parse(values, &self.default_view)
-            .map_err(|e| HttpFailure::bad_request(e.to_string()))?;
+        let view = ViewerView::parse(values, &self.default_view).map_err(|error| {
+            if error.not_found {
+                HttpFailure::not_found()
+            } else {
+                HttpFailure::bad_request(error.to_string())
+            }
+        })?;
         let locale = match values.get("locale").map(String::as_str) {
             None => self.default_locale,
             Some("en") => ViewerLocale::English,
@@ -627,25 +342,6 @@ impl ViewerServer {
             locale,
             language,
         })
-    }
-
-    fn user_source(&self, turn: &str) -> Result<SourceId, HttpFailure> {
-        if turn.is_empty() || turn.len() > 8 * 1024 {
-            return Err(HttpFailure::bad_request(
-                "user_turn must contain 1 to 8192 bytes",
-            ));
-        }
-        let outcome = self
-            .adapter
-            .operations()
-            .record_user_source(
-                self.project_id,
-                "local-viewer".into(),
-                self.session.clone(),
-                turn.to_owned(),
-            )
-            .map_err(|error| domain_failure(ViewerError::new(error.to_string())))?;
-        Ok(SourceId::from_bytes(identity(&outcome.identity)?))
     }
 }
 
@@ -955,60 +651,6 @@ impl fmt::Display for HttpFailure {
     }
 }
 
-fn memory_response(
-    form: &FormData,
-    identity: &str,
-    revision: Option<u64>,
-    label: &str,
-    forgotten: bool,
-) -> HttpResponse {
-    let Some(class) = form
-        .optional("inspection_class")
-        .and_then(|c| volicord_operations::InspectionClass::parse(c).ok())
-    else {
-        return HttpResponse::redirect(form.return_location());
-    };
-    let mut target = if forgotten {
-        format!("/inspection?class={}", class.key())
-    } else {
-        format!("/inspection?class={}&id={identity}", class.key())
-    };
-    target.push_str(&format!(
-        "&locale={}&language={}",
-        form.optional("locale").unwrap_or("en"),
-        percent_encode(form.optional("language").unwrap_or("en"))
-    ));
-    let label = if form.optional("locale") == Some("ko") {
-        if forgotten {
-            "삭제가 완료되었습니다"
-        } else {
-            "기록이 갱신되었습니다"
-        }
-    } else {
-        label
-    };
-    // Values are server outcomes and fixed class keys; escape return fields as data.
-    let esc = |s: &str| {
-        s.replace('&', "&amp;")
-            .replace('<', "&lt;")
-            .replace('>', "&gt;")
-            .replace('"', "&quot;")
-    };
-    HttpResponse::html(format!("<!doctype html><html lang=\"{locale}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>{label}</title><style>{style}</style></head><body><main class=\"shell inspector\"><h1>{label}</h1><p>Exact record <code>{}</code> {}</p><p>This receipt records the completed Local Operations result.</p><a class=\"button\" href=\"{}\">Inspect current permitted records</a> <a class=\"button\" href=\"{}\">Return to Tools</a></main></body></html>",esc(identity),revision.map(|r|format!("revision {r}")).unwrap_or_default(),esc(&target),esc(&form.return_location()),style=concat!(include_str!("reader.css"),include_str!("presentation.css")),locale=form.optional("locale").unwrap_or("en")))
-}
-
-fn inspection_failure(error: volicord_operations::InspectionFailure) -> HttpFailure {
-    use volicord_operations::InspectionFailure::*;
-    let (status, reason) = match error {
-        Invalid => (400, "Bad Request"),
-        Withheld => (403, "Forbidden"),
-        NotFound => (404, "Not Found"),
-        Changed => (409, "Conflict"),
-        Unavailable | Unsupported | Corrupt => (503, "Service Unavailable"),
-    };
-    HttpFailure::new(status, reason, error.to_string())
-}
-
 fn domain_failure(error: ViewerError) -> HttpFailure {
     if error.not_found {
         HttpFailure::new(
@@ -1035,39 +677,6 @@ fn identity(value: &str) -> Result<[u8; 16], HttpFailure> {
             .map_err(|_| HttpFailure::bad_request("identity contains a non-hexadecimal digit"))?;
     }
     Ok(bytes)
-}
-
-fn canonical_record(kind: &str, bytes: [u8; 16]) -> Result<CanonicalRecordId, HttpFailure> {
-    match kind {
-        "source" => Ok(CanonicalRecordId::Source(SourceId::from_bytes(bytes))),
-        "question" => Ok(CanonicalRecordId::Question(QuestionId::from_bytes(bytes))),
-        "decision" => Ok(CanonicalRecordId::Decision(DecisionId::from_bytes(bytes))),
-        "context_item" => Ok(CanonicalRecordId::ContextItem(ContextItemId::from_bytes(
-            bytes,
-        ))),
-        "checkpoint" => Ok(CanonicalRecordId::Checkpoint(CheckpointId::from_bytes(
-            bytes,
-        ))),
-        _ => Err(HttpFailure::bad_request("record_kind is not forgettable")),
-    }
-}
-
-fn document_kind(value: &str) -> Result<DocumentKind, HttpFailure> {
-    match value {
-        "project-architecture-guide" => Ok(DocumentKind::ProjectArchitectureGuide),
-        "decision-report" => Ok(DocumentKind::DecisionReport),
-        "implementation-plan" => Ok(DocumentKind::ImplementationPlan),
-        "handoff-resume" => Ok(DocumentKind::HandoffResume),
-        _ => Err(HttpFailure::bad_request("unknown document kind")),
-    }
-}
-
-fn output_format(value: &str) -> Result<OutputFormat, HttpFailure> {
-    match value {
-        "markdown" => Ok(OutputFormat::Markdown),
-        "html" => Ok(OutputFormat::Html),
-        _ => Err(HttpFailure::bad_request("format must be markdown or html")),
-    }
 }
 
 fn percent_decode_form(value: &str) -> Result<String, HttpFailure> {

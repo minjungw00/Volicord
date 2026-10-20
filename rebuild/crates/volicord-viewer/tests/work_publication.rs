@@ -196,10 +196,7 @@ fn same_work_independent_publications_reach_cli_mcp_http_documents_and_offline(
                 assert!(live.contains(&f.decisions["explicit"].to_string()));
                 let decision = get(
                     &f,
-                    &format!(
-                        "/?view=decisions&decision={}&locale={language}&language={language}",
-                        f.decisions["explicit"]
-                    ),
+                    &format!("/?view=work&work={id}&locale={language}&language={language}",),
                 )?;
                 assert!(decision.contains("Keep the observed boundary local"));
             }
@@ -278,10 +275,7 @@ fn same_work_independent_publications_reach_cli_mcp_http_documents_and_offline(
         assert!(live.contains(&f.decisions["explicit"].to_string()));
         let decision = get(
             &f,
-            &format!(
-                "/?view=decisions&decision={}&locale={language}&language={language}",
-                f.decisions["explicit"]
-            ),
+            &format!("/?view=work&work={id}&locale={language}&language={language}",),
         )?;
         assert!(decision.contains("Keep the observed boundary local"));
         let snapshot = adapter.render_snapshot(&request, TimestampMicros::from_unix_micros(124))?;
@@ -474,4 +468,114 @@ fn malformed_scope_cannot_default_to_article_or_consume_a_valid_host_request(
     )?;
     assert_eq!(result["generation_status"], "awaiting_host_interpretation");
     Ok(())
+}
+
+/// Small current Product output for review; authored support, no human verdict.
+#[test]
+fn seed_reader_scope_review() -> Result<(), Box<dyn Error>> {
+    let Some(root) = std::env::var_os("VOLICORD_READER_SCOPE_REVIEW") else {
+        return Ok(());
+    };
+    let output = std::path::Path::new(&root);
+    std::fs::create_dir_all(output)?;
+    let f = fixture()?;
+    for statement in [
+        "Inspect missing error coverage before changing query handling.",
+        "Document the boundary between query input and native execution.",
+    ] {
+        f.operations.transition_work(
+            f.project,
+            WorkTransition::StartNew {
+                host: "authored-review-control".into(),
+                session: "reader-scope".into(),
+                user_turn: statement.into(),
+                statement: statement.into(),
+            },
+        )?;
+    }
+    let analysis = f
+        .operations
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let source = f
+        .operations
+        .observe_work_file(FileObservationRequest {
+            project_id: f.project,
+            work_item_id: f.goals["relay"],
+            analysis_snapshot_id: analysis,
+            path: "runtime/query_boundary.ts".into(),
+            byte_range: None,
+            before_source_id: None,
+            retain_seconds: 3600,
+        })?
+        .source_id;
+    let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let texts=[("en",["Investigate query value preservation","The investigation reports that readQuery preserves its input; no patch was made and automated verification was not run.","The observed implementation returns the input value directly."]),
+        ("ko",["쿼리 입력값 보존 조사","조사 기록에 따르면 readQuery는 입력값을 그대로 반환합니다. 코드는 바꾸지 않았고 자동 검증은 실행하지 않았습니다.","관측한 구현은 입력값을 직접 반환합니다."])];
+    for (language, text) in texts {
+        for scope in ["name", "summary", "article"] {
+            produce(&mut host, &f, language, scope, source, &text)?;
+        }
+    }
+    let workless_repository = output.join("workless-repository");
+    std::fs::create_dir_all(workless_repository.join("runtime"))?;
+    std::fs::copy(
+        f.repository.join("runtime/query_boundary.ts"),
+        workless_repository.join("runtime/query_boundary.ts"),
+    )?;
+    let workless = f
+        .operations
+        .initialize_project("Reader sample", Some(&workless_repository))?
+        .project
+        .id;
+    let mut cases = Vec::new();
+    for (key, project) in [("populated", f.project), ("workless", workless)] {
+        let analysis = f
+            .operations
+            .analyze(project, vec![])?
+            .value
+            .ok_or("analysis")?
+            .analysis
+            .identity;
+        let retained = f
+            .operations
+            .observe_repository_file(RepositoryFileObservationRequest {
+                project_id: project,
+                analysis_snapshot_id: analysis,
+                path: "runtime/query_boundary.ts".into(),
+                byte_range: None,
+                retain_seconds: 3600,
+            })?;
+        let source = source_id_from_hex(retained["source_id"].as_str().ok_or("Source")?)?;
+        for language in ["en", "ko"] {
+            let subject = ExplanationSubject::Repository(analysis);
+            let plan = f
+                .operations
+                .prepare_explanation(project, subject, language)?;
+            let realization=f.operations.compose_repository_explanation(project,analysis,RepositoryExplanationDraft {
+                plan_fingerprint:plan.fingerprint,language:language.into(),generator:ExplanationGenerator {host:"authored-review-control".into(),session:"reader-scope".into(),agent:None,model:None},
+                paragraphs:vec![RepositoryReaderUnit {question:ExplanationQuestion::Observation,text:if language=="ko" {"쿼리 경계는 입력값을 그대로 반환합니다. 이 관측은 TypeScript 진입점의 반환 동작만 설명하며 native 실행이나 전체 저장소 검증을 입증하지 않습니다."}else{"The query boundary returns its input unchanged. This observation explains the TypeScript entry point; it does not establish native execution or whole-repository verification."}.into(),evidence_keys:vec!["repository_basis".into()],sources:vec![RepositoryClaimRange {source_id:source,start_byte:0,end_byte:57,claim:None}]}],
+            })?;
+            f.operations
+                .record_explanation(project, subject, language, realization)?;
+        }
+        let name = f.operations.canonical_basis(project)?.project.display_name;
+        cases.push(json!({"key":key,"runtime":f.operations.layout().root(),"project":project.to_string(),"project_name":name,"purpose_count":if key=="populated" {1}else{0},"locale":"en","language":"en","evidence_class":"authored technical control; human acceptance unassessed","origin":"fresh Product fixture and current renderer","source_root":if key=="populated" {&f.repository}else{&workless_repository},"work":if key=="populated" {Some(f.goals["relay"].to_string())}else{None},"normal_work":if key=="populated" {Some(f.goals["relay"].to_string())}else{None}}));
+    }
+    std::fs::write(
+        output.join("cases.json"),
+        serde_json::to_vec_pretty(&cases)?,
+    )?;
+    let _retained = f._temporary.keep();
+    Ok(())
+}
+fn source_id_from_hex(value: &str) -> Result<SourceId, Box<dyn Error>> {
+    let mut bytes = [0; 16];
+    for (index, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)?;
+    }
+    Ok(SourceId::from_bytes(bytes))
 }

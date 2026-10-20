@@ -1,6 +1,7 @@
-//! Independent HTTP allow/deny cases; test-only fault injection never grants runtime authority.
+//! Operations allow/deny controls migrated from the retired Viewer inspector.
+//! Query strings below are fixture shorthand, never a public HTTP transport.
 use serde_json::{json, Value};
-use std::io::Cursor;
+use std::collections::BTreeMap;
 use volicord_context::{
     CanonicalRecordId, ContextItemCorrectionDraft, ContextItemId, CorrectionKind, Principal,
     PrincipalKind, ProjectId, SourceId, TimestampMicros,
@@ -8,12 +9,10 @@ use volicord_context::{
 use volicord_inquiry::*;
 use volicord_operations::{LocalOperations, RuntimeLayout, WorkTransition};
 use volicord_privacy::*;
-use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerServer, ViewerView};
-const AUTH: &str = "127.0.0.1:3219";
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
 struct Fixture {
     _temp: tempfile::TempDir,
-    server: ViewerServer,
+    operations: LocalOperations,
     project: ProjectId,
 }
 impl Fixture {
@@ -24,44 +23,124 @@ impl Fixture {
             .initialize_project("Inspection controls", None)?
             .project
             .id;
-        let server = ViewerServer::new(
-            ViewerAdapter::new(ops),
-            project,
-            ViewerLocale::English,
-            ViewerView::Overview,
-            "en".into(),
-            AUTH.parse()?,
-        )?;
         Ok(Self {
             _temp: temp,
-            server,
+            operations: ops,
             project,
         })
     }
     fn ops(&self) -> &LocalOperations {
-        self.server.adapter().operations()
-    }
-    fn raw(&self, target: &str, headers: &str) -> Result<String> {
-        let mut output = Vec::new();
-        self.server.serve_connection(
-            &mut Cursor::new(format!("GET {target} HTTP/1.1\r\n{headers}\r\n")),
-            &mut output,
-        )?;
-        Ok(String::from_utf8(output)?)
+        &self.operations
     }
     fn get(&self, query: &str) -> Result<String> {
-        self.raw(
-            &format!("/inspection.json?{query}"),
-            &format!("Host: {AUTH}\r\n"),
-        )
+        match self.read(query) {
+            Ok(value) => Ok(format!("Outcome 200\r\n\r\n{value}")),
+            Err(error) => Ok(format!(
+                "Outcome {}",
+                match error {
+                    volicord_operations::InspectionFailure::Invalid => 400,
+                    volicord_operations::InspectionFailure::NotFound => 404,
+                    volicord_operations::InspectionFailure::Changed => 409,
+                    volicord_operations::InspectionFailure::Withheld => 403,
+                    _ => 503,
+                }
+            )),
+        }
+    }
+    fn read(
+        &self,
+        input: &str,
+    ) -> std::result::Result<Value, volicord_operations::InspectionFailure> {
+        use volicord_operations::{
+            EvidenceDetailRequest, InspectionClass, InspectionFailure, InspectionQuery,
+        };
+        let decode = |s: &str| -> String {
+            let mut bytes = Vec::new();
+            let mut input = s.bytes();
+            while let Some(b) = input.next() {
+                if b == b'%' {
+                    let hex = [input.next().unwrap(), input.next().unwrap()];
+                    bytes.push(u8::from_str_radix(std::str::from_utf8(&hex).unwrap(), 16).unwrap());
+                } else {
+                    bytes.push(if b == b'+' { b' ' } else { b });
+                }
+            }
+            String::from_utf8(bytes).unwrap()
+        };
+        let values: BTreeMap<_, _> = input
+            .split('&')
+            .filter_map(|s| s.split_once('='))
+            .map(|(k, v)| (k, decode(v)))
+            .collect();
+        if values.keys().any(|k| {
+            ![
+                "class",
+                "q",
+                "state",
+                "role",
+                "offset",
+                "limit",
+                "basis",
+                "id",
+                "revision",
+                "field",
+                "field_offset",
+                "field_basis",
+                "work",
+                "relationships",
+            ]
+            .contains(k)
+        }) {
+            return Err(InspectionFailure::Invalid);
+        }
+        let value = |k| values.get(k).map(String::as_str);
+        let number = |k, default| {
+            value(k)
+                .map(|s| s.parse::<usize>().map_err(|_| InspectionFailure::Invalid))
+                .unwrap_or(Ok(default))
+        };
+        let query = InspectionQuery {
+            class: InspectionClass::parse(value("class").unwrap_or("work"))?,
+            term: value("q").unwrap_or("").into(),
+            state: value("state").map(str::to_owned),
+            role: value("role").map(str::to_owned),
+            offset: number("offset", 0)?,
+            limit: number("limit", 10)?,
+            expected_fingerprint: value("basis").map(str::to_owned),
+            identity: value("id").map(str::to_owned),
+        };
+        if let Some(field) = value("field") {
+            let request = EvidenceDetailRequest {
+                record_kind: query
+                    .class
+                    .evidence_kind()
+                    .ok_or(InspectionFailure::Invalid)?
+                    .into(),
+                record_id: query.identity.clone().ok_or(InspectionFailure::Invalid)?,
+                revision: number("revision", 0)? as u64,
+                field: field.into(),
+                offset: number("field_offset", 0)?,
+                expected_fingerprint: value("field_basis").map(str::to_owned),
+                work_item_id: value("work")
+                    .map(|s| ContextItemId::from_bytes(*source_id(s).as_bytes())),
+            };
+            let (page, detail) =
+                self.ops()
+                    .inspect_project_record_field(self.project, &query, &request)?;
+            Ok(json!({"page":page,"detail":detail}))
+        } else {
+            let offset = number("relationships", 0)?;
+            let page = if offset > 0 {
+                self.ops()
+                    .inspect_record_relationships(self.project, &query, offset)?
+            } else {
+                self.ops().inspect_project_records(self.project, &query)?
+            };
+            Ok(json!({"page":page,"detail":null}))
+        }
     }
     fn page(&self, query: &str) -> Result<Value> {
-        let response = self.get(query)?;
-        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
-        assert!(response.contains("Cache-Control: no-store"));
-        Ok(serde_json::from_str(
-            response.split_once("\r\n\r\n").ok_or("HTTP body")?.1,
-        )?)
+        Ok(self.read(query)?)
     }
     fn goal(&self, project: ProjectId, text: &str) -> Result<ContextItemId> {
         Ok(self
@@ -181,7 +260,7 @@ fn mixed_projects_source_body_and_literal_search_do_not_leak_through_public_quer
         format!("class=source&id={}", "ff".repeat(16)),
     ] {
         let response = f.get(&query)?;
-        assert!(response.starts_with("HTTP/1.1 404"), "{response}");
+        assert!(response.starts_with("Outcome 404"), "{response}");
         assert!(!response.contains("foreign-"));
     }
     let source_rows = f.page("class=source")?;
@@ -274,10 +353,10 @@ fn deterministic_paging_filters_and_changed_correction_forgetting_refuse_old_con
     let stale = f.get(&format!(
         "class=work&limit=7&role=goal&state=current&offset=7&basis={basis}"
     ))?;
-    assert!(stale.starts_with("HTTP/1.1 409"), "{stale}");
+    assert!(stale.starts_with("Outcome 409"), "{stale}");
     assert!(f
         .get(&format!("class=work&id={id}&revision=1&field=statement"))?
-        .starts_with("HTTP/1.1 409"));
+        .starts_with("Outcome 409"));
     let current = f.page(&format!("class=work&id={id}&revision=2&field=statement"))?;
     assert!(current["detail"]["chunk"]
         .as_str()
@@ -287,7 +366,7 @@ fn deterministic_paging_filters_and_changed_correction_forgetting_refuse_old_con
         .forget_record(f.project, CanonicalRecordId::ContextItem(id), auth)?;
     assert!(f
         .get(&format!("class=work&id={id}"))?
-        .starts_with("HTTP/1.1 404"));
+        .starts_with("Outcome 404"));
     assert_eq!(
         f.page("class=work&q=Corrected")?["page"]["permitted_match_count"],
         0
@@ -321,7 +400,7 @@ fn candidate_retention_and_derived_private_fields_are_not_searchable_or_hashed()
     assert_eq!(expired["page"]["rows"][0]["state"], "expired");
     assert!(f
         .get(&format!("class=candidate&id={c}&revision=1&field=summary"))?
-        .starts_with("HTTP/1.1 403"));
+        .starts_with("Outcome 403"));
     assert!(!expired.to_string().contains("candidate-expired-marker"));
     assert_eq!(
         f.page("class=candidate&q=candidate-expired-marker")?["page"]["permitted_match_count"],
@@ -345,49 +424,7 @@ fn candidate_retention_and_derived_private_fields_are_not_searchable_or_hashed()
     );
     assert!(f
         .get(&format!("class=derived&id={d}&revision=1&field=content"))?
-        .starts_with("HTTP/1.1 400"));
-    Ok(())
-}
-
-#[test]
-fn malformed_queries_cross_origin_and_wrong_authority_fail_before_reads() -> Result {
-    let f = Fixture::new()?;
-    let before = f.ops().canonical_basis(f.project)?;
-    for query in [
-        "class=sqlite_master",
-        "class=work&limit=0",
-        "class=work&limit=21",
-        "class=work&offset=999999999999999999999999",
-        "class=work&offset=100001",
-        "class=work&q=%00",
-        "class=work&state=body",
-        "class=work&role=private",
-        "class=work&id=wrong",
-        "class=work&sql=select",
-        "class=work&q=a&q=b",
-        "class=work&field=statement",
-        "class=work&limit=-1",
-    ] {
-        let r = f.get(query)?;
-        assert!(r.starts_with("HTTP/1.1 400"), "{query}: {r}");
-    }
-    assert!(f.get("class=work&offset=1")?.starts_with("HTTP/1.1 409"));
-    assert!(f
-        .raw("/inspection.json?class=work", "Host: attacker.invalid\r\n")?
-        .starts_with("HTTP/1.1 421"));
-    assert!(f
-        .raw(
-            "/inspection.json?class=work",
-            &format!("Host: {AUTH}\r\nOrigin: https://attacker.invalid\r\n")
-        )?
-        .starts_with("HTTP/1.1 403"));
-    assert!(f
-        .raw(
-            "/inspection.json?class=work",
-            &format!("Host: {AUTH}\r\nSec-Fetch-Site: cross-site\r\n")
-        )?
-        .starts_with("HTTP/1.1 403"));
-    assert_eq!(before, f.ops().canonical_basis(f.project)?);
+        .starts_with("Outcome 400"));
     Ok(())
 }
 
@@ -437,26 +474,18 @@ fn pending_forgetting_hides_candidate_and_derived_content_before_cleanup() -> Re
     Ok(())
 }
 
-#[path = "../../volicord-operations/tests/support/reading_fixture.rs"]
+#[path = "support/reading_fixture.rs"]
 #[allow(dead_code)]
 mod reading_fixture;
 fn rich() -> Result<(reading_fixture::Fixture, Fixture)> {
     let control = reading_fixture::fixture()?;
     let project = control.project;
     let ops = LocalOperations::new(control.operations.layout().clone());
-    let server = ViewerServer::new(
-        ViewerAdapter::new(ops),
-        project,
-        ViewerLocale::English,
-        ViewerView::Overview,
-        "en".into(),
-        AUTH.parse()?,
-    )?;
     Ok((
         control,
         Fixture {
             _temp: tempfile::tempdir()?,
-            server,
+            operations: ops,
             project,
         },
     ))
@@ -497,15 +526,15 @@ fn explicit_relationships_keep_work_boundaries_and_all_pages_are_exact() -> Resu
     // An untrusted query cannot request an inferred join or alternate Project.
     assert!(f
         .get(&format!("class=work&id={older}&join=path"))?
-        .starts_with("HTTP/1.1 400"));
+        .starts_with("Outcome 400"));
     assert!(f
         .get(&format!("class=work&project={}", "11".repeat(16)))?
-        .starts_with("HTTP/1.1 400"));
+        .starts_with("Outcome 400"));
     Ok(())
 }
 
 #[test]
-fn source_body_is_exact_work_scoped_and_rechecks_expiration_on_each_http_chunk() -> Result {
+fn source_body_is_exact_work_scoped_and_rechecks_expiration_on_each_operations_chunk() -> Result {
     let (control, f) = rich()?;
     let analysis = f
         .ops()
@@ -607,321 +636,15 @@ fn foreign_relationship_targets_and_unavailable_dependencies_are_not_empty_succe
         [],
     )?;
     let unavailable = f.get("class=candidate")?;
-    assert!(unavailable.starts_with("HTTP/1.1 503"), "{unavailable}");
+    assert!(unavailable.starts_with("Outcome 503"), "{unavailable}");
     assert!(!unavailable.contains("permitted_match_count"));
     assert!(!unavailable.contains("record_json"));
-    assert!(f.get("class=work")?.starts_with("HTTP/1.1 200"));
+    assert!(f.get("class=work")?.starts_with("Outcome 200"));
     assert_eq!(canonical, f.ops().canonical_basis(f.project)?);
     Ok(())
 }
 
-#[test]
-fn html_search_exact_fields_and_receipts_escape_stored_content_and_keep_protected_actions() -> Result
-{
-    let f = Fixture::new()?;
-    let goal = f.goal(
-        f.project,
-        "Inspect <script>window.stolen=1</script> & retained wording",
-    )?;
-    let list = f.raw(
-        "/inspection?class=work&q=%3Cscript%3E",
-        &format!("Host: {AUTH}\r\n"),
-    )?;
-    assert!(list.starts_with("HTTP/1.1 200"), "{list}");
-    assert!(!list.contains("<script>"));
-    assert!(list.contains("&lt;script&gt;"));
-    assert!(!list.contains("<pre>"));
-    assert!(list.contains("Read Work document"));
-    let exact = f.raw(
-        &format!("/inspection?class=work&id={goal}&revision=1&field=statement"),
-        &format!("Host: {AUTH}\r\n"),
-    )?;
-    assert!(!exact.contains("<script>"));
-    assert!(exact.contains("Back to results"));
-    assert!(exact.contains("/memory/context/correct"));
-    assert!(exact.contains("/memory/forget"));
-    let localized = f.raw(
-        &format!("/inspection?class=work&id={goal}&locale=ko&language=ja"),
-        &format!("Host: {AUTH}\r\n"),
-    )?;
-    assert!(localized.contains(&format!("work={goal}&amp;locale=ko&amp;language=ja")));
-    let marker = "name=\"request_authenticity\" value=\"";
-    let token = exact
-        .split_once(marker)
-        .ok_or("authenticity")?
-        .1
-        .split('"')
-        .next()
-        .ok_or("token")?;
-    let body=format!("record_kind=context_item&record_id={goal}&user_turn=Forget+this+exact+Goal&view=tools&tool=memory&inspection_class=work&request_authenticity={token}");
-    let post = |origin: &str, token_body: &str| {
-        format!("POST /memory/forget HTTP/1.1\r\nHost: {AUTH}\r\nOrigin: {origin}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{token_body}",token_body.len())
-    };
-    let mut output = Vec::new();
-    f.server.serve_connection(
-        &mut Cursor::new(post("https://attacker.invalid", &body)),
-        &mut output,
-    )?;
-    assert!(String::from_utf8(output)?.starts_with("HTTP/1.1 403"));
-    assert!(f
-        .get(&format!("class=work&id={goal}"))?
-        .starts_with("HTTP/1.1 200"));
-    let mut output = Vec::new();
-    f.server.serve_connection(
-        &mut Cursor::new(post(&format!("http://{AUTH}"), &body)),
-        &mut output,
-    )?;
-    let receipt = String::from_utf8(output)?;
-    assert!(receipt.starts_with("HTTP/1.1 200"), "{receipt}");
-    assert!(receipt.contains("Forgetting completed"));
-    assert!(receipt.contains(&goal.to_string()));
-    assert!(!receipt.contains("<script>"));
-    assert!(!receipt.contains(token));
-    assert!(f
-        .get(&format!("class=work&id={goal}"))?
-        .starts_with("HTTP/1.1 404"));
-    Ok(())
-}
-
-#[test]
-fn seed_inspection_review() -> Result {
-    let Some(root) = std::env::var_os("VOLICORD_INSPECTION_REVIEW_ROOT") else {
-        return Ok(());
-    };
-    let root = std::path::PathBuf::from(root);
-    std::fs::create_dir_all(&root)?;
-    let control = reading_fixture::scenario_in(&root, reading_fixture::rich_scenario()?)?;
-    let ops = LocalOperations::new(control.operations.layout().clone());
-    let server = ViewerServer::new(
-        ViewerAdapter::new(ops),
-        control.project,
-        ViewerLocale::English,
-        ViewerView::Overview,
-        "en".into(),
-        AUTH.parse()?,
-    )?;
-    let f = Fixture {
-        _temp: tempfile::tempdir()?,
-        server,
-        project: control.project,
-    };
-    let s = f.source(f.project, "private-source-marker")?;
-    let candidate = f.candidate(s, "Inspect a retained investigation candidate")?;
-    let expired = f.candidate(s, "expired-review-secret")?;
-    let derived = f.derived(s, "derived-review-secret")?;
-    let db = rusqlite::Connection::open(f.ops().layout().candidate_store())?;
-    let raw: String = db.query_row(
-        "SELECT record_json FROM candidates WHERE id=?1",
-        [expired.as_bytes().as_slice()],
-        |r| r.get(0),
-    )?;
-    let mut record: Value = serde_json::from_str(&raw)?;
-    record["retention"]["retained_until"] = json!(2);
-    db.execute(
-        "UPDATE candidates SET record_json=?1 WHERE id=?2",
-        rusqlite::params![record.to_string(), expired.as_bytes().as_slice()],
-    )?;
-    let empty = f
-        .ops()
-        .initialize_project("Empty inspection control", None)?
-        .project
-        .id;
-    // Authored technical fixture only: provide admitted claims for the existing
-    // browser's claim/evidence navigation assertions. No provider or user-quality claim.
-    {
-        use volicord_projections::*;
-        for subject in [
-            ExplanationSubject::Work(control.goals["older"]),
-            ExplanationSubject::Decision(control.decisions["explicit"]),
-        ] {
-            let plan = f.ops().prepare_explanation(f.project, subject, "en")?;
-            let questions = if matches!(subject, ExplanationSubject::Work(_)) {
-                vec![
-                    (ExplanationQuestion::Purpose, "goal"),
-                    (ExplanationQuestion::ReportedChange, "result"),
-                    (ExplanationQuestion::ExpectedEffect, "result"),
-                    (ExplanationQuestion::Verification, "verification"),
-                    (ExplanationQuestion::NextStep, "next_step"),
-                ]
-            } else {
-                vec![
-                    (ExplanationQuestion::UserRationale, "user_rationale"),
-                    (ExplanationQuestion::Recommendation, "recommendation"),
-                    (ExplanationQuestion::Consequences, "consequences"),
-                    (ExplanationQuestion::Applicability, "applicability"),
-                ]
-            };
-            f.ops().record_explanation(f.project, subject, "en", ExplanationRealization {
-                format_kind: EXPLANATION_KIND.into(), format_version: EXPLANATION_VERSION,
-                plan_fingerprint: plan.fingerprint, language: "en".into(),
-                generator: ExplanationGenerator { host: "authored-inspection-browser-control".into(), session: "synthetic".into(), agent: None, model: None },
-                paragraphs: questions.into_iter().map(|(question, key)| ExplanationParagraph { question, text: format!("Synthetic navigation control for {question:?}; not a user explanation evaluation."), evidence_keys: vec![key.into()], citations: Vec::new() }).collect(),
-            })?;
-        }
-    }
-    let manifest = json!({"runtime":f.ops().layout().root(),"project":f.project.to_string(),"work":control.goals["older"].to_string(),
-        "decision":control.decisions["explicit"].to_string(),"candidate":candidate.to_string(),"expired":expired.to_string(),"derived":derived.to_string(),
-        "empty_project":empty.to_string(),"synthetic":true,"human_acceptance":"pending"});
-    std::fs::write(
-        root.join("fixture.json"),
-        serde_json::to_vec_pretty(&manifest)?,
-    )?;
-    let _kept = control._temporary.keep();
-    Ok(())
-}
-
-#[test]
-fn decision_correction_and_supersession_use_domain_operations_and_exact_receipts() -> Result {
-    let (control, f) = rich()?;
-    let id = control.decisions["project"];
-    let basis = f.ops().canonical_basis(f.project)?;
-    let original = &basis
-        .active_decisions
-        .iter()
-        .find(|d| d.decision.id == id)
-        .ok_or("Decision")?
-        .decision;
-    let corrected = format!(
-        "{}.",
-        original.user_rationale.as_deref().ok_or("rationale")?
-    );
-    let alternative=original.displayed_alternatives.iter().find(|a|!matches!(&original.choice,volicord_context::DecisionChoice::Alternative{alternative_key} if *alternative_key==a.key)).ok_or("different alternative")?.key.clone();
-    let html = f.raw(
-        &format!("/inspection?class=decision&id={id}"),
-        &format!("Host: {AUTH}\r\n"),
-    )?;
-    let token = html
-        .split_once("name=\"request_authenticity\" value=\"")
-        .ok_or("token")?
-        .1
-        .split('"')
-        .next()
-        .ok_or("token")?;
-    let encode = |s: &str| s.bytes().map(|b| format!("%{b:02X}")).collect::<String>();
-    let post = |path: &str, body: String| -> Result<String> {
-        let body = format!(
-            "{body}&view=tools&tool=memory&inspection_class=decision&request_authenticity={token}"
-        );
-        let request=format!("POST {path} HTTP/1.1\r\nHost: {AUTH}\r\nOrigin: http://{AUTH}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\n\r\n{body}",body.len());
-        let mut output = Vec::new();
-        f.server
-            .serve_connection(&mut Cursor::new(request), &mut output)?;
-        Ok(String::from_utf8(output)?)
-    };
-    let correction=post("/memory/decision/correct",format!("record_id={id}&expected_revision={}&corrected_text={}&user_turn=Correct+the+punctuation",original.revision,encode(&corrected)))?;
-    assert!(correction.starts_with("HTTP/1.1 200"), "{correction}");
-    assert!(correction.contains(&id.to_string()));
-    assert!(correction.contains("revision 2"));
-    let supersession = post(
-        "/memory/decision/supersede",
-        format!(
-            "record_id={id}&alternative={}&user_turn=Choose+this+different+displayed+alternative",
-            encode(&alternative)
-        ),
-    )?;
-    assert!(supersession.starts_with("HTTP/1.1 200"), "{supersession}");
-    let basis = f.ops().canonical_basis(f.project)?;
-    let old = basis
-        .superseded_decisions
-        .iter()
-        .find(|d| d.decision.id == id)
-        .ok_or("superseded")?;
-    let new = old.superseded_by.ok_or("successor")?;
-    assert_ne!(new, id);
-    assert!(supersession.contains(&new.to_string()));
-    assert!(!supersession.contains(token));
-    let successor = &basis
-        .active_decisions
-        .iter()
-        .find(|d| d.decision.id == new)
-        .ok_or("successor")?
-        .decision;
-    assert_eq!(successor.work_scope, original.work_scope);
-    assert!(successor.user_rationale.is_none());
-    assert_eq!(
-        f.page(&format!("class=decision&id={id}"))?["page"]["rows"][0]["state"],
-        "superseded"
-    );
-    assert_eq!(
-        f.page(&format!("class=decision&id={new}"))?["page"]["rows"][0]["state"],
-        "active"
-    );
-    Ok(())
-}
-
 /// Controlled store scaling, not naturalistic evidence or a release SLA. The
-/// retained root reuses exactly the same SQLite inputs across old/new binaries.
-#[test]
-#[ignore = "explicit local profiling; retains synthetic inputs under the supplied ignored root"]
-fn profile_inspection_scaling() -> Result {
-    let root = std::path::PathBuf::from(
-        std::env::var_os("VOLICORD_INSPECTION_PROFILE_ROOT").ok_or("profile root required")?,
-    );
-    for n in [10usize, 100, 1000] {
-        let path = root.join(n.to_string());
-        let project = if path.join("project.json").exists() {
-            serde_json::from_slice(&std::fs::read(path.join("project.json"))?)?
-        } else {
-            std::fs::create_dir_all(&path)?;
-            let ops = LocalOperations::new(RuntimeLayout::new(path.join("runtime"))?);
-            let project = ops
-                .initialize_project("Controlled inspection scale", None)?
-                .project
-                .id;
-            ops.transition_work(
-                project,
-                WorkTransition::StartNew {
-                    host: "test".into(),
-                    session: "profile".into(),
-                    user_turn: "Controlled work".into(),
-                    statement: "Controlled work".into(),
-                },
-            )?;
-            let db = rusqlite::Connection::open(ops.layout().canonical_store())?;
-            // Clone the maintained producer's typed row, changing only identity/text.
-            for i in 1..n {
-                let id = (i as u128).to_be_bytes();
-                db.execute("INSERT INTO context_items SELECT ?1,project_id,revision,role,?2,provenance_role,author_kind,author_identity,applicability_paths,applicability_components,applicability_work_contexts,recorded_at FROM context_items LIMIT 1", rusqlite::params![id.as_slice(), format!("Controlled work {i:04} 한글")])?;
-                db.execute("INSERT INTO context_item_sources SELECT project_id,?1,source_id,position FROM context_item_sources LIMIT 1", [id.as_slice()])?;
-            }
-            std::fs::write(path.join("project.json"), serde_json::to_vec(&project)?)?;
-            project
-        };
-        let ops = LocalOperations::new(RuntimeLayout::new(path.join("runtime"))?);
-        let server = ViewerServer::new(
-            ViewerAdapter::new(ops),
-            project,
-            ViewerLocale::English,
-            ViewerView::Overview,
-            "en".into(),
-            AUTH.parse()?,
-        )?;
-        let f = Fixture {
-            _temp: tempfile::tempdir()?,
-            server,
-            project,
-        };
-        let mut fingerprints = Vec::new();
-        for run in 0..3 {
-            let start = std::time::Instant::now();
-            let response = f.get("class=work&limit=7")?;
-            let micros = start.elapsed().as_micros();
-            let page: Value =
-                serde_json::from_str(response.split_once("\r\n\r\n").ok_or("body")?.1)?;
-            assert_eq!(page["page"]["permitted_match_count"], n);
-            assert_eq!(page["page"]["rows"].as_array().ok_or("rows")?.len(), 7);
-            fingerprints.push(page["page"]["fingerprint"].clone());
-            println!(
-                "PROFILE n={n} run={run} elapsed_us={micros} http_bytes={} fingerprint={}",
-                response.len(),
-                fingerprints.last().unwrap()
-            );
-        }
-        assert!(fingerprints.windows(2).all(|w| w[0] == w[1]));
-    }
-    Ok(())
-}
-
 // Test-only controlled scale injection clones actual maintained producer rows.
 fn clone_row(
     db: &rusqlite::Connection,
@@ -961,284 +684,6 @@ fn clone_row_from(
         &format!("INSERT INTO {table} SELECT {selects} FROM {table}{filter} LIMIT 1"),
         rusqlite::params_from_iter(parameters),
     )?;
-    Ok(())
-}
-
-#[test]
-#[ignore = "explicit controlled scale profiling on retained identical inputs"]
-fn profile_inspection_related_scaling() -> Result {
-    use rusqlite::types::Value as Sql;
-    use sha2::{Digest, Sha256};
-    let root = std::path::PathBuf::from(
-        std::env::var_os("VOLICORD_INSPECTION_PROFILE_ROOT").ok_or("root")?,
-    );
-    for dense in [false, true] {
-        if std::env::var("VOLICORD_INSPECTION_PROFILE_DENSE")
-            .ok()
-            .is_some_and(|v| v != dense.to_string())
-        {
-            continue;
-        }
-        for n in [10usize, 100, 1000] {
-            if std::env::var("VOLICORD_INSPECTION_PROFILE_SIZE")
-                .ok()
-                .is_some_and(|v| v != n.to_string())
-            {
-                continue;
-            }
-            let path = root.join(format!("related-{dense}-{n}"));
-            let project = if path.join("project.json").exists() {
-                serde_json::from_slice(&std::fs::read(path.join("project.json"))?)?
-            } else {
-                std::fs::create_dir_all(&path)?;
-                let control =
-                    reading_fixture::scenario_in(&path, reading_fixture::rich_scenario()?)?;
-                let project = control.project;
-                let ops = LocalOperations::new(control.operations.layout().clone());
-                let server = ViewerServer::new(
-                    ViewerAdapter::new(ops),
-                    project,
-                    ViewerLocale::English,
-                    ViewerView::Overview,
-                    "en".into(),
-                    AUTH.parse()?,
-                )?;
-                let f = Fixture {
-                    _temp: tempfile::tempdir()?,
-                    server,
-                    project,
-                };
-                let source = f.source(project, "controlled private source")?;
-                f.candidate(source, "Controlled candidate")?;
-                f.derived(source, "controlled private Derived")?;
-                let db = rusqlite::Connection::open(f.ops().layout().canonical_store())?;
-                let work = control.goals["older"];
-                for i in 1..=n {
-                    let wid = ContextItemId::from_bytes((i as u128).to_be_bytes());
-                    clone_row_from(
-                        &db,
-                        "context_items",
-                        &[
-                            ("id", Sql::Blob(wid.as_bytes().to_vec())),
-                            ("role", Sql::Text("goal".into())),
-                            ("statement", Sql::Text(format!("Scale work {i:04} 한글"))),
-                        ],
-                        Some(("id", work.as_bytes())),
-                    )?;
-                    clone_row_from(
-                        &db,
-                        "sources",
-                        &[
-                            ("id", Sql::Blob((i as u128).to_be_bytes().to_vec())),
-                            ("locator", Sql::Text(format!("Scale work {i:04} 한글"))),
-                        ],
-                        Some(("id", source.as_bytes())),
-                    )?;
-                    clone_row(
-                        &db,
-                        "context_item_sources",
-                        &[
-                            ("context_item_id", Sql::Blob(wid.as_bytes().to_vec())),
-                            ("source_id", Sql::Blob((i as u128).to_be_bytes().to_vec())),
-                        ],
-                    )?;
-                    let mut encoded_sources = 1u64.to_be_bytes().to_vec();
-                    encoded_sources.extend_from_slice(wid.as_bytes());
-                    clone_row_from(
-                        &db,
-                        "context_item_revisions",
-                        &[
-                            ("context_item_id", Sql::Blob(wid.as_bytes().to_vec())),
-                            ("statement", Sql::Text(format!("Scale work {i:04} 한글"))),
-                            ("source_basis", Sql::Blob(encoded_sources)),
-                        ],
-                        Some(("context_item_id", work.as_bytes())),
-                    )?;
-                    for j in 0..4 {
-                        let id = ((i * 4 + j) as u128).to_be_bytes();
-                        clone_row(
-                            &db,
-                            "checkpoints",
-                            &[
-                                ("id", Sql::Blob(id.to_vec())),
-                                (
-                                    "work_item_id",
-                                    Sql::Blob(if dense { work } else { wid }.as_bytes().to_vec()),
-                                ),
-                            ],
-                        )?;
-                        clone_row(
-                            &db,
-                            "checkpoint_source_relations",
-                            &[
-                                ("checkpoint_id", Sql::Blob(id.to_vec())),
-                                ("relation_kind", Sql::Text("supported_by".into())),
-                            ],
-                        )?;
-                    }
-                }
-                for (store, table) in [
-                    (f.ops().layout().candidate_store(), "candidates"),
-                    (f.ops().layout().privacy_store(), "managed_derived"),
-                ] {
-                    let db = rusqlite::Connection::open(store)?;
-                    let raw: String = db.query_row(
-                        &format!("SELECT record_json FROM {table} LIMIT 1"),
-                        [],
-                        |r| r.get(0),
-                    )?;
-                    for i in 1..=n {
-                        let mut record: Value = serde_json::from_str(&raw)?;
-                        let id = CandidateId::from_bytes((i as u128).to_be_bytes());
-                        record["id"] = json!(id);
-                        clone_row(
-                            &db,
-                            table,
-                            &[
-                                ("id", Sql::Blob(id.as_bytes().to_vec())),
-                                ("record_json", Sql::Text(record.to_string())),
-                            ],
-                        )?;
-                    }
-                }
-                // A real owner mutation validates the complete seeded canonical state.
-                f.source(project, "Post-seed owner validity control")?;
-                std::fs::write(path.join("project.json"), serde_json::to_vec(&project)?)?;
-                std::fs::write(
-                    path.join("runtime-path.json"),
-                    serde_json::to_vec(f.ops().layout().root())?,
-                )?;
-                let _keep = control._temporary.keep();
-                project
-            };
-            let runtime: std::path::PathBuf =
-                serde_json::from_slice(&std::fs::read(path.join("runtime-path.json"))?)?;
-            let ops = LocalOperations::new(RuntimeLayout::new(runtime)?);
-            let server = ViewerServer::new(
-                ViewerAdapter::new(ops),
-                project,
-                ViewerLocale::English,
-                ViewerView::Overview,
-                "en".into(),
-                AUTH.parse()?,
-            )?;
-            let f = Fixture {
-                _temp: tempfile::tempdir()?,
-                server,
-                project,
-            };
-            let basis = f.ops().canonical_basis(project)?;
-            assert_eq!(
-                basis
-                    .context_items
-                    .iter()
-                    .filter(|c| c.role == volicord_context::ContextItemRole::Goal)
-                    .count(),
-                n + 10
-            );
-            println!(
-                "DATA dense={dense} n={n} works={} checkpoints={} sources={}",
-                basis
-                    .context_items
-                    .iter()
-                    .filter(|c| c.role == volicord_context::ContextItemRole::Goal)
-                    .count(),
-                basis.checkpoint_history.len(),
-                basis.sources.len()
-            );
-            for class in [
-                "work",
-                "checkpoint",
-                "decision",
-                "question",
-                "source",
-                "context",
-                "candidate",
-                "derived",
-            ] {
-                if std::env::var("VOLICORD_INSPECTION_PROFILE_CLASS")
-                    .ok()
-                    .is_some_and(|v| !v.split(',').any(|c| c == class))
-                {
-                    continue;
-                }
-                for run in 0..std::env::var("VOLICORD_INSPECTION_PROFILE_RUNS")
-                    .ok()
-                    .and_then(|s| s.parse::<usize>().ok())
-                    .unwrap_or(3)
-                {
-                    let start = std::time::Instant::now();
-                    let response = f.get(&format!("class={class}&limit=7"))?;
-                    let micros = start.elapsed().as_micros();
-                    if let Some(output) = std::env::var_os("VOLICORD_INSPECTION_PROFILE_OUTPUT") {
-                        let output = std::path::PathBuf::from(output);
-                        std::fs::create_dir_all(&output)?;
-                        std::fs::write(
-                            output.join(format!("{dense}-{n}-{class}-{run}.http")),
-                            &response,
-                        )?;
-                    }
-                    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
-                    println!("RELATED dense={dense} n={n} class={class} run={run} elapsed_us={micros} bytes={} sha256={:x}", response.len(), Sha256::digest(response.as_bytes()));
-                }
-                let (_, cost) = f.ops().inspect_project_records_profiled(
-                    project,
-                    &volicord_operations::InspectionQuery {
-                        class: volicord_operations::InspectionClass::parse(class)?,
-                        limit: 7,
-                        ..Default::default()
-                    },
-                )?;
-                assert!(cost.retained_rows <= 7);
-                println!("COST dense={dense} n={n} class={class} {cost:?}");
-            }
-        }
-    }
-    Ok(())
-}
-
-#[test]
-#[ignore = "actual HTML consumer on an explicitly retained large profiling Project"]
-fn profile_inspection_large_html() -> Result {
-    let root = std::path::PathBuf::from(
-        std::env::var_os("VOLICORD_INSPECTION_PROFILE_ROOT").ok_or("root")?,
-    )
-    .join("related-false-1000");
-    let project = serde_json::from_slice(&std::fs::read(root.join("project.json"))?)?;
-    let runtime: std::path::PathBuf =
-        serde_json::from_slice(&std::fs::read(root.join("runtime-path.json"))?)?;
-    let ops = LocalOperations::new(RuntimeLayout::new(runtime)?);
-    let server = ViewerServer::new(
-        ViewerAdapter::new(ops),
-        project,
-        ViewerLocale::English,
-        ViewerView::Overview,
-        "en".into(),
-        AUTH.parse()?,
-    )?;
-    let f = Fixture {
-        _temp: tempfile::tempdir()?,
-        server,
-        project,
-    };
-    let before = f.ops().canonical_basis(project)?;
-    for run in 0..2 {
-        let start = std::time::Instant::now();
-        let response = f.raw(
-            "/inspection?class=work&limit=7",
-            &format!("Host: {AUTH}\r\n"),
-        )?;
-        let elapsed = start.elapsed();
-        assert!(response.starts_with("HTTP/1.1 200"));
-        assert_eq!(response.matches("class=\"inspection-record").count(), 7);
-        assert!(!response.contains("controlled private source"));
-        println!(
-            "HTML n=1000 run={run} elapsed_us={} http_bytes={}",
-            elapsed.as_micros(),
-            response.len()
-        );
-    }
-    assert_eq!(before, f.ops().canonical_basis(project)?);
     Ok(())
 }
 
@@ -1332,7 +777,7 @@ fn thousand_goal_pages_have_exact_independent_counts_and_typed_overlapping_sourc
     );
     assert!(f
         .get(&format!("class=context&id={id}"))?
-        .starts_with("HTTP/1.1 404"));
+        .starts_with("Outcome 404"));
     let detail = f.page(&format!("class=work&id={id}&revision=1&field=statement"))?;
     assert!(detail["detail"]["chunk"]
         .as_str()
@@ -1340,7 +785,7 @@ fn thousand_goal_pages_have_exact_independent_counts_and_typed_overlapping_sourc
         .contains("Scale admitted"));
     assert!(f
         .get(&format!("class=work&q={}", "%ED%95%9C".repeat(43)))?
-        .starts_with("HTTP/1.1 400"));
+        .starts_with("Outcome 400"));
     assert_eq!(
         f.page(&format!("class=work&q={}ab", "%ED%95%9C".repeat(42)))?["page"]
             ["permitted_match_count"],
@@ -1351,7 +796,7 @@ fn thousand_goal_pages_have_exact_independent_counts_and_typed_overlapping_sourc
             "class=work&limit=20&offset=20&basis={}",
             "f".repeat(64)
         ))?
-        .starts_with("HTTP/1.1 409"));
+        .starts_with("Outcome 409"));
     let (_, cost) = f.ops().inspect_project_records_profiled(
         f.project,
         &volicord_operations::InspectionQuery {
@@ -1464,12 +909,12 @@ fn dense_checkpoint_relations_have_exact_pages_and_separate_recorded_target_revi
     let stale = f.get(&format!(
         "class=work&id={work}&relationships=8&basis={fingerprint}"
     ))?;
-    assert!(stale.starts_with("HTTP/1.1 409"));
+    assert!(stale.starts_with("Outcome 409"));
     assert!(f
         .get(&format!(
             "class=work&id={work}&relationships=100000&basis={fingerprint}"
         ))?
-        .starts_with("HTTP/1.1 409"));
+        .starts_with("Outcome 409"));
     Ok(())
 }
 
@@ -1521,7 +966,7 @@ fn foreign_candidate_and_derived_envelopes_cannot_enter_counts_metadata_or_finge
         assert_eq!(before, f.page(&format!("class={class}"))?);
         assert!(f
             .get(&format!("class={class}&id={goal}"))?
-            .starts_with("HTTP/1.1 404"));
+            .starts_with("Outcome 404"));
         if class == "derived" {
             record["purpose"] = json!("foreign-secret-value");
         }
@@ -1638,6 +1083,6 @@ fn concurrent_exact_field_and_relationship_reads_share_correction_and_forgetting
     );
     assert!(f
         .get(&format!("class=work&id={goal}"))?
-        .starts_with("HTTP/1.1 404"));
+        .starts_with("Outcome 404"));
     Ok(())
 }

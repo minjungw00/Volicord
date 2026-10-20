@@ -3198,8 +3198,8 @@ these controls supply no Final/V11, semantic/human verdict or user acceptance.
 
 ### Inspection resource and review-package follow-up
 
-Use the existing `volicord-viewer/tests/inspection.rs` controlled profiling cases
-through `validate focused`, with an absolute ignored root. Reuse unchanged stores
+Use the existing `volicord-operations/tests/inspection.rs` domain query resource controls
+through `validate focused`. Reuse unchanged stores
 for old/current runs sequentially; concurrent readers contend on the same health
 lock. Report actual Goal/class cardinalities, not generic Context counts. Ordinary
 scale fixtures must include Source/revision support and pass an owner mutation

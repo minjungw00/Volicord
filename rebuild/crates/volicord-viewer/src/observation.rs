@@ -95,9 +95,9 @@ pub(crate) fn context(
         }
     }
     for d in projection
-        .decision_catalog
+        .selected_work_decisions
         .iter()
-        .chain(projection.selected_decision.iter())
+        .filter(|_| matches!(request.view, crate::ViewerView::Work { work: Some(_) }))
     {
         subjects.insert(
             format!("decision:{}", d.decision.decision_id),
@@ -108,6 +108,19 @@ pub(crate) fn context(
                 &request.requested_language,
             ),
         );
+    }
+    if matches!(request.view, crate::ViewerView::RepositoryExplanation) {
+        if let Some(snapshot) = projection.repository_analysis.analysis_snapshot {
+            subjects.insert(
+                format!("repository:{snapshot}"),
+                explanation(
+                    "repository",
+                    snapshot.to_string(),
+                    &projection.repository_explanations,
+                    &request.requested_language,
+                ),
+            );
+        }
     }
     let sources=projection.source_catalog.iter().map(|s| json!({"identity":s.source.id.to_string(),
         "availability":format!("{:?}",s.availability).to_lowercase(),"freshness":format!("{:?}",s.freshness).to_lowercase(),

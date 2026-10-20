@@ -20,6 +20,7 @@ fn main() {
 fn run(args: Vec<OsString>) -> Result<(), String> {
     let mut runtime = None;
     let mut project = None;
+    let mut guarded = None;
     let mut bind = "127.0.0.1:3219".to_owned();
     let mut bind_was_requested = false;
     let mut snapshot = None;
@@ -42,6 +43,7 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
                 bind = next(index + 1)?;
                 bind_was_requested = true;
             }
+            "--guarded" => guarded = Some(parse_project(&next(index + 1)?)?),
             "--snapshot" => snapshot = Some(PathBuf::from(next(index + 1)?)),
             "--locale" => {
                 locale = match next(index + 1)?.as_str() {
@@ -66,8 +68,8 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
     };
     let adapter = ViewerAdapter::new(LocalOperations::new(layout));
     if let Some(destination) = snapshot {
-        if view_was_requested {
-            return Err("--view cannot be combined with whole-snapshot export".into());
+        if view_was_requested || guarded.is_some() {
+            return Err("--view/--guarded cannot be combined with whole-snapshot export".into());
         }
         if bind_was_requested {
             return Err("--bind cannot be combined with --snapshot".into());
@@ -109,7 +111,10 @@ fn run(args: Vec<OsString>) -> Result<(), String> {
         .map_err(|error| format!("cannot identify bound viewer authority: {error}"))?;
     let server = ViewerServer::new(adapter, project, locale, view, language, authority)
         .map_err(|error| error.to_string())?;
-    eprintln!("Volicord local viewer: http://{authority}/");
+    let path = guarded
+        .map(|id| format!("/guarded/{id}"))
+        .unwrap_or_else(|| "/".into());
+    eprintln!("Volicord local viewer: http://{authority}{path}");
     for stream in listener.incoming() {
         let mut stream = stream.map_err(|error| format!("viewer connection failed: {error}"))?;
         if let Err(error) = serve_stream(&server, &mut stream) {

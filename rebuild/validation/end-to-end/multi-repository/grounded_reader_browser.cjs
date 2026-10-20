@@ -74,7 +74,7 @@ async function roundTrip(page,link,width,live){
     await page.goto(config.offline?base+`#${view==='work'?'works':'overview'}`:`${base}?view=${view}&locale=${language}&language=${language}`);
     await page.evaluate(()=>scrollTo(0,0));
     assert.equal(await page.locator('.masthead nav>.nav-link').count(),3,'single navigation includes repository reading');
-    assert.equal(await page.locator('.masthead .tools-menu').count(),1,'secondary tools share the single navigation');
+    assert.equal(await page.locator('.masthead .tools-menu').count(),0,'reader has no Tools surface');
     assert.equal(await page.locator('.project-navigation').count(),0);
     const root=config.offline?page.locator(view==='work'?'#works':'#overview'):page.locator('main');
     for(const removed of ['.overview-jumps','.category-details','.current-work','.card-status-strip','.summary-records'])assert.equal(await root.locator(removed).count(),0,'obsolete ordinary structure removed');

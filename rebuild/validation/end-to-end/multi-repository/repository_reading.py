@@ -95,17 +95,18 @@ def main():
                 if match: url = match.group(); break
                 time.sleep(.05)
             assert url, 'Viewer startup timeout'
-            for name, query in [('overview', '?view=overview'), ('repository', '?view=repository'), ('code', '?view=code&scope=repository')]:
+            for name, query in [('overview', '?view=overview'), ('repository', '?view=repository'), ('work', '?view=work')]:
                 page = urllib.request.urlopen(url + query, timeout=15).read().decode()
                 (output / (name + '.html')).write_text(page)
-                if name == 'code':
-                    assert 'id="code"' in page and 'main.py' in page
+                if name == 'work':
+                    assert 'No Work has been recorded' in page
                     continue
-                assert text in page and 'Authored repository reading' in page
+                assert 'Authored repository reading' in page
+                if name == 'repository': assert text in page
                 if name != 'overview':
                     assert source_text.replace("'", '&#39;')[:12] in page
                 if name == 'repository':
-                    assert page.index('data-question="RepositoryScope"') < page.index('class="audit-links"')
+                    assert page.index('data-question="RepositoryScope"') < page.index('class="document-nav"')
                 assert 'repository-explanation' in page or 'view=repository' in page
             snapshot = output / 'offline.html'
             call('snapshot', 'viewer', 'export', '--output', snapshot)

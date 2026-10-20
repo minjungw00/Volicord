@@ -938,14 +938,16 @@ python3 -B rebuild/validation/dogfood/human_observation_plan.py \
 the preparer intersects it with actual Git changes from diagnostic b57b47a5 to final HEAD.
 It binds the clean candidate, three executable hashes and owner/inventory bytes, and
 publishes create-only. The eight consolidated blocks cover Overview, multi-Work list,
-Work detail, current Decision, Code/Analysis limitations, color-versus-grouping,
+Work detail, its applicable Decision, contextual repository/code limits, color-versus-grouping,
 keyboard/focus/narrow/native-zoom, and input/paint in both locales. No answer or verdict is
 prefilled. One directly observed path/narrative may support multiple technical fields;
 these blocks are scope, not a one-question-per-field script or a remaining-question count.
 
 For the new candidate, pass `--observation-plan PLAN/preparation.json` to
 `capture-human-viewer-observations`. Prepare en/ko Overview, two distinct actual Works,
-a displayed applicable Decision, Code and Analysis (`?view=tools&tool=status`) contexts
+a displayed applicable Decision within its actual Work and Repository explanation
+with claim-specific code/Source and relevant analysis limits. D-28–33 retire the
+standalone Decision/Code/Tools contexts; general diagnostics remain outside Viewer
 before questioning. The plan rejects altered/foreign candidate, executable or contract
 and missing required views/subjects before any human prompt. Personally inspect keyboard,
 focus, grouping, 390/768/1440 widths, native 200% zoom and input/paint on that same path;

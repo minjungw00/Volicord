@@ -133,20 +133,6 @@ pub(super) fn content_language_tag(requested: &str) -> String {
     }
 }
 
-pub(super) const fn code_explanation_state_label(
-    state: volicord_projections::CodeExplanationState,
-    locale: ViewerLocale,
-) -> &'static str {
-    use volicord_projections::CodeExplanationState::*;
-    match state {
-        Current => text(locale, "Current", "최신"),
-        Partial => text(locale, "Partial", "일부"),
-        Stale => text(locale, "Stale", "오래됨"),
-        Unsupported => text(locale, "Unsupported", "지원하지 않음"),
-        Unavailable => text(locale, "Unavailable", "이용 불가"),
-    }
-}
-
 #[cfg(test)]
 mod calendar_tests {
     #[test]

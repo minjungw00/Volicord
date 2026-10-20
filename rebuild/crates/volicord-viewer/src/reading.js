@@ -128,13 +128,7 @@
   });
   document.addEventListener('keydown', event => {
     const point = document.getElementById(location.hash.slice(1))?.closest('.source-point');
-    if (!point) {
-      const menu = document.querySelector('.tools-menu[open]');
-      if (menu && event.key === 'Escape') {
-        event.preventDefault(); menu.open = false; menu.querySelector('summary').focus();
-      }
-      return;
-    }
+    if (!point) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       point.querySelector('.return').click();

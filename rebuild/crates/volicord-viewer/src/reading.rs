@@ -1,6 +1,6 @@
 //! Purpose-oriented sections shared by live and whole-snapshot rendering.
 use super::*;
-use crate::{CodeScope, ViewerTool, ViewerView};
+use crate::ViewerView;
 
 fn url(request: &ViewerRequest, view: &ViewerView) -> String {
     let mut fields = view.fields();
@@ -41,7 +41,7 @@ pub(super) fn navigation(html: &mut String, r: &ViewerRequest, snapshot: bool) {
         ),
         (
             ViewerView::RepositoryExplanation,
-            text(r.locale, "Repository", "저장소 설명"),
+            text(r.locale, "Repository explanation", "저장소 설명"),
             "repository-explanation",
         ),
         (
@@ -66,114 +66,14 @@ pub(super) fn navigation(html: &mut String, r: &ViewerRequest, snapshot: bool) {
             label
         ));
     }
-    html.push_str("<details class=\"tools-menu\"><summary>");
-    html.push_str(text(r.locale, "Tools", "도구"));
-    html.push_str("</summary><div class=\"tool-links\">");
-    let href = if snapshot {
-        "#decision-reading".into()
-    } else {
-        url(r, &ViewerView::Decisions { decision: None })
-    };
-    html.push_str(&format!(
-        "<a href=\"{}\">{}</a>",
-        escape(&href),
-        text(r.locale, "Decision inspection", "결정 검사")
-    ));
-    for (tool, label, id) in [
-        (
-            ViewerTool::Status,
-            text(r.locale, "Analysis & privacy", "분석 및 개인정보"),
-            "analysis-tool",
-        ),
-        (
-            ViewerTool::Documents,
-            text(r.locale, "Documents", "문서"),
-            "documents-tool",
-        ),
-        (
-            ViewerTool::Memory,
-            text(
-                r.locale,
-                "Project records & memory",
-                "프로젝트 기록 및 기억",
-            ),
-            "memory-tool",
-        ),
-        (
-            ViewerTool::Evidence,
-            text(r.locale, "Sources & history", "Source 및 이력"),
-            "evidence-tool",
-        ),
-    ] {
-        let href = if snapshot {
-            format!("#{id}")
-        } else {
-            url(r, &ViewerView::Tools { tool })
-        };
-        html.push_str(&format!(
-            "<a href=\"{}\"{}>{}</a>",
-            escape(&href),
-            if !snapshot && r.view == (ViewerView::Tools { tool }) {
-                " aria-current=\"page\""
-            } else {
-                ""
-            },
-            label
-        ));
-    }
-    html.push_str("</div></details></nav>");
+    html.push_str("</nav>");
 }
 
-pub(super) fn tool_heading(html: &mut String, r: &ViewerRequest, tool: ViewerTool) {
-    let (title, description) = match tool {
-        ViewerTool::Status => (text(r.locale, "Analysis & privacy", "분석 및 개인정보"), text(r.locale, "Understand coverage and freshness, then inspect local recovery and provider settings.", "분석 범위와 최신성을 확인하고 로컬 복구 안내와 제공자 설정을 살펴봅니다.")),
-        ViewerTool::Documents => (text(r.locale, "Documents", "문서"), text(r.locale, "Read grounded previews and explicitly export the document you need.", "근거가 연결된 미리보기를 읽고 필요한 문서를 명시적으로 내보냅니다.")),
-        ViewerTool::Memory => (text(r.locale, "Memory", "기억"), text(r.locale, "Inspect original records and retained Candidates. Corrections and forgetting require an explicit authorized action.", "원래 기록과 보존된 Candidate를 검사합니다. 수정과 삭제는 명시적으로 승인된 동작이 필요합니다.")),
-        ViewerTool::Evidence => (text(r.locale, "Sources & history", "Source 및 이력"), text(r.locale, "Inspect original observations, repository inventory and the full diagnostic record.", "원래 관측, 저장소 목록과 전체 진단 기록을 검사합니다.")),
-    };
-    html.push_str("<header class=\"page-head\"><p class=\"eyebrow\">PROJECT TOOLS</p>");
-    heading(html, 1, title);
-    html.push_str(&format!("<p class=\"intro\">{}</p></header>", description));
-}
-
-pub(super) fn runtime_blockers(
-    html: &mut String,
-    r: &ViewerRequest,
-    health: &volicord_operations::HealthReport,
-) {
-    let issues = health
-        .issues
-        .iter()
-        .filter(|i| i.scope == "canonical" || i.scope == "runtime")
-        .collect::<Vec<_>>();
-    if issues.is_empty() {
-        return;
-    }
-    html.push_str("<aside class=\"runtime-blocker reading-warning\" role=\"note\" data-warning=\"runtime\" data-severity=\"danger\" aria-label=\"");
-    html.push_str(text(r.locale, "Runtime blocker", "런타임 차단 문제"));
-    html.push_str("\"><h2>");
-    html.push_str(text(
-        r.locale,
-        "Runtime needs attention",
-        "런타임 확인 필요",
-    ));
-    html.push_str("</h2><ul>");
-    for issue in issues {
-        list_item(html, &format!("{}: {}", issue.scope, issue.detail));
-    }
-    html.push_str("</ul><p class=\"next-action\">");
-    html.push_str(text(
-        r.locale,
-        "Inspect local health with volicord doctor; use its supported repair guidance.",
-        "volicord doctor로 로컬 상태를 확인하고 제공되는 복구 안내를 따르세요.",
-    ));
-    html.push_str("</p></aside>");
-}
 pub(super) fn contextual_limits(
     html: &mut String,
     r: &ViewerRequest,
     p: &ProjectProjection,
-    snapshot: bool,
+    _snapshot: bool,
 ) {
     let issues = p
         .answer_issues
@@ -215,67 +115,10 @@ pub(super) fn contextual_limits(
     html.push_str("</ul><p class=\"next-action\">");
     html.push_str(text(
         r.locale,
-        "Inspect Analysis for affected coverage and local refresh or recovery guidance.",
-        "분석에서 영향받은 범위와 로컬 갱신 또는 복구 안내를 확인하세요.",
+        "Use volicord status and volicord doctor for detailed coverage and recovery.",
+        "자세한 범위와 복구는 volicord status와 volicord doctor로 확인하세요.",
     ));
-    link(
-        html,
-        r,
-        ViewerView::Tools {
-            tool: ViewerTool::Status,
-        },
-        text(r.locale, "Open Analysis", "분석 열기"),
-        snapshot.then_some("health"),
-    );
     html.push_str("</p></aside>");
-}
-pub(super) fn diagnostics(
-    html: &mut String,
-    r: &ViewerRequest,
-    p: &ProjectProjection,
-    health: &volicord_operations::HealthReport,
-) {
-    html.push_str("<details id=\"diagnostics\" class=\"global-diagnostics\"><summary>");
-    html.push_str(text(
-        r.locale,
-        "Repository and runtime diagnostics / exact omissions",
-        "저장소 및 런타임 진단 / 정확한 생략",
-    ));
-    html.push_str("</summary><ul>");
-    for issue in &health.issues {
-        list_item(html, &format!("{}: {}", issue.scope, issue.detail));
-    }
-    for issue in &p.issues {
-        list_item(
-            html,
-            &format!(
-                "{}: {} · {}: {}",
-                issue.affected_scope,
-                issue.reason,
-                text(r.locale, "Omitted", "생략"),
-                issue.omitted_count
-            ),
-        );
-    }
-    for limit in &p.resume.known_limits {
-        list_item(html, limit);
-    }
-    html.push_str("</ul>");
-    for report in &p.repository_map.capabilities {
-        html.push_str("<details><summary>");
-        html.push_str(&escape(&format!(
-            "{} · {}",
-            capability_label(report.capability, r.locale),
-            report.area.path
-        )));
-        html.push_str("</summary><pre>");
-        html.push_str(&escape(&format!("{report:?}")));
-        html.push_str("</pre></details>");
-    }
-    if r.requested_language != locale_key(r.locale) {
-        empty_state(html,text(r.locale,"Interpretations require the exact requested language. Original quotations preserve their source language; fixed labels use the selected locale.","해석은 정확히 일치하는 요청 언어가 필요합니다. 원문 인용은 원래 언어, 고정 설명은 선택한 UI 언어를 사용합니다."));
-    }
-    html.push_str("</details>");
 }
 fn overview(
     html: &mut String,
@@ -625,6 +468,56 @@ fn render_document(
     related: &str,
     snapshot: bool,
 ) {
+    let mut document = String::new();
+    render_document_body(
+        &mut document,
+        r,
+        answers,
+        work,
+        decision,
+        records,
+        related,
+        snapshot,
+    );
+    if answers.provenance.is_none() {
+        let prefix = work
+            .map(|w| format!("work-{}", w.work_item_id))
+            .or_else(|| decision.map(|d| format!("decision-{}", d.decision.decision_id)))
+            .unwrap_or_else(|| "repository".into());
+        // Absent documents can share identical empty facts; their reading
+        // anchors still belong to distinct subjects in one static publication.
+        let ids = document
+            .split(" id=\"")
+            .skip(1)
+            .filter_map(|s| s.split('"').next())
+            .filter(|id| id.starts_with("reader-"))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        for id in ids {
+            let scoped = format!("{prefix}-{id}");
+            document = document
+                .replace(&format!("id=\"{id}\""), &format!("id=\"{scoped}\""))
+                .replace(&format!("href=\"#{id}\""), &format!("href=\"#{scoped}\""))
+                .replace(
+                    &format!("data-origin=\"{id}\""),
+                    &format!("data-origin=\"{scoped}\""),
+                );
+        }
+    }
+    html.push_str(&document);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_document_body(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &volicord_projections::QuestionAnswers,
+    work: Option<&UnderstandingWork>,
+    decision: Option<&volicord_projections::UnderstandingDecision>,
+    records: &str,
+    related: &str,
+    snapshot: bool,
+) {
     let has_verification = work.is_some()
         || answers
             .sections
@@ -638,7 +531,6 @@ fn render_document(
             )
         });
     let current = answers.provenance.is_some();
-    let repository = work.is_none() && decision.is_none();
     let (back_view, back_id, back_label, kind) = if work.is_some() {
         (
             ViewerView::Work { work: None },
@@ -648,9 +540,9 @@ fn render_document(
         )
     } else if decision.is_some() {
         (
-            ViewerView::Decisions { decision: None },
-            "decision-reading",
-            text(r.locale, "← Decisions", "← 결정 목록"),
+            r.view.clone(),
+            "works",
+            text(r.locale, "← Work", "← 작업"),
             "DECISION DOCUMENT",
         )
     } else {
@@ -952,20 +844,6 @@ fn render_document(
             ));
         }
         html.push_str(&format!("<pre>{}</pre>", escape(&format!("Work: {}\nGoal basis: {:?}\nchanges: {:?}\nCheckpoints: {:?}\nDecisions: {:?}\nQuestions: {:?}\nresult: {:?}\nnext step: {:?}", w.work_item_id,w.reading.goal.basis,w.reading.changes,w.checkpoint_ids,w.decision_ids,w.open_question_ids,w.reading.answers.result,w.reading.next_step))));
-    }
-    if repository {
-        html.push_str("<p>");
-        link(
-            html,
-            r,
-            ViewerView::Code {
-                scope: CodeScope::Repository,
-                entity: None,
-            },
-            text(r.locale, "Inspect repository structure", "저장소 구조 확인"),
-            snapshot.then_some("code"),
-        );
-        html.push_str("</p>");
     }
     html.push_str(records);
     html.push_str("</details></div></article>");
@@ -1500,17 +1378,52 @@ fn work_detail(
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
     let mut records = String::new();
     contextual_limits(&mut records, r, p, snapshot);
-    let decisions = if snapshot {
-        &p.decision_catalog
-    } else {
-        &p.selected_work_decisions
-    };
+    let mut seen_decisions = std::collections::BTreeSet::new();
+    let decisions = p
+        .selected_work_decisions
+        .iter()
+        .chain(p.decision_catalog.iter().filter(|_| snapshot))
+        .filter(|d| w.decision_ids.contains(&d.decision.decision_id))
+        .filter(|d| seen_decisions.insert(d.decision.decision_id))
+        .collect::<Vec<_>>();
+    if decisions.len() < w.decision_ids.len() {
+        empty_state(&mut records,text(r.locale,
+            "Some related Decision records are outside this publication's bounded selection. Use the exact Work in the live reader or CLI/MCP to inspect them.",
+            "일부 관련 Decision은 이 문서의 제한된 선택 범위 밖에 있습니다. live 독자 또는 CLI/MCP에서 정확한 Work로 확인하세요."));
+    }
     let mut related = String::new();
+    let mut decision_documents = String::new();
     for d in decisions
         .iter()
         .filter(|d| w.decision_ids.contains(&d.decision.decision_id))
     {
-        decision_link(&mut related, r, d, snapshot);
+        let mut document = String::new();
+        decision_detail(&mut document, r, d, p, snapshot);
+        // A Decision may actually apply to several Works. Scope its DOM anchors
+        // to this reading context while retaining the canonical/citation identity.
+        let ids = document
+            .split(" id=\"")
+            .skip(1)
+            .filter_map(|s| s.split('"').next())
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        for id in ids {
+            let scoped = format!("work-{}-{id}", w.work_item_id);
+            document = document
+                .replace(&format!("id=\"{id}\""), &format!("id=\"{scoped}\""))
+                .replace(&format!("href=\"#{id}\""), &format!("href=\"#{scoped}\""))
+                .replace(
+                    &format!("data-origin=\"{id}\""),
+                    &format!("data-origin=\"{scoped}\""),
+                );
+        }
+        related.push_str(&format!(
+            "<p><a href=\"#work-{}-decision-{}\">{}</a></p>",
+            w.work_item_id,
+            d.decision.decision_id,
+            escape(&decision_choice_attribution(&d.decision, r.locale))
+        ));
+        decision_documents.push_str(&document);
     }
     for candidate in related_learning(p, w.work_item_id) {
         records.push_str(&format!("<article id=\"learning-{}\" data-candidate-id=\"{}\" data-work-id=\"{}\" data-statement-role=\"session-candidate\">",candidate.candidate_id,candidate.candidate_id,w.work_item_id));
@@ -1525,20 +1438,6 @@ fn work_detail(
     {
         records.push_str(&format!("<p>{}</p>", escape(&q.prompt)));
     }
-    if !snapshot {
-        records.push_str("<p>");
-        link(
-            &mut records,
-            r,
-            ViewerView::Code {
-                scope: CodeScope::Work(Some(w.work_item_id)),
-                entity: None,
-            },
-            text(r.locale, "Explore this Work's code", "이 작업의 코드 탐색"),
-            None,
-        );
-        records.push_str("</p>");
-    }
     render_document(
         html,
         r,
@@ -1549,6 +1448,7 @@ fn work_detail(
         &related,
         snapshot,
     );
+    html.push_str(&decision_documents);
     html.push_str("</section>");
 }
 
@@ -1647,39 +1547,6 @@ fn render_recorded_choice(
             "보존된 진술과 예상 결과이며 검증된 구현 효과가 아닙니다. Source 가용성은 별도로 확인합니다.")));
 }
 
-fn decision_link(
-    html: &mut String,
-    r: &ViewerRequest,
-    d: &volicord_projections::UnderstandingDecision,
-    snapshot: bool,
-) {
-    html.push_str(&format!(
-        "<article class=\"decision-summary\" data-decision-id=\"{}\"><h3>",
-        d.decision.decision_id
-    ));
-    link(
-        html,
-        r,
-        ViewerView::Decisions {
-            decision: Some(d.decision.decision_id),
-        },
-        &decision_choice_attribution(&d.decision, r.locale),
-        snapshot
-            .then(|| format!("decision-{}", d.decision.decision_id))
-            .as_deref(),
-    );
-    html.push_str("</h3><p class=\"badge\">");
-    html.push_str(&escape(brief_decision_state_label(
-        d.decision.state,
-        r.locale,
-    )));
-    html.push_str("</p><p>");
-    html.push_str(&escape(decision_scope_label(
-        d.decision.work_scope,
-        r.locale,
-    )));
-    html.push_str("</p></article>");
-}
 pub(super) fn decision_answers(
     r: &ViewerRequest,
     decision: &BriefDecision,
@@ -1808,342 +1675,6 @@ fn decision_detail(
     );
     html.push_str("</section>");
 }
-pub(super) fn analysis_summary(
-    html: &mut String,
-    r: &ViewerRequest,
-    analysis: &volicord_projections::RepositoryAnalysisReading,
-    coverage: bool,
-) {
-    use volicord_projections::RepositoryAnalysisState as State;
-    let (key, label, meaning) = match analysis.state {
-        State::Absent => ("absent", text(r.locale, "Not analyzed", "분석 없음"), text(r.locale, "No stored repository analysis. Code explanations cannot establish current structure yet.", "저장된 저장소 분석이 없습니다. 코드 설명으로 현재 구조를 확인할 수 없습니다.")),
-        State::Current => ("current", text(r.locale, "Current", "최신"), text(r.locale, "Stored analysis matches the compared repository basis within reported coverage.", "저장된 분석은 보고된 범위에서 비교한 저장소 근거와 일치합니다.")),
-        State::Partial => ("partial", text(r.locale, "Partial coverage", "일부 범위"), text(r.locale, "Analysis is current but some observed scopes have limited support.", "분석은 최신이지만 관찰한 일부 범위의 지원이 제한됩니다.")),
-        State::Stale => ("stale", text(r.locale, "Stale", "오래됨"), text(r.locale, "The repository has changed. Stored code evidence cannot establish current behavior.", "저장소가 변경되었습니다. 저장된 코드 근거로 현재 동작을 확인할 수 없습니다.")),
-        State::Failed => ("failed", text(r.locale, "Failed", "실패"), text(r.locale, "An analysis scope or a later explicit analysis attempt failed. Inspect the affected scope and usable remainder.", "분석 범위 또는 이후 명시적 분석 시도가 실패했습니다. 영향 범위와 사용 가능한 나머지를 확인하세요.")),
-        State::FreshnessUnknown => ("unknown", text(r.locale, "Freshness unknown", "최신성 알 수 없음"), text(r.locale, "The current repository basis could not be compared. Stored evidence is not confirmed current.", "현재 저장소 근거를 비교할 수 없습니다. 저장된 근거의 최신성이 확인되지 않았습니다.")),
-        State::Unavailable => ("unavailable", text(r.locale, "Unavailable", "이용 불가"), text(r.locale, "Stored analysis could not be read. Canonical memory remains available; inspect recovery details.", "저장된 분석을 읽을 수 없습니다. 정식 기억은 계속 이용할 수 있습니다. 복구 상세를 확인하세요.")),
-    };
-    html.push_str(&format!("<div class=\"analysis-summary\" data-analysis-state=\"{key}\"><p class=\"state\"><strong>{}: {}</strong></p><p>{}</p>", text(r.locale, "Repository analysis", "저장소 분석"), label, meaning));
-    html.push_str(&format!(
-        "<p data-analysis-freshness=\"{}\">{}: {}</p>",
-        analysis
-            .freshness
-            .as_ref()
-            .map(|f| match f.state {
-                FreshnessState::Current => "current",
-                FreshnessState::Stale => "stale",
-                FreshnessState::Unknown => "unknown",
-            })
-            .unwrap_or("unknown"),
-        text(r.locale, "Source freshness", "소스 최신성"),
-        analysis
-            .freshness
-            .as_ref()
-            .map(|f| freshness_state_label(f.state, r.locale))
-            .unwrap_or(text(r.locale, "unknown", "알 수 없음"))
-    ));
-    if coverage {
-        if analysis.retained_prior_result {
-            empty_state(html, text(r.locale, "A prior result is retained; the failed attempt did not replace it or establish current success.", "이전 결과가 유지됩니다. 실패한 시도는 이를 대체하거나 현재 성공을 입증하지 않습니다."));
-        }
-        if let Some(diagnostic) = &analysis.diagnostic {
-            empty_state(html, diagnostic);
-        }
-        if let Some(error) = &analysis.latest_attempt_error {
-            empty_state(
-                html,
-                &format!(
-                    "{}: {error}",
-                    text(
-                        r.locale,
-                        "Latest attempt could not be verified",
-                        "최근 시도를 검증할 수 없음"
-                    )
-                ),
-            );
-        }
-        if let Some(attempt) = &analysis.latest_attempt {
-            html.push_str(&format!(
-                "<p>{}: {}</p>",
-                text(r.locale, "Latest explicit attempt", "최근 명시적 시도"),
-                if attempt.failed {
-                    text(r.locale, "failed", "실패")
-                } else {
-                    text(r.locale, "completed", "완료")
-                }
-            ));
-            if let Some(diagnostic) = &attempt.diagnostic {
-                empty_state(html, diagnostic);
-            }
-        } else {
-            empty_state(html, text(r.locale, "No verified latest-attempt receipt is available. A stored snapshot alone does not prove an attempt succeeded.", "검증된 최근 시도 기록이 없습니다. 저장된 스냅샷만으로 시도의 성공을 입증할 수 없습니다."));
-        }
-    }
-    html.push_str(&format!("<p class=\"next-action\">{} <code>{}</code>. {}</p>",
-        text(r.locale, "Explicit local refresh:", "명시적 로컬 갱신:"), escape(&analysis.refresh_command),
-        text(r.locale, "Run in this Project's bound repository with the same Runtime. Then reload this view. Analysis does not regenerate Work explanations.", "같은 런타임으로 이 프로젝트에 연결된 저장소에서 실행한 뒤 화면을 새로 고치세요. 분석은 작업 설명을 재생성하지 않습니다.")));
-    if coverage {
-        heading(
-            html,
-            3,
-            text(
-                r.locale,
-                "Observed scopes and coverage",
-                "관찰한 범위 및 분석 지원",
-            ),
-        );
-        if analysis.coverage.is_empty() {
-            empty_state(
-                html,
-                text(
-                    r.locale,
-                    "No observed coverage is available; this is not complete coverage.",
-                    "관찰된 분석 범위가 없습니다. 완전한 분석을 뜻하지 않습니다.",
-                ),
-            );
-        }
-        html.push_str("<div class=\"coverage-list\">");
-        for scope in &analysis.coverage {
-            html.push_str(&format!("<article class=\"coverage-scope\" data-state=\"{}\"><h4>{} · {} · {}</h4><p><strong>{}</strong></p>",
-                capability_state_key(scope.state), escape(&scope.area),
-                scope.language.as_ref().map(|l| escape(&language_label(l,r.locale))).unwrap_or_else(||text(r.locale,"All languages","모든 언어").into()),
-                capability_label(scope.capability,r.locale), capability_state_label(scope.state,r.locale)));
-            for (label, value) in [
-                (text(r.locale, "Why / limit", "이유 / 한계"), &scope.reason),
-                (
-                    text(r.locale, "What cannot be concluded", "확인할 수 없는 내용"),
-                    &scope.consequence,
-                ),
-                (
-                    text(r.locale, "Usable remainder", "사용 가능한 나머지"),
-                    &scope.usable_remainder,
-                ),
-            ] {
-                if let Some(value) = value {
-                    html.push_str(&format!(
-                        "<p><strong>{}:</strong> {}</p>",
-                        label,
-                        escape(value)
-                    ));
-                }
-            }
-            html.push_str(&format!(
-                "<details><summary>{}</summary><p>{}: {} · {}: {} · {}: {}</p></details></article>",
-                text(r.locale, "Coverage counts", "분석 범위 수"),
-                text(r.locale, "Files", "파일"),
-                scope.files,
-                text(r.locale, "Entities", "엔터티"),
-                scope.entities,
-                text(r.locale, "Relations", "관계"),
-                scope.relations
-            ));
-        }
-        html.push_str("</div><details class=\"analysis-basis\"><summary>");
-        html.push_str(text(
-            r.locale,
-            "Snapshot identity, freshness basis and exact omissions",
-            "스냅샷 식별자, 최신성 근거 및 정확한 생략",
-        ));
-        html.push_str("</summary><pre>");
-        html.push_str(&escape(&format!("analysis={:?}\nrepository={:?}\ngenerated_at={:?}\nfreshness={:?}\nomitted_coverage={}\nlatest_attempt={:?}",analysis.analysis_snapshot,analysis.repository_snapshot,analysis.generated_at_unix_micros,analysis.freshness,analysis.omitted_coverage_count,analysis.latest_attempt)));
-        html.push_str("</pre></details>");
-    }
-    html.push_str("</div>");
-}
-fn code_limit_counts(p: &ProjectProjection) -> (usize, usize) {
-    (
-        p.answer_issues
-            .iter()
-            .filter(|i| i.kind != ProjectionIssueKind::Bound)
-            .count(),
-        p.answer_capability_gaps.len(),
-    )
-}
-
-fn code_limit_summary(html: &mut String, r: &ViewerRequest, p: &ProjectProjection, snapshot: bool) {
-    let (issues, gaps) = code_limit_counts(p);
-    use volicord_projections::RepositoryAnalysisState as State;
-    let repository = snapshot
-        || matches!(
-            r.view,
-            ViewerView::Code {
-                scope: CodeScope::Repository,
-                ..
-            }
-        );
-    let blocker = if repository {
-        match p.repository_analysis.state {
-            State::Absent => Some(text(r.locale, "No stored analysis: current code meaning is unavailable.", "저장된 분석이 없어 현재 코드 의미를 확인할 수 없습니다.")),
-            State::Stale => Some(text(r.locale, "The repository has changed. Stored evidence cannot establish current behavior.", "저장소가 변경되었습니다. 저장된 근거로 현재 동작을 확인할 수 없습니다.")),
-            State::Failed => Some(text(r.locale, "An analysis scope or latest explicit attempt failed. A retained prior result does not prove that attempt succeeded.", "분석 범위 또는 최근 명시적 시도가 실패했습니다. 유지된 이전 결과는 해당 시도의 성공을 입증하지 않습니다.")),
-            State::FreshnessUnknown => Some(text(r.locale, "The current repository basis could not be compared; stored code evidence is not confirmed current.", "현재 저장소 근거를 비교할 수 없어 저장된 코드 근거의 최신성이 확인되지 않습니다.")),
-            State::Unavailable => Some(text(r.locale, "Stored analysis is unavailable. Open Analysis for local recovery guidance.", "저장된 분석을 이용할 수 없습니다. 분석에서 로컬 복구 안내를 확인하세요.")),
-            State::Current | State::Partial => None,
-        }
-    } else {
-        None
-    };
-    if issues + gaps == 0 && blocker.is_none() {
-        return;
-    }
-    html.push_str(&format!("<aside class=\"contextual-limits\" data-code-reliability=\"true\" aria-label=\"{}\" data-issue-count=\"{issues}\" data-gap-count=\"{gaps}\"><h3>{}</h3>", text(r.locale, "Code reliability", "코드 신뢰성"), text(r.locale, "Limits of this answer", "이 설명의 한계")));
-    let scope = if r.view.detail().entity.is_some() {
-        text(r.locale, "Selected entity evidence", "선택한 엔터티 근거")
-    } else if matches!(
-        r.view,
-        ViewerView::Code {
-            scope: CodeScope::Work(_),
-            ..
-        }
-    ) {
-        text(r.locale, "Selected Work evidence", "선택한 작업 근거")
-    } else {
-        text(r.locale, "Repository evidence", "저장소 근거")
-    };
-    html.push_str(&format!(
-        "<p>{scope}: {issues} {} · {gaps} {}.</p>",
-        text(r.locale, "issues", "문제"),
-        text(r.locale, "capability gaps", "분석 지원 부족"),
-    ));
-    if issues + gaps > 0 {
-        html.push_str(&format!(
-            "<p><a href=\"#code-limit-details\">{}</a></p>",
-            text(r.locale, "Inspect all diagnostics", "모든 진단 확인")
-        ));
-    }
-    if let Some(blocker) = blocker {
-        empty_state(html, blocker);
-    }
-    // Count from the retained selected basis, without merging identities or
-    // inferring repository-wide failure from a scoped capability warning.
-    let mut states = BTreeMap::new();
-    for issue in p
-        .answer_issues
-        .iter()
-        .filter(|i| i.kind != ProjectionIssueKind::Bound)
-    {
-        *states
-            .entry(projection_issue_kind_label(issue.kind, r.locale).to_owned())
-            .or_insert(0_usize) += 1;
-    }
-    for gap in &p.answer_capability_gaps {
-        let key = format!(
-            "{} / {} / {}",
-            capability_label(gap.capability, r.locale),
-            capability_state_label(gap.state, r.locale),
-            freshness_state_label(gap.freshness.state, r.locale)
-        );
-        *states.entry(key).or_insert(0_usize) += 1;
-    }
-    html.push_str(&format!(
-        "<p class=\"code-limit-states\">{}</p>",
-        escape(
-            &states
-                .into_iter()
-                .map(|(label, count)| format!("{label}: {count}"))
-                .collect::<Vec<_>>()
-                .join("; ")
-        )
-    ));
-    if p.answer_issues.iter().any(|i| {
-        matches!(
-            i.kind,
-            ProjectionIssueKind::SourceUnavailable
-                | ProjectionIssueKind::SourceStale
-                | ProjectionIssueKind::WrongProject
-        )
-    }) {
-        empty_state(html, text(r.locale, "Some selected Source evidence is stale or unavailable. It cannot establish current code meaning; supported remainder stays readable.", "선택한 Source 근거 일부가 오래되었거나 이용 불가입니다. 현재 코드 의미를 확인할 수 없으며 근거 있는 나머지는 계속 읽을 수 있습니다."));
-    }
-    if p.answer_capability_gaps
-        .iter()
-        .any(|g| g.freshness.state != FreshnessState::Current)
-    {
-        empty_state(html, text(r.locale, "Current analysis evidence is not confirmed for every affected scope. Stale or unknown evidence cannot establish current behavior.", "영향 범위 모두에서 현재 분석 근거가 확인되지 않습니다. 오래되었거나 최신성을 알 수 없는 근거로 현재 동작을 확인할 수 없습니다."));
-    }
-    if p.sections.code == volicord_projections::ReadSectionState::Unavailable {
-        empty_state(html, text(r.locale, "Code explanation unavailable: stored analysis cannot be read or verified. Canonical memory remains readable; open Analysis for recovery guidance.", "코드 설명 이용 불가: 저장된 분석을 읽거나 검증할 수 없습니다. 정식 기억은 계속 읽을 수 있습니다. 분석에서 복구 안내를 확인하세요."));
-    }
-    html.push_str("<p>");
-    link(
-        html,
-        r,
-        ViewerView::Tools {
-            tool: ViewerTool::Status,
-        },
-        text(r.locale, "Open Analysis", "분석 열기"),
-        snapshot.then_some("health"),
-    );
-    html.push_str("</p></aside>");
-}
-
-fn code_limit_details(html: &mut String, r: &ViewerRequest, p: &ProjectProjection, snapshot: bool) {
-    let (issues, gaps) = code_limit_counts(p);
-    if issues + gaps == 0 {
-        return;
-    }
-    html.push_str(&format!("<details id=\"code-limit-details\" class=\"code-limit-details\" data-issue-count=\"{issues}\" data-gap-count=\"{gaps}\"><summary>{}: {issues} {} · {gaps} {}</summary><ul class=\"gap-list\">", text(r.locale, "Full Code diagnostics", "전체 코드 진단"), text(r.locale, "issues", "문제"), text(r.locale, "capability gaps", "분석 지원 부족")));
-    for issue in p
-        .answer_issues
-        .iter()
-        .filter(|i| i.kind != ProjectionIssueKind::Bound)
-    {
-        html.push_str(&format!("<li data-limit-kind=\"issue\" data-limit-id=\"{}\"><p>{} · {}: {}</p><pre>{}</pre></li>", escape(&issue.identity), projection_issue_kind_label(issue.kind, r.locale), escape(&issue.affected_scope), escape(&issue.reason), escape(&format!("{issue:#?}"))));
-    }
-    for gap in &p.answer_capability_gaps {
-        let area = if gap.area == "." {
-            text(
-                r.locale,
-                "Repository coverage (root)",
-                "저장소 분석 범위 (루트)",
-            )
-        } else {
-            &gap.area
-        };
-        html.push_str(&format!("<li data-limit-kind=\"gap\" data-analysis-id=\"{}\" data-scope=\"{}\"><p>{} · {} · {} · {} · {}: {}</p>", gap.analysis_snapshot, escape(&gap.area), escape(area), escape(&gap.language.as_ref().map(|l| language_label(l, r.locale)).unwrap_or_else(|| text(r.locale, "All languages", "모든 언어").into())), capability_label(gap.capability, r.locale), capability_state_label(gap.state, r.locale), freshness_state_label(gap.freshness.state, r.locale), escape(&gap.reason)));
-        html.push_str("<dl>");
-        definition(
-            html,
-            text(r.locale, "What cannot be concluded", "확인할 수 없는 내용"),
-            gap.user_visible_consequence.as_deref().unwrap_or(text(
-                r.locale,
-                "This scope cannot support a complete current code answer.",
-                "이 범위로 완전한 현재 코드 설명을 뒷받침할 수 없습니다.",
-            )),
-        );
-        definition(
-            html,
-            text(r.locale, "Usable remainder", "사용 가능한 나머지"),
-            gap.usable_remainder.as_deref().unwrap_or(text(
-                r.locale,
-                "Canonical memory remains readable.",
-                "정식 기억은 계속 읽을 수 있습니다.",
-            )),
-        );
-        html.push_str(&format!(
-            "</dl><pre>{}</pre></li>",
-            escape(&format!("{gap:#?}"))
-        ));
-    }
-    html.push_str("</ul><p class=\"next-action\">");
-    html.push_str(text(
-        r.locale,
-        "Inspect Analysis for affected coverage and local refresh or recovery guidance.",
-        "분석에서 영향받은 범위와 로컬 갱신 또는 복구 안내를 확인하세요.",
-    ));
-    link(
-        html,
-        r,
-        ViewerView::Tools {
-            tool: ViewerTool::Status,
-        },
-        text(r.locale, "Open Analysis", "분석 열기"),
-        snapshot.then_some("health"),
-    );
-    html.push_str("</p></details>");
-}
-
 fn repository_explanation(
     html: &mut String,
     r: &ViewerRequest,
@@ -2160,336 +1691,6 @@ fn repository_explanation(
     html.push_str("</section>");
 }
 
-fn code(
-    html: &mut String,
-    r: &ViewerRequest,
-    p: &ProjectProjection,
-    u: &ProjectUnderstanding,
-    snapshot: bool,
-) {
-    section_start(
-        html,
-        "code",
-        text(r.locale, "Code Understanding", "코드 이해"),
-    );
-    empty_state(
-        html,
-        match &r.view {
-            ViewerView::Code {
-                scope: CodeScope::Work(_),
-                ..
-            } => text(r.locale, "Selected Work context", "선택한 작업 범위"),
-            _ => text(r.locale, "Repository context", "저장소 범위"),
-        },
-    );
-    code_limit_summary(html, r, p, snapshot);
-    if let Some(work) = &p.selected_work {
-        html.push_str("<div class=\"code-work-meaning\">");
-        let answers =
-            volicord_projections::work_answers(work, &r.requested_language, r.locale.fixed());
-        if !snapshot {
-            render_answers(html, r, &answers, Some(work), false);
-        }
-        html.push_str("<p>");
-        link(
-            html,
-            r,
-            ViewerView::Work {
-                work: Some(work.work_item_id),
-            },
-            text(
-                r.locale,
-                "Read the complete Work explanation and grounding",
-                "전체 작업 설명과 근거 읽기",
-            ),
-            snapshot
-                .then(|| format!("work-{}", work.work_item_id))
-                .as_deref(),
-        );
-        html.push_str("</p>");
-        html.push_str("</div>");
-    }
-    let entities = u
-        .architecture
-        .components
-        .iter()
-        .chain(&p.selected_entity_neighbors)
-        .collect::<Vec<_>>();
-    if let Some(entity) = &p.selected_entity {
-        html.push_str("<div class=\"selected-code\">");
-        heading(html, 3, &entity.display_name);
-        for explanation in u.deterministic_explanations.iter().filter(|e| {
-            e.kind == UnderstandingExplanationKind::Component
-                && e.entity_basis.contains(&entity.identity)
-        }) {
-            render_deterministic_explanation(html, r, explanation);
-        }
-        render_code_behavior(html, r, entity, &p.selected_entity_relations);
-        html.push_str(&format!(
-            "<p>{} · {} · {}</p>",
-            escape(&entity.locator),
-            escape(&code_entity_kind_label(&entity.kind, r.locale)),
-            escape(&range_label(entity.source_range.as_ref(), r.locale))
-        ));
-        html.push_str("<details><summary>");
-        html.push_str(text(
-            r.locale,
-            "Source locator and retained range",
-            "Source 위치 및 보존된 범위",
-        ));
-        html.push_str("</summary><dl>");
-        definition(html, "Source", &entity.source_id.to_string());
-        definition(
-            html,
-            "Analysis Snapshot",
-            &entity.analysis_snapshot.to_string(),
-        );
-        definition(
-            html,
-            "Repository Snapshot",
-            &entity.repository_snapshot.to_string(),
-        );
-        definition(
-            html,
-            text(r.locale, "Freshness", "최신성"),
-            &format!("{:?}", entity.freshness),
-        );
-        definition(
-            html,
-            text(r.locale, "Range", "범위"),
-            &format!("{:?}", entity.source_range),
-        );
-        if let Some(source) = p
-            .source_catalog
-            .iter()
-            .find(|s| s.source.id == entity.source_id)
-        {
-            definition(
-                html,
-                text(r.locale, "Retained Source", "보존된 Source"),
-                &format!("{source:?}"),
-            );
-        }
-        html.push_str("</dl></details>");
-        for (label, incoming) in [
-            (
-                text(r.locale, "Incoming relationships", "들어오는 관계"),
-                true,
-            ),
-            (
-                text(r.locale, "Outgoing relationships", "나가는 관계"),
-                false,
-            ),
-        ] {
-            heading(html, 4, label);
-            for relation in p.selected_entity_relations.iter().filter(|rel| {
-                if incoming {
-                    rel.target_entity.as_deref() == Some(entity.identity.as_str())
-                } else {
-                    rel.source_entity == entity.identity
-                }
-            }) {
-                relation_detail(html, r, relation, &entities, snapshot);
-            }
-        }
-        if p.omitted_selected_relation_count > 0 {
-            empty_state(html, text(r.locale, "Some relationships are outside this displayed neighborhood. Inspect the exact bound below.", "일부 관계가 표시된 이웃 범위 밖에 있습니다. 아래에서 정확한 제한을 확인하세요."));
-            html.push_str(&format!("<details class=\"relationship-bounds\"><summary>{}</summary><p>{} {}</p></details>", text(r.locale, "Relationship display bounds", "관계 표시 범위"), p.omitted_selected_relation_count, text(r.locale, "relationships omitted", "관계 생략")));
-        }
-        html.push_str("</div>");
-    }
-    if r.view.detail().entity.is_some()
-        && p.selected_entity.is_none()
-        && p.sections.code == volicord_projections::ReadSectionState::Unavailable
-    {
-        empty_state(html, text(r.locale, "Entity detail unavailable: stored analysis cannot verify the requested entity identity. Canonical Work remains readable.", "엔터티 상세 이용 불가: 저장된 분석으로 요청한 엔터티 identity를 검증할 수 없습니다. Canonical 작업은 계속 읽을 수 있습니다."));
-    }
-    empty_state(
-        html,
-        text(
-            r.locale,
-            "Static import, reference and syntactic call evidence does not confirm runtime flow.",
-            "정적 import, 참조 및 구문 호출 근거는 런타임 흐름을 확정하지 않습니다.",
-        ),
-    );
-    if p.selected_entity.is_some() {
-        empty_state(html, text(r.locale, "Diagram focus: selected entity and its bounded stored incoming/outgoing relationships.", "다이어그램 범위: 선택한 엔터티와 제한된 저장 incoming/outgoing 관계."));
-    }
-    heading(
-        html,
-        3,
-        text(
-            r.locale,
-            "How the architecture and code connect",
-            "아키텍처와 코드의 연결",
-        ),
-    );
-    html.push_str(&format!("<div class=\"fact-legend\"><span data-statement-role=\"verified-fact\">{}</span><span data-statement-role=\"deterministic-derived\">{}</span><span data-statement-role=\"generated-interpretation\">{}</span></div>",text(r.locale,"Structural / semantic facts","구조 / 의미 사실"),text(r.locale,"Deterministic explanations","결정론적 설명"),text(r.locale,"Generated interpretations (separate)","생성 해석 (별도)")));
-    for explanation in &u.deterministic_explanations {
-        if !p.selected_entity.as_ref().is_some_and(|entity| {
-            explanation.kind == UnderstandingExplanationKind::Component
-                && explanation.entity_basis.contains(&entity.identity)
-        }) {
-            render_deterministic_explanation(html, r, explanation);
-        }
-    }
-    for entity in &u.architecture.components {
-        if p.selected_entity
-            .as_ref()
-            .is_none_or(|selected| selected.identity != entity.identity)
-        {
-            render_code_behavior(html, r, entity, &u.architecture.relationships);
-        }
-    }
-    for interpretation in &u.generated_interpretations {
-        let prose = if matches!(
-            interpretation.state,
-            volicord_projections::CodeExplanationState::Unavailable
-                | volicord_projections::CodeExplanationState::Unsupported
-        ) {
-            text(
-                r.locale,
-                "Generated prose is unavailable for this evidence basis.",
-                "이 근거로 생성 해석 본문을 제공할 수 없습니다.",
-            )
-        } else {
-            &interpretation.text
-        };
-        html.push_str(&format!("<details data-statement-role=\"generated-interpretation\" data-explanation-state=\"{:?}\"><summary>{} · {:?}</summary><p>{}</p><p>{}</p><pre>{}</pre></details>", interpretation.state, escape(text(r.locale,"Generated interpretation","생성 해석")), interpretation.state, escape(prose), escape(&interpretation.known_gaps.join("; ")), escape(&format!("producer: {}\ngenerated: {}\nSource: {:?}\nAnalysis: {}\nRepository: {}\nentities: {:?}\nrelations: {:?}\nranges: {:?}\nuncertainty: {:?}", interpretation.producer, interpretation.generated_at_unix_micros, interpretation.source_basis, interpretation.analysis_snapshot, interpretation.repository_snapshot, interpretation.entity_basis, interpretation.relation_basis, interpretation.source_ranges, interpretation.uncertainty))));
-    }
-    code_limit_details(html, r, p, snapshot);
-    // Repository-wide status belongs to Analysis; only Work-relevant gaps accompany code.
-    if matches!(
-        r.view,
-        ViewerView::Code {
-            scope: CodeScope::Repository,
-            ..
-        }
-    ) || snapshot
-    {
-        analysis_summary(html, r, &p.repository_analysis, false);
-    }
-    if !u.architecture.components.is_empty() || !u.architecture.relationships.is_empty() {
-        render_grounded_diagram(
-            html,
-            r,
-            u,
-            "architecture-topology",
-            text(
-                r.locale,
-                "Components and dependencies",
-                "컴포넌트 및 의존성",
-            ),
-            |_| true,
-            true,
-        );
-    } else {
-        empty_state(html, text(r.locale, "No supported connection is available in this scope. Components below establish structure only; use explicit local analysis to inspect relationships.", "이 범위에 근거 있는 연결이 없습니다. 아래 컴포넌트는 구조만 보여 줍니다. 명시적 로컬 분석으로 관계를 확인하세요."));
-    }
-    html.push_str(&format!("<p class=\"relationship-guide\">{}</p>", text(r.locale, "Arrows follow the recorded source → target direction. Containment and dependency describe structure; references describe symbol use. Only syntactic calls support the static call figure, which does not prove runtime or data flow.", "화살표는 기록된 출발 → 대상 방향을 따릅니다. 포함과 의존은 구조, 참조는 심볼 사용을 설명합니다. 구문 호출만 정적 호출 그림의 근거이며 런타임 또는 데이터 흐름을 입증하지 않습니다.")));
-    html.push_str(&format!(
-        "<div class=\"flow-support\" data-flow-state=\"{:?}\">",
-        u.architecture.flow_evidence.state
-    ));
-    if !u.architecture.flow_evidence.missing_evidence.is_empty() {
-        html.push_str("<details><summary>");
-        html.push_str(text(
-            r.locale,
-            "Exact missing relationship evidence",
-            "정확한 관계 근거 부족",
-        ));
-        html.push_str("</summary><ul>");
-        for limit in &u.architecture.flow_evidence.missing_evidence {
-            list_item(html, limit);
-        }
-        html.push_str("</ul></details>");
-    }
-    html.push_str("</div>");
-    render_grounded_diagram(
-        html,
-        r,
-        u,
-        "flow-topology",
-        text(r.locale, "Static call relationships", "정적 호출 관계"),
-        is_flow_relation,
-        false,
-    );
-    if u.architecture.flow_evidence.relation_ids.is_empty() {
-        html.push_str(&format!("<p class=\"next-action\">{} <code>{}</code>. {}</p>", text(r.locale,"Inspect available call support with","호출 분석 지원 확인:"),escape(&p.repository_analysis.refresh_command),text(r.locale,"Missing resolved calls cannot establish execution or data flow; analysis may still lack this capability.","해결된 호출이 없으면 실행 또는 데이터 흐름을 확인할 수 없습니다. 분석 후에도 이 기능의 지원이 없을 수 있습니다.")));
-    }
-    heading(
-        html,
-        3,
-        text(
-            r.locale,
-            "Entities and relationships (list path)",
-            "엔터티 및 관계 (목록 탐색)",
-        ),
-    );
-    for entity in &u.architecture.components {
-        html.push_str(&format!("<details id=\"entity-{}\" data-entity-id=\"{}\"><summary>{} — {}</summary><p>{}</p><p>{}</p>",fragment_identity(&entity.identity),escape(&entity.identity),escape(&entity.display_name),escape(&entity.locator),escape(&code_entity_kind_label(&entity.kind,r.locale)),escape(&range_label(entity.source_range.as_ref(),r.locale))));
-        if !snapshot {
-            let mut view = r.view.clone();
-            if let ViewerView::Code {
-                entity: selected, ..
-            } = &mut view
-            {
-                *selected = Some(entity.identity.clone());
-            }
-            link(
-                html,
-                r,
-                view,
-                text(
-                    r.locale,
-                    "Inspect entity and incoming / outgoing relationships",
-                    "엔터티 및 들어오는 / 나가는 관계 확인",
-                ),
-                None,
-            );
-        }
-        html.push_str("</details>");
-    }
-    for relation in u
-        .architecture
-        .relationships
-        .iter()
-        .chain(&u.evidence.unresolved_relationships)
-    {
-        relation_detail(html, r, relation, &entities, snapshot);
-    }
-    render_understanding_evidence(html, r, u);
-    section_end(html);
-}
-
-fn render_code_behavior(
-    html: &mut String,
-    r: &ViewerRequest,
-    entity: &MapEntity,
-    relations: &[MapRelation],
-) {
-    let behavior = &entity.behavior;
-    let explanation = behavior.explanation(&entity.display_name, r.locale == ViewerLocale::Korean);
-    html.push_str(&format!("<div data-statement-role=\"deterministic-derived\" data-code-behavior=\"{}\" data-explanation-state=\"{:?}\"><p>{}: {} · {}</p>", escape(&entity.identity), behavior.state, text(r.locale, "Source-bound behavior", "소스에 연결된 동작"), escape(&entity.display_name), code_explanation_state_label(behavior.state, r.locale)));
-    if !matches!(
-        behavior.state,
-        volicord_projections::CodeExplanationState::Current
-            | volicord_projections::CodeExplanationState::Partial
-    ) {
-        html.push_str(&format!(
-            "<p>{}</p>",
-            text(
-                r.locale,
-                "Current behavior cannot be established from this evidence.",
-                "이 근거로 현재 동작을 확인할 수 없습니다."
-            )
-        ));
-    }
-    if !explanation.is_empty() {
-        html.push_str(&format!("<p>{}</p>", escape(&explanation)));
-    }
-    html.push_str(&format!("<p>{}</p><details><summary>{}</summary><pre>{}</pre></details></div>", escape(&behavior.limitations.join("; ")), text(r.locale, "Body expressions and exact source evidence", "본문 표현식과 정확한 소스 근거"), escape(&format!("Source: {}\nAnalysis: {}\nRepository: {}\nfreshness: {:?}\nclaims: {:#?}\nomitted: {}\nsupporting static relations: {:?}", entity.source_id, entity.analysis_snapshot, entity.repository_snapshot, entity.freshness, behavior.claims, behavior.omitted_count, relations.iter().filter(|relation| relation.source_entity == entity.identity || relation.target_entity.as_deref() == Some(entity.identity.as_str())).map(|relation| (&relation.identity, &relation.kind, relation.class, &relation.freshness)).collect::<Vec<_>>()))));
-}
 pub(super) fn fragment_identity(id: &str) -> String {
     id.as_bytes()
         .iter()
@@ -2512,42 +1713,7 @@ pub(super) fn surface(
         ViewerView::Work { work: None } | ViewerView::WorkPage { .. } => {
             work_index(html, r, p, false);
         }
-        ViewerView::Decisions { decision: Some(_) } => {
-            if let Some(d) = &p.selected_decision {
-                decision_detail(html, r, d, p, false);
-            }
-        }
-        ViewerView::Decisions { decision: None } | ViewerView::DecisionsPage { .. } => {
-            section_start(
-                html,
-                "decision-reading",
-                text(r.locale, "Decisions", "결정"),
-            );
-            if p.decision_count == 0 {
-                empty_state(
-                    html,
-                    text(
-                        r.locale,
-                        "No Decisions have been recorded.",
-                        "기록된 결정이 없습니다.",
-                    ),
-                );
-            }
-            for d in &p.decision_catalog {
-                decision_link(html, r, d, false);
-            }
-            pagination(
-                html,
-                r,
-                p.decision_count,
-                r.view.detail().decision_page,
-                false,
-            );
-            section_end(html);
-        }
         ViewerView::RepositoryExplanation => repository_explanation(html, r, p, false),
-        ViewerView::Code { .. } => code(html, r, p, u, false),
-        ViewerView::Tools { .. } => {}
     }
 }
 pub(super) fn snapshot(
@@ -2572,22 +1738,7 @@ pub(super) fn snapshot(
             work_detail(html, r, p, w, true);
         }
     }
-    html.push_str("<section class=\"snapshot-page\" id=\"decision-reading\">");
-    for d in &p.decision_catalog {
-        decision_detail(html, r, d, p, true);
-    }
-    html.push_str("</section>");
     repository_explanation(html, r, &p.for_repository_reading(), true);
-    let repository_projection = p.for_repository_reading();
-    let repository = build_project_understanding(
-        &repository_projection,
-        UnderstandingBound {
-            max_items_per_section: 32,
-        },
-    );
-    html.push_str("<section class=\"snapshot-page\" id=\"repository-code\">");
-    code(html, r, &repository_projection, &repository, true);
-    html.push_str("</section>");
 }
 fn work_index(html: &mut String, r: &ViewerRequest, p: &ProjectProjection, snapshot: bool) {
     html.push_str(
@@ -2609,12 +1760,12 @@ fn work_index(html: &mut String, r: &ViewerRequest, p: &ProjectProjection, snaps
     }
     html.push_str("</div>");
     if !snapshot {
-        pagination(html, r, p.work_count, r.view.detail().work_page, true);
+        pagination(html, r, p.work_count, r.view.detail().work_page);
     }
     html.push_str("</section>");
 }
 
-fn pagination(html: &mut String, r: &ViewerRequest, count: usize, page: usize, work: bool) {
+fn pagination(html: &mut String, r: &ViewerRequest, count: usize, page: usize) {
     html.push_str("<nav aria-label=\"List pages\">");
     for next in [
         page.checked_sub(1),
@@ -2624,137 +1775,15 @@ fn pagination(html: &mut String, r: &ViewerRequest, count: usize, page: usize, w
     .into_iter()
     .flatten()
     {
-        let view = if work {
-            ViewerView::WorkPage { page: next }
-        } else {
-            ViewerView::DecisionsPage { page: next }
-        };
         link(
             html,
             r,
-            view,
+            ViewerView::WorkPage { page: next },
             &format!("{} {}", text(r.locale, "Page", "페이지"), next + 1),
             None,
         );
     }
     html.push_str("</nav>");
-}
-
-fn relation_detail(
-    html: &mut String,
-    r: &ViewerRequest,
-    relation: &MapRelation,
-    entities: &[&MapEntity],
-    snapshot: bool,
-) {
-    let endpoint = |id: &str| entities.iter().copied().find(|e| e.identity == id);
-    use volicord_projections::CodeRelationshipRole as Role;
-    let (role_key, role_label) = match relation.role() {
-        Role::Containment => (
-            "containment",
-            text(r.locale, "Structure / containment", "구조 / 포함"),
-        ),
-        Role::Dependency => (
-            "dependency",
-            text(r.locale, "Structure / dependency", "구조 / 의존"),
-        ),
-        Role::SyntacticCall => (
-            "syntactic-call",
-            text(r.locale, "Static syntactic call", "정적 구문 호출"),
-        ),
-        Role::SymbolReference => ("reference", text(r.locale, "Symbol reference", "심볼 참조")),
-        Role::TypeRelationship => ("type", text(r.locale, "Type relationship", "타입 관계")),
-        Role::Other => (
-            "other",
-            text(r.locale, "Other stored relationship", "기타 저장된 관계"),
-        ),
-    };
-    html.push_str(&format!("<div class=\"relationship-item\" data-relationship-role=\"{role_key}\"><p><strong>{role_label}</strong></p>"));
-
-    html.push_str(&format!("<details class=\"relationship\" data-relation-id=\"{}\" data-relation-class=\"{}\"><summary>{}: {} → {}</summary>",escape(&relation.identity),map_relation_class_key(relation.class),escape(&relation.kind),escape(&endpoint(&relation.source_entity).map(|e|format!("{} — {}",e.display_name,e.locator)).unwrap_or_else(||text(r.locale,"Source endpoint unavailable","출발 엔터티 없음").into())),escape(&relation.target_entity.as_deref().and_then(endpoint).map(|e|format!("{} — {}",e.display_name,e.locator)).unwrap_or_else(||format!("{}: {}",text(r.locale,"Unresolved / unavailable target","미해결 / 이용 불가 대상"),relation.unresolved_target.as_deref().unwrap_or("entity omitted"))))));
-    for id in [&relation.source_entity]
-        .into_iter()
-        .chain(relation.target_entity.as_ref())
-    {
-        if let Some(entity) = endpoint(id) {
-            if !snapshot {
-                html.push_str("<p>");
-                link(
-                    html,
-                    r,
-                    ViewerView::Code {
-                        scope: CodeScope::Repository,
-                        entity: Some(entity.identity.clone()),
-                    },
-                    &format!(
-                        "{}: {}",
-                        text(r.locale, "Open repository entity", "저장소 엔터티 열기"),
-                        entity.display_name
-                    ),
-                    None,
-                );
-                html.push_str("</p>");
-            } else {
-                html.push_str(&format!(
-                    "<p>{} — {}</p>",
-                    escape(&entity.display_name),
-                    escape(&entity.locator)
-                ));
-            }
-        }
-    }
-    html.push_str("<dl>");
-    definition(
-        html,
-        text(r.locale, "Evidence class", "근거 분류"),
-        match relation.class {
-            MapRelationClass::StructuralFact => text(r.locale, "Structural fact", "구조 사실"),
-            MapRelationClass::SemanticResult => text(r.locale, "Semantic result", "의미 분석 결과"),
-        },
-    );
-    definition(
-        html,
-        text(r.locale, "Freshness", "최신성"),
-        &format!("{:?}", relation.freshness.state),
-    );
-    definition(
-        html,
-        text(r.locale, "Supporting range", "근거 범위"),
-        &range_label(relation.supporting_range.as_ref(), r.locale),
-    );
-    html.push_str("</dl><details><summary>");
-    html.push_str(text(
-        r.locale,
-        "Exact relation and Source evidence",
-        "정확한 관계 및 Source 근거",
-    ));
-    html.push_str("</summary><p>");
-    html.push_str(&escape(&format!("{relation:?}")));
-    html.push_str("</p></details></details></div>");
-}
-
-fn range_label(
-    range: Option<&volicord_repository_intelligence::SourceRange>,
-    locale: ViewerLocale,
-) -> String {
-    range
-        .map(|r| {
-            format!(
-                "{} :{}:{}–{}:{} ({:?}; {:?}){}",
-                r.locator,
-                r.start.line,
-                r.start.column,
-                r.end.line,
-                r.end.column,
-                r.coordinate_convention,
-                r.meaning,
-                r.precision_limit
-                    .as_ref()
-                    .map(|limit| format!("; {limit}"))
-                    .unwrap_or_default()
-            )
-        })
-        .unwrap_or_else(|| text(locale, "Source range unavailable", "Source 범위 없음").into())
 }
 
 fn related_learning(

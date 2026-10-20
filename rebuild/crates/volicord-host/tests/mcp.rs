@@ -5010,7 +5010,43 @@ fn guarded_transport_and_fallback_keep_one_exact_logical_request() {
     );
     assert_eq!(shown["request_revision"], request.request_revision);
     assert_eq!(shown["effect_fingerprint"], request.effect_fingerprint);
-    assert_eq!(shown["fallback"]["cli"][2], "confirm");
+    let mut argv = shown["fallback"]["cli"]
+        .as_array()
+        .expect("CLI arguments")
+        .iter()
+        .skip(1)
+        .map(|s| s.as_str().expect("argument").to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(&argv[4..7], &["advanced", "guarded", "confirm"]);
+    let fingerprint = argv
+        .iter()
+        .position(|s| s == "--fingerprint")
+        .expect("fingerprint")
+        + 1;
+    argv[fingerprint] = "wrong-exact-effect".into();
+    let mut output = Vec::new();
+    let mut errors = Vec::new();
+    assert_ne!(
+        volicord_operations::run_cli(&argv, &mut output, &mut errors),
+        volicord_operations::CliExit::SUCCESS
+    );
+    assert!(
+        String::from_utf8_lossy(&errors).contains("fingerprint"),
+        "{}",
+        String::from_utf8_lossy(&errors)
+    );
+    assert_eq!(
+        shown["fallback"]["viewer"],
+        json!([
+            "volicord-viewer",
+            "--runtime",
+            adapter.operations().layout().root().display().to_string(),
+            "--project",
+            project,
+            "--guarded",
+            request.confirmation_request_identity.to_string()
+        ])
+    );
 
     let confirmed = call(
         &mut adapter,
