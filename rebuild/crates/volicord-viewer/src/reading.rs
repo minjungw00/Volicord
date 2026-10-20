@@ -329,28 +329,70 @@ fn answer_title<'a>(question: &str, locale: ViewerLocale) -> &'a str {
         _ => text(locale, "Explanation availability", "설명 가용성"),
     }
 }
-/// Stable within the exact realization, including repeated roles/shared ranges.
-fn reader_claim_anchor(answers: &volicord_projections::QuestionAnswers, index: usize) -> String {
-    let identity = answers
-        .provenance
-        .as_ref()
-        .map(|p| format!("{}-{}", p.subject.key(), p.realization_fingerprint))
-        .unwrap_or_else(|| {
-            volicord_projections::explanation_text_hash(&format!("{:?}", answers.facts))
-        });
-    format!("reader-{}-p{}", fragment_identity(&identity), index + 1)
+/// Rendering identity is separate from Source/citation authority. In particular,
+/// unavailable publications have no provenance but still have a subject and scope.
+struct ReaderAnswers<'a> {
+    answers: &'a volicord_projections::QuestionAnswers,
+    namespace: String,
+    subject: String,
+    project: ProjectId,
+    language: String,
 }
-fn source_point_anchor(
-    answers: &volicord_projections::QuestionAnswers,
-    unit: usize,
-    citation: usize,
-) -> String {
+impl std::ops::Deref for ReaderAnswers<'_> {
+    type Target = volicord_projections::QuestionAnswers;
+    fn deref(&self) -> &Self::Target {
+        self.answers
+    }
+}
+impl<'a> ReaderAnswers<'a> {
+    fn new(
+        answers: &'a volicord_projections::QuestionAnswers,
+        project: ProjectId,
+        subject: &str,
+        language: &str,
+        scope: &str,
+    ) -> Self {
+        // A tuple avoids delimiter ambiguity; hashing bounds IDs and excludes
+        // hostile strings from HTML control names. Never derive identity from prose.
+        let basis = serde_json::json!([
+            project.to_string(),
+            subject,
+            scope,
+            language,
+            format!("{:?}", answers.explanation_state),
+            answers
+                .provenance
+                .as_ref()
+                .map(|p| (&p.subject, &p.realization_fingerprint))
+        ]);
+        Self {
+            answers,
+            namespace: volicord_projections::explanation_text_hash(&basis.to_string())
+                .trim_start_matches("sha256:")
+                .into(),
+            subject: subject.into(),
+            project,
+            language: language.into(),
+        }
+    }
+    fn publication<'b>(
+        &self,
+        answers: &'b volicord_projections::QuestionAnswers,
+        scope: &str,
+    ) -> ReaderAnswers<'b> {
+        ReaderAnswers::new(answers, self.project, &self.subject, &self.language, scope)
+    }
+}
+fn reader_claim_anchor(answers: &ReaderAnswers<'_>, index: usize) -> String {
+    format!("reader-{}-p{}", answers.namespace, index + 1)
+}
+fn source_point_anchor(answers: &ReaderAnswers<'_>, unit: usize, citation: usize) -> String {
     format!("{}-c{}", reader_claim_anchor(answers, unit), citation + 1)
 }
 fn reader_citations(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     index: usize,
 ) {
     html.push_str("<div class=\"evidence-actions\">");
@@ -360,15 +402,10 @@ fn reader_citations(
     html.push_str("</div>");
 }
 
-fn document_anchor(answers: &volicord_projections::QuestionAnswers, section: &str) -> String {
+fn document_anchor(answers: &ReaderAnswers<'_>, section: &str) -> String {
     format!("{}-{section}", reader_claim_anchor(answers, 0))
 }
-fn reader_unit(
-    html: &mut String,
-    r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
-    index: usize,
-) {
+fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>, index: usize) {
     let answer = &answers.prose[index];
     let outer = match answer.question.as_str() {
         "ComparisonCondition" => "dt",
@@ -396,7 +433,7 @@ fn reader_unit(
 fn render_article_layer(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     layer: volicord_projections::ArticleLayer,
 ) {
     for section in answers.sections.iter().filter(|s| s.layer == layer) {
@@ -438,7 +475,7 @@ fn render_article_layer(
 fn render_card_publication(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     scope: &str,
 ) {
     html.push_str(&format!("<section class=\"work-publication\" data-publication-scope=\"{scope}\" data-publication-state=\"{:?}\"><p class=\"eyebrow\">{}</p>",answers.explanation_state,text(r.locale,"Work summary","작업 요약")));
@@ -468,50 +505,27 @@ fn render_document(
     related: &str,
     snapshot: bool,
 ) {
-    let mut document = String::new();
-    render_document_body(
-        &mut document,
-        r,
+    let subject = work
+        .map(|w| format!("work:{}", w.work_item_id))
+        .or_else(|| decision.map(|d| format!("decision:{}", d.decision.decision_id)))
+        .unwrap_or_else(|| "repository".into());
+    let answers = ReaderAnswers::new(
         answers,
-        work,
-        decision,
-        records,
-        related,
-        snapshot,
+        r.project_id,
+        &subject,
+        &r.requested_language,
+        "article",
     );
-    if answers.provenance.is_none() {
-        let prefix = work
-            .map(|w| format!("work-{}", w.work_item_id))
-            .or_else(|| decision.map(|d| format!("decision-{}", d.decision.decision_id)))
-            .unwrap_or_else(|| "repository".into());
-        // Absent documents can share identical empty facts; their reading
-        // anchors still belong to distinct subjects in one static publication.
-        let ids = document
-            .split(" id=\"")
-            .skip(1)
-            .filter_map(|s| s.split('"').next())
-            .filter(|id| id.starts_with("reader-"))
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        for id in ids {
-            let scoped = format!("{prefix}-{id}");
-            document = document
-                .replace(&format!("id=\"{id}\""), &format!("id=\"{scoped}\""))
-                .replace(&format!("href=\"#{id}\""), &format!("href=\"#{scoped}\""))
-                .replace(
-                    &format!("data-origin=\"{id}\""),
-                    &format!("data-origin=\"{scoped}\""),
-                );
-        }
-    }
-    html.push_str(&document);
+    render_document_body(
+        html, r, &answers, work, decision, records, related, snapshot,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
 fn render_document_body(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     work: Option<&UnderstandingWork>,
     decision: Option<&volicord_projections::UnderstandingDecision>,
     records: &str,
@@ -609,7 +623,7 @@ fn render_document_body(
     // current article it is inspection material, not a second competing lead.
     if !current {
         if let Some(summary) = &answers.work_summary {
-            render_card_publication(html, r, summary, "summary");
+            render_card_publication(html, r, &answers.publication(summary, "summary"), "summary");
         }
     }
     if let Some(w) = work {
@@ -784,7 +798,7 @@ fn render_document_body(
     }
     if current {
         if let Some(summary) = &answers.work_summary {
-            render_card_publication(html, r, summary, "summary");
+            render_card_publication(html, r, &answers.publication(summary, "summary"), "summary");
         }
     }
     if let Some(provenance) = &answers.provenance {
@@ -851,16 +865,12 @@ fn render_document_body(
     // screens the article becomes inert while its selected pane is open.
     // This includes independently admitted summaries in the header or audit.
     if let Some(summary) = &answers.work_summary {
-        render_source_excerpts(html, r, summary, snapshot);
+        render_source_excerpts(html, r, &answers.publication(summary, "summary"), snapshot);
     }
     render_source_excerpts(html, r, answers, snapshot);
 }
 
-fn render_evidence_index(
-    html: &mut String,
-    r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
-) {
+fn render_evidence_index(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>) {
     html.push_str(&format!("<section class=\"reading-section evidence-index\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2><p class=\"source-note\">{}</p>",
         document_anchor(answers,"evidence-index"),text(r.locale,"Evidence index", "근거 색인"),
         text(r.locale,"Start with the statement you want to check. Source ranges show observed bytes; original records show what was reported or chosen. Neither alone verifies every interpretation.",
@@ -935,7 +945,7 @@ use verification::render_verification;
 fn repository_boundaries(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     provenance: &volicord_projections::ExplanationProvenance,
 ) {
     if !matches!(
@@ -1016,7 +1026,7 @@ fn reading_warning(
 fn opening_context(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     work: Option<&UnderstandingWork>,
     decision: Option<&volicord_projections::UnderstandingDecision>,
 ) {
@@ -1141,11 +1151,7 @@ fn opening_context(
     }
 }
 
-fn explanation_diagnostic(
-    html: &mut String,
-    r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
-) {
+fn explanation_diagnostic(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>) {
     if let Some(diagnostic) = &answers.diagnostic {
         // Diagnostics remain exact in detail. The ordinary notice names only a
         // reason explicitly supplied by the dependency, never infers a cause.
@@ -1169,25 +1175,14 @@ fn explanation_diagnostic(
 }
 
 fn source_excerpt_anchor(
-    answers: &volicord_projections::QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     c: &volicord_projections::ExplanationCitation,
 ) -> String {
+    let key = serde_json::json!([c.source_id, c.field, c.start_byte, c.end_byte, c.use_kind]);
     format!(
-        "explanation-source-{}-{}-{}-{}-{}-{:?}",
-        answers
-            .provenance
-            .as_ref()
-            .map(|p| fragment_identity(&format!(
-                "{}-{}",
-                p.subject.key(),
-                p.realization_fingerprint
-            )))
-            .unwrap_or_default(),
-        c.source_id,
-        c.field,
-        c.start_byte,
-        c.end_byte,
-        c.use_kind
+        "reader-{}-source-{}",
+        answers.namespace,
+        volicord_projections::explanation_text_hash(&key.to_string()).trim_start_matches("sha256:")
     )
 }
 
@@ -1213,7 +1208,7 @@ fn citation_use_label(
 fn render_source_excerpts(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     snapshot: bool,
 ) {
     let Some(provenance) = &answers.provenance else {
@@ -1455,7 +1450,7 @@ fn work_detail(
 fn render_recorded_choice(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &volicord_projections::QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     d: &volicord_projections::UnderstandingDecision,
 ) {
     html.push_str(&format!("<section class=\"reading-section recorded-choice\" id=\"{}\" tabindex=\"-1\" data-statement-role=\"verified-canonical\">", document_anchor(answers,"choice")));
@@ -1691,12 +1686,6 @@ fn repository_explanation(
     html.push_str("</section>");
 }
 
-pub(super) fn fragment_identity(id: &str) -> String {
-    id.as_bytes()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
 pub(super) fn surface(
     html: &mut String,
     r: &ViewerRequest,

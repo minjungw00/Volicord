@@ -2217,3 +2217,14 @@ visited/matched/retained rows, admitted edges and fingerprint byte work. Its cou
 are not allocator or RSS measurements. Existing store decoding and invalidation
 costs remain distinct; no constant-time side-channel guarantee or absolute Project
 size/latency SLA is established by this projection contract.
+
+### Publication-scoped reader fragments
+
+Viewer anchor namespaces derive from a structured Project, subject, publication
+scope, requested language, current/unavailable state and realization identity.
+Missing Work name/summary/article publications never borrow identity from equal
+prose or empty facts. Stable unit/citation indices retain the original Source
+selection authority; DOM identity grants no additional read permission. Whole
+script-free snapshots must have one target for every internal link, including
+multiple Works and related Decisions. This presentation metadata changes no
+retained explanation format or decoder.

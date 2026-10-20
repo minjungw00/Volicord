@@ -205,3 +205,74 @@ mod learning_tests {
         Ok(())
     }
 }
+
+#[test]
+fn unavailable_publications_have_distinct_stable_safe_reading_identity() {
+    use super::ReaderAnswers;
+    let answers = volicord_projections::explanation_answers(
+        &[],
+        "en",
+        volicord_projections::FixedLocale::English,
+    );
+    let project = ProjectId::from_bytes([42; 16]);
+    let mut anchors = std::collections::BTreeSet::new();
+    for project in [project, ProjectId::from_bytes([43; 16])] {
+        for subject in ["work:a", "work:b", "repository", "decision:a"] {
+            for scope in ["name", "summary", "article"] {
+                for language in ["en", "ko", "\"><script>bad</script>#"] {
+                    let context = ReaderAnswers::new(&answers, project, subject, language, scope);
+                    let id = super::reader_claim_anchor(&context, 0);
+                    assert!(id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'));
+                    assert!(anchors.insert(id.clone()), "duplicate {id}");
+                    assert_eq!(
+                        id,
+                        super::reader_claim_anchor(
+                            &ReaderAnswers::new(&answers, project, subject, language, scope),
+                            0
+                        )
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn identical_unavailable_article_and_summary_render_without_duplicate_targets() {
+    let mut answers = volicord_projections::explanation_answers(
+        &[],
+        "en",
+        volicord_projections::FixedLocale::English,
+    );
+    answers.work_summary = Some(Box::new(answers.clone()));
+    let request = ViewerRequest {
+        project_id: ProjectId::from_bytes([42; 16]),
+        locale: ViewerLocale::English,
+        view: ViewerView::RepositoryExplanation,
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let mut html = String::new();
+    super::render_answers(&mut html, &request, &answers, None, true);
+    let ids: Vec<_> = html
+        .split(" id=\"")
+        .skip(1)
+        .filter_map(|s| s.split('"').next())
+        .collect();
+    let unique: std::collections::BTreeSet<_> = ids.iter().collect();
+    assert_eq!(
+        ids.len(),
+        unique.len(),
+        "identical unavailable scopes collided"
+    );
+    for rest in html.split(" href=\"#").skip(1) {
+        let target = rest.split('"').next().unwrap_or_default();
+        if target != "overview" {
+            assert_eq!(
+                ids.iter().filter(|id| **id == target).count(),
+                1,
+                "{target}"
+            );
+        }
+    }
+}

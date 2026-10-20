@@ -82,7 +82,7 @@ fn stream(html: &mut String, label: &str, stream: &StreamCapture, locale: Viewer
 fn check(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     check: &VerificationReading,
 ) {
     html.push_str(&format!("<section class=\"verification-check\" data-checkpoint=\"{}\" data-check-index=\"{}\"><h4>{}: {}</h4><dl>",
@@ -259,7 +259,7 @@ fn check(
 pub(super) fn render_verification(
     html: &mut String,
     r: &ViewerRequest,
-    answers: &QuestionAnswers,
+    answers: &ReaderAnswers<'_>,
     report: &WorkVerificationReport,
 ) {
     html.push_str(&format!("<section class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2><p>{}</p><p class=\"source-note\">{}</p>",

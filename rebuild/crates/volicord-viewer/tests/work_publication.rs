@@ -10,6 +10,17 @@ use volicord_operations::*;
 use volicord_projections::*;
 use volicord_viewer::*;
 
+fn assert_fragments(html: &str) {
+    let mut ids = std::collections::BTreeSet::new();
+    for rest in html.split(" id=\"").skip(1) {
+        let id = rest.split('"').next().unwrap_or_default();
+        assert!(ids.insert(id), "duplicate fragment: {id}");
+    }
+    for rest in html.split(" href=\"#").skip(1) {
+        let target = rest.split('"').next().unwrap_or_default();
+        assert!(ids.contains(target), "missing fragment: {target}");
+    }
+}
 fn call(host: &mut HostAdapter, tool: &str, args: Value) -> Result<Value, Box<dyn Error>> {
     let result = host.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":tool,"arguments":args}})).ok_or("MCP response")?;
     assert_eq!(result["result"]["isError"], false, "{result}");
@@ -191,6 +202,7 @@ fn same_work_independent_publications_reach_cli_mcp_http_documents_and_offline(
             format!("/?view=work&work={id}&language={language}&locale={language}"),
         ] {
             let live = get(&f, &path)?;
+            assert_fragments(&live);
             assert!(live.contains(text[0]) && live.contains(text[1]), "{path}");
             if path.contains("&work=") {
                 assert!(live.contains(&f.decisions["explicit"].to_string()));
@@ -209,6 +221,7 @@ fn same_work_independent_publications_reach_cli_mcp_http_documents_and_offline(
             guarded_request: None,
         };
         let snapshot = adapter.render_snapshot(&request, TimestampMicros::from_unix_micros(123))?;
+        assert_fragments(&snapshot.html);
         assert!(
             snapshot.html.contains(text[0])
                 && snapshot.html.contains(text[1])
@@ -279,6 +292,8 @@ fn same_work_independent_publications_reach_cli_mcp_http_documents_and_offline(
         )?;
         assert!(decision.contains("Keep the observed boundary local"));
         let snapshot = adapter.render_snapshot(&request, TimestampMicros::from_unix_micros(124))?;
+        assert_fragments(&live);
+        assert_fragments(&snapshot.html);
         assert!(snapshot.html.contains(text[0]) && snapshot.html.contains(text[1]));
         assert!(!snapshot.html.contains(text[2]));
         let projection = f
