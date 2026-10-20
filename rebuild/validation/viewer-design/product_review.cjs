@@ -43,6 +43,9 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
   assert.equal(await page.evaluate(()=>document.activeElement.id),target);
   assert.equal(await point.getAttribute('role'),width<=900?'dialog':null);
   assert.equal(await article.evaluate(n=>n.inert),width<=900);
+  assert.equal(await point.evaluate(n=>Boolean(n.closest('[inert]'))),false,'Source controls must remain outside the inert article');
+  await page.keyboard.press('Tab');
+  assert.equal(await point.evaluate(n=>n.contains(document.activeElement)),true,'Source keyboard controls remain interactive');
   const status=point.locator('.citation-status');if(await status.count())await status.filter({hasText:/Displayed|표시 범위/}).waitFor();
   const region=point.locator('.citation-inspection code');
   if(c.source_root && await region.count()){

@@ -597,14 +597,12 @@ fn render_card_publication(
     r: &ViewerRequest,
     answers: &volicord_projections::QuestionAnswers,
     scope: &str,
-    snapshot: bool,
 ) {
     html.push_str(&format!("<section class=\"work-publication\" data-publication-scope=\"{scope}\" data-publication-state=\"{:?}\"><p class=\"eyebrow\">{}</p>",answers.explanation_state,text(r.locale,"Work summary","작업 요약")));
     for index in 0..answers.prose.len() {
         reader_unit(html, r, answers, index);
     }
     explanation_diagnostic(html, r, answers);
-    render_source_excerpts(html, r, answers, snapshot);
     html.push_str("</section>");
 }
 pub(super) fn render_answers(
@@ -719,7 +717,7 @@ fn render_document(
     // current article it is inspection material, not a second competing lead.
     if !current {
         if let Some(summary) = &answers.work_summary {
-            render_card_publication(html, r, summary, "summary", snapshot);
+            render_card_publication(html, r, summary, "summary");
         }
     }
     if let Some(w) = work {
@@ -894,7 +892,7 @@ fn render_document(
     }
     if current {
         if let Some(summary) = &answers.work_summary {
-            render_card_publication(html, r, summary, "summary", snapshot);
+            render_card_publication(html, r, summary, "summary");
         }
     }
     if let Some(provenance) = &answers.provenance {
@@ -971,6 +969,12 @@ fn render_document(
     }
     html.push_str(records);
     html.push_str("</details></div></article>");
+    // Every Source pane is a sibling of the reading article. On narrow
+    // screens the article becomes inert while its selected pane is open.
+    // This includes independently admitted summaries in the header or audit.
+    if let Some(summary) = &answers.work_summary {
+        render_source_excerpts(html, r, summary, snapshot);
+    }
     render_source_excerpts(html, r, answers, snapshot);
 }
 

@@ -390,6 +390,36 @@ fn cited_summary_has_its_own_exact_http_authority_and_cannot_borrow_article_iden
     let foreign = read("work")?;
     assert!(!foreign.starts_with("HTTP/1.1 200"));
     assert!(!foreign.contains("return value"));
+    // A summary can remain readable independently of article availability.
+    // Its Source pane must escape the article that becomes inert on narrow
+    // screens; a focused descendant of an inert article is not interactive.
+    {
+        let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+        let request = ViewerRequest {
+            project_id: f.project,
+            locale: ViewerLocale::English,
+            view: ViewerView::Work { work: Some(id) },
+            requested_language: "en".into(),
+            guarded_request: None,
+        };
+        for html in [
+            get(&f, &format!("/?view=work&work={id}&language=en&locale=en"))?,
+            viewer
+                .render_snapshot(&request, TimestampMicros::from_unix_micros(123))?
+                .html,
+        ] {
+            let selected = html
+                .split(&format!("<article class=\"doc\" data-work-id=\"{id}\""))
+                .nth(1)
+                .ok_or("selected Work article")?;
+            let (document, sources) = selected.split_once("</article>").ok_or("article end")?;
+            assert!(
+                !document.contains("class=\"source-point\""),
+                "Source dialog inherits article inertness"
+            );
+            assert!(sources.contains("class=\"source-point\""));
+        }
+    }
     assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
     assert_eq!(privacy, f.operations.privacy_status(f.project)?);
     let unsupported = get(&f, &format!("/?view=work&work={id}&language=fr&locale=en"))?;
