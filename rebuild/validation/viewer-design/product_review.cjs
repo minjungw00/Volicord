@@ -35,6 +35,7 @@ async function serve(c){const p=spawn(config.viewer,['--runtime',c.runtime,'--pr
 async function fits(page){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),JSON.stringify(await page.evaluate(()=>({url:location.href,width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('main *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(n=>({tag:n.tagName,cls:n.className,width:n.getBoundingClientRect().width}))}))));}
 async function capture(page,c,name,width){await fits(page);await page.screenshot({path:path.join(output,`${c.key}-${name}-${width}.png`)});}
 async function sourceJourney(page,c,width,offline=false,selector='#repository-explanation .doc'){
+ let verificationRead=null;
  const article=page.locator(selector);
  const links=article.locator('a.evidence-link:visible');if(!await links.count())return {state:'unavailable'};
  // A reading point selected by the real document, rather than any historical case.
@@ -52,7 +53,7 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
   const region=point.locator('.citation-inspection code');
   if(c.source_root && await region.count()){
    const control=point.locator('.citation-inspection'),url=new URL(await control.getAttribute('data-citation-url'),page.url());
-   const response=await page.request.get(url.href);assert.equal(response.status(),200);const chunk=(await response.json()).chunk;
+   const started=performance.now(),response=await page.request.get(url.href);assert.equal(response.status(),200);const bytes=await response.body();verificationRead={status:response.status(),bytes:bytes.length,duration_ms:performance.now()-started};const chunk=JSON.parse(bytes).chunk;
    const source=fs.readFileSync(path.join(c.source_root,chunk.citation.locator));
    assert.equal(await region.textContent(),source.subarray(chunk.displayed_start_byte,chunk.displayed_end_byte).toString('utf8'));
   }
@@ -63,7 +64,7 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
  if(!offline){await page.reload();await point.waitFor({state:'visible'});await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),returnId);
   await page.goBack();await point.waitFor({state:'visible'});await page.goForward();assert.equal(new URL(page.url()).hash,'#'+returnId);
  }else await point.locator('.return').click();
- assert.equal(new URL(page.url()).hash,'#'+returnId);return {state:'read',target,returnId};
+ assert.equal(new URL(page.url()).hash,'#'+returnId);return {state:'read',target,returnId,verification_read:verificationRead};
 }
 (async()=>{let browser;try{
  if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');

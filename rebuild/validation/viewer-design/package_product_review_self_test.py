@@ -92,6 +92,7 @@ class ReviewPackageTests(unittest.TestCase):
     def test_public_numeric_costs_and_control_identity_survive_without_private_fields(self):
         data = {'controls_sha256': 'a' * 64, 'cases': [{'key': 'large',
             'publication': {'repository_state': 'current', 'work_count': 0},
+            'source': {'state': 'read', 'verification_read': {'status': 200, 'bytes': 1000, 'duration_ms': 2.5}},
             'source_reads': [{'status': 200, 'bytes': 1024}, {'status': 409, 'state': 'body_unavailable'}],
             'widths': [{'width': 390, 'repository_cost': {'dom_elements': 3000,
                 'code_elements': 20, 'token_spans': 200, 'code_utf8_bytes': 4096,

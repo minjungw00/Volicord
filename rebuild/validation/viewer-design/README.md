@@ -312,9 +312,9 @@ human comprehension/acceptance unobserved.
 
 Each review requires a new output directory, even after failure. Repository
 navigation records browser TaskDuration CPU, elapsed automation navigation, DOM
-and code/token counts separately from HTTP bytes/time. Source response counts and
-bytes include browser requests and the driver's explicit byte-verification reads;
-they are not a count of filesystem opens. CPU is Chromium task time, not server
+and code/token counts separately from HTTP bytes/time. `source_reads` counts browser citation responses; each selected Source journey
+separately records its explicit `verification_read` bytes/time. These requests
+are additional verification cost, not user clicks or filesystem opens. CPU is Chromium task time, not server
 CPU or human response time. `node --test product_review_controls_self_test.cjs`
 checks admission and original-output preservation without generating any article.
 
