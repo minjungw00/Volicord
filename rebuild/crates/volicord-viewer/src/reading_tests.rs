@@ -276,3 +276,66 @@ fn identical_unavailable_article_and_summary_render_without_duplicate_targets() 
         }
     }
 }
+
+#[test]
+fn outline_uses_only_substantive_authored_headings_and_keeps_original_indices(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::*;
+    for count in [0, 1, 12] {
+        let mut answers = explanation_answers(&[], "en", FixedLocale::English);
+        answers.prose.clear();
+        for n in 0..count {
+            let index = answers.prose.len();
+            for (question, text) in [
+                ("SectionHeading", format!("{n} · 긴 한국어 제목과 long English mechanism heading {} <script>hostile</script>", "구조와 반환 경계 ".repeat(8))),
+                ("Narrative", "Authored layout control: no execution or semantic approval is claimed.".into()),
+            ] {
+                answers.prose.push(QuestionAnswer {question:question.into(),text,role:AnswerRole::GeneratedInterpretation,
+                    evidence_keys:vec![],citations:vec![],recorded_action:None});
+            }
+            answers.sections.push(ArticleSection {
+                layer: ArticleLayer::Article,
+                heading_index: Some(index),
+                unit_indices: vec![index + 1],
+            });
+        }
+        let request = ViewerRequest {
+            project_id: ProjectId::from_bytes([42; 16]),
+            locale: ViewerLocale::English,
+            view: ViewerView::RepositoryExplanation,
+            requested_language: "en".into(),
+            guarded_request: None,
+        };
+        let mut html = String::new();
+        super::render_answers(&mut html, &request, &answers, None, true);
+        let primary = html
+            .split("class=\"toc-primary\"")
+            .nth(1)
+            .ok_or("primary list")?
+            .split("</ul>")
+            .next()
+            .ok_or("list end")?;
+        assert_eq!(primary.matches("<a ").count(), count);
+        assert!(!primary.contains("Verification"));
+        assert!(!html.contains("<script>hostile</script>"));
+        for n in 0..count {
+            let id = super::reader_claim_anchor(
+                &super::ReaderAnswers::new(
+                    &answers,
+                    request.project_id,
+                    "repository",
+                    "en",
+                    "article",
+                ),
+                2 * n,
+            );
+            assert!(primary.contains(&format!("href=\"#{id}\"")));
+            assert_eq!(html.matches(&format!("id=\"{id}\"")).count(), 1);
+        }
+        if let Some(root) = std::env::var_os("VOLICORD_OUTLINE_CONTROL_CAPTURE") {
+            std::fs::create_dir_all(&root)?;
+            std::fs::write(std::path::Path::new(&root).join(format!("outline-{count}.html")),format!("<!doctype html><html lang=\"en\"><head><meta name=\"viewport\" content=\"width=device-width\">{STYLE}</head><body><main class=\"shell\">{html}</main></body></html>"))?;
+        }
+    }
+    Ok(())
+}

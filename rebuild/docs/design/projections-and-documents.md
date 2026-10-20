@@ -2140,8 +2140,9 @@ attribution. Record-only outcomes remain honest quotations. All report originals
 including rows beyond display bounds, remain in an explicitly disclosed JSON read
 model and independent canonical audit. No assertion or comparable retest is inferred from labels, quotations or exits.
 
-The shared live/offline article renderer uses one bounded sticky native section
-navigator. Material warning labels distinguish latest reported failure, prior adverse
+The shared live/offline article renderer uses one compact native TOC disclosure.
+The closed control is sticky; its expanded outline occupies normal flow and never
+covers the selected text. Basic links work without JavaScript. Material warning labels distinguish latest reported failure, prior adverse
 observations, coverage uncertainty, Source unavailability and rejected acceptance;
 missing prose alone is not critical. Claim-purpose evidence disclosures point to
 exact admitted Source selections and original records, with code before optional
@@ -2150,8 +2151,9 @@ retained format, authority, public route, protected action or generation policy.
 Technical browser results remain separate from semantic and human acceptance.
 
 Authored primary section headings now populate that same navigator in their
-original order. Unheaded introductory content keeps a native introduction link;
-short unheaded documents need no synthesized heading. Verification and limits
+original order, only when their section has substantive content. Short unheaded
+documents need no synthesized heading or primary introduction link. Supplemental
+verification, limits and original-record destinations form one secondary group. Verification and limits
 consume their separately grouped units, preserving original indices and citations.
 Their authored subheadings are nested within their reading layer. The independent
 card summary is disclosed in inspection when an article has its own lead, and

@@ -76,7 +76,7 @@ function command(label,args){
    const destinations=await navigation.locator('a').evaluateAll(links=>links.map(a=>a.hash.slice(1)));
    for(const id of destinations)assert.equal(await page.locator(`[id="${id}"]`).count(),1,'each navigation destination actually exists');
    for(const id of destinations){
-    const anchor=navigation.locator(`a[href="#${id}"]`);await anchor.focus();await page.keyboard.press('Enter');
+    const anchor=navigation.locator(`a[href="#${id}"]`);await anchor.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});await anchor.focus();await page.keyboard.press('Enter');
     await page.waitForURL(url=>url.hash==='#'+id);
     const target=page.locator(`[id="${id}"]`);await target.waitFor({state:'visible'});
     const geometry=await page.evaluate(id=>{

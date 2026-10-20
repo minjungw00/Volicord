@@ -210,12 +210,20 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
 .choice-alternatives dd { margin:0; }
 @media(max-width:600px) { .choice-alternatives { grid-template-columns:1fr; gap:6px; } .choice-alternatives dd { margin-bottom:14px; } }
 
-/* One bounded native section navigator. The masthead scrolls away on narrow
-   screens, so neither dynamic header wrapping nor a Source dialog can cover it. */
-.document-nav { position:sticky; top:76px; z-index:6; display:flex; flex-wrap:nowrap; gap:4px; overflow-x:auto; max-width:100%; padding:8px 4px; margin:24px 0; background:var(--surface); border:1px solid var(--line); border-radius:8px; scroll-padding-inline:8px; }
-.document-nav a { flex:0 0 auto; display:inline-flex; align-items:center; min-height:40px; padding:6px 12px; border:1px solid transparent; border-radius:5px; font-size:.82rem; line-height:1.5; text-decoration:none; white-space:nowrap; }
+/* A closed TOC stays available. An expanded outline occupies normal flow so
+   even script-free fragment navigation never covers the selected paragraph. */
+.document-nav { position:sticky; top:76px; z-index:4; max-width:100%; margin:24px 0; background:var(--surface); border:1px solid var(--line); border-radius:8px; font-size:.85rem; }
+.document-nav[open] { position:static; }
+.document-nav > summary { padding:12px 16px; cursor:pointer; min-height:44px; }
+.toc-cue { display:inline-block; max-width:70%; margin-left:16px; vertical-align:bottom; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-weight:400; }
+.document-nav nav { padding:0 12px 12px; }
+.document-nav ul { list-style:none; padding:0; margin:0; }
+.document-nav a { display:block; padding:10px 12px; min-height:44px; border:1px solid transparent; border-radius:5px; line-height:1.5; text-decoration:none; overflow-wrap:anywhere; }
 .document-nav a:hover,.document-nav a[aria-current=location] { background:var(--wash); border-color:var(--line); }
 .document-nav a:focus-visible { outline-offset:-3px; }
+.toc-more { margin-top:8px; border-top:1px solid var(--line); padding-top:8px; }
+.toc-more > summary { padding:10px 12px; cursor:pointer; }
+.fragment-unavailable { margin:20px 0; padding:16px; border:1px solid var(--line); border-left:4px solid #98641a; }
 .doc [id] { scroll-margin-top:160px; }
 .reading-warning { margin:16px 0; padding:16px 20px; border:1px solid var(--line); border-left:5px solid var(--accent); border-radius:7px; background:var(--soft); font-size:.9rem; }
 .reading-warning strong { display:block; font-size:.92rem; }

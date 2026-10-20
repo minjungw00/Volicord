@@ -70,8 +70,31 @@
       if (reads.get(control) === controller) button.disabled = false;
     }
   }
+  const fragmentNotice = document.createElement('p');
+  fragmentNotice.className = 'fragment-unavailable';
+  fragmentNotice.setAttribute('role', 'status');
+  fragmentNotice.hidden = true;
+  fragmentNotice.textContent = ko ? '이 문단 링크는 현재 문서에서 사용할 수 없습니다. 목차에서 현재 내용을 선택하세요.'
+    : 'This section link is unavailable in the current document. Choose a current section from the TOC.';
+  document.querySelector('main')?.prepend(fragmentNotice);
+  function updateCue() {
+    document.querySelectorAll('.document-nav').forEach(toc => {
+      const links = [...toc.querySelectorAll('.toc-primary a')];
+      let current = null;
+      for (const link of links) {
+        const node = document.getElementById(link.hash.slice(1));
+        if (node && node.getBoundingClientRect().top <= 180) current = link;
+      }
+      for (const link of links) {
+        if (link === current) link.setAttribute('aria-current', 'location');
+        else link.removeAttribute('aria-current');
+      }
+      toc.querySelector('.toc-cue').textContent = current?.textContent || (ko ? '이 문서의 내용' : 'On this page');
+    });
+  }
   function apply() {
     const target = document.getElementById(location.hash.slice(1));
+    fragmentNotice.hidden = !location.hash || !!target;
     if (target) {
       if (target.matches('details')) target.open = true;
       for (let parent = target.parentElement; parent; parent = parent.parentElement) {
@@ -79,13 +102,10 @@
       }
     }
     const point = target?.closest('.source-point');
-    document.querySelectorAll('.document-nav a').forEach(link => {
-      if (link.hash === location.hash) link.setAttribute('aria-current', 'location');
-      else link.removeAttribute('aria-current');
-    });
-    const article = document.querySelector('.doc');
+    updateCue();
+    const articles = document.querySelectorAll('.doc');
     const header = document.querySelector('.masthead');
-    if (article) article.inert = !!point && narrow.matches;
+    articles.forEach(article => article.inert = !!point && narrow.matches);
     if (header) header.inert = !!point && narrow.matches;
     if (selected && selected !== point) {
       pendingRead?.abort();
@@ -123,12 +143,29 @@
   document.addEventListener('click', event => {
     const button = event.target.closest('button.citation-read');
     if (button) readCitation(button.closest('.source-point'), Number(button.dataset.nextOffset || 0));
+    const outlineLink = event.target.closest('.document-nav a');
+    if (outlineLink) {
+      const toc = outlineLink.closest('.document-nav');
+      toc.open = false;
+      const target = document.getElementById(outlineLink.hash.slice(1));
+      // Run even for a repeated fragment, which emits no hashchange.
+      requestAnimationFrame(() => {
+        apply();
+        if (target) { target.focus({preventScroll:true}); target.scrollIntoView({block:'start'}); }
+      });
+    }
     const link = event.target.closest('a.evidence-link');
     if (link && !selected) saved.set(link.dataset.origin, scrollY);
   });
   document.addEventListener('keydown', event => {
     const point = document.getElementById(location.hash.slice(1))?.closest('.source-point');
-    if (!point) return;
+    if (!point) {
+      const toc = event.target.closest('.document-nav[open]');
+      if (event.key === 'Escape' && toc) {
+        event.preventDefault(); toc.open = false; toc.querySelector('summary').focus();
+      }
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       point.querySelector('.return').click();
@@ -145,6 +182,10 @@
     }
   });
   window.addEventListener('hashchange', apply);
+  let scheduled = false;
+  window.addEventListener('scroll', () => {
+    if (!scheduled) { scheduled = true; requestAnimationFrame(() => { scheduled = false; updateCue(); }); }
+  }, {passive:true});
   narrow.addEventListener('change', apply);
   apply();
 })();

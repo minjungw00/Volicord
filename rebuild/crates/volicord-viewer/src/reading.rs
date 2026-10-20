@@ -129,6 +129,11 @@ fn overview(
 ) {
     html.push_str("<section id=\"overview\" class=\"snapshot-page\"><p class=\"eyebrow\">PROJECT OVERVIEW</p>");
     heading(html, 1, &p.overview.project_name);
+    if snapshot {
+        html.push_str(&format!("<p class=\"snapshot-link-help source-note\">{}</p>",text(r.locale,
+        "Choose a page above. If a saved section link brought you here, that section is unavailable in this snapshot.",
+        "위에서 읽을 문서를 선택하세요. 저장한 문단 링크로 이곳에 왔다면 이 스냅샷에서 해당 문단을 사용할 수 없습니다.")));
+    }
     project_purpose(html, r, u);
     html.push_str(&format!("<div class=\"section-heading\"><div><h2>{}</h2></div><a class=\"button secondary\" href=\"{}\">{} →</a></div>",
         text(r.locale,"Recent Work","최근 작업"),
@@ -643,35 +648,26 @@ fn render_document_body(
     html.push_str("</header>");
     opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
-    html.push_str("<nav class=\"document-nav\" aria-label=\"Document sections\">");
-    let authored_sections: Vec<_> = answers
-        .sections
-        .iter()
-        .filter(|s| s.layer == volicord_projections::ArticleLayer::Article)
-        .filter_map(|s| s.heading_index)
-        .collect();
-    if authored_sections.is_empty()
-        || answers.sections.iter().any(|s| {
-            s.layer == volicord_projections::ArticleLayer::Article && s.heading_index.is_none()
-        })
-    {
-        html.push_str(&format!(
-            "<a href=\"#{}\">{}</a>",
-            document_anchor(answers, "reading"),
-            if authored_sections.is_empty() {
-                text(r.locale, "Article", "설명")
-            } else {
-                text(r.locale, "Introduction", "도입")
-            }
-        ));
+    html.push_str(&format!("<details class=\"document-nav\"><summary>{}<span class=\"toc-cue\">{}</span></summary><nav aria-label=\"{}\"><ul class=\"toc-primary\">",
+        text(r.locale,"TOC","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Document sections","문서 목차")));
+    for section in answers.sections.iter().filter(|s| {
+        s.layer == volicord_projections::ArticleLayer::Article
+            && s.unit_indices
+                .iter()
+                .any(|&i| !answers.prose[i].text.trim().is_empty())
+    }) {
+        if let Some(index) = section.heading_index {
+            html.push_str(&format!(
+                "<li><a href=\"#{}\">{}</a></li>",
+                reader_claim_anchor(answers, index),
+                escape(&answers.prose[index].text)
+            ));
+        }
     }
-    for index in authored_sections {
-        html.push_str(&format!(
-            "<a href=\"#{}\">{}</a>",
-            reader_claim_anchor(answers, index),
-            escape(&answers.prose[index].text)
-        ));
-    }
+    html.push_str(&format!(
+        "</ul><details class=\"toc-more\"><summary>{}</summary><ul>",
+        text(r.locale, "Supporting details", "보조 자료")
+    ));
     for (section, label) in [
         ("choice", text(r.locale, "Recorded choice", "기록된 선택")),
         (
@@ -697,13 +693,13 @@ fn render_document_body(
             continue;
         }
         html.push_str(&format!(
-            "<a href=\"#{}\">{}</a>",
+            "<li><a href=\"#{}\">{}</a></li>",
             document_anchor(answers, section),
             label
         ));
     }
     html.push_str(&format!(
-        "</nav><div id=\"{}\" tabindex=\"-1\">",
+        "</ul></details></nav></details><div id=\"{}\" tabindex=\"-1\">",
         document_anchor(answers, "reading")
     ));
     if !current {

@@ -45,6 +45,7 @@ async function inspect(page,c,qa,url,width,mode,language) {
   for(const s of primary.filter(s=>s.heading_index!==null)) {
     const text=qa.prose[s.heading_index].text;
     const link=nav.locator('a').filter({hasText:text});assert.equal(await link.count(),1);
+    await nav.locator(':scope > summary').click();
     const fragment=await link.getAttribute('href');
     await link.focus();await page.keyboard.press('Enter');await page.waitForURL(u=>u.hash===fragment);
     const target=page.locator(`[id="${fragment.slice(1)}"]`);
