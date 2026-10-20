@@ -16,9 +16,9 @@ READER_TASKS = (
     '한 Work를 골라 무엇을 하려던 작업인지, 어떤 접근과 결과가 기록되어 있는지 자신의 말로 설명해 주세요.',
     '작업의 이유나 원인, 확인한 범위와 아직 모르는 점을 구분해 주세요. 그렇게 읽은 문장을 표시해 주세요.',
     '검증 화면에서 어떤 실행과 결과가 연결되는지 설명해 주세요. 서로 다른 기록을 비교할 수 있는지 판단한 근거를 찾아 주세요.',
-    'Decision을 열고 제안과 실제 선택, 각각의 이유를 설명해 주세요. 읽을 수 없는 정보가 있다면 어떻게 알았는지 적어 주세요.',
+    'Work에 관련 Decision이 있으면 제안과 실제 선택, 각각의 이유를 설명해 주세요. 관련 기록이 없으면 없는 상태를 유지해 주세요.',
     '주장 하나의 근거를 열고 해당 범위를 확인한 다음 읽던 문장으로 돌아와 주세요. 어려웠던 동작이나 문장을 적어 주세요.',
-    'Work가 없는 프로젝트의 저장소 설명과 도구를 찾아, 무엇을 이해할 수 있고 어디까지 확인할 수 있는지 설명해 주세요.',
+    'Work가 있는 프로젝트와 Work가 없는 프로젝트의 저장소 설명을 각각 읽고, 무엇을 이해할 수 있고 어디까지 확인할 수 있는지 설명해 주세요.',
     '데스크톱과 좁은 화면에서 문서 탐색, 코드 읽기와 복귀를 해 보고 이해하거나 조작하기 어려웠던 점을 적어 주세요.',
 )
 
@@ -49,12 +49,9 @@ def reader_entry(cases):
         classification, origin = case_scope(case)
         prefix = f"product/{case['key']}-offline.html"
         links = [('개요', 'overview'), ('저장소 설명', 'repository-explanation'),
-            ('작업 목록', 'works'), ('결정', 'decision-reading'), ('분석', 'analysis-tool'),
-            ('문서', 'documents-tool'), ('기억', 'memory-tool'), ('근거', 'evidence-tool')]
+            ('작업 목록', 'works')]
         if case.get('work'):
             links.append(('선택한 Work', 'work-' + case['work']))
-        if case.get('decision'):
-            links.append(('선택한 Decision', 'decision-' + case['decision']))
         entries.append('<article><h2>' + escape(case['project_name']) + ' · ' + escape(case['key'])
             + '</h2><p>' + escape(classification) + ' · ' + escape(origin) + '</p>'
             + ''.join(f'<a href="{prefix}#{escape(fragment)}">{escape(label)}</a> ' for label, fragment in links) + '</article>')

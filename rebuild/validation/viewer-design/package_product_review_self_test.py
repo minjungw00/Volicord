@@ -10,6 +10,7 @@ import tempfile
 import subprocess
 import sys
 import unittest
+from html.parser import HTMLParser
 
 import package_product_review as package
 
@@ -42,6 +43,24 @@ def png():
 
 
 class ReviewPackageTests(unittest.TestCase):
+    def test_entry_links_only_current_reading_destinations_and_exact_work(self):
+        class Links(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.hrefs = []
+            def handle_starttag(self, tag, attrs):
+                if tag == 'a':
+                    self.hrefs.extend(value for key, value in attrs if key == 'href')
+        for work in [None, '02' * 16]:
+            c = {**case(), 'work': work, 'decision': '03' * 16}
+            links = Links()
+            links.feed(package.reader_entry([c]))
+            targets = {url.split('#', 1)[1] for url in links.hrefs if url.startswith('product/')}
+            expected = {'overview', 'repository-explanation', 'works'}
+            if work:
+                expected.add('work-' + work)
+            self.assertEqual(targets, expected)
+
     def test_entry_has_questions_without_case_answers_or_implicit_normal_success(self):
         page = package.reader_entry([case()])
         self.assertIn('record-only', page)
