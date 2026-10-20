@@ -6,6 +6,7 @@
   let focusedHash = null;
   let pendingRead = null;
   const reads = new WeakMap();
+  const outlineScroll = new WeakMap();
   const ko = document.documentElement.lang === 'ko';
   const syntaxNames = {javascript:'JavaScript', typescript:'TypeScript', rust:'Rust', python:'Python', shell:'Shell', json:'JSON'};
   const tokenKinds = new Set(['keyword','comment','string','type','function','number','variable']);
@@ -186,6 +187,15 @@
   document.addEventListener('click', event => {
     const button = event.target.closest('button.citation-read');
     if (button) readCitation(button.closest('.source-point'), Number(button.dataset.nextOffset || 0));
+    const outlineTrigger = event.target.closest('.document-nav > summary');
+    if (outlineTrigger) {
+      const toc = outlineTrigger.parentElement;
+      if (!toc.open) outlineScroll.set(toc, scrollY);
+      else {
+        const offset = outlineScroll.get(toc);
+        requestAnimationFrame(() => { if (offset !== undefined) window.scrollTo(0, offset); });
+      }
+    }
     const outlineLink = event.target.closest('.document-nav a');
     if (outlineLink) {
       const toc = outlineLink.closest('.document-nav');
@@ -198,14 +208,19 @@
       });
     }
     const link = event.target.closest('a.evidence-link');
-    if (link && !selected) saved.set(link.dataset.origin, scrollY);
+    if (link && !selected) {
+      saved.set(link.dataset.origin, scrollY);
+      document.querySelectorAll('.document-nav[open]').forEach(toc => toc.open = false);
+    }
   });
   document.addEventListener('keydown', event => {
     const point = document.getElementById(location.hash.slice(1))?.closest('.source-point');
     if (!point) {
       const toc = event.target.closest('.document-nav[open]');
       if (event.key === 'Escape' && toc) {
-        event.preventDefault(); toc.open = false; toc.querySelector('summary').focus();
+        event.preventDefault(); toc.open = false; toc.querySelector('summary').focus({preventScroll:true});
+        const offset = outlineScroll.get(toc);
+        if (offset !== undefined) window.scrollTo(0, offset);
       }
       return;
     }

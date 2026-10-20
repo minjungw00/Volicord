@@ -32,6 +32,41 @@ async function fragments(page) {
  for(const n of document.querySelectorAll('[data-origin]'))if(counts.get(n.dataset.origin)!==1)errors.push(`bad return ${n.dataset.origin}`);
  return errors;});assert.deepEqual(errors,[],'every internal link and return has exactly one target');
 }
+// Measure real sticky geometry before any Playwright action can auto-scroll a
+// displaced control back into view. Native pointer/keyboard input starts scrolled.
+async function scrolledOutline(page, toc, js, capture) {
+ const trigger=toc.locator(':scope > summary'), list=toc.locator(':scope > nav');
+ await toc.evaluate(n=>n.open=false);
+ await toc.evaluate(n=>window.scrollTo(0,scrollY+n.getBoundingClientRect().top+800));
+ const start=await page.evaluate(()=>scrollY);
+ assert.ok(start>0,'exercise an already-scrolled viewport');
+ async function usable() {
+  const summary=await trigger.boundingBox(), nav=await list.boundingBox();
+  const height=await page.evaluate(()=>innerHeight);
+  assert.ok(summary && summary.y>=-1 && summary.y+summary.height<=height,'scrolled TOC trigger stays in viewport');
+  assert.ok(nav && nav.y>=summary.y+summary.height-1 && nav.y+nav.height<=height,'open TOC list stays in viewport');
+  assert.ok(nav.height>0 && nav.height<=height*.46,'list is bounded independently of document');
+  return {summary,nav,scrollY:await page.evaluate(()=>scrollY)};
+ }
+ const closed=await trigger.boundingBox();
+ assert.ok(closed && closed.y>=-1 && closed.y+closed.height<=await page.evaluate(()=>innerHeight),'collapsed trigger available after scroll');
+ // Use a physical click, without Locator.click's automatic scrollIntoView.
+ await page.mouse.click(closed.x+Math.min(30,closed.width/2),closed.y+closed.height/2);
+ assert.equal(await toc.evaluate(n=>n.open),true);
+ const opened=await usable();assert.ok(opened.scrollY>0);
+ if(capture)await page.screenshot({path:capture});
+ const navScroll=await list.evaluate(n=>{n.scrollTop=n.scrollHeight;return {height:n.clientHeight,extent:n.scrollHeight,offset:n.scrollTop};});
+ if(navScroll.extent>navScroll.height)assert.ok(navScroll.offset>0,'long list scrolls internally');
+ await usable();
+ if(js){await trigger.focus({preventScroll:true});await page.keyboard.press('Escape');}
+ else {const box=await trigger.boundingBox();await page.mouse.click(box.x+20,box.y+box.height/2);}
+ assert.equal(await toc.evaluate(n=>n.open),false);
+ if(js)assert.ok(Math.abs(await page.evaluate(()=>scrollY)-start)<2,'close restores original reading scroll');
+ // Reopen by keyboard after scrolling too; selection is tested by the caller.
+ await trigger.focus({preventScroll:true});await page.keyboard.press('Space');
+ await usable();
+ return opened;
+}
 (async()=>{const browser=await chromium.launch({executablePath:c.chromium,headless:true,args:['--no-sandbox','--disable-dev-shm-usage'],env:{...process.env,FONTCONFIG_FILE:c.fontconfig}});
  result.browser_version=browser.version();
  try {for(const x of c.cases){const before=state(x,x.key+'-before');const server=await serve(x);
@@ -42,15 +77,17 @@ async function fragments(page) {
  const js=mode==='live';const ctx=await browser.newContext({viewport:{width,height:1000},javaScriptEnabled:js});
  await ctx.route('**/*',r=>{const u=new URL(r.request().url());return u.protocol==='file:'||u.origin===new URL(server.base).origin?r.continue():r.abort();});
  try{const page=await ctx.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- const url=mode==='offline'?pathToFileURL(snapshot).href+(x.work?'#work-'+x.work:'#repository-explanation'):server.base+`?view=${x.work?'work&work='+x.work:'repository'}&locale=${x.locale}&language=${x.language}`;
+ const decisionFragment=x.decision?`#work-${x.work}-decision-${x.decision}`:'';
+ const url=mode==='offline'?pathToFileURL(snapshot).href+(decisionFragment||(x.work?'#work-'+x.work:'#repository-explanation')):server.base+`?view=${x.work?'work&work='+x.work:'repository'}&locale=${x.locale}&language=${x.language}`+decisionFragment;
  await page.goto(url);await fragments(page);
  if(!c.fragments_only){
- const doc=page.locator('.doc:visible').first(),toc=doc.locator('.document-nav');assert.equal(await toc.count(),1);
+ const doc=page.locator('.doc:visible').last(),toc=doc.locator('.document-nav');assert.equal(await toc.count(),1);
  assert.equal(await toc.evaluate(n=>n.tagName),'DETAILS');assert.equal(await toc.getAttribute('open'),null);
  assert.equal(await toc.locator('a:visible').count(),0);
  const authored=await doc.locator('.article-section h2[data-question=SectionHeading]').allTextContents();
  assert.deepEqual(await toc.locator('.toc-primary a').allTextContents(),authored);
- const summary=toc.locator(':scope > summary');await summary.focus();await page.keyboard.press('Space');assert.equal(await toc.evaluate(n=>n.open),true);
+ const geometry=await scrolledOutline(page,toc,js,path.join(c.output,`${x.key}-${width}-${mode}-scrolled-open.png`));result.checks.push({case:x.key,width,mode,scrolled_geometry:geometry,status:'passed'});
+ const summary=toc.locator(':scope > summary');
  await page.keyboard.press('Tab');assert.ok(await toc.evaluate(n=>n.contains(document.activeElement)));
  await page.keyboard.press('Shift+Tab');assert.equal(await summary.evaluate(n=>n===document.activeElement),true);
  if(js){await page.keyboard.press('Escape');assert.equal(await toc.evaluate(n=>n.open),false);await summary.click();}
@@ -58,7 +95,7 @@ async function fragments(page) {
  for(const fragment of links){if(!await toc.evaluate(n=>n.open))await summary.click();
  const a=toc.locator(`a[href="${fragment}"]`);if(await a.locator('xpath=ancestor::details[contains(@class,"toc-more")]').count() && !await toc.locator('.toc-more').evaluate(n=>n.open))await toc.locator('.toc-more > summary').click();await a.focus();await page.keyboard.press('Enter');
  const target=page.locator(`[id="${fragment.slice(1)}"]`);await target.waitFor({state:'visible'});
- // Without JS the native disclosure remains open in flow; it never overlays text.
+ // Without JS the bounded sticky list reserves a fragment offset for the target.
  const overlap=await target.evaluate(n=>{const t=n.getBoundingClientRect(),nav=n.closest('.doc').querySelector('.document-nav').getBoundingClientRect();return nav.top<t.bottom&&nav.bottom>t.top&&getComputedStyle(n.closest('.doc').querySelector('.document-nav')).position==='sticky';});
  assert.equal(overlap,false,'expanded TOC cannot cover selected reading text');
  if(js){assert.equal(await toc.evaluate(n=>n.open),false);
@@ -117,6 +154,54 @@ async function fragments(page) {
  }finally{await ctx.close();}}
  }finally{await server.stop();}
  assert.equal(state(x,x.key+'-after'),before,'reading/export must not mutate logical stores');
+ }
+ if(c.outline_matrix) {
+ // Authored layout controls use the exact built Product CSS, separate from real
+ // recorded articles and their semantic evaluation. No Product records change.
+ const sample=fs.readFileSync(path.join(c.output,c.cases[0].key+'.html'),'utf8');
+ const style=sample.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
+ for(const count of [0,1,12]) {
+  const labels=Array.from({length:count},(_,i)=>`${i+1}. 긴 한국어와 English outline label describing a separate mechanism ${'boundary '.repeat(8)}`);
+  const control=path.join(c.output,`outline-${count}.html`);
+  fs.writeFileSync(control,`<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><style>${style}</style><body><main class="shell"><article class="doc"><header style="height:900px">Authored outline geometry control; no host-generated content</header><details class="document-nav"><summary>TOC<span class="toc-cue">On this page</span></summary><nav><ul class="toc-primary">${labels.map((l,i)=>`<li><a href="#outline-${i}">${l}</a></li>`).join('')}</ul><details class="toc-more"><summary>Supporting details</summary><a href="#support-control">Exact supporting target</a></details></nav></details>${labels.map((l,i)=>`<section id="outline-${i}" tabindex="-1" style="min-height:700px"><h2>${l}</h2><p>Authored paragraph target.</p></section>`).join('')}<details id="support-control" tabindex="-1"><summary>Supporting target</summary><p>Authored supporting record control</p></details><div style="height:1200px"></div></article></main></body></html>`);
+  for(const width of [1440,1024,768,390,320])for(const controlMode of ['native','enhanced','css-fallback']) {
+   const js=controlMode==='enhanced';
+   const page=await browser.newPage({viewport:{width,height:1000},javaScriptEnabled:js});
+   try {
+    await page.goto(pathToFileURL(control).href);
+    if(js)await page.addScriptTag({path:path.resolve('rebuild/crates/volicord-viewer/src/reading.js')});
+    if(controlMode==='css-fallback')await page.evaluate(()=>{
+     // Simulate lack of :has enhancement, retaining the native baseline CSS.
+     function removeHas(sheet) {for(let i=sheet.cssRules.length-1;i>=0;i--){const rule=sheet.cssRules[i];
+      if((rule.selectorText||rule.conditionText||'').includes(':has('))sheet.deleteRule(i);
+      else if(rule.cssRules)removeHas(rule);
+     }}
+     for(const sheet of document.styleSheets)removeHas(sheet);
+    });
+    const toc=page.locator('.document-nav');
+    const geometry=await scrolledOutline(page,toc,js);
+    assert.equal(await toc.locator('.toc-primary a').count(),count);
+    await toc.locator('.toc-more > summary').click();
+    await page.setViewportSize({width:width===320?390:320,height:700});
+    const nav=await toc.locator(':scope > nav').boundingBox();
+    assert.ok(nav.y>=0 && nav.y+nav.height<=700,'open list remains bounded after viewport change');
+    await page.setViewportSize({width,height:1000});
+    for(const index of count?[0,count-1]:['support']) {
+     if(!await toc.evaluate(n=>n.open))await toc.locator(':scope > summary').click();
+     const link=index==='support'?toc.locator('.toc-more a'):toc.locator('.toc-primary a').nth(index);
+     await link.focus();await page.keyboard.press('Enter');
+     const target=page.locator(index==='support'?'#support-control':`#outline-${index}`),box=await target.boundingBox();
+     const summary=await toc.locator(':scope > summary').boundingBox();
+     const nav=await toc.locator(':scope > nav').boundingBox();
+     assert.ok(box.y>=(js?summary.y+summary.height:nav.y+nav.height)-1,'selected target clears open or compact outline');
+     assert.ok(box.y<1000,'target begins in viewport');
+     assert.equal(await target.evaluate(n=>document.activeElement===n),true);
+    }
+    await page.screenshot({path:path.join(c.output,`outline-${count}-${width}-${controlMode}.png`)});
+    result.checks.push({case:'authored-outline-control',count,width,controlMode,geometry,status:'passed'});
+   }finally{await page.close();}
+  }
+ }
  }
  if(c.outline_controls)for(const count of [0,1,12])for(const width of [1440,1024,768,390,320]) {
   const page=await browser.newPage({viewport:{width,height:1000},javaScriptEnabled:false});
