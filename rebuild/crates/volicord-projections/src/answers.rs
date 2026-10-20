@@ -432,8 +432,8 @@ fn repository_scope_facts(e: &RetainedExplanation, locale: FixedLocale) -> Vec<Q
         .filter(|c| c["freshness"]["state"].as_str() != Some("current"))
         .count();
     let limits = match locale {
-        FixedLocale::English => format!("Excluded boundaries: {excluded}; unavailable or unexamined boundaries: {unavailable}. Analysis limits: {limited} capability reports ({failed} failed; {noncurrent} stale or unknown). Complete semantic understanding is not established; cited code remains usable."),
-        FixedLocale::Korean => format!("제외 경계 {excluded}개, 이용 불가 또는 미조사 경계 {unavailable}개. 분석 제한 보고 {limited}건 (실패 {failed}건, 오래되었거나 최신성 미확인 {noncurrent}건). 완전한 의미 분석을 입증하지 않습니다. 인용 코드는 이 한계 안에서 읽을 수 있습니다."),
+        FixedLocale::English => format!("Within the selected Analysis Snapshot: Excluded boundaries: {excluded}; unavailable or unexamined boundaries: {unavailable}. These counts do not cover paths outside the observed repository scope. Analysis limits: {limited} capability reports ({failed} failed; {noncurrent} stale or unknown). Complete semantic understanding is not established; cited code remains usable."),
+        FixedLocale::Korean => format!("선택한 Analysis Snapshot 안의 제외 경계 {excluded}개, 이용 불가 또는 미조사 경계 {unavailable}개입니다. 관찰한 저장소 범위 밖의 경로는 이 개수에 포함되지 않습니다. 분석 제한 보고 {limited}건 (실패 {failed}건, 오래되었거나 최신성 미확인 {noncurrent}건). 완전한 의미 분석을 입증하지 않습니다. 인용 코드는 이 한계 안에서 읽을 수 있습니다."),
     };
     vec![
         fact("RepositoryScope", scope, key.clone()),
