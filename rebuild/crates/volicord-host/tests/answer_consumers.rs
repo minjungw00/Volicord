@@ -621,7 +621,7 @@ fn metadata_heavy_explanations_remain_bounded_without_replacing_recorded_action(
 }
 
 #[test]
-fn historical_adversity_is_primary_summary_with_lossless_machine_audit(
+fn historical_adversity_keeps_lossless_cli_and_exact_bounded_mcp_audit(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut input: Value = serde_json::from_str(reading_fixture::SCENARIO)?;
     input["prior_checkpoint_count"] = json!(0);
@@ -641,7 +641,7 @@ fn historical_adversity_is_primary_summary_with_lossless_machine_audit(
             locale.into(),
         ];
         let mut args = base.clone();
-        args.extend(["--json".into(), "recall".into()]);
+        args.extend(["--json".into(), "status".into()]);
         let (mut out, mut err) = (Vec::new(), Vec::new());
         assert_eq!(
             volicord_operations::run_cli(args, &mut out, &mut err),
@@ -666,16 +666,42 @@ fn historical_adversity_is_primary_summary_with_lossless_machine_audit(
                 1
             );
             assert!(!facts.iter().any(|a| a["question"] == "AdverseObservation"));
-            let states = selected["evidence"]["states"]
+            let states = cli["selected_work"]["evidence"]["states"]
                 .as_array()
-                .ok_or("complete audit")?;
+                .ok_or("complete CLI audit")?;
             assert_eq!(states.len(), 3);
-            assert_eq!(
-                *states,
-                *cli["selected_work"]["evidence"]["states"]
-                    .as_array()
-                    .ok_or("CLI audit")?
-            );
+            if let Some(delivered) = selected["evidence"]["states"].as_array() {
+                assert_eq!(delivered, states);
+            } else {
+                assert!(
+                    selected.to_string().contains("transport_omission"),
+                    "missing audit requires an explicit transport omission"
+                );
+            }
+            // Full CLI audit stays lossless; bounded MCP must recover every
+            // retained verification/review/acceptance field at its exact revision.
+            for (state, cp) in states.iter().zip(&before.checkpoint_history) {
+                for field in ["verification", "user_review", "user_acceptance"] {
+                    let mut args = json!({"project_id":f.project.to_string(),"record_kind":"checkpoint","record_id":cp.id.to_string(),"revision":cp.revision,"field":field,"work_item_id":cp.work_item_id.map(|id|id.to_string()),"offset":0});
+                    let mut recovered = String::new();
+                    loop {
+                        let response=host.handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"canonical_inspect","arguments":args}})).ok_or("MCP field response")?;
+                        assert_eq!(response["result"]["isError"], false, "{response}");
+                        let detail = &response["result"]["structuredContent"];
+                        recovered.push_str(detail["chunk"].as_str().ok_or("exact field chunk")?);
+                        let Some(next) = detail["next_offset"].as_u64() else {
+                            break;
+                        };
+                        args["offset"] = json!(next);
+                        args["expected_fingerprint"] = detail["fingerprint"].clone();
+                    }
+                    assert_eq!(
+                        serde_json::from_str::<Value>(&recovered)?,
+                        state[field],
+                        "{tool}/{field}"
+                    );
+                }
+            }
             // Preserve every event, exact timestamp, status array, outcome, revision and provenance.
             for (state, cp) in states.iter().zip(&before.checkpoint_history) {
                 assert_eq!(state["checkpoint_id"], cp.id.to_string());
