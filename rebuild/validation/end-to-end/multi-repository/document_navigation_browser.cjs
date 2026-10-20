@@ -61,7 +61,12 @@ async function fragments(page) {
  // Without JS the native disclosure remains open in flow; it never overlays text.
  const overlap=await target.evaluate(n=>{const t=n.getBoundingClientRect(),nav=n.closest('.doc').querySelector('.document-nav').getBoundingClientRect();return nav.top<t.bottom&&nav.bottom>t.top&&getComputedStyle(n.closest('.doc').querySelector('.document-nav')).position==='sticky';});
  assert.equal(overlap,false,'expanded TOC cannot cover selected reading text');
- if(js)assert.equal(await toc.evaluate(n=>n.open),false);
+ if(js){assert.equal(await toc.evaluate(n=>n.open),false);
+  assert.equal(await target.evaluate(n=>document.activeElement===n),true,'selected section restores keyboard reading focus');
+  const current=toc.locator('.toc-primary [aria-current="location"]');
+  assert.ok(await current.count()<=1,'at most one current section');
+  if(await current.count())assert.equal(await toc.locator('.toc-cue').textContent(),await current.textContent());
+ }
  }
  await page.goto(url);
  const supplemental=doc.locator('details.verification-report,details.evidence-index,.audit > details');

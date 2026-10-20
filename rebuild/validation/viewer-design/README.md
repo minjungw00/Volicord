@@ -324,3 +324,9 @@ escaped entities. Delivery fails without rewriting original exports. Generic
 system interpreter paths, HTTP endpoints and relative Source locators remain
 usable. This is a bounded path/credential guard, not a general secret detector or
 OCR: screenshot pixels and arbitrary project names still need operator review.
+The driver seals its coupled `product_review_controls.cjs` identity as well as its
+own; the packager refuses changed controls. Sanitized result metadata preserves
+publication state and numeric browser/Source costs while excluding raw commands,
+streams, runtime paths and evaluator answers. The document-navigation journey
+checks section keyboard focus and consistency between the current-location cue
+and its single `aria-current` link.

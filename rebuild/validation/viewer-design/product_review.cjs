@@ -13,6 +13,7 @@ const output=path.resolve(config.output);createOutput(output);
 const result={candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
  diff_sha256:hash(execFileSync('git',['diff','HEAD','--','rebuild'])),
  executable_sha256:hash(fs.readFileSync(config.viewer)),cli_sha256:hash(fs.readFileSync(config.cli)),
+ controls_sha256:hash(fs.readFileSync(path.join(__dirname,'product_review_controls.cjs'))),
  config_sha256:hash(fs.readFileSync(process.argv[2])),driver_sha256:hash(fs.readFileSync(__filename)),commands:[],cases:[],
  human_acceptance:'pending',screen_reader:'not_observed',native_zoom:'not_observed'};
 function command(label,argv){const started=performance.now();const p=spawnSync(argv[0],argv.slice(1),{encoding:'utf8',timeout:120000,maxBuffer:16*1024*1024,env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
@@ -88,7 +89,7 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
   r.http_reads=[];r.source_reads=[];const sourceReads=[];
   const server=await serve(c);const context=await browser.newContext();const errors=[],external=[];
   context.on('request',q=>{if(new URL(q.url()).origin!==new URL(server.base).origin)external.push(q.url())});
-  context.on('response',response=>{if(new URL(response.url()).pathname==='/citation')sourceReads.push((async()=>{const body=await response.body();r.source_reads.push({status:response.status(),bytes:body.length});})());});
+  context.on('response',response=>{if(new URL(response.url()).pathname==='/citation')sourceReads.push((async()=>{try {const body=await response.body();r.source_reads.push({status:response.status(),bytes:body.length});}catch {r.source_reads.push({status:response.status(),state:'body_unavailable'});}})());});
   const page=await context.newPage();const cpu=await context.newCDPSession(page);await cpu.send('Performance.enable');
   async function taskCpu(){return (await cpu.send('Performance.getMetrics')).metrics.find(m=>m.name==='TaskDuration').value*1000;}
   page.on('pageerror',e=>errors.push(e.message));

@@ -131,6 +131,7 @@ def main():
     require(result['executable_sha256'] == digest(Path(config['viewer'])), 'reviewed viewer changed')
     require(result['cli_sha256'] == digest(Path(config['cli'])), 'reviewed CLI changed')
     require(result['driver_sha256'] == digest(Path(__file__).with_name('product_review.cjs')), 'review driver changed')
+    require(result['controls_sha256'] == digest(Path(__file__).with_name('product_review_controls.cjs')), 'review controls changed')
     require(len(result['cases']) == len(config['cases']), 'review case coverage changed')
     for case in config['cases']:
         case_scope(case)

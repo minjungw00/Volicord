@@ -89,6 +89,18 @@ class ReviewPackageTests(unittest.TestCase):
             self.assertEqual((root / 'package' / 'recorded-offline.html').read_bytes(),
                 (observed / 'recorded-offline.html').read_bytes())
 
+    def test_public_numeric_costs_and_control_identity_survive_without_private_fields(self):
+        data = {'controls_sha256': 'a' * 64, 'cases': [{'key': 'large',
+            'publication': {'repository_state': 'current', 'work_count': 0},
+            'source_reads': [{'status': 200, 'bytes': 1024}, {'status': 409, 'state': 'body_unavailable'}],
+            'widths': [{'width': 390, 'repository_cost': {'dom_elements': 3000,
+                'code_elements': 20, 'token_spans': 200, 'code_utf8_bytes': 4096,
+                'visible_text_utf8_bytes': 15000, 'navigation_ms': 123.5, 'browser_task_ms': 4.5}}]}],
+            'runtime': '/home/private', 'argv': ['secret'], 'stdout': 'private'}
+        safe = package.boundary.sanitized_result(data)
+        self.assertEqual(safe, {key: value for key, value in data.items() if key not in {'runtime', 'argv', 'stdout'}})
+        package.boundary.validate('result.json', json.dumps(safe).encode())
+
     def test_moved_package_verifies_and_tampered_added_or_missing_files_fail(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); original = root / 'original'; original.mkdir()
@@ -283,7 +295,7 @@ class BuilderIdentityTests(unittest.TestCase):
             c = case(); c['runtime'] = '/private/retained/runtime'
             config = root / 'config.json'; config.write_text(json.dumps({'output': str(observed), 'viewer': str(viewer), 'cli': str(cli), 'cases': [c]}))
             head = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
-            meta = seal(observed); meta.update(candidate=head, config_sha256=package.digest(config), executable_sha256=package.digest(viewer), cli_sha256=package.digest(cli), driver_sha256=package.digest(Path(package.__file__).with_name('product_review.cjs')), diff_sha256='synthetic-dirty-test', cases=[c])
+            meta = seal(observed); meta.update(candidate=head, config_sha256=package.digest(config), executable_sha256=package.digest(viewer), cli_sha256=package.digest(cli), controls_sha256=package.digest(Path(package.__file__).with_name('product_review_controls.cjs')), driver_sha256=package.digest(Path(package.__file__).with_name('product_review.cjs')), diff_sha256='synthetic-dirty-test', cases=[c])
             (observed / 'result.json').write_text(json.dumps(meta))
             originals = {p.name: p.read_bytes() for p in observed.iterdir()}
             delivery = root / 'delivery'; archive = root / 'review.zip'
@@ -298,6 +310,13 @@ class BuilderIdentityTests(unittest.TestCase):
                     self.assertNotIn(private, combined)
                 self.assertTrue(all(Path(n).suffix in {'.html', '.json', '.png'} for n in z.namelist()))
             self.assertEqual(originals, {p.name: p.read_bytes() for p in observed.iterdir()})
+            saved = meta['controls_sha256']; meta['controls_sha256'] = 'b' * 64
+            (observed / 'result.json').write_text(json.dumps(meta))
+            rejected = subprocess.run([sys.executable, '-B', package.__file__, '--config', str(config), '--output', str(root / 'changed-controls'), '--early'], text=True, capture_output=True)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn('review controls changed', rejected.stderr)
+            self.assertFalse((root / 'changed-controls').exists())
+            meta['controls_sha256'] = saved
             meta['candidate'] = 'b' * 40; (observed / 'result.json').write_text(json.dumps(meta))
             failed = subprocess.run([sys.executable, '-O', '-B', package.__file__, '--config', str(config), '--output', str(root / 'rejected'), '--early'], text=True, capture_output=True)
             self.assertNotEqual(failed.returncode, 0)
