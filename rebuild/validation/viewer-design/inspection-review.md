@@ -152,3 +152,13 @@ Direct existing support: 11 inspection HTTP tests, 41 Operations consumer tests,
 workspace package/dependency isolation. No provider, Final/V11, new authority,
 public schema, analyzer-language scope or legacy path changed. Independent stress
 and browser results remain separate from human acceptance.
+
+A later malformed-fixture attempt also reproduced an existing canonical decoder
+failure: a little-endian count presented to the big-endian Source-ID decoder
+requested 1,152,921,504,606,846,976 allocation bytes and aborted with signal 6.
+The structured-value reader now rejects counts exceeding retained input before
+reservation; Source IDs enforce their 16-byte width. Focused positive/truncated/
+wrong-endian/maximum-count controls pass. A separate public HTTP regression corrupts
+a real Goal's encoded applicability count: both HTML and JSON return 503 below
+2,048 bytes, with no record data or invented zero count. This is a reproduced local
+corrupt-state resource defect, not evidence of a remote SQL or file-read exploit.

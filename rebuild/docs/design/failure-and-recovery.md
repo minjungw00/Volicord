@@ -580,3 +580,12 @@ semantic validation. Same invocation, later successful output or rehashed envelo
 metadata cannot substitute another execution or changed Work/target basis. A mismatch
 rejects the transaction/import, preserving earlier canonical state. Disposable body
 loss cannot remove the Source capture seal or establish new assertion evidence.
+
+### Canonical structured-value allocation admission
+
+Canonical list/byte-length headers must fit the retained encoded input before a
+reader reserves memory from them. Source identity lists additionally require the
+complete fixed-width identity payload. Impossible/truncated counts are corrupt
+state, not an empty list, a retry or an allocation request. This is current-format
+read validation; it introduces no schema version, repair write or compatibility
+path. Local inspection preserves its bounded dependency-failure HTTP response.

@@ -4930,6 +4930,9 @@ fn encode_source_ids(values: &[SourceId]) -> Vec<u8> {
 pub(crate) fn decode_source_ids(bytes: &[u8]) -> Result<Vec<SourceId>, Error> {
     let mut cursor = BlobCursor::new(bytes);
     let count = cursor.count()?;
+    if count > bytes.len().saturating_sub(cursor.offset) / 16 {
+        return Err(malformed_blob());
+    }
     let mut values = Vec::with_capacity(count);
     for _ in 0..count {
         values.push(SourceId::from_slice(cursor.fixed(16)?)?);
@@ -5181,7 +5184,13 @@ impl<'a> BlobCursor<'a> {
     }
 
     fn count(&mut self) -> Result<usize, Error> {
-        usize::try_from(self.u64()?).map_err(|_| malformed_blob())
+        let count = usize::try_from(self.u64()?).map_err(|_| malformed_blob())?;
+        // Every encoded element occupies at least one byte. Validate before
+        // any decoder reserves from an untrusted durable length/count header.
+        if count > self.bytes.len().saturating_sub(self.offset) {
+            return Err(malformed_blob());
+        }
+        Ok(count)
     }
 
     fn u64(&mut self) -> Result<u64, Error> {
@@ -6669,5 +6678,39 @@ mod tests {
         assert_eq!(count, 0);
         transaction.rollback()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod blob_bound_tests {
+    use super::*;
+    #[test]
+    fn impossible_durable_counts_fail_before_reserving() {
+        let mut wrong_endian = 1u64.to_le_bytes().to_vec();
+        wrong_endian.extend_from_slice(&[0; 16]);
+        assert_eq!(
+            decode_source_ids(&wrong_endian).unwrap_err().kind(),
+            ErrorKind::CorruptState
+        );
+        assert_eq!(
+            decode_strings(&u64::MAX.to_be_bytes()).unwrap_err().kind(),
+            ErrorKind::CorruptState
+        );
+        let mut valid = 1u64.to_be_bytes().to_vec();
+        valid.extend_from_slice(&[7; 16]);
+        assert_eq!(
+            decode_source_ids(&valid).unwrap(),
+            vec![SourceId::from_bytes([7; 16])]
+        );
+        assert_eq!(
+            decode_strings(&0u64.to_be_bytes()).unwrap(),
+            Vec::<String>::new()
+        );
+        let mut truncated = 2u64.to_be_bytes().to_vec();
+        truncated.extend_from_slice(&[7; 16]);
+        assert_eq!(
+            decode_source_ids(&truncated).unwrap_err().kind(),
+            ErrorKind::CorruptState
+        );
     }
 }
