@@ -258,9 +258,23 @@ impl LocalOperations {
         path: &str,
         byte_range: Option<FileByteRange>,
     ) -> Result<Value, Error> {
+        let mut detail =
+            self.capture_inventory_file(basis, &analysis.inventory.entries, path, byte_range)?;
+        detail["repository_worktree"] = serde_json::to_value(&analysis.repository_worktree)
+            .map_err(|e| Error::with_source("cannot encode observed worktree", e))?;
+        Ok(detail)
+    }
+
+    pub(crate) fn capture_inventory_file(
+        &self,
+        basis: &CanonicalReadBasis,
+        entries: &[volicord_repository_intelligence::InventoryEntry],
+        path: &str,
+        byte_range: Option<FileByteRange>,
+    ) -> Result<Value, Error> {
         // Only an included, hashed inventory file is admissible. Unsupported
         // language analysis does not remove inventory/body capability.
-        let entry = analysis.inventory.entries.iter().find(|e| e.area.path == path)
+        let entry = entries.iter().find(|e| e.area.path == path)
             .filter(|e| e.classifications.contains(&InventoryClassification::Included))
             .and_then(|e| e.content_sha256.as_ref())
             .ok_or_else(|| Error::new("source path is excluded, unavailable or absent from the exact Analysis Snapshot"))?;
@@ -298,7 +312,7 @@ impl LocalOperations {
             "representation":if region.is_some() {"bounded_excerpt"} else {"whole_file"},
             "body":body,"observed_utf8_bytes":body.len(),"omitted_utf8_bytes":region.as_ref().and_then(|r|r["file_utf8_bytes"].as_u64()).unwrap_or(body.len() as u64) - body.len() as u64,
             "comparison":"missing_before_state","before_source_id":null,"current_repository_state":"not_rechecked",
-            "repository_worktree":analysis.repository_worktree,"reconstruction":"not_attempted"});
+            "repository_worktree":null,"reconstruction":"not_attempted"});
         if let Some(region) = region {
             detail["region"] = region;
         }

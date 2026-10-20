@@ -228,7 +228,9 @@ fn nested_repository_scope_and_boundaries_precede_explanation_in_live_and_offlin
                 "missing actual section {destination}"
             );
         }
-        assert!(doc.contains("legacy"));
+        assert!(doc.contains("Full inventory and coverage path lists are not embedded"));
+        assert!(doc.contains("repository explain evidence --analysis"));
+        assert!(!doc.contains("<li>legacy</li>"));
         assert!(!doc.contains("unexamined = True"));
         assert!(doc.contains("Included, excluded and unexamined boundaries"));
     }

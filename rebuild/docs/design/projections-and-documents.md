@@ -1862,13 +1862,27 @@ deleted/invalid record cannot revive an older document. Ordinary public projecti
 exposes repository explanations independently of selected Work. Original Project
 Purpose stays separate canonical context, including when absent.
 
-Repository preparation preserves complete inventory classifications and compact
-capability coverage path sets, state, reason, usable remainder and producer identity.
-Large repeated diagnostic/uncertainty lists are explicitly represented by exact
-counts and hashes, with full immutable metadata/diagnostics available through
+Repository preparation preserves inventory classification counts and a commitment
+to the complete inventory, plus exact capability state, reason, usable remainder
+and producer identity. Repository boundaries and each capability's six coverage
+sets carry area/file counts, common file parent (a lexical scope, not topology)
+and a SHA-256 commitment to the ordered typed areas; an empty count denotes an
+exact empty set. Full paths are explicitly excluded from preparation and Viewer,
+including closed disclosures and offline export. Inventory scope, investigated
+Sources and authored topic coverage remain distinct. The plan binds exact Project,
+Analysis/Repository Snapshot, Source and local binding; citations still require
+separately permitted Source investigation. Full immutable metadata/diagnostics are available through
 `repository explain evidence --analysis ID`. This is an inspectable projection,
 not silent truncation or complete semantic coverage. The preparation/retention
 bounds remain unchanged and reject an unrepresentable basis before authoring.
+Diagnostic/uncertainty lists likewise retain exact counts/hashes rather than bulk
+debug strings. Reads never regenerate or replace a formerly prepared document.
+Repository preparation, observation and citation admission/publication validate
+the verified analysis metadata/inventory and fresh repository identity, not a
+decoded whole analysis graph. This permits bounded useful Source interpretation
+without claiming graph integrity or complete semantic understanding. Exact graph,
+diagnostic and historical worktree inspection remains an explicit evidence read.
+Work analysis consumers retain their own analysis validation boundary.
 
 MCP `repository_understanding` accepts optional `reading_focus` (`overview` or
 `repository_explanation`). The latter returns the exact retained reader document

@@ -16,7 +16,7 @@ use volicord_privacy::{
     PrivacyStore,
 };
 use volicord_projections::{explanation_text_hash, ExplanationPlan};
-use volicord_repository_intelligence::{AnalysisSnapshot, AnalysisSnapshotId, CanonicalGrounding};
+use volicord_repository_intelligence::{AnalysisMetadata, AnalysisSnapshotId, CanonicalGrounding};
 
 const KIND: &str = "volicord_repository_source_observation";
 const VERSION: u32 = 2;
@@ -117,6 +117,39 @@ fn repository_file_binding(observation: &RepositoryObservation) -> Result<String
 }
 fn purpose(analysis: AnalysisSnapshotId, source: SourceId) -> String {
     format!("repository-source:{analysis}:{source}")
+}
+
+/// Commit to the complete ordered area set without copying every path into each
+/// capability and retained reader document. Exact sets remain in analysis evidence.
+fn area_summary(areas: &[volicord_repository_intelligence::AreaId]) -> Value {
+    use volicord_repository_intelligence::AreaKind;
+    if areas.is_empty() {
+        return json!({"area_count":0,"file_count":0});
+    }
+    let files = areas
+        .iter()
+        .filter(|a| a.kind == AreaKind::File)
+        .collect::<Vec<_>>();
+    let mut common: Option<Vec<&str>> = None;
+    for file in &files {
+        let mut parent = file.path.split('/').collect::<Vec<_>>();
+        parent.pop();
+        match &mut common {
+            None => common = Some(parent),
+            Some(prefix) => {
+                let count = prefix
+                    .iter()
+                    .zip(parent)
+                    .take_while(|(a, b)| **a == *b)
+                    .count();
+                prefix.truncate(count);
+            }
+        }
+    }
+    let common = common.unwrap_or_default().join("/");
+    json!({"area_count":areas.len(),"file_count":files.len(),
+        "common_file_area":if common.is_empty() {"."} else {&common},
+        "sha256":explanation_text_hash(&json!(areas).to_string())})
 }
 impl LocalOperations {
     pub fn compose_repository_explanation(
@@ -245,7 +278,7 @@ impl LocalOperations {
         let analysis = self.load_analysis_snapshot(project, id)?;
         Ok(
             json!({"analysis_metadata":volicord_repository_intelligence::AnalysisMetadata::from(&analysis),
-            "diagnostics":analysis.diagnostics,"read_only":true,"evidence_use":"historical_stored_analysis_not_complete_semantic_understanding"}),
+            "diagnostics":analysis.diagnostics,"repository_worktree":analysis.repository_worktree,"read_only":true,"evidence_use":"historical_stored_analysis_not_complete_semantic_understanding"}),
         )
     }
     pub(crate) fn repository_explanation_plan(
@@ -254,7 +287,7 @@ impl LocalOperations {
         id: AnalysisSnapshotId,
         language: &str,
     ) -> Result<ExplanationPlan, Error> {
-        let analysis = self.load_analysis_snapshot(canonical.project.id, id)?;
+        let analysis = self.repository_source_metadata(canonical.project.id, id)?;
         let repository = self.current_explanation_repository(canonical, &analysis)?;
         let mut repository = serde_json::to_value(repository)
             .map_err(|e| Error::with_source("cannot encode repository basis", e))?;
@@ -262,27 +295,40 @@ impl LocalOperations {
         // change the retained basis on every GET.
         if let Some(object) = repository.as_object_mut() {
             object.remove("observed_at_unix_micros");
+            for key in ["included_areas", "excluded_areas", "unavailable_areas"] {
+                let areas: Vec<volicord_repository_intelligence::AreaId> =
+                    serde_json::from_value(object[key].clone())
+                        .map_err(|e| Error::with_source("cannot decode repository scope", e))?;
+                object.insert(key.into(), area_summary(&areas));
+            }
         }
         let binding = self
             .open_canonical()?
             .get_local_binding(canonical.project.id)
             .map_err(|e| Error::with_source("repository binding unavailable", e))?;
-        // Complete inspectable inventory scope, without graph/body duplication.
-        let scope: Vec<_> = analysis
-            .inventory
-            .entries
-            .iter()
-            .map(|e| json!([e.area.path, e.classifications]))
-            .collect();
+        let mut classifications = std::collections::BTreeMap::<String, usize>::new();
+        for entry in &analysis.inventory.entries {
+            for class in &entry.classifications {
+                let value = serde_json::to_value(class)
+                    .map_err(|e| Error::with_source("cannot encode inventory classification", e))?;
+                let key = value
+                    .as_str()
+                    .ok_or_else(|| Error::new("invalid inventory classification"))?;
+                *classifications.entry(key.into()).or_default() += 1;
+            }
+        }
+        let scope = json!({"entry_count":analysis.inventory.entries.len(),
+            "classification_counts":classifications,
+            "sha256":explanation_text_hash(&json!(analysis.inventory).to_string()),
+            "entries":"not_embedded; complete inventory in analysis evidence"});
         let capabilities: Vec<_> = analysis.capabilities.iter().map(|report| {
             let coverage = &report.coverage;
-            let paths = |areas: &[volicord_repository_intelligence::AreaId]| areas.iter().map(|area|area.path.clone()).collect::<Vec<_>>();
             // Repeated diagnostic IDs can be megabytes. Preserve their exact
             // count/hash and expose the full immutable metadata explicitly.
             json!({"language":report.language,"area":report.area,"capability":report.capability,"state":report.state,
                 "reason":report.reason,"usable_remainder":report.usable_remainder,"user_visible_consequence":report.user_visible_consequence,
-                "coverage":{"included":paths(&coverage.included),"excluded":paths(&coverage.excluded),"unsupported":paths(&coverage.unsupported),
-                    "unavailable":paths(&coverage.unavailable),"failed":paths(&coverage.failed),"stale":paths(&coverage.stale),
+                "coverage":{"included":area_summary(&coverage.included),"excluded":area_summary(&coverage.excluded),"unsupported":area_summary(&coverage.unsupported),
+                    "unavailable":area_summary(&coverage.unavailable),"failed":area_summary(&coverage.failed),"stale":area_summary(&coverage.stale),
                     "covered_file_count":coverage.covered_file_count,"covered_entity_count":coverage.covered_entity_count,"covered_relation_count":coverage.covered_relation_count},
                 "diagnostic_count":report.diagnostics.len(),"diagnostics_sha256":explanation_text_hash(&json!(report.diagnostics).to_string()),
                 "diagnostic_detail":"repository explain evidence --analysis exact_analysis_snapshot_id",
@@ -294,7 +340,12 @@ impl LocalOperations {
             analysis.repository_source.identity(), json!({"repository":repository,
                 "analysis_snapshot_id":id, "analysis_format_version":analysis.format_version,
                 "binding_id":binding.id.to_string(), "binding_revision":binding.revision,
-                "observed_worktree":analysis.repository_worktree, "inventory_scope":scope,
+                "inventory_scope":scope,
+                "scope_detail":{"project_id":canonical.project.id.to_string(),"analysis_snapshot_id":id,
+                    "command":format!("repository explain evidence --analysis {id}"),
+                    "omitted_from_preparation":"inventory entries, coverage path sets and historical worktree detail; counts and hashes bind complete sets, not a selected sample",
+                    "validation":"verified analysis metadata and current repository; graph integrity and complete semantic understanding not established",
+                    "investigated_source_scope":"only explicitly observed/read Sources; inventory and capability do not establish authored topic coverage"},
                 "capabilities":capabilities, "freshness":analysis.freshness,
                 "generated_at_unix_micros":analysis.generated_at_unix_micros,
                 "semantic_completeness":"not_established", "purpose_role":"inferred_repository_summary_is_not_canonical_project_purpose"}), language).map_err(Error::new)
@@ -302,7 +353,7 @@ impl LocalOperations {
     pub(crate) fn current_explanation_repository(
         &self,
         canonical: &CanonicalReadBasis,
-        analysis: &AnalysisSnapshot,
+        analysis: &AnalysisMetadata,
     ) -> Result<volicord_repository_intelligence::RepositorySnapshot, Error> {
         let binding = self
             .open_canonical()?
@@ -335,14 +386,18 @@ impl LocalOperations {
         retention_until(now_micros()?, request.retain_seconds)?;
         let canonical = self.canonical_basis(request.project_id)?;
         let analysis =
-            self.load_analysis_snapshot(request.project_id, request.analysis_snapshot_id)?;
+            self.repository_source_metadata(request.project_id, request.analysis_snapshot_id)?;
         self.current_explanation_repository(&canonical, &analysis)?;
         let binding = self
             .open_canonical()?
             .get_local_binding(request.project_id)
             .map_err(|e| Error::with_source("repository binding unavailable", e))?;
-        let detail =
-            self.capture_included_file(&canonical, &analysis, &request.path, request.byte_range)?;
+        let detail = self.capture_inventory_file(
+            &canonical,
+            &analysis.inventory.entries,
+            &request.path,
+            request.byte_range,
+        )?;
         let now = now_micros()?;
         let until = retention_until(now, request.retain_seconds)?;
         let mut observation = RepositoryObservation {
@@ -433,7 +488,7 @@ impl LocalOperations {
             "retained_until_unix_micros":until.as_unix_micros()}),
         )
     }
-    fn repository_source_metadata(
+    pub(crate) fn repository_source_metadata(
         &self,
         project: ProjectId,
         id: AnalysisSnapshotId,

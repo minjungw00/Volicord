@@ -330,6 +330,12 @@ with the plan's evidence/instructions/language; callers must prepare afresh. No
 old-plan conversion, alternate retained decoder or version-dependent limit exists.
 Historical campaign bytes must not be rewritten to supply current preparation fields;
 fresh validation uses fresh disposable inputs, distinct from original observations.
+Repository preparation now commits to complete inventory and coverage sets with
+counts/hashes instead of embedding all paths. This changes ephemeral preparation
+fingerprints: earlier repository prose becomes Stale and requires explicit fresh
+prepare/Source investigation/compose/record. The single retained format 6 and
+Analysis/Source formats are unchanged; no old-shape decoder, conversion or
+retrospective Source lifetime renewal is introduced.
 Current ephemeral preparation additionally requires `question_grounding`, derived
 from the subject and actual evidence by the same rule used at admission. This and
 the clarified instructions change preparation fingerprints, so earlier retained
@@ -402,8 +408,13 @@ retention expiry into its canonical File Source fingerprint. Non-current copies
 are Unsupported; there is no version-1 decoder or copy conversion. Scoped body
 retrieval verifies exact hashed Analysis metadata/inventory rather than decoding
 the entire graph for every Source; this does not certify graph integrity or semantic
-completeness. Current explanation admission/publication still validates its full
-selected analysis and repository dependencies.
+completeness. Repository explanation preparation/admission/publication validates
+verified analysis metadata, included hashes and current repository identity, with
+no full graph decode. The exact historical worktree remains available through the
+explicit analysis evidence operation; metadata-only repository Source copies
+record that uninspected detail as null, never infer a clean or non-Git state.
+Work copies retain their existing worktree observation. Current file/claim hashes,
+binding and retention dependencies remain validated on every publication.
 
 ### Reader identity production and event projection
 

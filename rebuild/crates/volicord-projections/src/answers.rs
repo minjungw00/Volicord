@@ -377,21 +377,8 @@ fn repository_scope_facts(e: &RetainedExplanation, locale: FixedLocale) -> Vec<Q
     else {
         return Vec::new();
     };
-    let area_paths = |key: &str| {
-        basis.content["repository"][key]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|area| area["path"].as_str())
-            .collect::<Vec<_>>()
-    };
-    let included = basis.content["repository"]["included_areas"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|area| area["kind"].as_str() == Some("file"))
-        .filter_map(|area| area["path"].as_str())
-        .collect::<Vec<_>>();
+    let repository = &basis.content["repository"];
+    let included = repository["included_areas"]["file_count"].as_u64();
     let cited = e
         .realization
         .generated_units()
@@ -400,16 +387,22 @@ fn repository_scope_facts(e: &RetainedExplanation, locale: FixedLocale) -> Vec<Q
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
-    let inventory_area = common_file_area(&included);
+    let inventory_area = repository["included_areas"]["common_file_area"]
+        .as_str()
+        .unwrap_or(".");
     let cited_area = common_file_area(&cited);
-    let excluded = area_paths("excluded_areas").len();
-    let unavailable = area_paths("unavailable_areas").len();
+    let excluded = repository["excluded_areas"]["area_count"]
+        .as_u64()
+        .map_or_else(|| "unknown".into(), |v| v.to_string());
+    let unavailable = repository["unavailable_areas"]["area_count"]
+        .as_u64()
+        .map_or_else(|| "unknown".into(), |v| v.to_string());
     let key = vec!["repository_basis".into()];
     let scope = match locale {
-        FixedLocale::English => format!("Cited Source area: {cited_area} ({} files). Observed inventory: {inventory_area} ({} files). Inventory inclusion does not establish explanation coverage.", cited.len(), included.len()),
-        FixedLocale::Korean => format!("인용 Source 영역: {cited_area} ({}개 파일). 관찰한 목록 범위: {inventory_area} ({}개 파일). 목록에 포함되어도 모든 파일을 설명한 것은 아닙니다.", cited.len(), included.len()),
+        FixedLocale::English => format!("Cited Source area: {cited_area} ({} files). Observed inventory: {inventory_area} ({} files). Inventory inclusion does not establish explanation coverage. Full inventory and coverage paths are excluded from this reader; exact sets remain available through repository explain evidence for this Analysis Snapshot.", cited.len(), included.map_or_else(|| "unknown".into(), |v| v.to_string())),
+        FixedLocale::Korean => format!("인용 Source 영역: {cited_area} ({}개 파일). 관찰한 목록 범위: {inventory_area} ({}개 파일). 목록에 포함되어도 모든 파일을 설명한 것은 아닙니다. 전체 목록과 coverage 경로는 이 읽기에 포함하지 않습니다. 같은 Analysis Snapshot의 repository explain evidence로 정확한 집합을 확인할 수 있습니다.", cited.len(), included.map_or_else(|| "미확인".into(), |v| v.to_string())),
     };
-    let scope = if included.is_empty() {
+    let scope = if included == Some(0) {
         fixed(locale, "No included inventory files are retained; repository-wide coverage is not established.", "포함된 목록 파일이 보존되지 않았습니다. 저장소 전체 범위를 확인할 수 없습니다.")
     } else {
         scope

@@ -775,6 +775,16 @@ admission compare the selected repository basis; missing/foreign snapshots, chan
 files, symlinks and redirected roots reject. Historical retained Source reading can
 return exact previous permitted bytes but cannot assert current repository equality.
 
+Explanation preparation retains bounded scope commitments rather than duplicating
+all inventory and capability paths. Complete classifications, included/excluded/
+unsupported/unavailable/failed/stale sets and diagnostic details remain owned by
+the exact immutable analysis evidence operation. Counts and hashes describe all
+members, with explicit omission of the lists from the reader; they are not sampled
+coverage or inferred architecture. Capability/language state and producer identity
+remain present even when no Source in that area has been investigated. Explicit
+Source observation still checks included hashed inventory and exact snapshot;
+neither a scope digest nor a read grants Source access or semantic completeness.
+
 ### Reader question-to-source responsibility ledger
 
 This extends the capability map above for [reader AC-17–25](reader-experience-design.md).

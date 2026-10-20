@@ -542,6 +542,15 @@ before a body-store failure; that failure reports the surviving identity and bod
 unavailability without a success receipt. Model generation, retained recording,
 structural validation and user comprehension remain separate observations.
 
+Repository explanation preparation and cited-file publication require verified
+analysis metadata/inventory, exact included file hashes and current repository
+identity. An unrelated unavailable/corrupt analysis graph does not erase permitted
+Source reading; this path explicitly establishes no graph integrity. Exact full
+analysis evidence still reports that graph failure. Corrupt/unavailable metadata,
+changed repository, expired/deleted Source or binding mismatch fail closed. Bulk
+scope lists are excluded with counts/hashes and an exact analysis evidence command;
+over-budget scope metadata still rejects before authoring without ceiling changes.
+
 Selected live citation reads fail closed when the latest realization, claim/citation
 selection or any current dependency is unavailable/changed, including a split UTF-8
 offset. The HTTP response contains no Source bytes; the evidence pane removes its

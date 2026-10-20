@@ -256,20 +256,37 @@ impl LocalOperations {
                             ));
                         }
                     } else {
-                        let analysis =
-                            self.load_analysis_snapshot(basis.project.id, analysis_id)?;
-                        if analysis.repository_source.identity().to_string()
-                            != citation.repository_source_id
-                            || analysis.repository_snapshot.to_string()
-                                != citation.repository_snapshot_id
+                        // Repository articles claim inspected Source meaning, not
+                        // graph completeness. Their authority is verified metadata,
+                        // included hashes and a fresh repository comparison.
+                        let (repository_source, repository_snapshot, entries) =
+                            if matches!(subject, ExplanationSubject::Repository(_)) {
+                                let metadata =
+                                    self.repository_source_metadata(basis.project.id, analysis_id)?;
+                                (
+                                    metadata.repository_source,
+                                    metadata.repository_snapshot,
+                                    metadata.inventory.entries,
+                                )
+                            } else {
+                                let analysis =
+                                    self.load_analysis_snapshot(basis.project.id, analysis_id)?;
+                                (
+                                    analysis.repository_source,
+                                    analysis.repository_snapshot,
+                                    analysis.inventory.entries,
+                                )
+                            };
+                        if repository_source.identity().to_string() != citation.repository_source_id
+                            || repository_snapshot.to_string() != citation.repository_snapshot_id
                             || self
                                 .observe_projection_repository(
                                     basis,
-                                    analysis.repository_source.identity(),
-                                    &analysis.inventory.entries,
+                                    repository_source.identity(),
+                                    &entries,
                                 )?
                                 .identity
-                                != analysis.repository_snapshot
+                                != repository_snapshot
                         {
                             return Err(Error::new("explanation repository changed or is unavailable; analyze, observe and generate again"));
                         }

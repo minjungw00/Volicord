@@ -708,13 +708,212 @@ fn large_diagnostic_metadata_is_inspectable_without_bloating_the_reader_plan(
             explanation_text_hash(&original["diagnostics"].to_string())
         );
         assert_eq!(
-            summary["coverage"]["included"].as_array().map(Vec::len),
+            summary["coverage"]["included"]["area_count"]
+                .as_u64()
+                .map(|n| n as usize),
             original["coverage"]["included"].as_array().map(Vec::len)
         );
     }
     println!(
         "diagnostic metadata={repeated_diagnostic_bytes} bytes; prepared reader={} bytes",
         serde_json::to_vec(&plan)?.len()
+    );
+    Ok(())
+}
+
+#[test]
+fn large_polyglot_inventory_keeps_exact_scope_outside_bounded_reader_plan(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = fixture()?;
+    // Independent input cardinalities/paths; no generated answer supplied.
+    for n in 0..800 {
+        let dir = f.root.join(format!(
+            "components/independently_owned_component_{n:04}/implementation"
+        ));
+        fs::create_dir_all(&dir)?;
+        let (name, body) = match n % 3 {
+            0 => ("entry.rs", "pub fn value() -> u32 { 1 }\n"),
+            1 => ("entry.js", "export function value() { return 1; }\n"),
+            _ => ("entry.py", "def value():\n    return 1\n"),
+        };
+        fs::write(dir.join(name), body)?;
+    }
+    f.analysis = f
+        .ops
+        .analyze(f.project, vec!["secret.py".into()])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let full = f
+        .ops
+        .repository_explanation_evidence(f.project, f.analysis)?;
+    let metadata = &full["analysis_metadata"];
+    let entries = metadata["inventory"]["entries"]
+        .as_array()
+        .ok_or("entries")?;
+    let reports = metadata["capabilities"].as_array().ok_or("reports")?;
+    let full_coverage_bytes: usize = reports
+        .iter()
+        .map(|r| r["coverage"].to_string().len())
+        .sum();
+    assert!(full_coverage_bytes > EXPLANATION_RETAINED_BYTE_LIMIT);
+    let plan =
+        f.ops
+            .prepare_explanation(f.project, ExplanationSubject::Repository(f.analysis), "en")?;
+    let basis = &plan
+        .evidence
+        .iter()
+        .find(|e| e.key == "repository_basis")
+        .ok_or("basis")?
+        .content;
+    assert_eq!(basis["inventory_scope"]["entry_count"], entries.len());
+    assert_eq!(
+        basis["inventory_scope"]["sha256"],
+        explanation_text_hash(&metadata["inventory"].to_string())
+    );
+    assert_eq!(
+        basis["scope_detail"]["analysis_snapshot_id"],
+        f.analysis.to_string()
+    );
+    let compact = basis["capabilities"].as_array().ok_or("summaries")?;
+    assert_eq!(compact.len(), reports.len());
+    for (summary, original) in compact.iter().zip(reports) {
+        for field in [
+            "language",
+            "area",
+            "capability",
+            "state",
+            "reason",
+            "freshness",
+            "adapter",
+            "analyzer",
+            "usable_remainder",
+            "user_visible_consequence",
+        ] {
+            assert_eq!(summary[field], original[field], "{field}");
+        }
+        for field in [
+            "included",
+            "excluded",
+            "unsupported",
+            "unavailable",
+            "failed",
+            "stale",
+        ] {
+            let areas = original["coverage"][field].as_array().ok_or("areas")?;
+            assert_eq!(summary["coverage"][field]["area_count"], areas.len());
+            if !areas.is_empty() {
+                assert_eq!(
+                    summary["coverage"][field]["sha256"],
+                    explanation_text_hash(&original["coverage"][field].to_string())
+                );
+            }
+        }
+    }
+    assert!(serde_json::to_vec(&plan)?.len() <= EXPLANATION_PLAN_BYTE_LIMIT);
+    assert_eq!(
+        plan.retention_budget.response_byte_capacity,
+        EXPLANATION_BYTE_LIMIT
+    );
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let realization = response(&f, id)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization,
+    )?;
+    let before = f.ops.canonical_basis(f.project)?;
+    let answers = f.ops.read_repository_explanation(f.project, "en")?;
+    assert_eq!(answers.explanation_state, ExplanationState::Current);
+    assert!(answers.facts.iter().any(|a| a.text.contains("802 files")));
+    assert!(answers.facts.iter().any(|a| a
+        .text
+        .contains("Full inventory and coverage paths are excluded")));
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    fs::write(f.root.join("main.py"), "def changed(): pass\n")?;
+    assert_ne!(
+        f.ops
+            .read_repository_explanation(f.project, "en")?
+            .explanation_state,
+        ExplanationState::Current
+    );
+    // Historical retained Source remains retrievable, never labeled current code.
+    assert!(f
+        .ops
+        .read_repository_explanation_source(f.project, f.analysis, id)
+        .is_ok());
+    println!(
+        "full coverage={full_coverage_bytes} bytes; bounded plan={} bytes",
+        serde_json::to_vec(&plan)?.len()
+    );
+    Ok(())
+}
+
+#[test]
+fn repository_reading_uses_verified_inventory_without_claiming_graph_integrity(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let directory = f
+        .ops
+        .layout()
+        .root()
+        .join("derived/analysis")
+        .join(f.project.to_string());
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(directory.join(format!("{}.json", f.analysis)))?)?;
+    let shape = manifest["shape_blobs"][0].as_str().ok_or("shape")?;
+    fs::write(
+        directory.join("blobs").join(format!("{shape}.shape")),
+        b"corrupt graph",
+    )?;
+    assert!(f
+        .ops
+        .repository_explanation_evidence(f.project, f.analysis)
+        .is_err());
+    let plan =
+        f.ops
+            .prepare_explanation(f.project, ExplanationSubject::Repository(f.analysis), "en")?;
+    assert!(plan.evidence[0].content["scope_detail"]["validation"]
+        .as_str()
+        .ok_or("validation")?
+        .contains("graph integrity and complete semantic understanding not established"));
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let read = f
+        .ops
+        .read_repository_explanation_source(f.project, f.analysis, id)?;
+    assert!(read["observation"]["detail"]["repository_worktree"].is_null());
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        response(&f, id)?,
+    )?;
+    assert_eq!(
+        f.ops
+            .read_repository_explanation(f.project, "en")?
+            .explanation_state,
+        ExplanationState::Current
+    );
+    let metadata = manifest["metadata_blob"].as_str().ok_or("metadata")?;
+    fs::write(
+        directory.join("blobs").join(format!("{metadata}.metadata")),
+        b"corrupt metadata",
+    )?;
+    assert!(f
+        .ops
+        .prepare_explanation(f.project, ExplanationSubject::Repository(f.analysis), "en")
+        .is_err());
+    assert!(f
+        .ops
+        .read_repository_explanation_source(f.project, f.analysis, id)
+        .is_err());
+    assert_ne!(
+        f.ops
+            .read_repository_explanation(f.project, "en")?
+            .explanation_state,
+        ExplanationState::Current
     );
     Ok(())
 }

@@ -996,22 +996,21 @@ fn repository_boundaries(
         ),
     ] {
         heading(html, 3, label);
-        html.push_str("<ul>");
-        if let Some(areas) = basis.content["repository"][key].as_array() {
-            for area in areas {
-                if let Some(path) = area["path"].as_str() {
-                    list_item(html, path);
-                }
-            }
-            if areas.is_empty() {
-                list_item(
-                    html,
-                    text(r.locale, "None recorded.", "기록된 항목이 없습니다."),
-                );
-            }
-        }
-        html.push_str("</ul>");
+        let summary = &basis.content["repository"][key];
+        let count = summary["area_count"].as_u64().map_or_else(
+            || text(r.locale, "unknown", "미확인").into(),
+            |v| v.to_string(),
+        );
+        html.push_str(&format!(
+            "<p>{}: {}</p>",
+            text(r.locale, "Recorded boundaries", "기록된 경계"),
+            escape(&count)
+        ));
     }
+    html.push_str(&format!("<p>{}</p><code>{}</code>",text(r.locale,
+        "Full inventory and coverage path lists are not embedded. Exact snapshot-bound details remain available outside Viewer:",
+        "전체 inventory와 coverage 경로 목록은 포함하지 않습니다. 정확한 snapshot의 상세 정보는 Viewer 밖에서 확인할 수 있습니다:"),
+        escape(basis.content["scope_detail"]["command"].as_str().unwrap_or("repository explain evidence"))));
     html.push_str("</details>");
 }
 
