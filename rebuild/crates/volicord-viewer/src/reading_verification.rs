@@ -315,13 +315,22 @@ pub(super) fn render_verification(
         );
         definition(
             html,
-            text(r.locale, "Environment", "환경"),
+            text(
+                r.locale,
+                "Execution environment observation",
+                "실행 환경 관측",
+            ),
             detail(&execution.environment, r.locale),
         );
         definition(
             html,
-            text(r.locale, "Assertion result", "Assertion 결과"),
-            detail(&execution.assertion_result, r.locale),
+            text(r.locale, "Execution assertion interpretation", "실행의 assertion 해석"),
+            match &execution.assertion_result {
+                EvidenceDetail::NotObserved => text(r.locale,
+                    "No assertion interpretation in this execution record; Checkpoint reports are separate.",
+                    "이 실행 기록에는 assertion 해석이 없습니다. Checkpoint 보고는 별도입니다."),
+                value => detail(value, r.locale),
+            },
         );
         html.push_str("</dl>");
         match &execution.observation {
@@ -453,8 +462,8 @@ fn comparison_label(comparison: &RetestComparison, locale: ViewerLocale) -> Stri
             later_assertion,
             text(
                 locale,
-                "Original failure remains recorded; comparison is limited to declared coverage.",
-                "원래 실패는 보존하며 비교는 선언된 coverage로 제한됩니다."
+                "Original report remains recorded; comparison is limited to declared coverage.",
+                "원래 보고는 보존하며 비교는 선언된 coverage로 제한됩니다."
             )
         ),
         RetestComparison::NotComparable { previous, reason } => format!(

@@ -117,7 +117,7 @@ impl WorkCodeGap {
     pub const fn english(self) -> &'static str {
         match self {
             Self::NoSeeds => "No path/component seeds are recorded; Source/code links have not been evaluated",
-            Self::NoMatchingCode => "No snapshot-bound code matches this Work's seeds",
+            Self::NoMatchingCode => "No Analysis Snapshot code match for recorded Work paths/components; article Source citations are separate",
             Self::AnalysisUnavailable => "Analysis unavailable; canonical Work remains readable",
             Self::AnalysisNotCurrent => "Analysis is stale or current repository observation is unavailable; historical topology remains inspectable",
         }
@@ -125,7 +125,7 @@ impl WorkCodeGap {
     pub const fn korean(self) -> &'static str {
         match self {
             Self::NoSeeds => "경로·컴포넌트 근거가 기록되지 않았으며 Source·코드 연결은 아직 평가하지 않았습니다",
-            Self::NoMatchingCode => "이 작업의 근거와 일치하는 snapshot 코드가 없습니다",
+            Self::NoMatchingCode => "기록된 Work 경로·컴포넌트와 일치하는 Analysis Snapshot 코드가 없습니다. 글의 Source 인용은 별도입니다",
             Self::AnalysisUnavailable => "분석을 사용할 수 없습니다. Canonical 작업은 계속 읽을 수 있습니다",
             Self::AnalysisNotCurrent => "분석이 오래되었거나 현재 저장소 관찰을 사용할 수 없습니다. 과거 topology는 확인할 수 있습니다",
         }

@@ -11,6 +11,91 @@ use volicord_projections::*;
 use volicord_viewer::*;
 
 #[test]
+fn passing_repeat_preserves_report_provenance_without_inventing_a_failure(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture::fixture()?;
+    let repeat = f.ops.run_work_check(
+        fixture::command(&f.ops, f.project, f.work)?,
+        fixture::declaration(),
+    )?;
+    let mut recording = fixture::recording(f.work, repeat.source_id, true);
+    recording.retest = Some(volicord_context::CheckRetestBasis {
+        checkpoint_id: f.passed.checkpoint_id,
+        checkpoint_revision: f.passed.checkpoint_revision,
+        verification_index: 0,
+        source_id: f.passed.source_id,
+        target_relation: volicord_context::CheckTargetRelation::SameArtifacts,
+        rationale: "Repeat the existing passing assertion on unchanged declared artifacts".into(),
+    });
+    f.ops.record_work_check(f.project, recording)?;
+    let report = f.ops.read_work_verification(f.project, f.work)?;
+    assert!(matches!(
+        report.checks[2].retest_comparison,
+        RetestComparison::Comparable {
+            earlier_assertion: volicord_context::AssertionState::Passed,
+            later_assertion: volicord_context::AssertionState::Passed,
+            ..
+        }
+    ));
+    let before = f.ops.canonical_basis(f.project)?;
+    for (language, locale, report_label, execution_limit) in [
+        (
+            "en",
+            ViewerLocale::English,
+            "Original report remains recorded",
+            "No assertion interpretation in this execution record",
+        ),
+        (
+            "ko",
+            ViewerLocale::Korean,
+            "원래 보고는 보존하며",
+            "이 실행 기록에는 assertion 해석이 없습니다",
+        ),
+    ] {
+        let request = ViewerRequest {
+            project_id: f.project,
+            locale,
+            view: ViewerView::Work { work: Some(f.work) },
+            requested_language: language.into(),
+            guarded_request: None,
+        };
+        let adapter = ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()));
+        let snapshot = adapter.render_snapshot(&request, TimestampMicros::from_unix_micros(123))?;
+        let server = ViewerServer::new(
+            ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone())),
+            f.project,
+            locale,
+            ViewerView::Overview,
+            language.into(),
+            "127.0.0.1:3219".parse()?,
+        )?;
+        let http = format!("GET /?view=work&work={}&locale={language}&language={language} HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n", f.work);
+        let mut response = Vec::new();
+        server.serve_connection(&mut http.as_bytes(), &mut response)?;
+        let live = String::from_utf8(response)?;
+        assert!(live.starts_with("HTTP/1.1 200"));
+        for html in [&live, &snapshot.html] {
+            let row = html
+                .split(&format!("data-execution-source=\"{}\"", repeat.source_id))
+                .nth(1)
+                .ok_or("repeat row")?
+                .split("</article>")
+                .next()
+                .ok_or("row end")?;
+            assert!(row.contains("Passed → Passed"));
+            assert!(row.contains(report_label));
+            assert!(!row.contains("Original failure") && !row.contains("원래 실패"));
+            assert!(row.contains(execution_limit));
+            // A genuine earlier failure still exists as its own original report.
+            assert!(html.contains(&f.failed.checkpoint_id.to_string()));
+            assert!(html.contains("actual=3; expected=7"));
+        }
+    }
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
 fn scoped_comparison_has_equal_cli_mcp_public_live_and_offline_facts_without_an_article(
 ) -> Result<(), Box<dyn Error>> {
     let f = fixture::fixture()?;

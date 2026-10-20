@@ -1748,8 +1748,8 @@ fn verification_displays_distinct_named_executions_and_numeric_facts_without_art
                 .ok_or("run end")?;
             assert!(row.contains("Same &lt;check&gt; &amp; label"));
             assert!(row.contains(&format!("Numeric exit code</dt><dd>{exit}</dd>")));
-            assert!(row.contains("Environment</dt><dd>Not observed</dd>"));
-            assert!(row.contains("Assertion result</dt><dd>Not observed</dd>"));
+            assert!(row.contains("Execution environment observation</dt><dd>Not observed</dd>"));
+            assert!(row.contains("Execution assertion interpretation</dt><dd>No assertion interpretation in this execution record; Checkpoint reports are separate.</dd>"));
             assert!(row.contains("Started</dt>"));
             assert!(row.contains("Ended</dt>"));
             assert!(row.contains("execution-time tree was not rechecked"));

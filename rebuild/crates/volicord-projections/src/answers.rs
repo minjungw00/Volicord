@@ -830,8 +830,8 @@ pub fn work_answers(
             "ReportedResult",
             fixed(
                 locale,
-                "No reported result is recorded for this Work.",
-                "이 작업에 보고된 결과가 기록되지 않았습니다.",
+                "No separate Work outcome statement is recorded; verification reports are shown independently.",
+                "별도 Work 결과 진술이 기록되지 않았습니다. 검증 보고는 독립적으로 표시합니다.",
             ),
             Vec::new(),
         ));
