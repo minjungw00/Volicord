@@ -28,3 +28,25 @@ function documentMetrics() {
     visible_text_utf8_bytes:new TextEncoder().encode(document.body.innerText).length};
 }
 module.exports = {createOutput, publication, documentMetrics};
+
+// CDP SystemInfo CPU is cumulative OS time across every thread of each process.
+// Unlike document TaskDuration, these counters survive navigation. Processes
+// lost between samples leave an explicit partial measurement.
+function processCpuDelta(before, after) {
+  const previous = new Map();
+  for (const p of before) {
+    assert.ok(!previous.has(p.id) && Number.isFinite(p.cpuTime) && p.cpuTime >= 0, 'valid CPU sample');
+    previous.set(p.id,p.cpuTime);
+  }
+  const seen=new Set();let seconds=0;
+  for (const p of after) {
+    assert.ok(!seen.has(p.id) && Number.isFinite(p.cpuTime) && p.cpuTime >= 0, 'valid CPU sample');
+    seen.add(p.id);
+    const delta=p.cpuTime-(previous.get(p.id)||0);
+    assert.ok(delta>=0,'process CPU counter regressed');seconds+=delta;
+  }
+  const omitted=[...previous.keys()].filter(id=>!seen.has(id)).length;
+  return {browser_process_cpu_ms:seconds*1000,cpu_processes:after.length,
+    cpu_omitted_processes:omitted,cpu_state:omitted?'partial':'observed'};
+}
+module.exports.processCpuDelta=processCpuDelta;

@@ -5,7 +5,7 @@ const {spawn,spawnSync,execFileSync}=require('node:child_process');
 const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
 
 function reviewedFiles(directory){const files={};for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name);if(!fs.lstatSync(file).isFile()||!['.png','.html'].includes(path.extname(name)))continue;const bytes=fs.readFileSync(file);files[name]={sha256:require('node:crypto').createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};}return files;}
-const {createOutput,publication,documentMetrics}=require('./product_review_controls.cjs');
+const {createOutput,publication,documentMetrics,processCpuDelta}=require('./product_review_controls.cjs');
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const {chromium}=require(config.playwright);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -70,6 +70,8 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
  if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');
  assert.ok(command('korean-fonts',['fc-list',':lang=ko']).trim(),'Korean-capable fonts are required for readable review screenshots');
  browser=await chromium.launch({executablePath:config.chromium,headless:true,args:['--no-sandbox','--disable-dev-shm-usage'],env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
+ const cpu=await browser.newBrowserCDPSession();
+ async function processCpu(){return (await cpu.send('SystemInfo.getProcessInfo')).processInfo;}
  result.browser_version=browser.version();
  for(const c of config.cases){const r={key:c.key,project:c.project,work:c.work,decision:c.decision,evidence_class:c.evidence_class||'unclassified',origin:c.origin||'not supplied; no authorship claim',widths:[]};result.cases.push(r);
   const before=state(c.runtime);r.state_before_sha256=hash(before);
@@ -91,8 +93,7 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
   const server=await serve(c);const context=await browser.newContext();const errors=[],external=[];
   context.on('request',q=>{if(new URL(q.url()).origin!==new URL(server.base).origin)external.push(q.url())});
   context.on('response',response=>{if(new URL(response.url()).pathname==='/citation')sourceReads.push((async()=>{try {const body=await response.body();r.source_reads.push({status:response.status(),bytes:body.length});}catch {r.source_reads.push({status:response.status(),state:'body_unavailable'});}})());});
-  const page=await context.newPage();const cpu=await context.newCDPSession(page);await cpu.send('Performance.enable');
-  async function taskCpu(){return (await cpu.send('Performance.getMetrics')).metrics.find(m=>m.name==='TaskDuration').value*1000;}
+  const page=await context.newPage();
   page.on('pageerror',e=>errors.push(e.message));
   try {
    for(const view of ['overview','work','repository'])for(let attempt=0;attempt<3;attempt++){
@@ -139,12 +140,12 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
    assert.equal(await page.locator('.tools-menu,.inspection-query').count(),0);
    assert.equal(await page.locator('.masthead nav a').count(),3);
    await capture(page,c,'overview',width);
-   const clickStarted=performance.now(),cpuBefore=await taskCpu();
+   const clickStarted=performance.now(),cpuBefore=await processCpu();
    await page.locator('.masthead a[href*="view=repository"]').click();
    await page.waitForURL(u=>u.searchParams.get('view')==='repository');
    await page.waitForLoadState('domcontentloaded');
    await page.locator('#repository-explanation').waitFor();
-   row.repository_cost={navigation_ms:performance.now()-clickStarted,browser_task_ms:(await taskCpu())-cpuBefore,...await page.evaluate(documentMetrics)};assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
+   row.repository_cost={navigation_ms:performance.now()-clickStarted,...processCpuDelta(cpuBefore,await processCpu()),...await page.evaluate(documentMetrics)};assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
    fs.writeFileSync(path.join(output,`${c.key}-repository-${width}.html`),await page.content());await capture(page,c,'repository',width);
    row.source=await sourceJourney(page,c,width);
    await page.locator('.masthead a[href*="view=work"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');await capture(page,c,'works',width);

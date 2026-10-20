@@ -311,11 +311,14 @@ inspects both Source and presentation, report dependent evaluation and leave
 human comprehension/acceptance unobserved.
 
 Each review requires a new output directory, even after failure. Repository
-navigation records browser TaskDuration CPU, elapsed automation navigation, DOM
+navigation records cumulative browser-process CPU deltas, elapsed automation navigation, DOM
 and code/token counts separately from HTTP bytes/time. `source_reads` counts browser citation responses; each selected Source journey
 separately records its explicit `verification_read` bytes/time. These requests
-are additional verification cost, not user clicks or filesystem opens. CPU is Chromium task time, not server
-CPU or human response time. `node --test product_review_controls_self_test.cjs`
+are additional verification cost, not user clicks or filesystem opens. CPU comes from CDP SystemInfo OS user/system time across all threads and browser
+processes, not a subtraction of document TaskDuration counters. Lost processes
+make the sample partial with an explicit count. It includes browser work during
+the automation interval, not server CPU or human response time. Historical
+TaskDuration differences can reset on navigation and are invalid CPU evidence. `node --test product_review_controls_self_test.cjs`
 checks admission and original-output preservation without generating any article.
 
 The shareable boundary rejects recognizable private host paths in HTML text and

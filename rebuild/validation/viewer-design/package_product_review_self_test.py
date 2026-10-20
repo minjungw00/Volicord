@@ -96,7 +96,7 @@ class ReviewPackageTests(unittest.TestCase):
             'source_reads': [{'status': 200, 'bytes': 1024}, {'status': 409, 'state': 'body_unavailable'}],
             'widths': [{'width': 390, 'repository_cost': {'dom_elements': 3000,
                 'code_elements': 20, 'token_spans': 200, 'code_utf8_bytes': 4096,
-                'visible_text_utf8_bytes': 15000, 'navigation_ms': 123.5, 'browser_task_ms': 4.5}}]}],
+                'visible_text_utf8_bytes': 15000, 'navigation_ms': 123.5, 'browser_process_cpu_ms': 4.5, 'cpu_processes': 5, 'cpu_omitted_processes': 0, 'cpu_state': 'observed'}}]}],
             'runtime': '/home/private', 'argv': ['secret'], 'stdout': 'private'}
         safe = package.boundary.sanitized_result(data)
         self.assertEqual(safe, {key: value for key, value in data.items() if key not in {'runtime', 'argv', 'stdout'}})
