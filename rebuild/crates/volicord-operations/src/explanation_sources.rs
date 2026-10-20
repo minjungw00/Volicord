@@ -202,7 +202,7 @@ impl LocalOperations {
                         return Err(Error::new("current code requires a file observation"));
                     }
                     let binding = self
-                        .open_canonical()?
+                        .open_canonical_read_only()?
                         .get_local_binding(basis.project.id)
                         .map_err(|e| {
                             Error::with_source("explanation repository binding unavailable", e)

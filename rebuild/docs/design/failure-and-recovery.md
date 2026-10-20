@@ -482,6 +482,14 @@ stored analysis. Ordinary reading performs neither action.
 
 ### Exact retained evidence read failure
 
+Canonical inspection in Operations uses the maintained read-only Store connection,
+including its existing bounded reader contention policy. Concurrent document and
+selected-citation readers must not use zero-wait writer initialization and mistake
+transient SQLite WAL recovery contention for corrupt canonical data or changed
+Source support. This changes no mutation lock, writer policy, authority, revision,
+retention, schema or read-time regeneration behavior. Actual corrupt/unavailable
+stores and lifecycle/scope mismatches still withhold dependent content.
+
 Evidence-detail `state: partial|complete` measures transport progress through a
 retained serialized field. `metadata.retained_state` independently reports
 retained, partially retained, withheld, unavailable, not retained or policy

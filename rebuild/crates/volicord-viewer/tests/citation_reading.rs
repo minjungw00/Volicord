@@ -535,6 +535,116 @@ fn selected_citation_reads_original_bytes_in_bounded_pages_without_writes(
     Ok(())
 }
 #[test]
+fn selected_source_read_uses_committed_canonical_state_during_a_wal_writer(
+) -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let writer = rusqlite::Connection::open(f.ops.layout().canonical_store())?;
+    writer.execute_batch("BEGIN IMMEDIATE")?;
+    let selected = selection(&f, 1, 0, 0)?;
+    let result = body(&f.get(&citation_target(&f, &selected))?)?;
+    assert_eq!(result["chunk"]["text"], f.originals[8]);
+    writer.execute_batch("ROLLBACK")?;
+    Ok(())
+}
+
+#[test]
+fn concurrent_selected_refresh_and_document_reads_keep_original_bytes_and_state(
+) -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let canonical = f.ops.canonical_basis(f.project)?;
+    let privacy = f.ops.privacy_status(f.project)?;
+    let targets = [(1, 0, 8), (1, 1, 9), (1, 2, 10), (2, 0, 8)]
+        .into_iter()
+        .map(|(unit, citation, original)| {
+            Ok((
+                citation_target(&f, &selection(&f, unit, citation, 0)?),
+                original,
+            ))
+        })
+        .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+    for _ in 0..3 {
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(6));
+        let mut jobs = Vec::new();
+        for index in 0..6 {
+            let layout = f.ops.layout().clone();
+            let project = f.project;
+            let barrier = barrier.clone();
+            let selected = if index < 4 {
+                Some(selection(
+                    &f,
+                    if index == 3 { 2 } else { 1 },
+                    if index == 3 { 0 } else { index },
+                    0,
+                )?)
+            } else {
+                None
+            };
+            let analysis = f.analysis;
+            let target = if index < 4 {
+                targets[index].0.clone()
+            } else {
+                "/?view=repository".into()
+            };
+            jobs.push(std::thread::spawn(move || -> Result<String, String> {
+                barrier.wait();
+                let server = ViewerServer::new(
+                    ViewerAdapter::new(LocalOperations::new(layout)),
+                    project,
+                    ViewerLocale::English,
+                    ViewerView::RepositoryExplanation,
+                    "en".into(),
+                    "127.0.0.1:43129"
+                        .parse()
+                        .map_err(|e: std::net::AddrParseError| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+                server
+                    .adapter()
+                    .operations()
+                    .canonical_basis(project)
+                    .map_err(|e| format!("concurrent canonical read: {e:?}"))?;
+                if let Some(selected) = selected {
+                    server
+                        .adapter()
+                        .operations()
+                        .read_explanation_citation(
+                            project,
+                            ExplanationSubject::Repository(analysis),
+                            "en",
+                            &selected,
+                        )
+                        .map_err(|e| format!("concurrent scoped operation: {e:?}"))?;
+                }
+                let mut output = Vec::new();
+                server
+                    .serve_connection(
+                        &mut Cursor::new(format!(
+                            "GET {target} HTTP/1.1\r\nHost: 127.0.0.1:43129\r\n\r\n"
+                        )),
+                        &mut output,
+                    )
+                    .map_err(|e| e.to_string())?;
+                String::from_utf8(output).map_err(|e| e.to_string())
+            }));
+        }
+        // Join every reader before inspecting failures, keeping the fixture alive.
+        let responses: Vec<_> = jobs.into_iter().map(|job| job.join()).collect();
+        for (index, response) in responses.into_iter().enumerate() {
+            let response = response.map_err(|_| "reader thread failed")??;
+            assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+            if index < 4 {
+                let result = body(&response)?;
+                assert_eq!(result["chunk"]["text"], f.originals[targets[index].1]);
+                assert_eq!(result["project_id"], f.project.to_string());
+            }
+        }
+    }
+    assert_eq!(f.ops.canonical_basis(f.project)?, canonical);
+    assert_eq!(f.ops.privacy_status(f.project)?, privacy);
+    Ok(())
+}
+
+#[test]
 fn exact_citation_rejects_changed_output_wrong_subject_origin_and_deleted_support(
 ) -> Result<(), Box<dyn Error>> {
     let f = Fixture::new()?;

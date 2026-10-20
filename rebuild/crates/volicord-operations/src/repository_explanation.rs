@@ -303,7 +303,7 @@ impl LocalOperations {
             }
         }
         let binding = self
-            .open_canonical()?
+            .open_canonical_read_only()?
             .get_local_binding(canonical.project.id)
             .map_err(|e| Error::with_source("repository binding unavailable", e))?;
         let mut classifications = std::collections::BTreeMap::<String, usize>::new();
@@ -356,7 +356,7 @@ impl LocalOperations {
         analysis: &AnalysisMetadata,
     ) -> Result<volicord_repository_intelligence::RepositorySnapshot, Error> {
         let binding = self
-            .open_canonical()?
+            .open_canonical_read_only()?
             .get_local_binding(canonical.project.id)
             .map_err(|e| Error::with_source("repository binding unavailable", e))?;
         let root = volicord_local_platform::RepositoryRoot::open(&binding.absolute_path)
@@ -389,7 +389,7 @@ impl LocalOperations {
             self.repository_source_metadata(request.project_id, request.analysis_snapshot_id)?;
         self.current_explanation_repository(&canonical, &analysis)?;
         let binding = self
-            .open_canonical()?
+            .open_canonical_read_only()?
             .get_local_binding(request.project_id)
             .map_err(|e| Error::with_source("repository binding unavailable", e))?;
         let detail = self.capture_inventory_file(
@@ -552,7 +552,7 @@ impl LocalOperations {
         let observation: RepositoryObservation = serde_json::from_value(header)
             .map_err(|_| Error::new("corrupt repository Source copy shape"))?;
         let binding = self
-            .open_canonical()?
+            .open_canonical_read_only()?
             .get_local_binding(project)
             .map_err(|e| Error::with_source("repository binding unavailable", e))?;
         if observation.project_id != project

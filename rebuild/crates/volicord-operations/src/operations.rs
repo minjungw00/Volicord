@@ -981,7 +981,10 @@ impl LocalOperations {
     }
 
     pub fn canonical_basis(&self, project_id: ProjectId) -> Result<CanonicalReadBasis, Error> {
-        self.open_canonical()?
+        // Inspection uses the existing read-only connection and bounded reader
+        // contention policy. A writer's zero-wait durability initialization can
+        // transiently reject simultaneous healthy Viewer/citation readers.
+        self.open_canonical_read_only()?
             .read_canonical_basis(
                 project_id,
                 CanonicalReadOptions {
@@ -3895,6 +3898,15 @@ impl LocalOperations {
         Ok(store)
     }
 
+    pub(crate) fn open_canonical_read_only(&self) -> Result<Store, Error> {
+        let path = self.layout.canonical_store();
+        let store = Store::open_read_only(&path)
+            .map_err(|error| Error::with_source("cannot read canonical store", error))?;
+        volicord_local_platform::ensure_private_file(&path)
+            .map_err(|error| Error::with_source("canonical store is not private", error))?;
+        Ok(store)
+    }
+
     fn open_forgetting(&self) -> Result<ForgettingStore, Error> {
         let path = self.layout.forgetting_store();
         let store = ForgettingStore::open(&path)?;
@@ -3911,7 +3923,7 @@ impl LocalOperations {
         if operations.is_empty() {
             return Ok(Vec::new());
         }
-        let canonical = self.open_canonical()?;
+        let canonical = self.open_canonical_read_only()?;
         let mut invalidations = Vec::new();
         for operation in operations {
             match canonical.get_tombstone(project_id, operation.record) {
