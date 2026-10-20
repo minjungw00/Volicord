@@ -189,3 +189,45 @@ denominator. No numerical pass percentage or whole-AC success is derived here.
 Current explicit local user permission and interactive-host interpretation do not
 require trusted automatic activation; that stronger host claim remains separate.
 No external provider call, aggregate Final/V11 or naturalistic qualification runs.
+
+### Prospective local observations and independent agent review
+
+The Music Deck observation is a real, newly selected no-change investigation of
+the existing JavaScript implementation, not a changed-return-value fixture.
+The user's verbatim task-selection instruction is its Goal; the narrower topic
+is agent-selected. Exact code origin, five-file coverage, original command
+streams, scoped declarations and two adopted report identities stay private.
+Checkpoints `eaebee85…` and `2a16101b…` retain separate passing assertions;
+the latter explicitly references the former with `same_artifacts`. The initial
+default-isolation execution is a separate one-file aggregate, never three-subtest
+proof. Source copies have original 86,400-second lifetimes, not renewed grants.
+
+Independent agent source-first expectations were sealed before successful article
+production (`208b4a7f…`). A different clean agent first read the actual en/ko
+Product exports without that key, then inspected their disclosed evidence.
+Its original understanding and seven findings remain unchanged (`bfd342a2…`).
+This was HTML prose inspection, not a blind human, visual usability approval or
+naturalistic qualification. The separate source assessment (`c80ed7ec…`) found
+under-grounded names, summaries and synopsis/section citations alongside supported
+mechanism and test facts. Initial refusals, first admitted articles and revised
+host-authored publications remain separate; revised prose is feedback-guided,
+not an independent first-generation success.
+
+The actual `Passed → Passed` journey independently reproduced a Reader template
+that implied an original failure. The new failing regression, then repaired
+en/ko HTTP/offline consumers, keep the earlier real failure in a controlled test
+while making the passing-repeat text neutral. Execution interpretation, canonical
+Work outcome and Analysis lookup messages now name their own scope. Original
+English assertions/quotations remain original-language material; locale burden is
+not claimed eliminated. No Canonical, Source permission or format change results.
+
+The maintained Product browser driver also reproduced an obsolete assumption
+that a card's independently admitted name/summary must equal article title/lead.
+It now compares the actual article with its own public realization and admits
+only lifecycle notices when detail is unavailable. Distinct card/article prose,
+article-only Source deletion, canonical-only body absence and a separate genuinely
+Workless bounded repository explanation supply current downstream controls.
+Historical real Decisions remain current-schema blocked; current authored Decision
+tests do not replace them. Fresh correction-task capture, full independent-repository
+coverage, genuine automatic host activation, native zoom, assistive use and actual
+human acceptance remain separate unmet or unobserved positives.

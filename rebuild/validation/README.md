@@ -16,6 +16,12 @@ operation. Keep setup, authoring, source-first semantic review and actual user
 acceptance separate from its navigation/byte/immutability results. Run through
 `rebuild/scripts/validate focused` and inspect complete logs and numeric outcomes.
 
+`viewer-design/product_review.cjs` compares a current article's title/lead with
+that article's public realization. Card name/summary are independently admitted
+and may differ. Unavailable detail may carry lifecycle notices, never current
+generated prose. Exercise both a distinct-publication positive and a Source-deleted
+detail with surviving independent card scopes; keep their exact origins visible.
+
 Read-only qualitative inspection accepts `inspect-agent-review --review-root <private-run>
 --criterion-numbers 1 2 3`. Each request verifies one full package byte set; single
 inspection uses the same presentation. Recording and publication recheck current bytes.

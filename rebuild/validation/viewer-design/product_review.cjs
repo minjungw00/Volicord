@@ -136,7 +136,16 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
    await page.locator('.masthead a[href*="view=work"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');await capture(page,c,'works',width);
    if(c.work){const card=page.locator(`.work-card[data-work-id="${c.work}"]`);assert.equal(await card.locator('a').count(),1);
     await card.locator('.card-action').click();assert.equal(new URL(page.url()).searchParams.get('work'),c.work);
-    assert.equal(await page.locator('.doc').getAttribute('data-work-id'),c.work);if(c.normal_work){assert.equal(await page.locator('.doc h1').textContent(),row.reading_title);assert.equal(await page.locator('.doc .lead[data-question="Synopsis"]').textContent(),row.synopsis);}
+    assert.equal(await page.locator('.doc').getAttribute('data-work-id'),c.work);
+    if(c.normal_work){
+     // Name, summary and article are independently admitted publications. A
+     // card cannot supply the expected title/lead for a different realization.
+     const answers=status.work_history.find(w=>w.work_item_id===c.work).answers;
+     if(answers.explanation_state==='current'){
+      assert.equal(await page.locator('.doc h1').textContent(),answers.prose.find(p=>p.question==='Heading').text);
+      assert.equal(await page.locator('.doc .lead[data-question="Synopsis"]').textContent(),answers.prose.find(p=>p.question==='Synopsis').text);
+     }else assert.ok(answers.prose.every(p=>p.role!=='generated_interpretation'),'unavailable article supplies only lifecycle notices');
+    }
     const sectionNav=page.locator('.doc .document-nav');assert.equal(await sectionNav.count(),1);
     assert.equal(await page.locator('.audit-links,.opening-limits,.limit-shortcut').count(),0);
     const workReport=status.work_history.find(w=>w.work_item_id===c.work).verification_report;

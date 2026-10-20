@@ -174,7 +174,7 @@ def main():
         boundary.write_new(output, 'selected-reference-manifest.json', json.dumps({'files': selected}, ensure_ascii=False, indent=2).encode())
     boundary.write_new(output, 'index.html', reader_entry(config['cases']).encode())
     normal_basis = config.get('normal_source_rich_article', 'not_observed; no genuine positive supplied')
-    technical = '<!doctype html><meta charset="utf-8"><h1>Technical observations</h1><p>Candidate: ' + head + '</p><a href="product/result.json">Browser results and measurements</a><p>Independent and human comprehension: not_observed. Normal source-rich prospective article: ' + html.escape(normal_basis) + '. No Final/V11 or Phase 8 qualification.</p><p>Offline files retain only the evidence admitted at publication. Original Source retention is unchanged; later live reads must recheck it. These files grant no live query, write, host or provider authority.</p>'
+    technical = '<!doctype html><meta charset="utf-8"><h1>Technical observations</h1><p>Candidate: ' + head + '</p><a href="product/result.json">Browser results and measurements</a><p>This packager attests technical file bindings only; independent semantic review requires separate evidence. Human acceptance: pending. Normal source-rich prospective article: ' + html.escape(normal_basis) + '. No Final/V11 or Phase 8 qualification.</p><p>Offline files retain only the evidence admitted at publication. Original Source retention is unchanged; later live reads must recheck it. These files grant no live query, write, host or provider authority.</p>'
     supplements = {}
     for name, source in [('inspection', args.inspection_review), ('citation', args.citation_review)]:
         if source is None:
@@ -197,7 +197,7 @@ def main():
         technical += f'<p><a href="{html.escape(name)}">{html.escape(p.name)}</a></p>'
     boundary.write_new(output, 'technical.html', technical.encode())
     manifest = {'candidate': head, 'classification': 'current Product consumer review; per-case origin limits apply',
-        'human_acceptance': 'pending', 'independent_review': 'not_observed', 'source_first_answer_keys': 'excluded',
+        'human_acceptance': 'pending', 'independent_review': 'not_attested_by_packager', 'source_first_answer_keys': 'excluded',
         'normal_source_rich_article': normal_basis,
         'prior_delivered_ui_feedback': 'rejected; original evidence unchanged',
         'source_status': 'early dirty-source output' if args.early else 'clean committed candidate',
