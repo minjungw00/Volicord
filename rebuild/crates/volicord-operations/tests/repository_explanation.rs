@@ -156,6 +156,27 @@ fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_ac
     assert_eq!(inventory["scope"], "exact_repository_analysis");
     assert_eq!(inventory["analysis_snapshot_id"], analysis);
     assert_eq!(inventory["body_authority"], "not_granted");
+    assert!(inventory["investigation"]
+        .as_str()
+        .is_some_and(|s| s.contains("explicit Source")));
+    let instructions = prepared["plan"]["instructions"]
+        .as_str()
+        .ok_or("instructions")?;
+    for obligation in [
+        "independently identify",
+        "two materially distinct",
+        "failure/exit",
+        "unknown/omitted",
+        "canonical Project Purpose",
+    ] {
+        assert!(
+            instructions.contains(obligation),
+            "missing Repository investigation obligation: {obligation}"
+        );
+    }
+    assert!(!instructions.contains("one complete representative operation"));
+    // Repository guidance must not route investigation through Work correction.
+    assert!(!instructions.contains("Corrections need evidenced symptom"));
     assert!(!prepared.to_string().contains("안녕"));
     assert_eq!(before, f.ops.canonical_basis(f.project)?);
     assert!(before.context_items.is_empty());

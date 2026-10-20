@@ -27,6 +27,8 @@ def measure(args):
     metadata = {
         'kind': 'explicit_repository_product_measurement',
         'candidate': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+        'worktree_status': subprocess.check_output(['git', 'status', '--porcelain'], text=True),
+        'tracked_diff_sha256': hashlib.sha256(subprocess.check_output(['git', 'diff', 'HEAD'])).hexdigest(),
         'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
         'project': args.project, 'analysis': args.analysis,
         'runtime': str(args.runtime.resolve()),
@@ -42,7 +44,17 @@ def measure(args):
         resources = output / (label + '.resources')
         argv = ['/usr/bin/time', '-v', '-o', str(resources)] + prefix + command
         start = time.monotonic()
-        process = subprocess.run(argv, capture_output=True, timeout=180)
+        try:
+            process = subprocess.run(argv, capture_output=True, timeout=180)
+        except subprocess.TimeoutExpired as error:
+            (output / (label + '.stdout')).write_bytes(error.stdout or b'')
+            (output / (label + '.stderr')).write_bytes(error.stderr or b'')
+            metadata['operations'].append({
+                'label': label, 'argv': argv, 'exit_code': None, 'signal': None,
+                'termination': 'timeout_without_child_completion_receipt',
+                'duration_ms': (time.monotonic() - start) * 1000,
+            })
+            raise
         (output / (label + '.stdout')).write_bytes(process.stdout)
         (output / (label + '.stderr')).write_bytes(process.stderr)
         metadata['operations'].append({

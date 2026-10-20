@@ -1356,3 +1356,13 @@ are optional; truthful scope and result-changing failures stay visible. A narrow
 repository article and passing browser controls cannot satisfy broad semantic or
 human acceptance. Original rejection remains evidence; follow-up authoring/admission
 and native zoom/assistive observations remain pending when not performed.
+
+Repository breadth review freezes source-first expected responsibilities, relations
+and distinct operations before new authoring for a real complex and a distinct-language
+repository. A selected populated Project must retain its exact Project/Work identities;
+supported portable rebinding is labeled with its new snapshot rather than a same-name
+substitute or historical Source grant. Compare inventory, investigated Sources and
+explained/omitted topics separately. Current CLI/MCP/live/offline agreement and byte
+fit establish transport, not independent semantic or human acceptance. Larger-budget
+or scoped-publication conditions that were not run remain not_observed. See the
+[focused observations](../../validation/end-to-end/multi-repository/repository-explanation-breadth.md).

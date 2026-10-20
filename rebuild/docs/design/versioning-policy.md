@@ -505,3 +505,11 @@ repository diagnostics preserve all retained v6 words/citations and independent
 publication identities. No durable format, decoder, admission or budget change
 is authorized by reducing visible actions. A later evidenced authoring/admission
 change must assess its own format/fingerprint consequences under this owner.
+
+Repository-wide investigation guidance changes the Repository plan fingerprint and
+therefore makes an earlier interpretation stale under the changed producer. Explicit
+fresh preparation and recording is recovery; failed recording preserves retained
+records without reviving stale prose. Current v6 units already express integrative
+overview and distinct flows through cited narrative, so this change introduces no
+new format/version, decoder, publication scope or dependency pruning. Work name,
+summary, article and Decision plans retain their independent contracts and budgets.

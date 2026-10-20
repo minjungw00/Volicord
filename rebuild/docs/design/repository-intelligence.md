@@ -827,3 +827,10 @@ Source/coverage/inventory/capability details belong to deliberate inspection.
 Exact snapshot-bound CLI/MCP diagnostics and polyglot unsupported/degraded
 capabilities retain their authority. Presentation changes no analysis or citation
 admission and cannot qualify missing semantic breadth.
+
+Repository preparation routes discovery through exact analysis evidence and explicit
+Source observation/read. Its inventory/capability commitments are not an independently
+selected subsystem-question list. The current host identifies material responsibilities
+from actual entry points/configuration, follows important relations and distinct flows
+with bounded Sources, and reports investigated/explained/unknown areas independently
+of inventory or analyzed topology. This adds no graph authority or generic file reader.

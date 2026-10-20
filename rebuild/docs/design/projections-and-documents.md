@@ -1844,9 +1844,12 @@ publication grants no Runtime mutation capability.
 
 `ExplanationSubject::Repository(AnalysisSnapshotId)` is independently scoped;
 Operations prepares exact snapshot/binding evidence rather than choosing recent Work.
-A repository reader document explains purpose, responsibilities and a representative
-mechanism, distinguishes recorded rationale from inferred reasons and names material
-unverified coverage. Inventory alone is insufficient explanatory content.
+A repository reader document explains system purpose, material responsibilities,
+their cooperation and distinct significant operations proportionate to complexity,
+distinguishes recorded rationale from inferred reasons and names material unverified
+coverage. A complex repository needs at least two materially different complete
+operations; a genuinely single-purpose tiny repository need not invent another.
+Inventory alone and a fully explained single subsystem are insufficient breadth.
 The existing reader-unit envelope and exhaustive traversal remain shared with Work
 and Decision. Repository roles are optional heading/synopsis/purpose/observation/
 reading_point/limits. Every unit needs exact prepared evidence keys, and every
@@ -2133,6 +2136,18 @@ not structural proof of readability or semantic approval.
 Repository CLI prepare identifies its exact Analysis Snapshot and separate repository
 observation, Source read and analysis-evidence entry points. Preparation grants no
 body authority, observes no files and never substitutes the Decision-only boundary.
+Repository preparation has its own source-first investigation guidance, independent
+of Work correction/attempt authoring. Before prose, the host discovers responsibilities
+and questions from real entry points/configuration and follows permitted implementation,
+caller/callee, persistence, transport and failure paths across the system. Inventory,
+analyzed topology, investigated Sources, explained topics and unknown/omitted areas
+are separate scopes. Counts/hashes do not supply material questions or finished meaning.
+The overview integrates boundaries before selective detail; sections and their count
+follow the actual repository. Missing causal bridges remain explicit. This guidance
+changes preparation fingerprints, not v6 representation or numeric budgets. Generic
+headings retain grounding because a self-declared role cannot prove nonassertiveness;
+the Viewer keeps their actions quiet without removing any dependency. Source-first
+semantic review remains necessary even for correctly cited headings and body claims.
 Decision CLI compose and MCP `decision_explanation` use the exact recorded Question,
 alternatives, recommendation/rationale, user choice/optional reason and scope. They
 grant no Work Source authority. Preparation, compose and record never dispatch a

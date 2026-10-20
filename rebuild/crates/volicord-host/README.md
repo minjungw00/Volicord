@@ -415,3 +415,13 @@ Project and exact Work identity; no generation_id is needed. CLI: `work verifica
 observations, assertions, current coverage, review and acceptance remain separate.
 Unavailable bodies do not erase historical Command Sources. No command execution
 authority is added to MCP.
+
+`repository_understanding` with `reading_focus=repository_explanation` reads the
+current Repository article independently of Work. Explicit Repository authoring
+uses local CLI `repository explain prepare/compose/record` and `repository source
+observe/read`; the MCP reading tool grants no capture or generation authority.
+Follow preparation's separate repository-wide investigation guidance across actual
+responsibilities and distinct flows before writing prose. A Work explanation or
+one investigated subsystem cannot stand in for that account. Inventory, investigated
+Sources and explained/omitted topics remain different scopes; no external model is
+dispatched by these APIs.

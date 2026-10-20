@@ -100,3 +100,99 @@ test execution, provider success or canonical Project Purpose. Detailed source
 relevance review, downstream current-candidate checks, JS publication and actual
 user reading remain separate work. No ceiling increase or analyzer rewrite is
 justified by the current evidence.
+
+## Production guidance and current readback
+
+Repository preparation now separates discovery/investigation, integrative authoring
+and Source-first claim review from Work correction authoring. It asks the host to
+discover material questions from actual repository evidence, inspect important
+caller/callee/storage/transport/test boundaries and explain distinct significant
+flows proportionate to complexity. A genuinely tiny single-purpose case has no
+invented second flow. Optional roles and sections remain flexible; cited narrative
+already represents flows. CLI preparation routes the investigation and MCP's reading
+description explicitly distinguishes the local CLI producer from the read operation.
+
+This changes Repository plan fingerprints, not format, admission, Source access,
+retention, canonical Purpose or ceilings. Actual old publications became Stale with
+an unavailable-state notice and no old interpretation/provenance. Explicit fresh
+preparation followed by current-host review added opening scope to both articles,
+the Work/projection boundary to Volicord and the acknowledgement bridge to Music Deck.
+These are labeled revisions, not independent model samples or an A/B quality win.
+No prior Source dependency was dropped. Generic headings retain the current strict
+grounding rule: measured editorial overhead did not prevent these explanations,
+and self-declared labels cannot safely create an uncited assertion channel. Existing
+quiet heading/lead evidence remains accessible through exact selected citation reads.
+
+| Current source-first output | Volicord | Music Deck |
+| --- | ---: | ---: |
+| Inventory files / observed Sources / cited Sources | 671 / 20 / 18 | 216 / 18 / 18 |
+| Compact preparation bytes | 110,872 | 50,626 |
+| Realization bytes / 32,768 | 27,421 | 30,487 |
+| Retained bytes / 147,456 | 134,019 | 76,840 |
+| Units / citations | 17 / 25 | 17 / 29 |
+| Read CPU user + system | 2.11 + 0.04 seconds | 0.58 + 0.02 seconds |
+| Read peak RSS | 71,896 KiB | 35,932 KiB |
+| MCP process wall time (initialize + explicit read) | 5,415 ms | 3,889 ms |
+| Complete stdio MCP response stream | 217,007 bytes | 162,954 bytes |
+
+Both explicit CLI and actual stdio MCP readbacks agree exactly, including current
+subject, language, provenance, units and citations. The populated Music Deck output
+still belongs to `0f92697b812656f62f53ee3e6d88b3b0`, now on Analysis
+`3f3e7a420758a853e7e1fc7adfaec28eef5e484cddd5f86f4773ba14481add0f`.
+Every original canonical identity/revision remains present; portable context does
+not copy disposable Work names/summaries/articles, so their absence is not claimed
+as fresh normal Work content. The real large positive is Workless and is not offered
+as a substitute for the populated positive. Neither Project gets a fabricated Goal
+or inferred canonical Purpose.
+
+Source-first assessment maps Volicord's context, analysis, Inquiry, Work/projection,
+Operations, adapters, provider/privacy and portability questions to the body, and
+its three independent operations to separate complete narratives. Music Deck maps
+composition/device presentation, extension/page lifetime, pairing/storage/protocol,
+transport, command/result, state feedback, artwork and bundling to their own reading
+topics. Compared with the earlier five-file scope, this is broader investigated
+evidence, not an inferred improvement from more citations. Detailed omitted internals
+remain in each article. This assessment is by the authoring agent; no blinded
+independent semantic evaluation or actual human acceptance is claimed.
+
+The current budget has headroom for both outputs. That does not establish adequacy
+for every repository or for arbitrarily detailed explanations. B has no independently
+authored higher-budget response under the current no-external-model constraint;
+arithmetic headroom is not that experiment. D remains unobserved because this case
+does not demonstrate an unrepresentable obligation requiring new scoped publications.
+There is no format split, parallel truth store or post-admission salvage. Nontrivial
+analysis/read/export costs remain reported; no measured resource threshold or paired
+optimization justifies a `perf:` change in this task.
+
+Focused producer regressions passed 27 tests across Repository explanation,
+explanation budgets/CLI and Source observations. Host/Viewer regressions passed
+75 tests across actual answer consumers, Work explanation, citations, grounded
+reading, navigation and independent publications. These cover expired/deleted/foreign
+Sources, invalid bindings/UTF-8/ranges and raw/compact bounds, unsupported/corrupt
+content, partial polyglot coverage, canonical changes, failed-write preservation and
+separate Work scopes. Exact existing tests retain their authority; no new repository
+subsystem-publication lifecycle is claimed. Scoped Clippy, formatting, all nine
+workspace-package/path-dependency isolation and architecture-owner checks passed.
+Final and official V11 were not invoked.
+
+Two support mistakes are preserved separately from Product defects: a nonexistent
+test target was refused before test execution, then the actual `work_publication`
+target passed; a stale-read assertion originally expected an empty array, whereas
+the supported API correctly returns an unavailable-state notice. Corrected checks
+verify Stale, absent provenance and unavailable-only prose. Initial browser spawn
+was denied by the sandbox; the same local check was subsequently run with the
+required process/loopback permissions. Originals and failures remain immutable.
+
+The real-article browser check completed: 120 recorded checks across both cases,
+five widths (1440/1024/768/390/320), live, script-free offline and live without
+JavaScript. Scrolled outline geometry, keyboard/focus/return, body and quiet
+provenance Source paths, fragments, no horizontal overflow and logical-store
+immutability passed. Default body Source actions are 19 (Volicord) and 23 (Music
+Deck); all 25/29 original bindings remain in deliberate evidence inspection.
+These count bound claim spans, not independently verified semantic assertions.
+Offline payloads are 460,798 and 434,422 bytes. Desktop and narrow current screenshots
+were inspected as technical presentation evidence; native zoom, assistive use and
+actual human acceptance remain not_observed. Browser evidence binds parent
+`7fba0c3c` plus its recorded implementation diff and exact Viewer/driver hashes;
+it is not relabeled as a clean-candidate run. Final review delivery records its
+own current HEAD and exports without rewriting these original observations.

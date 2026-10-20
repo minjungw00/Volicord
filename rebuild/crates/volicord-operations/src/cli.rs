@@ -1104,7 +1104,8 @@ fn dispatch_explanation_action(
                     "body_authority":"not_granted",
                     "observation_entrypoint":"repository source observe",
                     "read_entrypoint":"repository source read",
-                    "analysis_entrypoint":"repository explain evidence"
+                    "analysis_entrypoint":"repository explain evidence",
+                    "investigation":"Inspect exact analysis evidence and repository entry points; independently investigate material responsibilities and distinct flows through explicit Source observation/read before authoring. Inventory counts are not explained topic coverage; follow plan.instructions."
                 }),
                 volicord_projections::ExplanationSubject::Decision(_) => {
                     json!({"scope":"recorded_decision_only","body_authority":"not_granted"})

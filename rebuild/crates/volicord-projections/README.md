@@ -69,7 +69,7 @@ artifacts but owns no filesystem publication authority.
 Shared `work_answers` and `decision_answers` provide question-specific prose and
 independently selected state/scope facts to ordinary Viewer, document, CLI and MCP
 readers. `ExplanationSubject`, `ExplanationPlan`, `ExplanationRealization` and
-`RetainedExplanation` share the current `volicord_explanation` version 2 format;
+`RetainedExplanation` share the current `volicord_explanation` version 6 format;
 Operations owns explicit prepare/record/delete and managed privacy storage. Reads
 have no generation or publication authority. See the Viewer README for generation
 entry points, evidence budgets, lifecycle and fresh active-host proof instructions.
@@ -94,3 +94,11 @@ the complete read basis. Its 8 KiB fixed buffer avoids repeated growable-buffer
 checks; buffering preserves the SHA-256 byte stream, including large writes and
 UTF-8 text. The token remains current-build read/publication equality evidence,
 not portable identity or authenticity.
+
+Repository preparation uses separate source-first investigation guidance: discover
+material responsibilities from actual repository evidence, inspect cross-boundary
+mechanisms and distinct operations proportionate to complexity, then author an
+integrative account with explicit omissions. Inventory and citation counts establish
+neither topic coverage nor meaning. Existing cited narrative units express flows;
+no format, ceiling or Source permission changes. See the focused breadth observations
+under `validation/end-to-end/multi-repository/` for measured scope and limitations.

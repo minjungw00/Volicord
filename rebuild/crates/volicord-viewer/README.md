@@ -31,8 +31,9 @@ unassociated Decisions remain readable through CLI `decisions`, MCP
 `canonical_inspect` and Operations; Viewer never fabricates a Work relation.
 
 Repository explanation is independent of Work. Its authored narrative explains
-relevant responsibilities and mechanisms with analysis scope, coverage, freshness
-and uncertainty. A generic Code catalog is outside this reader. Relevant code is
+system purpose, material responsibilities, their cooperation and distinct significant
+operations proportionate to the actual repository, with analysis scope, coverage,
+freshness and uncertainty. A generic Code catalog is outside this reader. Relevant code is
 accessible through the explanation's exact claim-specific Source panel.
 
 Citations preserve Project, subject, language, realization, unit/range and original
