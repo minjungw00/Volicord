@@ -14,6 +14,10 @@ Freeze source-first expectations independently before authoring; never supply th
 as generated answers. This tool invokes no model and judges no semantic coverage.
 Budget or research comparisons must label unavailable conditions and mechanical
 rebindings separately; a replay is not a second model response or a quality win.
+The [repository reader assessment procedure](end-to-end/multi-repository/repository-reader-assessment.md)
+separates frozen source-first expectations, author inputs and presentation-first
+evaluation. Portable review tasks ask for system responsibilities, distinct flows,
+claim relevance and scroll-then-open navigation without supplying case answers.
 
 ## Commands
 
