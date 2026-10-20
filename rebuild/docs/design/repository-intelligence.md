@@ -816,3 +816,14 @@ binds ranges. Repository preparation uses a separate Work-less exact analysis su
 Decision preparation reads recorded reasons; it does not borrow Work body authority.
 No new canonical Attempt/Verification schema is needed for bounded observed state
 and process facts. Independent typed report/execution reading now consumes these existing producers; explicit comparable retest/coverage remains unsupported without retained relationships.
+
+### Repository-wide reader purpose
+
+[Reader D-36 / AC-34](reader-experience-design.md) requires system purpose, major
+responsibilities/cooperation and representative complete flows independently of
+Work. One investigated subsystem is partial narrative coverage, even with complete
+inventory. Keep short scope and important unresolved failure visible; routine
+Source/coverage/inventory/capability details belong to deliberate inspection.
+Exact snapshot-bound CLI/MCP diagnostics and polyglot unsupported/degraded
+capabilities retain their authority. Presentation changes no analysis or citation
+admission and cannot qualify missing semantic breadth.

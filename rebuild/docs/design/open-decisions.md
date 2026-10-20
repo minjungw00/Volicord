@@ -540,3 +540,18 @@ clean install
 - legacy migration, detection, export와 compatibility가 범위에서 제거되어 있다.
 - 검증이 필요한 항목은 `validation-plan.md`에 분리되어 있다.
 - 남은 선택은 accepted contract를 만족하는 구현 세부사항으로 위임되어 있다.
+
+## Reader evidence hierarchy follow-up — 2026-10-21
+
+- Status: `accepted`; [Reader D-34–37 / AC-32–35](reader-experience-design.md) owns
+  the exact outcomes and superseded presentation interpretation.
+- User choice: prioritize meaningful technical-claim evidence, keep the expanded
+  outline usable after scrolling, explain the repository as a system, and prevent
+  publication/budget choices from quietly reducing explanation quality.
+- Scope: presentation now; exact admission/Source authority stays intact. Future
+  causal authoring/admission work and independent semantic/human acceptance remain
+  pending, not inferred from browser success.
+- Revisit trigger: source-first review demonstrates an assertive heading/lead lacks
+  a precise body path, repository breadth is still task-sized, or current admission/
+  budgets prevent a useful grounded explanation. Preserve originals and inspect
+  the causal owner before proposing a contract change.

@@ -3276,3 +3276,32 @@ Missing trusted runtime collection authority remains precisely Blocked.
 | CLI/MCP/Operations Decision, inspect, privacy, documents, memory | KEEP OUTSIDE VIEWER | Existing domain callers retain authority and negative controls |
 | `/guarded/ID`, POST `/guarded/confirm` | KEEP OUTSIDE VIEWER | Actual MCP no-elicitation fallback needs exact request/revision/effect; no generic navigation, dispatch or new grant |
 | Current CLI help/README/browser/V11 consumers | UPDATE | Three destinations, contextual Decision/code and retired-route denial; historical evidence is unchanged |
+
+### Evidence-priority and scrolled outline validation
+
+[Reader D-34–37 / AC-32–35](reader-experience-design.md) separate default citation
+actions from exact recorded proof. Use focused runs, preserved argv/complete
+stdout/stderr/numeric exit/signal and candidate/diff/output identity after each
+atomic commit. No Final, aggregate, provider invocation or official V11 is needed
+for this presentation delivery. Preserve failed attempts and historical feedback.
+
+Direct consumers are Viewer `citation_reading`, `supporting_disclosure`, navigation,
+publication and the maintained `document_navigation_browser.cjs`. Add evidence-priority
+controls through actual admission, not static answer strings. Inspect exact HTTP/DOM
+and script-free offline output for source-rich Work, independent card/no article,
+Workless/populated Repository and related Decision (distinguish authored controls
+from actual host production). Compare admitted bindings and original Source bytes;
+exercise expired/deleted/wrong-scope refusal and GET/export nonmutation.
+
+Geometry checks scroll before opening; measure summary and list rectangles while
+scrollY remains nonzero at 1440/1024/768/390/320. Check bounded internal scroll,
+long Korean/English 0/1/12 headings, nested supporting details, keyboard/focus,
+Escape, exact target offsets, Source panes/return, history/reload, resize, no-JS
+and CSS fallback. A CSS selector or click success alone is insufficient. Capture
+exact-current screens early for human review; record technical success separately
+from source-first semantics and latest user acceptance. Unavailable host-generated
+articles, native zoom and assistive tests are not_observed/blocked, never approved.
+
+Repository breadth/causal completeness and publication/budget authoring changes
+remain follow-up responsibilities. Current UI checks must not mark AC-11/34/35
+semantically complete or remove correctly admitted citations to save bytes.

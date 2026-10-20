@@ -2288,7 +2288,29 @@ Unresolved failures remain visible with links to their exact report, including
 when a different later check passes. Historical applicability comes from recorded
 changes or an explicitly comparable passing rerun, never from being older than
 another report. All original facts and declared coverage limits remain inspectable.
-The evidence index is one closed disclosure; each claim, including heading/lead,
-keeps an adjacent compact citation with its exact Source binding and accessible
-scope/path/range label. Missing summary and article availability have distinct
+The evidence index is one closed disclosure. Default adjacent Source actions
+prioritize technical mechanism/cause/result claims. Authored names, article/section
+headings and lead provenance are deliberately available in that index rather than
+repeated prominent inline actions (Reader D-34 / AC-32). All original units,
+evidence keys and citations remain admitted, retained and revalidated unchanged;
+role-based presentation cannot prove semantic sufficiency or relax source authority. Missing summary and article availability have distinct
 messages without repeating the complete unavailable-publication fallback.
+
+### Persistent outline and repository reading hierarchy
+
+[Reader D-35–37 / AC-33–35](reader-experience-design.md) require a compact persistent
+outline whose expanded trigger/list remain in the viewport after deep scrolling.
+The list has bounded independent scrolling; selection reveals the exact target
+without overlay and restores focus. Native no-script disclosure/fragment navigation
+remains functional. Page-unique publication namespaces and original unit/citation
+indices remain unchanged, including unavailable publications and independent cards.
+
+Repository reading keeps a short truthful scope and result-changing unresolved
+failures near the opening. Routine Source counts, inventory/capability/coverage
+counts and unsupported/investigated/excluded detail live in existing optional
+inspection. Exact facts still reach CLI/MCP and offline supporting disclosures.
+This reorders presentation only: repository-wide semantic purpose is system roles,
+cooperation and representative flows, never one Work topic relabeled as the system.
+Existing per-unit current-code admission (including Repository headings/synopsis)
+remains in force. A later evidenced authoring/admission change owns any repair to
+that rule or budget/publication constraints; hiding a link removes no dependency.

@@ -1328,8 +1328,8 @@ a reader. Failed/old-format/oversized records preserve previous valid publicatio
 Normal and degraded screens must be presented as their actual class; technical
 checks do not establish host authorship, semantic adequacy or human acceptance.
 
-[Reader experience design](reader-experience-design.md) owns D-01–D-33 and
-AC-01–AC-31, supplementing scenario N and replacing obsolete Viewer layout rules.
+[Reader experience design](reader-experience-design.md) owns D-01–D-37 and
+AC-01–AC-35, supplementing scenario N and replacing obsolete Viewer layout rules.
 Normal real host-generated Work name/summary/detail, unavailable controls and actual
 human reading are independent acceptance classes. All-missing output fails normal
 content acceptance. Work0 repository access, exact Project/Purpose, single navigation,
@@ -1346,3 +1346,13 @@ failed/terminated commands, unrelated later pass, absent user reason with retain
 recommendation reason, expired/deleted/foreign Source and unsupported language controls.
 Required real prospective capture is Blocked when current trusted host/source authority
 is absent; authored controls and historical replay cannot supply that positive case.
+
+AC-32–35 adopt the 2026-10-21 evidence hierarchy, persistent expanded outline,
+repository-wide purpose and quality-before-budget outcomes. Scenario N must check
+scrolled opening geometry and exact claim/provenance Source access at all five
+Reader widths, native no-script offline, unique fragments and reduced inline
+heading/lead actions without changed admission. Routine repository diagnostics
+are optional; truthful scope and result-changing failures stay visible. A narrow
+repository article and passing browser controls cannot satisfy broad semantic or
+human acceptance. Original rejection remains evidence; follow-up authoring/admission
+and native zoom/assistive observations remain pending when not performed.

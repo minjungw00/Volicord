@@ -496,3 +496,12 @@ selectors, routes and offline fragments, with controlled errors and no aliases.
 This changes no canonical, bundle, Analysis, retained explanation or document
 metadata format. Existing CLI/MCP/Operations readers keep exact-current decoding.
 Offline HTML is a publication, never an ingestible compatibility format.
+
+### Reader evidence hierarchy and outline
+
+[Reader D-34–37 / AC-32–35](reader-experience-design.md) change presentation only.
+Quiet heading/lead provenance, bounded expanded outlines and optional routine
+repository diagnostics preserve all retained v6 words/citations and independent
+publication identities. No durable format, decoder, admission or budget change
+is authorized by reducing visible actions. A later evidenced authoring/admission
+change must assess its own format/fingerprint consequences under this owner.

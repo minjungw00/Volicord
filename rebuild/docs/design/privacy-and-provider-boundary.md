@@ -798,3 +798,13 @@ acceptance. These mechanical controls are not semantic secret detection/OCR.
 Historical private evidence packages and originals are never sanitized in place;
 they do not become shareable by receiving a review filename or living beside a
 sanitized delivery.
+
+### Reader evidence visibility and authority
+
+[Reader D-34 / AC-32](reader-experience-design.md) changes default action visibility,
+not read authority. Quiet heading/lead provenance and prominent technical-claim
+actions use the same exact Project/subject/language/realization/unit/claim/range,
+Source revision/hash/snapshots, canonical/evidence-key, lifetime/deletion and
+read-basis checks. Every admitted dependency remains validated even when its
+action is inside a closed disclosure. No file-level index, hidden button, GET or
+offline export grants unrelated access, new capture, retention renewal or transmission.

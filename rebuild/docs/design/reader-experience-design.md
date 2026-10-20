@@ -3,7 +3,7 @@
 Status: accepted experience requirements, adopted 2026-10-19. Implementation,
 focused technical checks, semantic quality and human acceptance are separate.
 
-This is the maintained entry for D-01–D-33 and AC-01–AC-31.
+This is the maintained entry for D-01–D-37 and AC-01–AC-35.
 D-19–D-27 adopt the subsequent 2026-10-19 user decisions; they do not
 retroactively qualify the rejected review_101901 output. Specialized owners
 retain architecture, domain, privacy, versioning and failure authority. Read this
@@ -103,6 +103,39 @@ not establish this new boundary; original feedback and evidence stay unchanged.
 | **D-31** | Explain relevant structure and mechanisms contextually; exact cited code remains readable with original bytes and return point. | No unrelated generic Code catalog or loss of claim-specific evidence. |
 | **D-32** | Preserve existing non-Viewer operations and exact request-scoped guarded fallback with unchanged authority. | No navigable administration destination or implicit confirmation. |
 | **D-33** | Live/offline reading loads only required projections; offline carries bounded explanations and admitted Sources with truthful omissions/currentness. | No four Tools pages, document previews, bulk diagnostic/code export or generation on reads. |
+
+### Evidence hierarchy and repository breadth — accepted 2026-10-21
+
+These decisions adopt the latest user rejection of indiscriminate Source actions,
+the scroll-then-open outline failure, task-sized repository explanations and
+quality loss from publication/budget choices. Earlier automatic browser passes
+are technical observations, never human approval. Originals stay immutable.
+
+| ID | Accepted outcome | Excluded interpretation |
+| --- | --- | --- |
+| **D-34** | Recorded/admitted proof and default visible evidence actions have separate responsibilities. Names and nonassertive headings/labels normally have no inline Source buttons; material mechanism/cause/result claims keep obvious exact claim-specific actions. Original heading/lead provenance stays deliberately inspectable. | Hiding an action never waives grounding, Source validation or lifecycle; no generic file index replaces per-claim authority. |
+| **D-35** | The compact TOC remains persistent when expanded after scrolling: trigger and bounded independently scrollable list stay usable. Selection/close restores exact reading position and focus; offline supports native disclosure/fragments without script. | No open-state static-position workaround, offscreen trigger/list, duplicate navigation or obscured target/Source pane. |
+| **D-36** | Repository explanation describes the system across its important responsibilities, cooperation and representative end-to-end flows, independently of any Work. A short truthful scope and important unresolved failure remain near its heading; routine coverage/inventory/capability detail requires deliberate inspection. | A single task or one subsystem article is useful partial evidence, not repository-wide semantic acceptance; no claim of complete analysis from inventory counts. |
+| **D-37** | Publication boundaries and byte budgets serve useful grounded explanations. Evaluate missing causal bridges and repository breadth separately from UI density and resource checks; retain admitted proof. | No citation removal, speculative admission weakening, silent truncation or quality pass based on a safe compact screen. Authoring/admission changes require their own evidenced follow-up. |
+
+#### Reader evidence classification
+
+| Content | Default reader action | Deliberate supporting path |
+| --- | --- | --- |
+| Goal-grounded Work name, authored article/section heading, nonassertive label | No prominent inline Source action; a heading is navigational structure, not proof of its section | Exact admitted unit in Evidence index; independent name publication in record provenance |
+| Lead / synopsis | Quiet provenance in Evidence index by default; substantive mechanisms/results must also be explained with precise actions in the body | Exact original lead claim/range; absent body coverage is a semantic gap, never inferred from matching files |
+| Technical mechanism, cause, flow, condition or result | Clear adjacent Source action for each separately admitted range/purpose | Exact Source panel, original bytes, claim and return point |
+| Recorded test / Decision | Recorded authority and outcome visible in context; actual command/check and choice/reasons have their own supporting reading layer | Named verification report, original Decision and exact permitted cited ranges; never equate a record with code proof |
+| Optional provenance / diagnostics | Closed supporting disclosure | All admitted unit/evidence-key/citation bindings, original records, identities and lifecycle; exact CLI/MCP diagnostics remain available |
+
+Repeated Source actions in a subsection justify themselves by independent claims,
+ranges or reading purposes. The same file may support multiple distinct assertions:
+never deduplicate across claims or substitute one file-level authority. Exact duplicate
+actions within one unit may share one visible action only when their entire citation
+binding is identical; every original binding remains inspectable. No prose heuristics
+or CSS-only hiding may strand code. Heading roles cannot mechanically prove a heading
+nonassertive; a materially assertive heading/lead needs source-first semantic review
+and a precise body explanation. This UI delivery does not change v6 admission.
 
 ### 3.1 ‘취소선’ 의견의 처리
 
@@ -417,6 +450,15 @@ Vue·React 또는 다른 FE의 채택은 미확정이다. 실제 정상 콘텐�
 | **AC-29** | D-32 | Host/Operations/CLI/guarded HTTP | Correction, supersession, forgetting, documents and exact guarded confirmation keep actual callers and permission/lifetime negatives. Only request-scoped non-navigable guarded flow may remain. |
 | **AC-30** | D-31 | Repository/Work/citation/browser | Exact permitted cited bytes and origin/return survive; relevant components are explained contextually without a bulk Code catalog. |
 | **AC-31** | D-33 | Materialization/offline/publication | No ordinary privacy/health/document/bulk-code projection; script-free selected explanations and bounded Sources remain readable and publication revalidates dependencies. Exact-current small captures are technical controls, with human acceptance unassessed. |
+
+### Evidence hierarchy acceptance and routing
+
+| ID | Requirement | Owner / consumer | Actual check and unfinished condition |
+| --- | --- | --- | --- |
+| **AC-32** | D-34 | Projection/Privacy → live/offline Reader, `/citation` | Viewer `citation_reading`, evidence-priority controls and `document_navigation_browser.cjs`: quiet heading/lead, exact body and quiet provenance open/return, independent same-file claims, malicious labels, deletion/expiry/foreign refusal and identical bindings. Semantic classification and human usefulness remain pending review. |
+| **AC-33** | D-35 | Reader HTML/CSS/JS → live/no-JS/offline/browser | `document_navigation_browser.cjs`: real deep scroll before opening at 1440/1024/768/390/320, trigger/list geometry, internal scroll, 0/1/12 long mixed-language headings, nested details, selection/close/focus/Escape, Source/return, history/reload/resize and native fallback. Native zoom/assistive use stay not_observed unless actually tested. |
+| **AC-34** | D-36 | Repository Intelligence/Projection → repository Reader, CLI/MCP | Scope remains concise and visible; exact routine coverage moves under existing inspection; Workless/populated/no-article and important-failure controls. Source-first system-wide semantic review and real host breadth remain pending; presentation alone cannot pass AC-11. |
+| **AC-35** | D-37 | Projection/Versioning/Validation → authoring/admission and readers | Compare retained units/bindings/bytes and publication currentness before/after; inspect budget/publication effects without changing admission or invoking providers. Future causal authoring/admission work, independent semantic adequacy and human acceptance remain pending. |
 
 ### 13.2 반드시 구분해 평가할 세 부류
 
