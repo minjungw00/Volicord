@@ -196,3 +196,97 @@ actual human acceptance remain not_observed. Browser evidence binds parent
 `7fba0c3c` plus its recorded implementation diff and exact Viewer/driver hashes;
 it is not relabeled as a clean-candidate run. Final review delivery records its
 own current HEAD and exports without rewriting these original observations.
+
+
+## Independent follow-up at the actual reader HEAD
+
+A separate authorized campaign began at clean `bee453941077a50c61c78395101f3e2dfefc0c44`.
+Its inputs and every original/failed/revised attempt remain immutable under ignored
+`rebuild/.local/reader-independent-bee45394/`. This follow-up supersedes neither
+historical observations nor the original user rejection. The delivery manifest owns
+the exact final focused HEAD and executable hashes; source snapshots have separate
+identities: the complete baseline `rebuild/` archive (672 inventory files) and the
+complete Music Deck repository at `acc07330e1fc66a8b4a2fd15d15ae0a99f5782c4`
+(216 files). Neither archive is represented as the final implementation worktree.
+
+The Workless Project is `ee38dc872b765dc9623b49540d8a10a7`, analysis
+`31f9cd590dfbe4d6a63c5a7867259360deb7f2b0cfd84e17a756c90f85bdfb82`.
+Music Deck retains Project `0f92697b812656f62f53ee3e6d88b3b0`, original Work
+`76808dcabf7e044ecbaf5012add36222`, and all 22 original canonical identities;
+its fresh analysis is `4cacfabfb8eccb0c7414d13c2468e7889fbd0f0363894902b047885b146d9d8b`.
+No synthetic Work, Decision, Purpose, final result or historical execution was added.
+Fresh local Source copies have explicit 24-hour authorization; current interactive
+host authoring is authorized separately. External provider calls remain zero.
+Trusted automatic SessionStart/task-time capture was not observed.
+
+Two fresh, isolated evaluator contexts were explicitly authorized. The source-first
+agent inspected 43 large-repository and 63 small-repository files, freezing its
+private expectations before seeing generated articles. Expectation SHA-256 is
+`36e13344bb6864abf252e9e0fbb278a5d4538fff4ba0721f3d0b52ee2ac2e6d8`;
+freeze time is `2026-10-20T22:14:51.413345Z`. The author never received that key.
+The presentation-first agent saw only actual Product exports and answer-free tasks;
+its original response was sealed before opening independently chosen citations
+(SHA-256 `cbc3d9208b1ffa5adbe25fc13d0ded8a1a3fb7cc2b8335616c254a281e123506`).
+Later author revisions respond to disclosed findings and are feedback-guided,
+not fresh blinded first attempts. Agent assessment is not human acceptance.
+
+| Product measurement | Large first | Small first | Large revised final | Small revised final |
+| --- | ---: | ---: | ---: | ---: |
+| Compact preparation bytes | 110,872 | 50,626 | 110,872 | 50,626 |
+| Realization bytes | 27,319 | 29,095 | 39,553 | 40,106 |
+| Retained document bytes | 133,917 | 75,448 | 146,151 | 86,459 |
+| Authored UTF-8 text bytes | 4,135 | 3,893 | 6,295 | 5,761 |
+| Units / citation bindings / distinct Sources | 17 / 27 / 18 | 17 / 30 / 15 | 24 / 39 / 28 | 23 / 41 / 24 |
+
+The first publications were useful orientations but omitted independently supported
+runtime, inquiry/promotion, portable conflict, dispatch, artwork, player-selection,
+settings and lifecycle detail. One heading's authority claim had unrelated citations;
+two body claims exceeded their cited code. Revisions narrowed claims, replaced that
+heading's support, and investigated additional permitted Sources. A later guarded
+paragraph initially cited a region ending before transaction commit/dispatch; that
+attempt remains preserved, followed by a fresh observation covering the actual lines.
+Hashes alone did not discover or resolve these semantic failures.
+
+The same richer drafts were refused by the old 32,768-byte response bound (measured
+35,732 and 40,138 bytes). The responsibility-scoped repair `9c2dcc6c` raises only
+that ceiling to 40,960; retained 147,456, preparation 131,072, input 65,536, Source,
+page and MCP limits stay unchanged. The large final publication has only 1,305
+retained bytes remaining. This is a demonstrated admission improvement, not a causal
+model-quality experiment: research and wording also changed. Separate scoped
+publications were not implemented or assessed. Fingerprint-only Work name/summary/
+article readmissions are mechanical policy readmissions, not additional independent
+generations. The original paused Work and two historical passing Checkpoint reports
+remain distinct from two execution exit metadata records and zero retained original
+command bodies. Current code observations do not reconstruct those old executions.
+
+The presentation-first evaluator could explain both systems and distinguish fresh
+code, historical verification and pending result, but its independently selected
+static Source quotations omitted decisive later lines. Live selected-citation reads
+provide a bounded continuation; offline excerpts honestly remain partial. Broad
+whole-unit claim spans and broad observed ranges still limit citation precision;
+Learning/choice algorithms, platform setup and packaging depth remain incomplete.
+There is no claim of exhaustive semantics, unseen-case generalization or human approval.
+
+Actual concurrent citation/document reads reproduced SQLite BUSY/BUSY_RECOVERY
+misclassified as canonical corruption. Repair `2c3244a8` uses the existing read-only
+Store connection and its bounded contention policy for canonical/binding inspection;
+writer/authority/retention policies are unchanged. A public concurrent regression
+checks 18 mixed reads plus exact Source bytes and unchanged canonical/privacy state.
+
+Full populated MCP Overview is a controlled 256-KiB refusal. The earlier revised
+large scoped response fits at 257,335 compact UTF-8 bytes; the final richer large
+article also exceeds the scoped transport bound and is refused intact. The small
+scoped response fits (204,133 bytes in the recorded intermediate read). Public CLI
+`repository explain read` and Viewer are supported complete-reader alternatives;
+`repository explain evidence --analysis ID` retains explicit scoped diagnostics.
+This is a verified transport limit and an MCP usability limitation for this large
+article, not a successful scoped MCP read or permission to drop grounding/raise limits.
+
+The maintained scrolled-outline driver passes live/enhanced/native/no-JavaScript
+geometry and Source-return cases at 1440/1024/768/390/320 pixels, including 0/1/12
+long labels. Its first failed sandbox launch and subsequent permitted successful run
+remain separate. Native browser zoom and assistive technology are not observed.
+Package validation now rejects rehashed missing files, missing/percent-decoded fragment
+targets and duplicate IDs, in addition to existing containment, membership, credentials,
+private paths and hash rules. Final normal/degraded browser and archive receipts are
+candidate-bound in the delivery manifest, not inferred from older screenshots.

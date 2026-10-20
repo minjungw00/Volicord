@@ -12,6 +12,7 @@ import stat
 import struct
 import zipfile
 import zlib
+from urllib.parse import unquote
 
 # Same per-HTML ceiling as the maintained document publication format. The
 # package ceiling is a delivery guard, not a Product runtime/performance SLA.
@@ -147,12 +148,20 @@ class StaticHtml(HTMLParser):
         super().__init__()
         self.style = None
         self.text = []
+        self.ids = set()
+        self.targets = []
 
     def handle_starttag(self, tag, attrs):
         if tag in {'script', 'form', 'iframe', 'object', 'embed', 'base'}:
             raise ValueError('review HTML must be script-free and without live authority')
         for key, value in attrs:
             value = value or ''
+            if key == 'id' and value:
+                if value in self.ids:
+                    raise ValueError('duplicate review navigation target')
+                self.ids.add(value)
+            if (key in {'href', 'src'} or key.endswith(':href')) and value and not value.startswith('data:'):
+                self.targets.append(value)
             safe_text(value)
             if key == 'style': static_css(value)
             if key.startswith('on') or key in {'srcdoc', 'srcset', 'poster', 'background', 'formaction'} or (tag == 'meta' and key == 'http-equiv' and value.lower() == 'refresh'):
@@ -304,6 +313,23 @@ def inspect_members(members, expected_candidate=None):
     for name, sha in expected.items():
         relative(name)
         if hashlib.sha256(members[name]).hexdigest() != sha: raise ValueError('review package bytes/path changed')
+    # Hashes seal bytes, but do not establish that a portable reading path works.
+    # Resolve against the containing document, never the verifier's working tree.
+    documents = {}
+    for name, data in members.items():
+        if name.endswith('.html'):
+            parser = StaticHtml()
+            parser.feed(data.decode('utf-8')); parser.close()
+            documents[name] = parser
+    for name, document in documents.items():
+        for target in document.targets:
+            filename, separator, fragment = target.partition('#')
+            destination = (PurePosixPath(name).parent / relative(filename)).as_posix() if filename else name
+            if destination not in members:
+                raise ValueError('review navigation file is missing')
+            if separator and fragment:
+                if destination not in documents or unquote(fragment, errors='strict') not in documents[destination].ids:
+                    raise ValueError('review navigation fragment is missing')
     return manifest
 
 

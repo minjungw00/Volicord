@@ -105,7 +105,7 @@ class ReviewPackageTests(unittest.TestCase):
     def test_moved_package_verifies_and_tampered_added_or_missing_files_fail(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); original = root / 'original'; original.mkdir()
-            (original / 'index.html').write_text(package.reader_entry([case()]))
+            (original / 'index.html').write_bytes(HTML)
             (original / 'manifest.json').write_text(json.dumps({'candidate': 'a' * 40,
                 'human_acceptance': 'pending', 'files': {'index.html': package.digest(original / 'index.html')}}))
             moved = root / 'moved'; shutil.copytree(original, moved)
@@ -120,6 +120,48 @@ class ReviewPackageTests(unittest.TestCase):
             (moved / 'index.html').unlink()
             with self.assertRaisesRegex(ValueError, 'membership|role'):
                 package.verify_package(moved)
+
+    def test_hash_valid_package_rejects_missing_and_ambiguous_navigation(self):
+        for link, target in [
+            ('missing.html#claim', '<p id="claim">Claim</p>'),
+            ('#missing', '<p id="claim">Claim</p>'),
+            ('#claim', '<p id="claim">One</p><p id="claim">Two</p>'),
+            ('product/recorded-offline.html#missing', '<p id="claim">Claim</p>'),
+        ]:
+            with self.subTest(link=link), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / 'index.html').write_text(f'<!doctype html><a href="{link}">Read</a>{target}')
+                (root / 'product').mkdir()
+                (root / 'product/recorded-offline.html').write_text('<!doctype html>' + target)
+                manifest(root)
+                with self.assertRaisesRegex(ValueError, 'navigation|duplicate'):
+                    package.verify_package(root)
+
+    def test_navigation_resolves_relative_files_unicode_fragments_and_resources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'product').mkdir()
+            (root / 'index.html').write_text('<!doctype html><a href="product/recorded-offline.html#%EA%B7%BC%EA%B1%B0">Read</a>')
+            (root / 'product/recorded-offline.html').write_text('<!doctype html><p id="근거">Claim</p><a href="#근거">Return</a><img src="recorded-source-390.png">')
+            image = root / 'product/recorded-source-390.png'
+            image.write_bytes(png()); manifest(root)
+            package.verify_package(root)
+            image.unlink(); manifest(root)
+            with self.assertRaisesRegex(ValueError, 'navigation'):
+                package.verify_package(root)
+
+    def test_archive_rechecks_navigation_after_all_hashes_are_rebound(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            body = b'<!doctype html><a href="#missing">Broken but hash-valid</a>'
+            metadata = json.dumps({'candidate': 'a' * 40, 'files': {
+                'index.html': hashlib.sha256(body).hexdigest()}}).encode()
+            archive = root / 'review.zip'
+            with zipfile.ZipFile(archive, 'w') as output:
+                output.writestr('index.html', body)
+                output.writestr('manifest.json', metadata)
+            with self.assertRaisesRegex(ValueError, 'navigation'):
+                package.boundary.verify_archive(archive, 'a' * 40)
 
 
 class BoundaryAttackTests(unittest.TestCase):
@@ -289,7 +331,7 @@ class BuilderIdentityTests(unittest.TestCase):
     def test_actual_builder_archive_is_sanitized_bound_and_preserves_originals(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); observed = root / 'observed'; observed.mkdir()
-            (observed / 'recorded-offline.html').write_bytes(HTML)
+            (observed / 'recorded-offline.html').write_bytes(HTML + b'<section id="overview"></section><section id="repository-explanation"></section><section id="works"></section>')
             (observed / 'recorded-viewer.stderr').write_text('AWS_SECRET_ACCESS_KEY=synthetic-private-key')
             viewer = root / 'viewer'; viewer.write_text('synthetic executable identity only')
             cli = root / 'cli'; cli.write_text('synthetic CLI identity only')

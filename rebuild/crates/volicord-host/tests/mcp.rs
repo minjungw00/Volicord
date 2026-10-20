@@ -5341,12 +5341,19 @@ fn subsequent_host_interaction_cleans_an_expired_provider_preparation() {
         after_preparation.as_unix_micros() < expiration,
         "provider preparation must succeed while its request is still valid"
     );
-    let remaining = u64::try_from(expiration - after_preparation.as_unix_micros())
-        .expect("positive remaining preparation lifetime");
-    std::thread::sleep(
-        std::time::Duration::from_micros(remaining)
-            .saturating_add(std::time::Duration::from_millis(50)),
-    );
+    // Sleeping once is not evidence that the UTC expiry has been reached.
+    // Keep the original deadline; observe its actual precondition before asking
+    // the host to clean up, with a bounded monotonic guard for a stalled clock.
+    let wait_limit = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while SystemClock
+        .now()
+        .expect("clock during expiration wait")
+        .as_unix_micros()
+        < expiration
+        && std::time::Instant::now() < wait_limit
+    {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     assert!(
         SystemClock
             .now()
