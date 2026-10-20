@@ -5,10 +5,11 @@ const {spawn,spawnSync,execFileSync}=require('node:child_process');
 const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
 
 function reviewedFiles(directory){const files={};for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name);if(!fs.lstatSync(file).isFile()||!['.png','.html'].includes(path.extname(name)))continue;const bytes=fs.readFileSync(file);files[name]={sha256:require('node:crypto').createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};}return files;}
+const {createOutput,publication,documentMetrics}=require('./product_review_controls.cjs');
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const {chromium}=require(config.playwright);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
-const output=path.resolve(config.output);fs.mkdirSync(output,{recursive:true});
+const output=path.resolve(config.output);createOutput(output);
 const result={candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
  diff_sha256:hash(execFileSync('git',['diff','HEAD','--','rebuild'])),
  executable_sha256:hash(fs.readFileSync(config.viewer)),cli_sha256:hash(fs.readFileSync(config.cli)),
@@ -80,13 +81,17 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
   }
   const args=[config.cli,'--runtime',c.runtime,'--project',c.project,'--json'];
   const status=JSON.parse(command(c.key+'-status',[...args,'status','--language',c.language||'ko']));
+  r.publication=publication(c,status);
   fs.writeFileSync(path.join(output,c.key+'-public-status.json'),JSON.stringify(status,null,2));
   const offlinePath=path.join(output,c.key+'-offline.html');
   command(c.key+'-export',[...args,'viewer','export','--output',offlinePath,'--language',c.language||'ko','--locale',c.locale||'ko']);
-  r.http_reads=[];
+  r.http_reads=[];r.source_reads=[];const sourceReads=[];
   const server=await serve(c);const context=await browser.newContext();const errors=[],external=[];
   context.on('request',q=>{if(new URL(q.url()).origin!==new URL(server.base).origin)external.push(q.url())});
-  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+  context.on('response',response=>{if(new URL(response.url()).pathname==='/citation')sourceReads.push((async()=>{const body=await response.body();r.source_reads.push({status:response.status(),bytes:body.length});})());});
+  const page=await context.newPage();const cpu=await context.newCDPSession(page);await cpu.send('Performance.enable');
+  async function taskCpu(){return (await cpu.send('Performance.getMetrics')).metrics.find(m=>m.name==='TaskDuration').value*1000;}
+  page.on('pageerror',e=>errors.push(e.message));
   try {
    for(const view of ['overview','work','repository'])for(let attempt=0;attempt<3;attempt++){
     const started=performance.now(),response=await context.request.get(server.base+'?view='+view);
@@ -132,7 +137,9 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
    assert.equal(await page.locator('.tools-menu,.inspection-query').count(),0);
    assert.equal(await page.locator('.masthead nav a').count(),3);
    await capture(page,c,'overview',width);
-   await page.locator('.masthead a[href*="view=repository"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
+   const clickStarted=performance.now(),cpuBefore=await taskCpu();
+   await page.locator('.masthead a[href*="view=repository"]').click();
+   row.repository_cost={navigation_ms:performance.now()-clickStarted,browser_task_ms:(await taskCpu())-cpuBefore,...await page.evaluate(documentMetrics)};assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
    fs.writeFileSync(path.join(output,`${c.key}-repository-${width}.html`),await page.content());await capture(page,c,'repository',width);
    row.source=await sourceJourney(page,c,width);
    await page.locator('.masthead a[href*="view=work"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');await capture(page,c,'works',width);
@@ -180,7 +187,7 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
   const host=await context.request.get(server.base,{headers:{Host:'foreign.invalid'}});assert.equal(host.status(),421);
   const post=await context.request.post(server.base+'memory/context/correct',{headers:{Origin:'http://foreign.invalid'},data:'x=1'});assert.equal(post.status(),404);
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-  }finally {await context.close();r.listener=await server.stop();}
+  }finally {await Promise.all(sourceReads);await context.close();r.listener=await server.stop();}
   const offline=await browser.newContext({javaScriptEnabled:false});await offline.setOffline(true);const p=await offline.newPage();
   for(const width of [1440,1024,768,390,320]){await p.setViewportSize({width,height:1000});await p.goto(pathToFileURL(offlinePath).href);
    assert.equal(await p.locator('script,form,[data-citation-url]').count(),0);

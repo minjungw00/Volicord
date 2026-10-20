@@ -299,3 +299,21 @@ OCR or human approval. The old `package.py` remains a **private evidence copier*
 its complete observation trees and historical archives are not shareable delivery.
 Retained original campaigns are not rewritten or deleted. Share the new verified
 ZIP, not the private parent directory that also holds runtime and raw evidence.
+
+Current review configurations may declare `expected_repository_state` per case.
+The driver checks the public selected-Project publication before browsing; a
+populated positive and a Workless positive must each declare `current`. A
+`normal_work` also requires its own current article, not merely a current card.
+These lifecycle checks are admission controls, not a semantic oracle. Keep
+source-derived expectations sealed separately before reading output; never pass
+answers or reference prose to generation or the reader entry page. If one agent
+inspects both Source and presentation, report dependent evaluation and leave
+human comprehension/acceptance unobserved.
+
+Each review requires a new output directory, even after failure. Repository
+navigation records browser TaskDuration CPU, elapsed automation navigation, DOM
+and code/token counts separately from HTTP bytes/time. Source response counts and
+bytes include browser requests and the driver's explicit byte-verification reads;
+they are not a count of filesystem opens. CPU is Chromium task time, not server
+CPU or human response time. `node --test product_review_controls_self_test.cjs`
+checks admission and original-output preservation without generating any article.
