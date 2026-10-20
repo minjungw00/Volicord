@@ -895,6 +895,14 @@ fn clone_row(
     table: &str,
     changes: &[(&str, rusqlite::types::Value)],
 ) -> Result {
+    clone_row_from(db, table, changes, None)
+}
+fn clone_row_from(
+    db: &rusqlite::Connection,
+    table: &str,
+    changes: &[(&str, rusqlite::types::Value)],
+    template: Option<(&str, &[u8])>,
+) -> Result {
     let columns = db
         .prepare(&format!("PRAGMA table_info({table})"))?
         .query_map([], |r| r.get::<_, String>(1))?
@@ -909,9 +917,16 @@ fn clone_row(
         })
         .collect::<Vec<_>>()
         .join(",");
+    let mut parameters = changes.iter().map(|(_, v)| v.clone()).collect::<Vec<_>>();
+    let filter = if let Some((column, id)) = template {
+        parameters.push(rusqlite::types::Value::Blob(id.to_vec()));
+        format!(" WHERE {column}=?{}", parameters.len())
+    } else {
+        String::new()
+    };
     db.execute(
-        &format!("INSERT INTO {table} SELECT {selects} FROM {table} LIMIT 1"),
-        rusqlite::params_from_iter(changes.iter().map(|(_, v)| v)),
+        &format!("INSERT INTO {table} SELECT {selects} FROM {table}{filter} LIMIT 1"),
+        rusqlite::params_from_iter(parameters),
     )?;
     Ok(())
 }
@@ -967,7 +982,7 @@ fn profile_inspection_related_scaling() -> Result {
                 let work = control.goals["older"];
                 for i in 1..=n {
                     let wid = ContextItemId::from_bytes((i as u128).to_be_bytes());
-                    clone_row(
+                    clone_row_from(
                         &db,
                         "context_items",
                         &[
@@ -975,11 +990,36 @@ fn profile_inspection_related_scaling() -> Result {
                             ("role", Sql::Text("goal".into())),
                             ("statement", Sql::Text(format!("Scale work {i:04} 한글"))),
                         ],
+                        Some(("id", work.as_bytes())),
+                    )?;
+                    clone_row_from(
+                        &db,
+                        "sources",
+                        &[
+                            ("id", Sql::Blob((i as u128).to_be_bytes().to_vec())),
+                            ("locator", Sql::Text(format!("Scale work {i:04} 한글"))),
+                        ],
+                        Some(("id", source.as_bytes())),
                     )?;
                     clone_row(
                         &db,
-                        "sources",
-                        &[("id", Sql::Blob((i as u128).to_be_bytes().to_vec()))],
+                        "context_item_sources",
+                        &[
+                            ("context_item_id", Sql::Blob(wid.as_bytes().to_vec())),
+                            ("source_id", Sql::Blob((i as u128).to_be_bytes().to_vec())),
+                        ],
+                    )?;
+                    let mut encoded_sources = 1u64.to_be_bytes().to_vec();
+                    encoded_sources.extend_from_slice(wid.as_bytes());
+                    clone_row_from(
+                        &db,
+                        "context_item_revisions",
+                        &[
+                            ("context_item_id", Sql::Blob(wid.as_bytes().to_vec())),
+                            ("statement", Sql::Text(format!("Scale work {i:04} 한글"))),
+                            ("source_basis", Sql::Blob(encoded_sources)),
+                        ],
+                        Some(("context_item_id", work.as_bytes())),
                     )?;
                     for j in 0..4 {
                         let id = ((i * 4 + j) as u128).to_be_bytes();
@@ -994,24 +1034,14 @@ fn profile_inspection_related_scaling() -> Result {
                                 ),
                             ],
                         )?;
-                        // Give every Checkpoint a permitted Source and Question/Decision edges.
-                        for table in [
+                        clone_row(
+                            &db,
                             "checkpoint_source_relations",
-                            "checkpoint_decisions",
-                            "checkpoint_questions",
-                        ] {
-                            let count: usize =
-                                db.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| {
-                                    r.get(0)
-                                })?;
-                            if count > 0 {
-                                clone_row(
-                                    &db,
-                                    table,
-                                    &[("checkpoint_id", Sql::Blob(id.to_vec()))],
-                                )?;
-                            }
-                        }
+                            &[
+                                ("checkpoint_id", Sql::Blob(id.to_vec())),
+                                ("relation_kind", Sql::Text("supported_by".into())),
+                            ],
+                        )?;
                     }
                 }
                 for (store, table) in [
@@ -1038,6 +1068,8 @@ fn profile_inspection_related_scaling() -> Result {
                         )?;
                     }
                 }
+                // A real owner mutation validates the complete seeded canonical state.
+                f.source(project, "Post-seed owner validity control")?;
                 std::fs::write(path.join("project.json"), serde_json::to_vec(&project)?)?;
                 std::fs::write(
                     path.join("runtime-path.json"),
@@ -1093,7 +1125,7 @@ fn profile_inspection_related_scaling() -> Result {
             ] {
                 if std::env::var("VOLICORD_INSPECTION_PROFILE_CLASS")
                     .ok()
-                    .is_some_and(|v| v != class)
+                    .is_some_and(|v| !v.split(',').any(|c| c == class))
                 {
                     continue;
                 }
@@ -1174,5 +1206,405 @@ fn profile_inspection_large_html() -> Result {
         );
     }
     assert_eq!(before, f.ops().canonical_basis(project)?);
+    Ok(())
+}
+
+#[test]
+fn thousand_goal_pages_have_exact_independent_counts_and_typed_overlapping_source_ids() -> Result {
+    use rusqlite::types::Value as Sql;
+    let f = Fixture::new()?;
+    f.goal(f.project, "Independent seed Goal")?;
+    let db = rusqlite::Connection::open(f.ops().layout().canonical_store())?;
+    let mut expected = Vec::new();
+    for i in 1u128..=1000 {
+        let id = i.to_be_bytes();
+        clone_row(
+            &db,
+            "context_items",
+            &[
+                ("id", Sql::Blob(id.to_vec())),
+                ("role", Sql::Text("goal".into())),
+                (
+                    "statement",
+                    Sql::Text(format!("Scale admitted {i:04} 한글")),
+                ),
+            ],
+        )?;
+        clone_row(&db, "sources", &[("id", Sql::Blob(id.to_vec()))])?;
+        clone_row(
+            &db,
+            "context_item_sources",
+            &[
+                ("context_item_id", Sql::Blob(id.to_vec())),
+                ("source_id", Sql::Blob(id.to_vec())),
+            ],
+        )?;
+        expected.push(ContextItemId::from_bytes(id).to_string());
+    }
+    let first = f.page("class=work&q=Scale%20admitted&limit=20")?;
+    let basis = first["page"]["fingerprint"].as_str().ok_or("basis")?;
+    let mut actual = Vec::new();
+    let mut offset = 0usize;
+    loop {
+        let p = f.page(&format!(
+            "class=work&q=Scale%20admitted&limit=20&offset={offset}&basis={basis}"
+        ))?;
+        let rows = p["page"]["rows"].as_array().ok_or("rows")?;
+        assert_eq!(p["page"]["permitted_match_count"], 1000);
+        assert_eq!(p["page"]["omitted_match_count"], 1000 - offset - rows.len());
+        for row in rows {
+            assert_eq!(row["role"], "goal");
+            assert_eq!(row["state"], "current");
+            actual.push(row["identity"].as_str().ok_or("identity")?.to_owned());
+            let relation = &row["relationships"][0];
+            assert_eq!(relation["class"], "source");
+            assert_eq!(relation["identity"], row["identity"]);
+            assert_eq!(relation["relation"], "supported_by");
+        }
+        if let Some(next) = p["page"]["next_offset"].as_u64() {
+            offset = next as usize;
+        } else {
+            break;
+        }
+    }
+    expected.sort();
+    assert_eq!(actual, expected);
+    assert_eq!(
+        f.page("class=work&q=%ED%95%9C%EA%B8%80")?["page"]["permitted_match_count"],
+        1000
+    );
+    assert_eq!(
+        f.page("class=source&q=Scale%20admitted")?["page"]["permitted_match_count"],
+        0
+    );
+    let id = &expected[42];
+    let reverse = f.page(&format!("class=source&id={id}"))?;
+    assert_eq!(
+        reverse["page"]["rows"][0]["relationships"][0]["class"],
+        "work"
+    );
+    assert_eq!(
+        reverse["page"]["rows"][0]["relationships"][0]["identity"],
+        *id
+    );
+    let source_before = f.page("class=source")?;
+    db.execute(
+        "UPDATE sources SET locator='hidden-source-body-replacement' WHERE id=?1",
+        [source_id(id).as_bytes().as_slice()],
+    )?;
+    assert_eq!(source_before, f.page("class=source")?);
+    assert_eq!(
+        f.page("class=source&q=hidden-source-body-replacement")?["page"]["permitted_match_count"],
+        0
+    );
+    assert!(f
+        .get(&format!("class=context&id={id}"))?
+        .starts_with("HTTP/1.1 404"));
+    let detail = f.page(&format!("class=work&id={id}&revision=1&field=statement"))?;
+    assert!(detail["detail"]["chunk"]
+        .as_str()
+        .ok_or("chunk")?
+        .contains("Scale admitted"));
+    assert!(f
+        .get(&format!("class=work&q={}", "%ED%95%9C".repeat(43)))?
+        .starts_with("HTTP/1.1 400"));
+    assert_eq!(
+        f.page(&format!("class=work&q={}ab", "%ED%95%9C".repeat(42)))?["page"]
+            ["permitted_match_count"],
+        0
+    );
+    assert!(f
+        .get(&format!(
+            "class=work&limit=20&offset=20&basis={}",
+            "f".repeat(64)
+        ))?
+        .starts_with("HTTP/1.1 409"));
+    let (_, cost) = f.ops().inspect_project_records_profiled(
+        f.project,
+        &volicord_operations::InspectionQuery {
+            limit: 20,
+            ..Default::default()
+        },
+    )?;
+    assert_eq!(cost.visited_rows, 1001);
+    assert_eq!(cost.matched_rows, 1001);
+    assert_eq!(cost.retained_rows, 20);
+    Ok(())
+}
+
+fn relation_pages(f: &Fixture, class: &str, id: &str) -> Result<Vec<Value>> {
+    let first = f.page(&format!("class={class}&id={id}"))?;
+    let basis = first["page"]["fingerprint"].as_str().ok_or("basis")?;
+    let mut all = Vec::new();
+    let mut offset = 0;
+    loop {
+        let p = f.page(&format!(
+            "class={class}&id={id}&relationships={offset}&basis={basis}"
+        ))?;
+        let row = &p["page"]["rows"][0];
+        let relationships = row["relationships"].as_array().ok_or("relationships")?;
+        assert!(relationships.len() <= 8);
+        all.extend(relationships.iter().cloned());
+        if let Some(next) = row["next_relationship_offset"].as_u64() {
+            assert!(next > offset);
+            offset = next;
+        } else {
+            break;
+        }
+    }
+    Ok(all)
+}
+
+#[test]
+fn dense_checkpoint_relations_have_exact_pages_and_separate_recorded_target_revisions() -> Result {
+    use rusqlite::types::Value as Sql;
+    use std::collections::BTreeSet;
+    let (control, f) = rich()?;
+    let work = control.goals["older"];
+    let before = f.ops().canonical_basis(f.project)?;
+    let mut expected: BTreeSet<_> = before
+        .checkpoint_history
+        .iter()
+        .filter(|c| c.work_item_id == Some(work))
+        .map(|c| c.id.to_string())
+        .collect();
+    let db = rusqlite::Connection::open(f.ops().layout().canonical_store())?;
+    for i in 1u128..=256 {
+        let id = i.to_be_bytes();
+        clone_row(
+            &db,
+            "checkpoints",
+            &[
+                ("id", Sql::Blob(id.to_vec())),
+                ("work_item_id", Sql::Blob(work.as_bytes().to_vec())),
+            ],
+        )?;
+        clone_row(
+            &db,
+            "checkpoint_source_relations",
+            &[
+                ("checkpoint_id", Sql::Blob(id.to_vec())),
+                ("relation_kind", Sql::Text("supported_by".into())),
+            ],
+        )?;
+        expected.insert(volicord_context::CheckpointId::from_bytes(id).to_string());
+    }
+    let relationships = relation_pages(&f, "work", &work.to_string())?;
+    let actual: BTreeSet<_> = relationships
+        .iter()
+        .filter(|r| r["relation"] == "referenced_by_records_state_of")
+        .map(|r| r["identity"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(actual, expected);
+    assert!(!relationships
+        .iter()
+        .any(|r| r["identity"] == control.goals["same_title"].to_string()));
+    for cp in &before.checkpoint_history {
+        if cp.open_questions.is_empty() {
+            continue;
+        }
+        let links = relation_pages(&f, "checkpoint", &cp.id.to_string())?;
+        for recorded in &cp.open_questions {
+            let link = links
+                .iter()
+                .find(|l| {
+                    l["relation"] == "open_question"
+                        && l["identity"] == recorded.question_id.to_string()
+                })
+                .ok_or("Question link")?;
+            let current = before
+                .active_questions
+                .iter()
+                .chain(&before.terminal_question_history)
+                .find(|q| q.id == recorded.question_id)
+                .ok_or("Question")?;
+            assert_eq!(link["recorded_revision"], recorded.revision);
+            assert_eq!(link["revision"], current.revision);
+        }
+    }
+    let first = f.page(&format!("class=work&id={work}"))?;
+    let fingerprint = first["page"]["fingerprint"].as_str().ok_or("basis")?;
+    let auth = f.source(f.project, "Forget only this checkpoint")?;
+    let target = volicord_context::CheckpointId::from_bytes(1u128.to_be_bytes());
+    f.ops()
+        .forget_record(f.project, CanonicalRecordId::Checkpoint(target), auth)?;
+    let stale = f.get(&format!(
+        "class=work&id={work}&relationships=8&basis={fingerprint}"
+    ))?;
+    assert!(stale.starts_with("HTTP/1.1 409"));
+    assert!(f
+        .get(&format!(
+            "class=work&id={work}&relationships=100000&basis={fingerprint}"
+        ))?
+        .starts_with("HTTP/1.1 409"));
+    Ok(())
+}
+
+#[test]
+fn foreign_candidate_and_derived_envelopes_cannot_enter_counts_metadata_or_fingerprints() -> Result
+{
+    use rusqlite::types::Value as Sql;
+    let f = Fixture::new()?;
+    let goal = f.goal(f.project, "Own Work identity")?;
+    let source = f.source(f.project, "Private source marker")?;
+    f.candidate(source, "Permitted summary")?;
+    f.derived(source, "private-derived-body")?;
+    let foreign = f
+        .ops()
+        .initialize_project("Foreign Project", None)?
+        .project
+        .id;
+    for (store, class, table) in [
+        (
+            f.ops().layout().candidate_store(),
+            "candidate",
+            "candidates",
+        ),
+        (
+            f.ops().layout().privacy_store(),
+            "derived",
+            "managed_derived",
+        ),
+    ] {
+        let before = f.page(&format!("class={class}"))?;
+        let db = rusqlite::Connection::open(store)?;
+        let raw: String = db.query_row(
+            &format!("SELECT record_json FROM {table} LIMIT 1"),
+            [],
+            |r| r.get(0),
+        )?;
+        let mut record: Value = serde_json::from_str(&raw)?;
+        // Adversarial inconsistent envelope: SQL partition alone is not record authority.
+        record["project_id"] = json!(foreign);
+        record["id"] = json!(goal);
+        clone_row(
+            &db,
+            table,
+            &[
+                ("id", Sql::Blob(goal.as_bytes().to_vec())),
+                ("record_json", Sql::Text(record.to_string())),
+            ],
+        )?;
+        assert_eq!(before, f.page(&format!("class={class}"))?);
+        assert!(f
+            .get(&format!("class={class}&id={goal}"))?
+            .starts_with("HTTP/1.1 404"));
+        if class == "derived" {
+            record["purpose"] = json!("foreign-secret-value");
+        }
+        if class == "candidate" {
+            record["content"]["bounded_summary"] = json!("foreign-secret-value");
+        } else {
+            record["content"] = json!("foreign-secret-value");
+        }
+        db.execute(
+            &format!("UPDATE {table} SET record_json=?1 WHERE id=?2"),
+            rusqlite::params![record.to_string(), goal.as_bytes().as_slice()],
+        )?;
+        assert_eq!(before, f.page(&format!("class={class}"))?);
+        assert_eq!(
+            f.page(&format!("class={class}&q=foreign-secret-value"))?["page"]
+                ["permitted_match_count"],
+            0
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn concurrent_exact_field_and_relationship_reads_share_correction_and_forgetting_coordination(
+) -> Result {
+    use std::sync::{Arc, Barrier};
+    use volicord_operations::{EvidenceDetailRequest, InspectionFailure, InspectionQuery};
+    let f = Fixture::new()?;
+    let goal = f.goal(f.project, "Concurrent original statement")?;
+    let auth = f.source(f.project, "Correct then forget this Goal")?;
+    let first = f
+        .ops()
+        .inspect_project_records(f.project, &InspectionQuery::default())?;
+    let query = InspectionQuery {
+        identity: Some(goal.to_string()),
+        expected_fingerprint: Some(first.fingerprint),
+        ..Default::default()
+    };
+    let barrier = Arc::new(Barrier::new(2));
+    let worker_barrier = barrier.clone();
+    let ops = LocalOperations::new(f.ops().layout().clone());
+    let project = f.project;
+    let worker_query = query.clone();
+    let worker = std::thread::spawn(move || {
+        worker_barrier.wait();
+        ops.inspect_project_record_field(
+            project,
+            &worker_query,
+            &EvidenceDetailRequest {
+                record_kind: "context_item".into(),
+                record_id: goal.to_string(),
+                revision: 1,
+                field: "statement".into(),
+                offset: 0,
+                expected_fingerprint: None,
+                work_item_id: None,
+            },
+        )
+    });
+    barrier.wait();
+    f.ops().correct_context_item(
+        project,
+        goal,
+        ContextItemCorrectionDraft {
+            expected_revision: 1,
+            kind: CorrectionKind::Expression,
+            corrected_statement: "Concurrent original statement.".into(),
+            user_authorization_source_id: auth,
+        },
+    )?;
+    match worker.join().map_err(|_| "read thread panic")? {
+        Ok((page, detail)) => {
+            assert_eq!(page.rows[0].revision, Some(1));
+            assert!(detail["chunk"]
+                .as_str()
+                .ok_or("chunk")?
+                .contains("Concurrent original statement"));
+        }
+        Err(error) => assert_eq!(error, InspectionFailure::Changed),
+    }
+    assert_eq!(
+        f.ops()
+            .inspect_project_records(project, &query)
+            .unwrap_err(),
+        InspectionFailure::Changed
+    );
+    let current = f
+        .ops()
+        .inspect_project_records(project, &InspectionQuery::default())?;
+    let query = InspectionQuery {
+        identity: Some(goal.to_string()),
+        expected_fingerprint: Some(current.fingerprint),
+        ..Default::default()
+    };
+    let worker_query = query.clone();
+    let worker_barrier = barrier.clone();
+    let ops = LocalOperations::new(f.ops().layout().clone());
+    let worker = std::thread::spawn(move || {
+        worker_barrier.wait();
+        ops.inspect_record_relationships(project, &worker_query, 0)
+    });
+    barrier.wait();
+    f.ops()
+        .forget_record(project, CanonicalRecordId::ContextItem(goal), auth)?;
+    match worker.join().map_err(|_| "relationship thread panic")? {
+        Ok(page) => assert_eq!(page.rows[0].revision, Some(2)),
+        Err(error) => assert_eq!(error, InspectionFailure::Changed),
+    }
+    assert_eq!(
+        f.ops()
+            .inspect_project_records(project, &query)
+            .unwrap_err(),
+        InspectionFailure::Changed
+    );
+    assert!(f
+        .get(&format!("class=work&id={goal}"))?
+        .starts_with("HTTP/1.1 404"));
     Ok(())
 }
