@@ -3,7 +3,7 @@
 The Viewer has precisely three reading destinations: **Overview / Repository
 explanation / Work**. The brand is left and the single primary navigation is
 right. Read-only status sits outside navigation. The maintained contract is
-[D-01–D-33 / AC-01–AC-31](../../docs/design/reader-experience-design.md).
+[D-01–D-37 / AC-01–AC-35](../../docs/design/reader-experience-design.md).
 
 ```sh
 volicord viewer open --view overview
@@ -89,3 +89,11 @@ navigation, grounded reader, citation, scoped checks, publication and executable
 HTTP tests; Operations inspection/memory/documents; Host guarded and explanation
 callers. Actual browser and script-free captures support technical assessment.
 Historical UI output was rejected; new samples remain unassessed by the user.
+
+The compact native TOC stays sticky while expanded, with bounded internal scrolling
+and script-free fragment offsets. Heading/lead citations stay in the optional
+evidence index; technical claims retain adjacent exact Source actions. Independent
+summary provenance remains available when its article is unavailable. Routine
+repository coverage is in supporting records; concise scope and important analysis
+failures remain visible. These presentation rules change neither v6 admission nor
+Source authority, and do not establish repository-wide semantic or human acceptance.

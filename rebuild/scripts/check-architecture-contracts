@@ -1271,7 +1271,7 @@ def self_test() -> int:
         temporary_root = Path(temporary)
         base = temporary_root / "positive"
         fixture_tracked = copy_self_test_fixture(base, tracked)
-        positive_errors = check_repository(base, fixture_tracked)
+        positive_errors = check_repository(base, fixture_tracked) + check_reader_experience(base)
         if positive_errors:
             raise AssertionError("positive fixture failed: " + positive_errors[0])
 
@@ -1523,7 +1523,7 @@ def self_test() -> int:
         cases += (
             ("explanation-format-drift", lambda root, _: replace_once(
                 root / DESIGN_DIRECTORY / "projections-and-documents.md",
-                "exact-current `volicord_explanation` version 4",
+                "exact-current `volicord_explanation` version 6",
                 "exact-current `volicord_explanation` version 0"),
              "current explanation format disagrees with writer"),
             ("mandatory-explanation-roles", lambda root, _: (
@@ -1537,12 +1537,21 @@ def self_test() -> int:
             "`volicord_repository_source_observation`, exact current version 2;",
             "`volicord_repository_source_observation`, exact current version 0;"),
             "repository Source copy format disagrees with writer"),)
+        cases += (
+            ("missing-reader-evidence-decision", lambda root, _: replace_once(
+                root / DESIGN_DIRECTORY / "reader-experience-design.md",
+                "**D-37**", "D-37"), "reader experience missing D-37"),
+            ("reader-evidence-acceptance-routing", lambda root, _: replace_once(
+                root / DESIGN_DIRECTORY / "reader-experience-design.md",
+                "| **AC-35** | D-37 |", "| **AC-35** | D-36 |"),
+             "reader evidence acceptance mapping invalid: AC-35"),
+        )
         for name, mutate, expected_error in cases:
             case_root = temporary_root / name
             shutil.copytree(base, case_root)
             case_tracked = list(fixture_tracked)
             mutate(case_root, case_tracked)
-            errors = check_repository(case_root, case_tracked)
+            errors = check_repository(case_root, case_tracked) + check_reader_experience(case_root)
             if not any(expected_error in error for error in errors):
                 raise AssertionError(
                     f"negative case {name} did not report {expected_error!r}; got: {errors}"

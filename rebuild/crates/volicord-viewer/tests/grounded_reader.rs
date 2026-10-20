@@ -1358,7 +1358,16 @@ fn representative_production_code_preserves_grounding_across_public_readers(
         .iter()
         .zip(f["expected_sources"].as_array().ok_or("sources")?)
     {
-        assert_eq!(excerpt.text, expected["text"].as_str().ok_or("text")?);
+        let original = expected["text"].as_str().ok_or("text")?;
+        assert!(!excerpt.text.is_empty() && excerpt.text.len() <= 4096);
+        assert!(
+            original.starts_with(&excerpt.text),
+            "initial bytes must be an exact bounded prefix"
+        );
+        assert_eq!(
+            excerpt.displayed_end_byte,
+            excerpt.citation.start_byte + excerpt.text.len()
+        );
         assert_eq!(
             excerpt.citation.start_byte,
             expected["start_byte"].as_u64().ok_or("start")? as usize
@@ -1367,7 +1376,10 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             excerpt.citation.start_line,
             expected["start_line"].as_u64().ok_or("line")? as usize
         );
-        assert_eq!(excerpt.omitted_utf8_bytes, 0);
+        assert_eq!(
+            excerpt.omitted_utf8_bytes,
+            original.len() - excerpt.text.len()
+        );
     }
     let identity = &answers
         .provenance
@@ -1433,8 +1445,42 @@ fn representative_production_code_preserves_grounding_across_public_readers(
     ViewerAdapter::new(ops(&f)?).export_snapshot(&request(&f)?, &snapshot)?;
     let snapshot = fs::read_to_string(snapshot)?;
     assert!(snapshot.contains(identity));
-    for expected in f["expected_sources"].as_array().ok_or("sources")? {
+    for (citation_index, expected) in f["expected_sources"]
+        .as_array()
+        .ok_or("sources")?
+        .iter()
+        .enumerate()
+    {
         let source = expected["text"].as_str().ok_or("text")?;
+        let mut selected = volicord_operations::ExplanationCitationSelection {
+            realization_fingerprint: identity.clone(),
+            unit_index: 1,
+            citation_index,
+            offset: 0,
+        };
+        let mut complete = String::new();
+        loop {
+            let read = operations.read_explanation_citation(
+                project(&f)?,
+                ExplanationSubject::Work(work(&f)?),
+                "en",
+                &selected,
+            )?;
+            let chunk = read["chunk"]["text"].as_str().ok_or("selected bytes")?;
+            assert!(!chunk.is_empty() && chunk.len() <= 4096);
+            complete.push_str(chunk);
+            match read["chunk"]["next_offset"].as_u64() {
+                Some(offset) => {
+                    assert!(offset as usize > selected.offset);
+                    selected.offset = offset as usize;
+                }
+                None => break,
+            }
+        }
+        assert_eq!(
+            complete, source,
+            "full original Source proof remains reachable across bounded reads"
+        );
         let lines = format!(
             "{}:{}–{}",
             f["path"].as_str().ok_or("path")?,
@@ -1442,7 +1488,17 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             expected["end_line"]
         );
         for output in [&page, &snapshot] {
-            assert!(code_texts(output).iter().any(|s| s == source));
+            let excerpt = answers
+                .source_excerpts
+                .iter()
+                .find(|e| {
+                    e.citation.source_id == expected["source_id"].as_str().unwrap_or_default()
+                })
+                .ok_or("selected initial excerpt")?;
+            assert!(code_texts(output).iter().any(|s| s == &excerpt.text));
+            if excerpt.omitted_utf8_bytes > 0 {
+                assert!(output.contains("Omitted UTF-8 bytes in this cited range"));
+            }
             assert!(output.contains(&lines));
             assert!(output.contains(expected["source_id"].as_str().ok_or("Source")?));
         }

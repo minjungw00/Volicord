@@ -169,7 +169,7 @@ key. A stale realization, generation/authorization failure, selection failure an
 genuinely absent information are distinct outcomes.
 
 The current experience requirements are [Reader experience design](reader-experience-design.md),
-D-01–D-33 / AC-01–AC-31. One right-aligned navigation includes precisely Overview,
+D-01–D-37 / AC-01–AC-35. One right-aligned navigation includes precisely Overview,
 Repository explanation and Work. The brand is left;
 read-only status belongs outside navigation and describes the actual surface.
 Overview shows PROJECT OVERVIEW, the actual canonical Project name, canonical

@@ -400,11 +400,23 @@ fn reader_citations(
     answers: &ReaderAnswers<'_>,
     index: usize,
 ) {
+    reader_citation_actions(html, r, answers, index, false);
+}
+fn reader_citation_actions(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    index: usize,
+    unique: bool,
+) {
     if answers.prose[index].citations.is_empty() {
         return;
     }
     html.push_str("<div class=\"evidence-actions\">");
     for (n, c) in answers.prose[index].citations.iter().enumerate() {
+        if unique && answers.prose[index].citations[..n].contains(c) {
+            continue;
+        }
         let label = format!(
             "{} · {} {} ↗ · {}:{}–{}",
             citation_use_label(r.locale, c.use_kind),
@@ -417,6 +429,23 @@ fn reader_citations(
         html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{}\" title=\"{}\">{} {} ↗</a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&label),escape(&label),text(r.locale,"Source","근거"),n+1));
     }
     html.push_str("</div>");
+}
+
+/// Visibility is a reading hierarchy, never a change to admitted dependencies.
+/// All units keep their original actions in the deliberate evidence index.
+fn reader_inline_citations(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    index: usize,
+) {
+    if matches!(
+        answers.prose[index].question.as_str(),
+        "Heading" | "SectionHeading" | "Synopsis"
+    ) {
+        return;
+    }
+    reader_citation_actions(html, r, answers, index, true);
 }
 
 fn document_anchor(answers: &ReaderAnswers<'_>, section: &str) -> String {
@@ -442,7 +471,7 @@ fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>
         "p"
     };
     html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
-    reader_citations(html, r, answers, index);
+    reader_inline_citations(html, r, answers, index);
     html.push_str(&format!("</{outer}>"));
 }
 
@@ -504,6 +533,17 @@ fn render_card_publication(
     for index in 0..answers.prose.len() {
         reader_unit(html, r, answers, index);
     }
+    html.push_str(&format!(
+        "<details class=\"publication-evidence\"><summary>{}</summary>",
+        text(r.locale, "Summary provenance", "요약의 근거")
+    ));
+    for index in 0..answers.prose.len() {
+        reader_citations(html, r, answers, index);
+    }
+    html.push_str(&format!(
+        "<pre>{}</pre></details>",
+        escape(&format!("{:?}", answers.provenance))
+    ));
     explanation_diagnostic(html, r, answers);
     html.push_str("</section>");
 }
@@ -612,7 +652,7 @@ fn render_document_body(
         .find(|(_, a)| a.question == "Heading")
     {
         html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><h1 data-title-basis=\"generated-interpretation\" data-question=\"Heading\" lang=\"{}\" data-content-language=\"{}\">{}</h1></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&title.text)));
-        reader_citations(html, r, answers, index);
+        reader_inline_citations(html, r, answers, index);
     } else if let Some(name) = answers
         .work_name
         .as_ref()
@@ -641,7 +681,7 @@ fn render_document_body(
         .filter(|(_, a)| a.question == "Synopsis")
     {
         html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><p class=\"lead\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&lead.text)));
-        reader_citations(html, r, answers, index);
+        reader_inline_citations(html, r, answers, index);
     }
     // The independent summary remains useful when detail is unavailable. In a
     // current article it is inspection material, not a second competing lead.
@@ -1036,17 +1076,41 @@ fn opening_context(
     work: Option<&UnderstandingWork>,
     decision: Option<&volicord_projections::UnderstandingDecision>,
 ) {
-    for fact in answers.facts.iter().filter(|a| {
-        matches!(
-            a.question.as_str(),
-            "RepositoryScope" | "RepositoryCoverage"
-        )
-    }) {
+    if let Some(basis) = answers
+        .provenance
+        .as_ref()
+        .filter(|p| {
+            matches!(
+                p.subject,
+                volicord_projections::ExplanationSubject::Repository(_)
+            )
+        })
+        .and_then(|p| p.evidence.iter().find(|e| e.key == "repository_basis"))
+    {
+        let scope = if basis.content["repository"]["included_areas"]["file_count"].as_u64()
+            == Some(0)
+        {
+            text(r.locale, "No included inventory files are retained; repository-wide coverage is not established.", "포함된 목록 파일이 보존되지 않았습니다. 저장소 전체 범위를 확인할 수 없습니다.")
+        } else {
+            text(r.locale, "Scope: the cited Sources. Inventory inclusion does not establish explanation coverage.", "설명 범위: 인용된 Source입니다. 목록에 포함되어도 설명한 것은 아닙니다.")
+        };
         html.push_str(&format!(
-            "<p class=\"scope-summary\" data-question=\"{}\">{}</p>",
-            escape(&fact.question),
-            escape(&fact.text)
+            "<p class=\"scope-summary\" data-question=\"RepositoryScopeSummary\">{}</p>",
+            scope
         ));
+        if basis.content["capabilities"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|c| {
+                c["state"].as_str() == Some("failed")
+                    || c["freshness"]["state"].as_str() != Some("current")
+            })
+        {
+            reading_warning(html, r, "analysis", "caution",
+                text(r.locale, "Analysis limitation", "분석 한계"),
+                text(r.locale, "Analysis includes failed or non-current capability reports. Read the explanation within those limits; inspect records for the exact reports.", "분석에 실패하거나 최신성을 확인할 수 없는 보고가 있습니다. 이 한계 안에서 설명을 읽고 정확한 보고는 기록에서 확인하세요."));
+        }
     }
     use volicord_projections::ReadingCautionKind as Kind;
     let failed: Vec<_> = answers

@@ -1226,3 +1226,23 @@ renderer files; `fragments_only` restricts checks to link identity. Run via
 `validate focused`. Numeric results, process streams and screenshots remain under
 ignored paths. Native screen reader/zoom and human acceptance are not observed by
 these automation checks; no Final/V11 or semantic verdict follows.
+
+`document_navigation_browser.cjs <private-config.json>` measures the collapsed and
+expanded TOC from an already-scrolled viewport before automated scrolling can hide
+a displacement. It checks exact selection/focus, Source return/history, unique
+fragments and live/no-JS/offline reading at 1440/1024/768/390/320. Optional
+`outline_matrix: true` adds explicitly authored 0/1/12-section controls using the
+actual built CSS, long mixed-language labels, viewport changes and a simulated
+no-`:has` CSS fallback. These controls supply no semantic or host-generation pass.
+
+`evidence_priority: true` also checks quiet heading/lead provenance, independent
+claim actions and actual cited code access from supporting disclosures. Optional
+`baseline_snapshots` names an ignored original capture directory: original exact
+Source panels/claim coordinates/included bytes must remain byte-identical. Viewer
+`citation_reading::seed_evidence_priority_browser_control`, with
+`VOLICORD_EVIDENCE_PRIORITY_CAPTURE` set to a fresh ignored directory, provides
+a genuinely admitted authored control and exact `expected_units` for selected-read
+binding comparison. Its ordinary test separately checks quiet dependency deletion.
+Keep original failed attempts and classify retained historical user Decisions,
+real host publications and authored controls separately; no browser pass is human
+approval or proof of repository-wide semantic breadth.

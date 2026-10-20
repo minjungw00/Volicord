@@ -817,3 +817,161 @@ fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
     assert!(!html.contains("<script"));
     Ok(())
 }
+
+#[test]
+fn quiet_heading_provenance_preserves_exact_claims_and_duplicate_bindings(
+) -> Result<(), Box<dyn Error>> {
+    let (f, realization) = priority_fixture()?;
+    let before = f.answers()?;
+    let canonical = f.ops.canonical_basis(f.project)?;
+    let privacy = f.ops.privacy_status(f.project)?;
+    let snapshot = ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .render_snapshot(
+            &f.request(),
+            volicord_context::TimestampMicros::from_unix_micros(123),
+        )?;
+    let live = f.get("/?view=repository")?;
+    for html in [&live, &snapshot.html] {
+        let article = html
+            .split("<article class=\"doc\"")
+            .nth(1)
+            .ok_or("article")?
+            .split("</article>")
+            .next()
+            .ok_or("article end")?;
+        let (primary, supporting) = article
+            .split_once("class=\"reading-section evidence-index\"")
+            .ok_or("supporting index")?;
+        assert_eq!(primary.matches("class=\"evidence-link\"").count(), 4,
+            "three independent ranges plus the separate same-file assertion; no heading/lead actions");
+        assert_eq!(
+            supporting.matches("class=\"evidence-link\"").count(),
+            8,
+            "every admitted citation, including identical duplicates, stays inspectable"
+        );
+        assert!(!html.contains("<script>hostile</script>"));
+        assert!(html.contains("Observed &lt;script&gt;hostile&lt;/script&gt; return boundary"));
+        let ids = html
+            .split(" id=\"")
+            .skip(1)
+            .filter_map(|s| s.split('"').next())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids.len(),
+            ids.iter().collect::<std::collections::BTreeSet<_>>().len()
+        );
+    }
+    // The quiet originals, both duplicate indices and the distinct same-file
+    // assertion retain the same authority as a prominent technical action.
+    for (index, p) in realization.paragraphs.iter().enumerate() {
+        for (citation_index, expected) in p.citations.iter().enumerate() {
+            let selected = selection(&f, index, citation_index, 0)?;
+            let response = body(&f.get(&citation_target(&f, &selected))?)?;
+            assert_eq!(
+                response["chunk"]["citation"],
+                serde_json::to_value(expected)?
+            );
+            assert_eq!(response["claim"], p.text);
+            let chunk = response["chunk"]["text"].as_str().ok_or("chunk")?;
+            assert!(f.originals.iter().any(|s| s.starts_with(chunk)));
+        }
+    }
+    assert_eq!(
+        before,
+        f.answers()?,
+        "presentation must not modify admitted units or proof"
+    );
+    assert_eq!(canonical, f.ops.canonical_basis(f.project)?);
+    assert_eq!(privacy, f.ops.privacy_status(f.project)?);
+    // A formerly quiet citation is still a real dependency: deletion withholds
+    // the entire article rather than salvaging its title or uncited-looking text.
+    let hex = &realization.paragraphs[0].citations[0].source_id;
+    let bytes = (0..32)
+        .step_by(2)
+        .map(|n| u8::from_str_radix(&hex[n..n + 2], 16))
+        .collect::<Result<Vec<_>, _>>()?;
+    let source = volicord_context::SourceId::from_slice(&bytes)?;
+    f.ops
+        .delete_repository_source_observation(f.project, f.analysis, source)?;
+    assert_ne!(f.answers()?.explanation_state, ExplanationState::Current);
+    assert!(!f
+        .get(&citation_target(
+            &f,
+            &ExplanationCitationSelection {
+                realization_fingerprint: before
+                    .provenance
+                    .ok_or("provenance")?
+                    .realization_fingerprint,
+                unit_index: 0,
+                citation_index: 0,
+                offset: 0,
+            }
+        ))?
+        .starts_with("HTTP/1.1 200"));
+    Ok(())
+}
+
+fn priority_fixture() -> Result<(Fixture, ExplanationRealization), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let mut realization = f.realization.clone();
+    let unit = |question, text: &str, base: usize| {
+        let mut p = f.realization.paragraphs[base].clone();
+        p.question = question;
+        p.text = text.into();
+        for c in &mut p.citations {
+            c.claim_start_byte = 0;
+            c.claim_end_byte = text.len();
+            c.claim_sha256 = explanation_text_hash(text);
+        }
+        p
+    };
+    let mut body_unit = f.realization.paragraphs[1].clone();
+    body_unit.citations.push(body_unit.citations[0].clone());
+    realization.paragraphs = vec![
+        unit(
+            ExplanationQuestion::Heading,
+            "Observed <script>hostile</script> return boundary",
+            2,
+        ),
+        unit(
+            ExplanationQuestion::Synopsis,
+            "A bounded investigation of the retained functions.",
+            2,
+        ),
+        unit(
+            ExplanationQuestion::SectionHeading,
+            "검사한 함수 · retained functions",
+            2,
+        ),
+        body_unit,
+        f.realization.paragraphs[2].clone(),
+    ];
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization.clone(),
+    )?;
+    Ok((f, realization))
+}
+
+#[test]
+fn seed_evidence_priority_browser_control() -> Result<(), Box<dyn Error>> {
+    if std::env::var_os("VOLICORD_EVIDENCE_PRIORITY_CAPTURE").is_none() {
+        return Ok(());
+    }
+    let (f, realization) = priority_fixture()?;
+    if let Some(root) = std::env::var_os("VOLICORD_EVIDENCE_PRIORITY_CAPTURE") {
+        fs::create_dir_all(&root)?;
+        fs::write(
+            std::path::Path::new(&root).join("cases.json"),
+            serde_json::to_vec_pretty(&serde_json::json!([{
+                "key":"authored-evidence-priority", "runtime":f.ops.layout().root(), "project":f.project.to_string(),
+                "language":"en", "locale":"en", "evidence_class":"authored admitted control, not host generation",
+                "expected_units":realization.paragraphs, "evidence_priority":true
+            }]))?,
+        )?;
+        let _retained = f.temp.keep();
+    }
+    Ok(())
+}

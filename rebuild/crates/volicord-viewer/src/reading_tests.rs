@@ -339,3 +339,78 @@ fn outline_uses_only_substantive_authored_headings_and_keeps_original_indices(
     }
     Ok(())
 }
+
+#[test]
+fn repository_analysis_failures_stay_visible_above_optional_coverage(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::*;
+    // Authored read-model controls, not admitted content or host generation.
+    for (state, freshness, warning) in [
+        ("available", "current", false),
+        ("unsupported", "current", false),
+        ("failed", "current", true),
+        ("available", "unknown", true),
+    ] {
+        let mut answers = explanation_answers(&[], "en", FixedLocale::English);
+        answers.explanation_state = ExplanationState::Current;
+        answers.provenance = Some(ExplanationProvenance {
+            project_id: "authored-project".into(),
+            subject: ExplanationSubject::Repository(
+                volicord_repository_intelligence::AnalysisSnapshotId::from_hex(&"44".repeat(32))?,
+            ),
+            question: "Explain the repository".into(),
+            language: "en".into(),
+            fingerprint: "authored-preparation".into(),
+            realization_fingerprint: "authored-realization".into(),
+            generated_at_unix_micros: 1,
+            generator: ExplanationGenerator {
+                host: "authored-presentation-control".into(),
+                session: "test".into(),
+                agent: None,
+                model: None,
+            },
+            generator_identity_status: "self_reported".into(),
+            semantic_approval_status: "not_assessed".into(),
+            citations: vec![],
+            evidence: vec![ExplanationEvidence {
+                key: "repository_basis".into(),
+                record_kind: "analysis".into(),
+                identity: "authored-analysis".into(),
+                revision: 1,
+                field: "scope".into(),
+                sources: vec![],
+                content: serde_json::json!({"repository":{"included_areas":{"file_count":1}},
+                    "capabilities":[{"state":state,"freshness":{"state":freshness}}]}),
+            }],
+            uncited_evidence_count: 0,
+            source_status: vec![],
+            conflicts: vec![],
+        });
+        answers.facts.push(QuestionAnswer {
+            question: "RepositoryCoverage".into(),
+            text: "Exact authored coverage detail".into(),
+            role: AnswerRole::DeterministicFacts,
+            evidence_keys: vec!["repository_basis".into()],
+            citations: vec![],
+            recorded_action: None,
+        });
+        let request = ViewerRequest {
+            project_id: ProjectId::from_bytes([42; 16]),
+            locale: ViewerLocale::English,
+            view: ViewerView::RepositoryExplanation,
+            requested_language: "en".into(),
+            guarded_request: None,
+        };
+        let mut html = String::new();
+        super::render_answers(&mut html, &request, &answers, None, true);
+        let opening = html
+            .split("class=\"document-nav\"")
+            .next()
+            .ok_or("opening")?;
+        assert_eq!(opening.contains("data-warning=\"analysis\""), warning);
+        assert!(opening.contains("Scope: the cited Sources"));
+        assert!(!opening.contains("Exact authored coverage detail"));
+        assert!(html.contains("Exact authored coverage detail"));
+    }
+    Ok(())
+}

@@ -55,8 +55,17 @@ async function scrolledOutline(page, toc, js, capture) {
  assert.equal(await toc.evaluate(n=>n.open),true);
  const opened=await usable();assert.ok(opened.scrollY>0);
  if(capture)await page.screenshot({path:capture});
- const navScroll=await list.evaluate(n=>{n.scrollTop=n.scrollHeight;return {height:n.clientHeight,extent:n.scrollHeight,offset:n.scrollTop};});
- if(navScroll.extent>navScroll.height)assert.ok(navScroll.offset>0,'long list scrolls internally');
+ const navScroll=await list.evaluate(n=>{n.scrollTop=0;return {height:n.clientHeight,extent:n.scrollHeight};});
+ if(navScroll.extent>navScroll.height) {
+  const box=await list.boundingBox(),documentOffset=await page.evaluate(()=>scrollY);
+  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.wheel(0,box.height);
+  // Poll from the harness: native no-JS contexts do not execute page rAF/timer
+  // callbacks, although the browser still performs wheel scrolling.
+  const deadline=Date.now()+2000;
+  while(await list.evaluate(n=>n.scrollTop)===0 && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,25));
+  assert.ok(await list.evaluate(n=>n.scrollTop)>0,'physical wheel scrolls the long outline');
+  assert.equal(await page.evaluate(()=>scrollY),documentOffset,'outline wheel scrolling does not move the document');
+ }
  await usable();
  if(js){await trigger.focus({preventScroll:true});await page.keyboard.press('Escape');}
  else {const box=await trigger.boundingBox();await page.mouse.click(box.x+20,box.y+box.height/2);}
@@ -71,8 +80,15 @@ async function scrolledOutline(page, toc, js, capture) {
  result.browser_version=browser.version();
  try {for(const x of c.cases){const before=state(x,x.key+'-before');const server=await serve(x);
  try {
- const typed=x.work?JSON.parse(command(x.key+'-verification',c.cli,['--runtime',x.runtime,'--project',x.project,'--json','work','verification','--work',x.work])).verification_report:null;
+ const typed=x.work&&!x.decision?JSON.parse(command(x.key+'-verification',c.cli,['--runtime',x.runtime,'--project',x.project,'--json','work','verification','--work',x.work])).verification_report:null;
  const snapshot=path.join(c.output,x.key+'.html');command(x.key+'-snapshot',c.viewer,['--runtime',x.runtime,'--project',x.project,'--locale',x.locale,'--language',x.language,'--snapshot',snapshot]);
+ if(c.baseline_snapshots && fs.existsSync(path.join(c.baseline_snapshots,x.key+'.html'))) {
+  const before=fs.readFileSync(path.join(c.baseline_snapshots,x.key+'.html'),'utf8'),after=fs.readFileSync(snapshot,'utf8');
+  const panels=html=>html.match(/<section class="source-point"[\s\S]*?<\/section>/g)||[];
+  assert.deepEqual(panels(after),panels(before),'all original claim/Source panels and included bytes are unchanged');
+  result.checks.push({case:x.key,unchanged_source_panels:panels(after).length,status:'passed'});
+ }
+
  for(const width of (c.fragments_only?[1440,390]:[1440,1024,768,390,320]))for(const mode of ['live','offline','live-no-js']){
  const js=mode==='live';const ctx=await browser.newContext({viewport:{width,height:1000},javaScriptEnabled:js});
  await ctx.route('**/*',r=>{const u=new URL(r.request().url());return u.protocol==='file:'||u.origin===new URL(server.base).origin?r.continue():r.abort();});
@@ -82,6 +98,23 @@ async function scrolledOutline(page, toc, js, capture) {
  await page.goto(url);await fragments(page);
  if(!c.fragments_only){
  const doc=page.locator('.doc:visible').last(),toc=doc.locator('.document-nav');assert.equal(await toc.count(),1);
+ if(c.evidence_priority || x.evidence_priority) {
+  assert.equal(await doc.locator('.doc-head > .evidence-actions a').count(),0,'article title and lead have quiet provenance');
+  for(const heading of await doc.locator('.unit:has(> [data-question="SectionHeading"])').all())
+   assert.equal(await heading.locator(':scope > .evidence-actions').count(),0,'authored section heading has no prominent Source action');
+  const primary=await doc.locator('.unit > .evidence-actions > a:visible,.doc-head > .evidence-actions > a:visible').count();
+  result.checks.push({case:x.key,width,mode,default_source_actions:primary,classification:x.evidence_class||'retained Product output',status:'passed'});
+  if(x.expected_units) {
+   assert.equal(primary,4,'independent ranges and same-file claims survive; identical within-claim action is shared');
+   assert.equal(await doc.locator('.evidence-index .evidence-link').count(),8,'all original bindings stay available');
+  }
+  const scope=doc.locator('[data-question="RepositoryScopeSummary"]');
+  if(await scope.count()) {
+   assert.equal(await scope.isVisible(),true);
+   assert.equal(await doc.locator('[data-question="RepositoryScope"],[data-question="RepositoryCoverage"]').evaluateAll(ns=>ns.every(n=>n.closest('.audit details') && !n.checkVisibility())),true,'routine scope facts require deliberate inspection');
+  }
+ }
+
  assert.equal(await toc.evaluate(n=>n.tagName),'DETAILS');assert.equal(await toc.getAttribute('open'),null);
  assert.equal(await toc.locator('a:visible').count(),0);
  const authored=await doc.locator('.article-section h2[data-question=SectionHeading]').allTextContents();
@@ -148,6 +181,44 @@ async function scrolledOutline(page, toc, js, capture) {
  await page.screenshot({path:path.join(c.output,`${x.key}-${width}-${mode}.png`)});
  await page.emulateMedia({media:'print'});assert.equal(await toc.isVisible(),false);await page.emulateMedia({media:'screen'});
  if(js){await page.goto(url+'#reader-retired-fragment');await page.locator('.fragment-unavailable').waitFor({state:'visible'});}
+ }
+ // Quiet provenance uses the same selected-read/return path as body claims.
+ if((c.evidence_priority || x.evidence_priority) && !c.fragments_only) {
+  await page.goto(url);await page.reload();
+  const doc=page.locator('.doc:visible').last();
+  const entry=doc.locator('.evidence-entry').filter({has:page.locator('.evidence-link')}).first();
+  const summaryProvenance=doc.locator('.publication-evidence').first();
+  if(await entry.count() || await summaryProvenance.count()) {
+   if(await entry.count()) {await doc.locator('.evidence-index > summary').click();await entry.locator(':scope > summary').click();}
+   else await summaryProvenance.locator(':scope > summary').click();
+   const link=(await entry.count()?entry:summaryProvenance).locator('.evidence-link').first();
+   if(await link.count()) {
+    const origin=await link.getAttribute('data-origin'),fragment=await link.getAttribute('href');
+    const point=page.locator(`[id="${fragment.slice(1)}"]`);
+    await link.focus();await page.keyboard.press('Enter');await point.waitFor({state:'visible'});
+    if(js) {
+     await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
+     if(width>900){const pane=await point.locator('xpath=ancestor::aside').boundingBox(),nav=await doc.locator('.document-nav').boundingBox();assert.ok(nav.x+nav.width<=pane.x,'outline stays clear of desktop Source panel');}
+     else assert.equal(await doc.evaluate(n=>n.inert),true,'mobile Source keeps focused reading');
+    }
+    assert.ok(await point.locator('.code-region:visible').count()>0,'quiet evidence still exposes cited code');
+    const visibleCode=await point.locator('.code-region:visible code').first().textContent();
+    result.checks.push({case:x.key,width,mode,quiet_source:{origin,fragment,source_id:await point.getAttribute('data-source-id'),
+      locator:await point.locator('.source-path').textContent(),displayed_utf8_bytes:Buffer.byteLength(visibleCode),displayed_sha256:hash(visibleCode)},status:'passed'});
+    if(js && [1440,390].includes(width))await page.screenshot({path:path.join(c.output,`${x.key}-${width}-quiet-source.png`)});
+    if(x.expected_units && js) {
+     const control=point.locator('.citation-inspection'),endpoint=await control.getAttribute('data-citation-url');
+     const response=await page.request.get(new URL(endpoint,server.base).href);assert.equal(response.status(),200);
+     const selected=await response.json(),unit=x.expected_units[selected.unit_index];
+     assert.deepEqual(selected.chunk.citation,unit.citations[selected.citation_index]);
+     assert.equal(selected.claim,unit.text);
+    }
+    await point.locator('.return').focus();await page.keyboard.press('Enter');
+    await page.waitForURL(u=>u.hash==='#'+origin);
+    await page.waitForFunction(id=>document.activeElement?.id===id,origin,{timeout:2000});
+    assert.equal(await page.locator(`[id="${origin}"]`).evaluate(n=>document.activeElement===n),true,'quiet provenance returns to exact original claim');
+   }
+  }
  }
  if(mode==='offline'){assert.equal(await page.locator('script,form').count(),0);if(!c.fragments_only){await page.goto(pathToFileURL(snapshot).href+'#reader-retired-fragment');await page.locator('.snapshot-link-help').waitFor({state:'visible'});assert.equal(await page.locator('.doc:visible').count(),0);}}
  assert.deepEqual(errors,[]);result.checks.push({case:x.key,width,mode,status:'passed'});

@@ -96,7 +96,7 @@ fn workless_project_keeps_all_three_reader_destinations_reachable(
 }
 
 #[test]
-fn nested_repository_scope_and_boundaries_precede_explanation_in_live_and_offline(
+fn repository_scope_precedes_explanation_with_exact_boundaries_in_supporting_records(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use volicord_operations::{
         RepositoryClaimRange, RepositoryExplanationDraft, RepositoryFileObservationRequest,
@@ -202,11 +202,16 @@ fn nested_repository_scope_and_boundaries_precede_explanation_in_live_and_offlin
             .nth(1)
             .ok_or("repository page")?;
         assert!(
-            doc.find("data-question=\"RepositoryScope\"")
-                .ok_or("ordinary scope")?
+            doc.find("data-question=\"RepositoryScopeSummary\"")
+                .ok_or("short ordinary scope")?
                 < doc.find("class=\"document-nav\"").ok_or("reading links")?
         );
         assert_eq!(doc.matches("class=\"document-nav\"").count(), 1);
+        let body = doc.split("class=\"audit\"").next().ok_or("reading body")?;
+        assert!(!body.contains("data-question=\"RepositoryScope\""));
+        assert!(!body.contains("data-question=\"RepositoryCoverage\""));
+        assert!(doc.contains(fact("RepositoryScope")?));
+        assert!(doc.contains(fact("RepositoryCoverage")?));
         assert!(!doc.contains("Inspect exact states"));
         assert!(!doc.contains("Read the explanation's stated limits"));
         let nav = doc

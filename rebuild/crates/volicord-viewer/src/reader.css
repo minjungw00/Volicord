@@ -177,7 +177,6 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
  .doc-head { margin-bottom:24px; }
  .unit-text { font-size:1rem; }
  .reading-section { margin-top:28px; padding-top:28px; }
- .evidence-link { width:100%; }
  .comparison-card .evidence-link { width:auto; }
  .index-title { font-size:1.8rem; }
  .work-card { padding:20px; }
