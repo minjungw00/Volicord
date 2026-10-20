@@ -65,6 +65,73 @@ fn source(receipt: &Value) -> Result<SourceId, Box<dyn Error>> {
     }
     Ok(SourceId::from_bytes(bytes))
 }
+
+#[test]
+fn current_repository_budget_measures_distinct_claims_and_editorial_overhead(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let plan =
+        f.ops
+            .prepare_explanation(f.project, ExplanationSubject::Repository(f.analysis), "en")?;
+    let mut r = response(&f, id)?;
+    // An authored pressure control, not a model response or a quality oracle.
+    // Separate subclaims of the same Source retain separate complete bindings.
+    for index in 1..24 {
+        let mut p = r.paragraphs[0].clone();
+        p.text =
+            format!("Authored claim {index}: greet appends the supplied name to a salutation.");
+        p.citations[0].claim_end_byte = p.text.len();
+        p.citations[0].claim_sha256 = explanation_text_hash(&p.text);
+        r.paragraphs.push(p);
+    }
+    let bytes = serde_json::to_vec(&r)?.len();
+    validate_explanation(&plan, &r)?;
+    let retained = retain_explanation(&plan, r.clone(), i64::MIN);
+    let retained_bytes = encode_retained_explanation(&retained)?.len();
+    assert_eq!(
+        retained_bytes - bytes,
+        plan.retention_budget.metadata_byte_reserve
+    );
+    assert_eq!(r.generated_units().count(), 24);
+    assert_eq!(r.citations().count(), 24);
+    assert_eq!(
+        r.citations()
+            .map(|c| &c.source_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        1
+    );
+    // Generic navigation still has the v6 grounding obligation. A self-declared
+    // heading cannot introduce an uncited technical claim via a role exemption.
+    for text in [
+        "Responsibilities",
+        "All remote calls are authenticated",
+        "모든 데이터는 암호화됩니다",
+    ] {
+        let mut heading = r.paragraphs[0].clone();
+        heading.question = ExplanationQuestion::Heading;
+        heading.text = text.into();
+        heading.citations.clear();
+        let mut bad = r.clone();
+        bad.paragraphs.insert(0, heading);
+        assert!(validate_explanation(&plan, &bad).is_err());
+    }
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        r,
+    )?;
+    let read = f.ops.read_repository_explanation(f.project, "en")?;
+    assert_eq!(read.prose.len(), 24);
+    assert_eq!(
+        read.prose.iter().map(|p| p.citations.len()).sum::<usize>(),
+        24
+    );
+    println!("repository pressure control: units=24 bindings=24 distinct_sources=1 response_bytes={bytes} retained_bytes={retained_bytes} metadata_bytes={}", plan.retention_budget.metadata_byte_reserve);
+    Ok(())
+}
 #[test]
 fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_access(
 ) -> Result<(), Box<dyn Error>> {

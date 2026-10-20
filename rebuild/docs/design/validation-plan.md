@@ -3305,3 +3305,10 @@ articles, native zoom and assistive tests are not_observed/blocked, never approv
 Repository breadth/causal completeness and publication/budget authoring changes
 remain follow-up responsibilities. Current UI checks must not mark AC-11/34/35
 semantically complete or remove correctly admitted citations to save bytes.
+
+Focused repository breadth evidence is maintained in
+[the source-first breadth/budget observations](../../validation/end-to-end/multi-repository/repository-explanation-breadth.md).
+Its explicit CLI measurement support retains original drafts and process/size/resource
+receipts without generating prose or assigning semantic scores. Source-first expected
+tasks, generated interpretation, structural admission, independent review and user
+acceptance remain separate. Unavailable A/B/D conditions are not inferred from C.

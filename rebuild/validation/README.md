@@ -4,6 +4,17 @@ This directory contains maintained inputs, assertions, report summaries, and
 small disposable experiment implementations. It is an internal validation
 surface, not a Volicord product command or production architecture.
 
+`end-to-end/multi-repository/repository_explanation_measure.py` measures an explicit
+host-authored Repository draft through current CLI preparation/compose and optional
+`--record`/readback. Pass exact binary/runtime/Project/Analysis, original input and a
+new ignored output directory through `validate focused`. It preserves original
+draft bytes, every process stream/exit, `/usr/bin/time -v` CPU/RSS, compact preparation,
+realization/retained bytes, claim spans, Source ranges and editorial citation overhead.
+Freeze source-first expectations independently before authoring; never supply them
+as generated answers. This tool invokes no model and judges no semantic coverage.
+Budget or research comparisons must label unavailable conditions and mechanical
+rebindings separately; a replay is not a second model response or a quality win.
+
 ## Commands
 
 `node rebuild/validation/end-to-end/multi-repository/article_reading_browser.cjs
