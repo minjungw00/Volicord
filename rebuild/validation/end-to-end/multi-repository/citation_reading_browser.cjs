@@ -76,7 +76,8 @@ function command(label,args){
    const destinations=await navigation.locator('a').evaluateAll(links=>links.map(a=>a.hash.slice(1)));
    for(const id of destinations)assert.equal(await page.locator(`[id="${id}"]`).count(),1,'each navigation destination actually exists');
    for(const id of destinations){
-    const anchor=navigation.locator(`a[href="#${id}"]`);await anchor.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});await anchor.focus();await page.keyboard.press('Enter');
+    const anchor=navigation.locator(`a[href="#${id}"]`);if(!await navigation.evaluate(n=>n.open))await navigation.locator(':scope > summary').click();
+    if(await anchor.locator('xpath=ancestor::details[contains(@class,"toc-more")]').count() && !await navigation.locator('.toc-more').evaluate(n=>n.open))await navigation.locator('.toc-more > summary').click();await anchor.focus();await page.keyboard.press('Enter');
     await page.waitForURL(url=>url.hash==='#'+id);
     const target=page.locator(`[id="${id}"]`);await target.waitFor({state:'visible'});
     const geometry=await page.evaluate(id=>{
@@ -180,7 +181,8 @@ function command(label,args){
     assert.equal(await p.locator('script,.citation-inspection,[data-citation-url]').count(),0);
     const nav=p.locator('#repository-explanation .document-nav');assert.equal(await nav.count(),1);
     for(const href of await nav.locator('a').evaluateAll(a=>a.map(n=>n.getAttribute('href')))){
-     await nav.locator(`a[href="${href}"]`).focus();await p.keyboard.press('Enter');
+     if(!await nav.evaluate(n=>n.open))await nav.locator(':scope > summary').click();
+     const a=nav.locator(`a[href="${href}"]`);if(await a.locator('xpath=ancestor::details[contains(@class,"toc-more")]').count() && !await nav.locator('.toc-more').evaluate(n=>n.open))await nav.locator('.toc-more > summary').click();await a.focus();await p.keyboard.press('Enter');
      assert.equal(new URL(p.url()).hash,href);assert.ok(await p.locator(`[id="${href.slice(1)}"]`).isVisible());
     }
     await p.goto(pathToFileURL(path.join(config.fixture,'offline.html')).href+'#repository-explanation');

@@ -2230,3 +2230,16 @@ selection authority; DOM identity grants no additional read permission. Whole
 script-free snapshots must have one target for every internal link, including
 multiple Works and related Decisions. This presentation metadata changes no
 retained explanation format or decoder.
+
+### Progressive supporting reads
+
+Verification uses a short typed report digest in normal flow and one closed native
+disclosure for exact command labels, run/environment details and check histories.
+Unresolved failures remain visible with links to their exact report, including
+when a different later check passes. Historical applicability comes from recorded
+changes or an explicitly comparable passing rerun, never from being older than
+another report. All original facts and declared coverage limits remain inspectable.
+The evidence index is one closed disclosure; each claim, including heading/lead,
+keeps an adjacent compact citation with its exact Source binding and accessible
+scope/path/range label. Missing summary and article availability have distinct
+messages without repeating the complete unavailable-publication fallback.

@@ -557,8 +557,10 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
                 .count(),
             2 // article plus exact evidence-index quotation behind disclosure
         );
-        assert!(page.contains("<span>main.py:1–2</span></a>"));
-        assert!(page.contains("Observed file in selected snapshot · Source 1 ↗"));
+        assert!(page.contains(
+            "aria-label=\"Observed file in selected snapshot · Source 1 ↗ · main.py:1–2\""
+        ));
+        assert!(page.contains(">Source 1 ↗</a>"));
         assert!(page.contains("Observed file in selected snapshot"));
         assert_eq!(
             page.contains("Before: historical observation"),

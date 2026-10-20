@@ -48,12 +48,12 @@ main.shell { padding-top:24px; padding-bottom:80px; }
 .reading-section h2 { margin-bottom:16px; }
 .unit+.unit { margin-top:24px; }
 .unit-text { font-size:1.05rem; line-height:1.95; max-width:var(--measure); white-space:pre-line; }
-.evidence-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:14px; }
+.evidence-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
 .button,.return,.breadcrumb>a { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:9px 15px; min-height:44px; border:1px solid var(--line); border-radius:6px; background:var(--surface); font-size:.86rem; font-weight:600; line-height:1.5; text-decoration:none; }
 .button:hover,.return:hover,.breadcrumb>a:hover { background:var(--wash); border-color:var(--accent); }
 .button.primary { background:var(--accent); color:var(--surface); border-color:var(--accent); }
 .button.secondary { color:var(--accent); }
-.evidence-link { display:inline-flex; flex-direction:column; gap:2px; border:1px solid var(--line); border-radius:7px; background:var(--wash); padding:8px 12px; text-decoration:none; font-size:.82rem; line-height:1.5; max-width:100%; min-height:44px; }
+.evidence-link { display:inline-flex; align-items:center; gap:2px; border:1px solid var(--line); border-radius:7px; background:var(--wash); padding:8px 12px; text-decoration:none; font-size:.82rem; line-height:1.5; max-width:100%; min-height:44px; }
 .evidence-link:hover { border-color:var(--accent); }
 .evidence-link span { font-family:ui-monospace,monospace; font-size:.72rem; color:var(--muted); }
 .comparisons { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
@@ -314,3 +314,8 @@ details.reading-warning>summary { color:inherit; font-size:.9rem; font-weight:65
   .inspector .page-head h1 { font-size: 1.75rem; }
   .inspector .intro { font-size: 1rem; line-height: 1.6; }
 }
+/* Supporting data is available deliberately, without a second page-length index. */
+details.verification-report,details.evidence-index { margin-top:24px; padding-top:0; }
+details.verification-report > summary,details.evidence-index > summary { min-height:48px; font-size:1rem; font-weight:650; }
+.verification-digest { margin:16px 0; }
+.failure-check-links { display:flex; flex-wrap:wrap; gap:8px 16px; font-size:.9rem; }

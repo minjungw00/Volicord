@@ -400,9 +400,21 @@ fn reader_citations(
     answers: &ReaderAnswers<'_>,
     index: usize,
 ) {
+    if answers.prose[index].citations.is_empty() {
+        return;
+    }
     html.push_str("<div class=\"evidence-actions\">");
     for (n, c) in answers.prose[index].citations.iter().enumerate() {
-        html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\">{} · {} {} ↗<span>{}:{}–{}</span></a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),citation_use_label(r.locale,c.use_kind),text(r.locale,"Source","근거"),n+1,escape(&c.locator),c.start_line,c.end_line));
+        let label = format!(
+            "{} · {} {} ↗ · {}:{}–{}",
+            citation_use_label(r.locale, c.use_kind),
+            text(r.locale, "Source", "근거"),
+            n + 1,
+            c.locator,
+            c.start_line,
+            c.end_line
+        );
+        html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{}\" title=\"{}\">{} {} ↗</a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&label),escape(&label),text(r.locale,"Source","근거"),n+1));
     }
     html.push_str("</div>");
 }
@@ -483,6 +495,11 @@ fn render_card_publication(
     answers: &ReaderAnswers<'_>,
     scope: &str,
 ) {
+    if answers.provenance.is_none() {
+        html.push_str(&format!("<p class=\"publication-unavailable source-note\" data-publication-scope=\"{scope}\" data-publication-state=\"{:?}\">{}</p>",answers.explanation_state,
+            text(r.locale,"Work summary is unavailable.","작업 요약을 사용할 수 없습니다.")));
+        return;
+    }
     html.push_str(&format!("<section class=\"work-publication\" data-publication-scope=\"{scope}\" data-publication-state=\"{:?}\"><p class=\"eyebrow\">{}</p>",answers.explanation_state,text(r.locale,"Work summary","작업 요약")));
     for index in 0..answers.prose.len() {
         reader_unit(html, r, answers, index);
@@ -595,6 +612,7 @@ fn render_document_body(
         .find(|(_, a)| a.question == "Heading")
     {
         html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><h1 data-title-basis=\"generated-interpretation\" data-question=\"Heading\" lang=\"{}\" data-content-language=\"{}\">{}</h1></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&title.text)));
+        reader_citations(html, r, answers, index);
     } else if let Some(name) = answers
         .work_name
         .as_ref()
@@ -623,6 +641,7 @@ fn render_document_body(
         .filter(|(_, a)| a.question == "Synopsis")
     {
         html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><p class=\"lead\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&lead.text)));
+        reader_citations(html, r, answers, index);
     }
     // The independent summary remains useful when detail is unavailable. In a
     // current article it is inspection material, not a second competing lead.
@@ -732,14 +751,14 @@ fn render_document_body(
     if let Some(work) = work {
         render_verification(html, r, answers, &work.reading.verification_report);
     } else if has_verification {
-        html.push_str(&format!("<section class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2>",document_anchor(answers,"verification"),text(r.locale,"Verification","검증")));
+        html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary>",document_anchor(answers,"verification"),text(r.locale,"Verification","검증")));
         render_article_layer(
             html,
             r,
             answers,
             volicord_projections::ArticleLayer::Verification,
         );
-        html.push_str("</section>");
+        html.push_str("</details>");
     }
     if has_limits {
         html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><aside class=\"guard\"><h2>{}</h2>",document_anchor(answers,"limits"),answer_title("Limits",r.locale)));
@@ -808,19 +827,11 @@ fn render_document_body(
             ),
             escape(&format!("{provenance:?}"))
         ));
-        for (index, _) in answers
-            .prose
-            .iter()
-            .enumerate()
-            .filter(|(_, a)| matches!(a.question.as_str(), "Heading" | "Synopsis"))
-        {
-            reader_citations(html, r, answers, index);
-        }
     }
     if let Some(w) = work {
         html.push_str(&format!(
-            "<details data-verification-work=\"{}\"><summary>{}</summary><pre>{}</pre></details>",
-            w.work_item_id,
+            "<details id=\"{}\" data-verification-work=\"{}\"><summary>{}</summary><pre>{}</pre></details>",
+            document_anchor(answers,"full-verification"),w.work_item_id,
             text(
                 r.locale,
                 "Complete verification read model (JSON)",
@@ -867,7 +878,7 @@ fn render_document_body(
 }
 
 fn render_evidence_index(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>) {
-    html.push_str(&format!("<section class=\"reading-section evidence-index\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2><p class=\"source-note\">{}</p>",
+    html.push_str(&format!("<details class=\"reading-section evidence-index\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary><p class=\"source-note\">{}</p>",
         document_anchor(answers,"evidence-index"),text(r.locale,"Evidence index", "근거 색인"),
         text(r.locale,"Start with the statement you want to check. Source ranges show observed bytes; original records show what was reported or chosen. Neither alone verifies every interpretation.",
             "확인할 문장에서 시작하세요. Source 범위는 관측된 바이트를, 원래 기록은 보고되거나 선택된 내용을 보여 줍니다. 어느 쪽도 그 자체로 모든 해석을 검증하지는 않습니다.")));
@@ -931,7 +942,7 @@ fn render_evidence_index(html: &mut String, r: &ViewerRequest, answers: &ReaderA
         }
         html.push_str("</details>");
     }
-    html.push_str("</section>");
+    html.push_str("</details>");
 }
 
 #[path = "reading_verification.rs"]
@@ -1012,8 +1023,8 @@ fn reading_warning(
     title: &str,
     message: &str,
 ) {
-    if kind == "source" {
-        html.push_str(&format!("<details class=\"reading-warning\" data-warning=\"source\" data-severity=\"{}\"><summary>{}</summary><p>{}</p></details>", escape(severity),escape(title),escape(message)));
+    if kind == "source" || severity == "history" {
+        html.push_str(&format!("<details class=\"reading-warning\" data-warning=\"{}\" data-severity=\"{}\"><summary>{}</summary><p>{}</p></details>", escape(kind),escape(severity),escape(title),escape(message)));
     } else {
         html.push_str(&format!("<aside class=\"reading-warning\" role=\"note\" aria-label=\"{}\" data-warning=\"{}\" data-severity=\"{}\"><strong>{}</strong><p>{}</p></aside>", escape(title),escape(kind),escape(severity),escape(title),escape(message)));
     }
@@ -1045,13 +1056,52 @@ fn opening_context(
         .filter(|c| c.kind == Kind::FailedCheck)
         .collect();
     let historical = |c: &&volicord_projections::ReadingCaution| {
-        c.historical || work.is_some_and(|w|
-        c.checkpoint.as_ref().is_some_and(|reference| w.reading.verification_report.checks.iter().any(|check|
-            &check.original == reference && check.applicability == volicord_projections::VerificationApplicability::HistoricalAfterRecordedChange)))
+        work.is_some_and(|w| {
+            c.checkpoint.as_ref().is_some_and(|reference| {
+                w.reading.verification_report.checks.iter().any(|check| {
+                    &check.original == reference
+                        && verification::historical_check(check, &w.reading.verification_report)
+                })
+            })
+        })
     };
     if failed.iter().any(|c| !historical(c)) {
-        reading_warning(html, r, "failure", "danger", text(r.locale,"Latest reported check failed", "최근 보고된 검증 실패"),
-            text(r.locale,"Checkpoint verification includes failures. Completion does not establish passing verification. Current code coverage and a comparable retest are not established.","Checkpoint 검증에 실패한 항목이 있습니다. 완료 상태가 검증 통과를 뜻하지는 않습니다. 현재 코드 coverage와 비교 가능한 재검증은 확인되지 않았습니다."));
+        reading_warning(html, r, "failure", "danger", text(r.locale,"Unresolved verification failure", "해결 여부가 확인되지 않은 검증 실패"),
+            text(r.locale,"A failed report remains unresolved. A later unrelated pass does not establish a retest or current coverage.","실패 보고의 해결 여부가 확인되지 않았습니다. 무관한 후속 통과는 재검증이나 현재 coverage를 확정하지 않습니다."));
+        if let Some(w) = work {
+            html.push_str("<p class=\"failure-check-links\">");
+            for (index, check) in w
+                .reading
+                .verification_report
+                .checks
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| {
+                    c.reported_state == volicord_projections::ReportedCheckState::Failed
+                        && !verification::historical_check(c, &w.reading.verification_report)
+                })
+                .take(3)
+            {
+                let target = if index < 64 {
+                    verification::check_anchor(answers, check)
+                } else {
+                    document_anchor(answers, "full-verification")
+                };
+                html.push_str(&format!(
+                    "<a href=\"#{target}\">{} {}</a> ",
+                    text(r.locale, "Inspect failed report", "실패 보고 확인"),
+                    index + 1
+                ));
+            }
+            if failed.len() > 3 {
+                html.push_str(&format!(
+                    "<a href=\"#{}\">{}</a>",
+                    document_anchor(answers, "full-verification"),
+                    text(r.locale, "All original reports", "전체 원래 보고")
+                ));
+            }
+            html.push_str("</p>");
+        }
     }
     if failed.iter().any(historical)
         && !answers
@@ -1060,7 +1110,7 @@ fn opening_context(
             .any(|f| f.question == "HistoricalAdversity")
     {
         reading_warning(html, r, "historical", "history", text(r.locale,"Historical failure", "과거 검증 실패"),
-            text(r.locale,"An earlier check failed. Later reports or recorded changes do not establish a comparable retest; the original failure remains in the verification report.","과거 검증 실패가 있습니다. 후속 보고나 변경 기록만으로 비교 가능한 재검증을 확정하지 않습니다. 원래 실패는 검증 보고에 남아 있습니다."));
+            text(r.locale,"An earlier failure remains recorded. Historical applicability or an explicitly compared rerun establishes no whole-work coverage.","이전 실패는 원래 보고에 남아 있습니다. 과거 적용 범위나 명시적으로 비교한 재실행이 작업 전체의 coverage를 확정하지는 않습니다."));
     }
     if answers
         .cautions
@@ -1069,7 +1119,8 @@ fn opening_context(
     {
         reading_warning(html, r,"partial","caution",text(r.locale,"Partial verification", "부분 검증"),
             text(r.locale,"The latest report covers only part of the intended verification. Inspect the original report for its stated limits.","최근 보고는 의도한 검증의 일부만 다룹니다. 원래 보고에서 명시된 한계를 확인하세요."));
-    } else if failed.is_empty()
+    } else if work.is_none()
+        && failed.is_empty()
         && answers.cautions.iter().any(|c| {
             matches!(
                 c.kind,
@@ -1105,7 +1156,7 @@ fn opening_context(
             ),
             "SourceEvidenceGap" => (
                 "source",
-                "caution",
+                "note",
                 text(
                     r.locale,
                     "Supporting record Source gap",
@@ -1132,6 +1183,9 @@ fn opening_context(
             ),
         };
         reading_warning(html, r, kind, severity, title, &fact.text);
+    }
+    if let Some(w) = work {
+        verification::render_digest(html, r, answers, &w.reading.verification_report);
     }
     if decision.is_some() {
         for fact in answers

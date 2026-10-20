@@ -79,14 +79,75 @@ fn stream(html: &mut String, label: &str, stream: &StreamCapture, locale: Viewer
             .unwrap_or_else(|| text(locale, "Not observed", "관측되지 않음").into()),
     );
 }
+pub(super) fn check_anchor(answers: &ReaderAnswers<'_>, check: &VerificationReading) -> String {
+    let key = serde_json::json!([
+        check.original.checkpoint_id,
+        check.original.checkpoint_revision,
+        check.original.verification_index
+    ]);
+    format!(
+        "{}-{}",
+        document_anchor(answers, "check"),
+        volicord_projections::explanation_text_hash(&key.to_string()).trim_start_matches("sha256:")
+    )
+}
+pub(super) fn historical_check(
+    check: &VerificationReading,
+    report: &WorkVerificationReport,
+) -> bool {
+    check.applicability == VerificationApplicability::HistoricalAfterRecordedChange || report.checks.iter().any(|later|
+        matches!(&later.retest_comparison, RetestComparison::Comparable {previous,later_assertion:volicord_context::AssertionState::Passed,..} if previous == &check.original))
+}
+pub(super) fn render_digest(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    report: &WorkVerificationReport,
+) {
+    html.push_str("<p class=\"verification-digest source-note\">");
+    if report.checks.is_empty() {
+        html.push_str(text(
+            r.locale,
+            "No verification recorded in a Checkpoint.",
+            "Checkpoint에 기록된 검증 없음.",
+        ));
+    } else {
+        html.push_str(text(r.locale, "Recorded checks: ", "기록된 검증: "));
+        for state in [
+            ReportedCheckState::Passed,
+            ReportedCheckState::Failed,
+            ReportedCheckState::Partial,
+            ReportedCheckState::NotRun,
+        ] {
+            let count = report
+                .checks
+                .iter()
+                .filter(|c| c.reported_state == state)
+                .count();
+            if count > 0 {
+                html.push_str(&format!("{} {} · ", count, state.label(r.locale.fixed())));
+            }
+        }
+        html.push_str(text(
+            r.locale,
+            "Current coverage follows each report's stated limits. ",
+            "현재 coverage는 각 보고의 명시된 한계를 따릅니다. ",
+        ));
+    }
+    html.push_str(&format!(
+        " <a href=\"#{}\">{}</a></p>",
+        document_anchor(answers, "verification"),
+        text(r.locale, "Verification details", "검증 상세")
+    ));
+}
 fn check(
     html: &mut String,
     r: &ViewerRequest,
     answers: &ReaderAnswers<'_>,
     check: &VerificationReading,
 ) {
-    html.push_str(&format!("<section class=\"verification-check\" data-checkpoint=\"{}\" data-check-index=\"{}\"><h4>{}: {}</h4><dl>",
-        escape(&check.original.checkpoint_id),check.original.verification_index,
+    html.push_str(&format!("<section class=\"verification-check\" id=\"{}\" tabindex=\"-1\" data-checkpoint=\"{}\" data-check-index=\"{}\"><h4>{}: {}</h4><dl>",
+        check_anchor(answers,check),escape(&check.original.checkpoint_id),check.original.verification_index,
         text(r.locale,"Checkpoint report", "Checkpoint 보고"),check.reported_state.label(r.locale.fixed())));
     definition(
         html,
@@ -262,7 +323,7 @@ pub(super) fn render_verification(
     answers: &ReaderAnswers<'_>,
     report: &WorkVerificationReport,
 ) {
-    html.push_str(&format!("<section class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2><p>{}</p><p class=\"source-note\">{}</p>",
+    html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary><p>{}</p><p class=\"source-note\">{}</p>",
         document_anchor(answers,"verification"),text(r.locale,"Verification report", "검증 보고"),
         text(r.locale,"Observed executions and Checkpoint reports have separate provenance. Exit status proves no assertions.", "실행 관측과 Checkpoint 보고는 출처가 다릅니다. 종료 코드만으로 assertion을 확정하지 않습니다."),
         if report.checks.iter().all(|c|matches!(c.scoped_run,EvidenceDetail::NotObserved)) {text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Environment, assertion detail and coverage are shown only when observed.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 환경·assertion 상세·coverage는 관측되었을 때만 표시합니다.")} else {text(r.locale,"Only explicit recorded relationships support comparison. Earlier failures remain original facts; environment and coverage descriptions are attributed operator reports.","명시적으로 기록된 관계만 비교를 뒷받침합니다. 이전 실패는 원래 사실로 보존하며 환경과 coverage 설명은 작업자 보고로 표시합니다.")}));
@@ -417,7 +478,7 @@ pub(super) fn render_verification(
         html.push_str("</article>");
     }
     html.push_str(&format!(
-        "<p class=\"source-note\">{}: {} / {} · {}: {} / {}. <a href=\"#{}\">{}</a></p></section>",
+        "<p class=\"source-note\">{}: {} / {} · {}: {} / {}. <a href=\"#{}\">{}</a></p></details>",
         text(r.locale, "Displayed reports / total", "표시된 보고 / 전체"),
         report.checks.len().min(64),
         report.checks.len(),

@@ -1204,3 +1204,25 @@ scoped consumer test retains original command observations, independent typed re
 MCP and en/ko live/offline artifacts. These are task-owned controlled executions;
 missing trusted SessionStart activation is Blocked and no ordinary-user/human claim
 is supplied. Retain every failed validation attempt under the ignored runner paths.
+
+## Compact document navigation and supporting reads
+
+Focused Viewer `--test supporting_disclosure` preserves a failed check followed
+by an unrelated pass and a second Work with identical missing publications and
+no checks. Optional absolute `VOLICORD_DISCLOSURE_CONTROL_CAPTURE` retains labeled
+adverse controls and `cases.json`. The library outline test optionally writes
+0/1/12-heading renderer controls through `VOLICORD_OUTLINE_CONTROL_CAPTURE`.
+These controls are separate from actual retained host-authored articles.
+
+`end-to-end/multi-repository/document_navigation_browser.cjs CONFIG` accepts local
+`viewer`, `cli`, `playwright`, `chromium`, `fontconfig`, new `output` and `cases`
+(each with key/runtime/project/language/locale and optional Work identity).
+It checks every actual DOM ID/internal link/return in whole snapshots and live
+pages, native TOC behavior at 1440/1024/768/390/320 CSS px, live with/without JS,
+script-free offline navigation, closed supporting data, exact typed run labels and
+numeric outcomes, failure links, Source/history/reload/return, print and logical
+store nonmutation. Optional `outline_controls` points to the separately labeled
+renderer files; `fragments_only` restricts checks to link identity. Run via
+`validate focused`. Numeric results, process streams and screenshots remain under
+ignored paths. Native screen reader/zoom and human acceptance are not observed by
+these automation checks; no Final/V11 or semantic verdict follows.
