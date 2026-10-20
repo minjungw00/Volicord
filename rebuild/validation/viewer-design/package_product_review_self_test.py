@@ -150,6 +150,28 @@ class BoundaryAttackTests(unittest.TestCase):
         for tail in ['<script>fetch("private")</script>', '<form action="/memory/forget"></form>', '<img src="https://foreign.invalid/source">', '<div onclick="capture()">x</div>', '<style>body{background:url(file:/private)}</style>']:
             with self.subTest(tail=tail), self.assertRaises(ValueError): package.boundary.validate('index.html', b'<!doctype html>' + tail.encode())
 
+    def test_displayed_source_urls_are_not_css_but_active_style_resources_remain_denied(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); source = self.observed(root)
+            original = b'''<!doctype html><style>p{color:navy}</style><pre><code>new URL('../player.js', import.meta.url)
+@import "source-only-example.css";
+&lt;style&gt;p{background:url(file:/private)}&lt;/style&gt;</code></pre>'''
+            (source / 'recorded-offline.html').write_bytes(original); seal(source)
+            (root / 'delivery').mkdir()
+            package.copy_product_outputs(source, root / 'delivery' / 'product', [case()])
+            self.assertEqual((root / 'delivery' / 'product' / 'recorded-offline.html').read_bytes(), original)
+            manifest(root / 'delivery')
+            package.boundary.write_archive(root / 'delivery', root / 'review.zip', 'a' * 40)
+            package.boundary.verify_archive(root / 'review.zip', 'a' * 40)
+        for active in ['<style>@import "https://foreign.invalid/x";</style>',
+                '<p style="background:url(file:/private)">x</p>',
+                '<p style="background:u&#114;l(https://foreign.invalid/x)">x</p>',
+                r'<style>p{background:u\72l(https://foreign.invalid/x)}</style>',
+                '<style>p{background:image-set("https://foreign.invalid/x" 1x)}</style>',
+                '<style>p{color:navy}']:
+            with self.subTest(active=active), self.assertRaises(ValueError):
+                package.boundary.validate('index.html', b'<!doctype html>' + active.encode())
+
     def test_supplements_exclude_raw_logs_and_unsealed_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); source = root / 'source'; source.mkdir()

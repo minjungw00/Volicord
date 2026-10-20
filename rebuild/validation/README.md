@@ -22,6 +22,12 @@ and may differ. Unavailable detail may carry lifecycle notices, never current
 generated prose. Exercise both a distinct-publication positive and a Source-deleted
 detail with surviving independent card scopes; keep their exact origins visible.
 
+Review delivery validates CSS resources in actual style elements and attributes.
+Escaped Source text such as JavaScript `new URL('../file', import.meta.url)` is
+display content and stays byte-identical. Active external styles, encoded/escaped
+resource loaders and malformed style elements remain denied; original Source
+text does not acquire execution or network authority by being packaged.
+
 Read-only qualitative inspection accepts `inspect-agent-review --review-root <private-run>
 --criterion-numbers 1 2 3`. Each request verifies one full package byte set; single
 inspection uses the same presentation. Recording and publication recheck current bytes.

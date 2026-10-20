@@ -118,12 +118,30 @@ def safe_json(data):
     return value
 
 
+def static_css(value):
+    # Inspect executable CSS contexts, not escaped code displayed by the Reader.
+    # Escapes and alternate string-based image loaders cannot bypass URL checks.
+    value = html.unescape(value)
+    if '\\' in value or re.search(r'@\s*import\b|(?:-webkit-)?image-set\s*\(|\bimage\s*\(', value, re.I):
+        raise ValueError('unapproved review CSS resource syntax')
+    for _, resource in re.findall(r"url\s*\(\s*(['\"]?)(.*?)\1\s*\)", value, re.I | re.S):
+        resource = resource.strip()
+        if resource.startswith(('#', 'data:image/png;base64,')): continue
+        relative(resource)
+        if not resource.endswith('.png'): raise ValueError('unapproved CSS resource')
+
+
 class StaticHtml(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.style = None
+
     def handle_starttag(self, tag, attrs):
         if tag in {'script', 'form', 'iframe', 'object', 'embed', 'base'}:
             raise ValueError('review HTML must be script-free and without live authority')
         for key, value in attrs:
             value = value or ''
+            if key == 'style': static_css(value)
             if key.startswith('on') or key in {'srcdoc', 'srcset', 'poster', 'background', 'formaction'} or (tag == 'meta' and key == 'http-equiv' and value.lower() == 'refresh'):
                 raise ValueError('active review HTML')
             if key in {'src', 'action'} and not value.startswith('data:image/png;base64,'):
@@ -132,6 +150,20 @@ class StaticHtml(HTMLParser):
                     raise ValueError('review HTML must not acquire external content')
             if (key == 'href' or key.endswith(':href')) and value and not value.startswith('#'):
                 relative(value.split('#', 1)[0])
+        if tag == 'style': self.style = []
+
+    def handle_data(self, data):
+        if self.style is not None: self.style.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == 'style' and self.style is not None:
+            static_css(''.join(self.style))
+            self.style = None
+
+    def close(self):
+        super().close()
+        if self.style is not None: raise ValueError('unclosed review style element')
+
     handle_startendtag = handle_starttag
 
 
@@ -189,13 +221,9 @@ def validate(name, data):
     if suffix == '.html':
         if not text.lstrip().lower().startswith('<!doctype html'):
             raise ValueError('review HTML requires its static export envelope')
-        if re.search(r'@import\b', decoded, re.I): raise ValueError('CSS import in review HTML')
-        for _, resource in re.findall(r"url\s*\(\s*(['\"]?)(.*?)\1\s*\)", decoded, re.I | re.S):
-            resource = resource.strip()
-            if resource.startswith(('#', 'data:image/png;base64,')): continue
-            relative(resource)
-            if not resource.endswith('.png'): raise ValueError('unapproved CSS resource')
-        StaticHtml().feed(text)
+        parser = StaticHtml()
+        parser.feed(text)
+        parser.close()
     else:
         safe_json(data)
 
