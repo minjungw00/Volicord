@@ -418,6 +418,12 @@ binding and retention dependencies remain validated on every publication.
 
 ### Reader identity production and event projection
 
+The 40 KiB explanation realization policy changes prepared budget/fingerprints,
+not retained fields or explanation v6. Existing 144 KiB retained content and other
+transport/Source limits stay independent. Old publications become stale under
+the changed plan; fresh explicit preparation/admission is required. Historical
+output and failed admissions retain their own identities and original limits.
+
 Source-first authoring guidance and shared section grouping change preparation
 fingerprints and may make earlier explanations Stale. Fresh generation/admission
 is required; old prose is never rebound. Section metadata consists only of indices

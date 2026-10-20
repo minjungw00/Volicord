@@ -8,7 +8,8 @@ use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, Decis
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
 pub const EXPLANATION_VERSION: u32 = 6;
-pub const EXPLANATION_BYTE_LIMIT: usize = 32_768;
+/// Complete claim bindings and prose share this limit; retention stays independent.
+pub const EXPLANATION_BYTE_LIMIT: usize = 40_960;
 /// Preserve the response space guaranteed before citation metadata grew.
 pub const EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY: usize = 16_384;
 pub const EXPLANATION_PARAGRAPH_CHARACTER_LIMIT: usize = 16_384;

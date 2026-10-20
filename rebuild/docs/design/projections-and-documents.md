@@ -472,7 +472,7 @@ raw-file length and compact realization length are different measurements.
 | Boundary | Inclusive limit | Measurement / action |
 | --- | ---: | --- |
 | Preparation | 131,072 | Complete compact `ExplanationPlan`, including its final fingerprint and retention budget; reject unrepresentable evidence before generation |
-| Response | 32,768 maximum | Complete compact `ExplanationRealization`, including every Source/claim citation; actual admission uses the plan's `response_byte_capacity` |
+| Response | 40,960 maximum | Complete compact `ExplanationRealization`, including every Source/claim citation; actual admission uses the plan's `response_byte_capacity` |
 | CLI / Dogfood input file | 65,536 | Raw JSON bytes, including formatting; compact-response validation still applies after parsing; remove whitespace for transport excess |
 | Retained content / decoder | 147,456 | Complete compact `RetainedExplanation` in managed Derived `content`; same limit at record, Privacy body admission and explanation decoding; inspection preserves accepted bodies |
 | Privacy short fields | 16,384 | Purpose, retention basis and unrelated existing short metadata retain their independent bounds |
@@ -491,7 +491,7 @@ identity limitation. Only original evidence bodies and Source `observation` are
 excluded, as already required by retention; grounding is never pruned.
 
 An admitted plan still guarantees the **full** 16,384-byte response. Its exact
-capacity is `min(32,768, 147,456 - metadata_byte_reserve)`, so previously supported
+capacity is `min(40,960, 147,456 - metadata_byte_reserve)`, so previously supported
 metadata-heavy plans retain at least their guaranteed capacity without pruning
 grounding. If required metadata plus the guaranteed response cannot fit,
 preparation rejects the evidence shape
@@ -508,6 +508,13 @@ records. Re-recording requires an explicit fresh preparation. A caller preservin
 an actual host output must retain its original request, prose, Source selections
 and failure, and disclose any purely mechanical fingerprint rebinding; that
 rebinding is not another model invocation or semantic approval.
+
+The 40 KiB realization policy follows feedback-guided revisions of two independently
+reviewed real-repository articles, needing 35,732 and 40,138 compact bytes for missing responsibilities
+and claim bindings. Their 32 KiB refusals remain preserved. This is a resource-policy
+change, not a larger preparation, retained envelope, Source copy, citation page,
+HTTP or MCP transport grant. Source-first quality and cost must still be assessed
+on each actual publication; fitting the new ceiling establishes no semantic pass.
 
 Shared answers and Viewer use the same decoder. CLI `status`/`decisions` and local
 Operations inspection expose full retained provenance. Existing bounded CLI/MCP Recall

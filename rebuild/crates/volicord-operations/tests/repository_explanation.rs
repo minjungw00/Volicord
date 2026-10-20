@@ -133,6 +133,72 @@ fn current_repository_budget_measures_distinct_claims_and_editorial_overhead(
     Ok(())
 }
 #[test]
+fn source_rich_repository_publication_preserves_content_above_32_kib_and_refuses_overflow(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let subject = ExplanationSubject::Repository(f.analysis);
+    let mut realization = response(&f, id)?;
+    // Authored resource control, never a repository-breadth or entailment oracle.
+    // Distinct claim bindings and UTF-8 prose traverse the actual publication read.
+    for index in 1..24 {
+        let mut unit = realization.paragraphs[0].clone();
+        unit.text = format!(
+            "Observed claim {index}: greet appends a supplied name. {}",
+            "현재 Source 관측은 실행 결과나 사용자 선택을 증명하지 않습니다. ".repeat(7)
+        );
+        unit.citations[0].claim_end_byte = unit.text.len();
+        unit.citations[0].claim_sha256 = explanation_text_hash(&unit.text);
+        realization.paragraphs.push(unit);
+    }
+    let bytes = serde_json::to_vec(&realization)?.len();
+    assert!((32_769..=40_960).contains(&bytes), "control bytes: {bytes}");
+    f.ops
+        .record_explanation(f.project, subject, "en", realization.clone())?;
+    let read = f.ops.read_repository_explanation(f.project, "en")?;
+    assert_eq!(read.explanation_state, ExplanationState::Current);
+    assert_eq!(
+        read.prose
+            .iter()
+            .map(|u| (&u.text, &u.citations))
+            .collect::<Vec<_>>(),
+        realization
+            .paragraphs
+            .iter()
+            .map(|u| (&u.text, &u.citations))
+            .collect::<Vec<_>>()
+    );
+    let before = f.ops.privacy_status(f.project)?;
+    let mut oversized = realization.clone();
+    oversized.paragraphs[0].text.push_str(&"x".repeat(10_000));
+    oversized.paragraphs[0].citations[0].claim_end_byte = oversized.paragraphs[0].text.len();
+    oversized.paragraphs[0].citations[0].claim_sha256 =
+        explanation_text_hash(&oversized.paragraphs[0].text);
+    let error = f
+        .ops
+        .record_explanation(f.project, subject, "en", oversized)
+        .err()
+        .ok_or("overflow admitted")?;
+    assert!(error.message().contains("compact realization JSON"));
+    assert_eq!(f.ops.privacy_status(f.project)?, before);
+    assert_eq!(
+        f.ops.read_repository_explanation(f.project, "en")?.prose,
+        read.prose
+    );
+    f.ops
+        .delete_repository_source_observation(f.project, f.analysis, id)?;
+    let unavailable = f.ops.read_repository_explanation(f.project, "en")?;
+    assert_ne!(unavailable.explanation_state, ExplanationState::Current);
+    assert!(unavailable.provenance.is_none());
+    assert!(unavailable.source_excerpts.is_empty());
+    assert!(!unavailable
+        .prose
+        .iter()
+        .any(|p| p.role == AnswerRole::GeneratedInterpretation));
+    Ok(())
+}
+
+#[test]
 fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_access(
 ) -> Result<(), Box<dyn Error>> {
     let f = fixture()?;
