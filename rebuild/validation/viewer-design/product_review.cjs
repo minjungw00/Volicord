@@ -141,6 +141,9 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
    await capture(page,c,'overview',width);
    const clickStarted=performance.now(),cpuBefore=await taskCpu();
    await page.locator('.masthead a[href*="view=repository"]').click();
+   await page.waitForURL(u=>u.searchParams.get('view')==='repository');
+   await page.waitForLoadState('domcontentloaded');
+   await page.locator('#repository-explanation').waitFor();
    row.repository_cost={navigation_ms:performance.now()-clickStarted,browser_task_ms:(await taskCpu())-cpuBefore,...await page.evaluate(documentMetrics)};assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
    fs.writeFileSync(path.join(output,`${c.key}-repository-${width}.html`),await page.content());await capture(page,c,'repository',width);
    row.source=await sourceJourney(page,c,width);
