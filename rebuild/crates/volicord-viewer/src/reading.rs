@@ -794,9 +794,9 @@ fn render_document_body(
     render_evidence_index(html, r, answers);
     html.push_str("<div class=\"audit\">");
     if let Some(w) = work {
-        html.push_str(&format!("<details class=\"record-box\" id=\"{}\"><summary>{}</summary><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></details>",document_anchor(answers,"original"),text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
+        html.push_str(&format!("<details class=\"record-box\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\"><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></div></details>",text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),document_anchor(answers,"original"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
     }
-    html.push_str(&format!("<details class=\"record-box\" id=\"{}\"><summary>{}</summary><div class=\"record-facts\" data-statement-role=\"deterministic-derived\">",document_anchor(answers,"audit"),text(r.locale,"Full evidence · states · output identity","전체 근거 · 상태 · 출력 identity")));
+    html.push_str(&format!("<details class=\"record-box\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\"><div class=\"record-facts\" data-statement-role=\"deterministic-derived\">",text(r.locale,"Full evidence · states · output identity","전체 근거 · 상태 · 출력 identity"),document_anchor(answers,"audit")));
     for fact in &answers.facts {
         html.push_str(&format!(
             "<p data-question=\"{}\">{}</p>",
@@ -867,7 +867,7 @@ fn render_document_body(
         html.push_str(&format!("<pre>{}</pre>", escape(&format!("Work: {}\nGoal basis: {:?}\nchanges: {:?}\nCheckpoints: {:?}\nDecisions: {:?}\nQuestions: {:?}\nresult: {:?}\nnext step: {:?}", w.work_item_id,w.reading.goal.basis,w.reading.changes,w.checkpoint_ids,w.decision_ids,w.open_question_ids,w.reading.answers.result,w.reading.next_step))));
     }
     html.push_str(records);
-    html.push_str("</details></div></article>");
+    html.push_str("</div></details></div></article>");
     // Every Source pane is a sibling of the reading article. On narrow
     // screens the article becomes inert while its selected pane is open.
     // This includes independently admitted summaries in the header or audit.
