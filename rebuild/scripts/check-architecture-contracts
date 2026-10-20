@@ -1122,7 +1122,7 @@ def check_reader_experience(root: Path) -> list[str]:
         return ["missing maintained reader experience entry"]
     content = path.read_text()
     errors = []
-    for prefix, count in (("D", 27), ("AC", 25)):
+    for prefix, count in (("D", 33), ("AC", 31)):
         for number in range(1, count + 1):
             identity = f"{prefix}-{number:02}"
             if f"**{identity}**" not in content:

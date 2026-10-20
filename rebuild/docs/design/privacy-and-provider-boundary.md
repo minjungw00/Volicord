@@ -694,8 +694,7 @@ same server-side Project/Work/Source/revision, Candidate, deletion and read-time
 retention barriers as detail reads. A Source ID/locator or aggregate query supplies
 no broader grant. Protected actions remain dedicated domain operations with their
 existing confirmation. GET, navigation, export and Source reads never capture,
-generate, transmit, renew retention or mutate canonical state. Inspector UI remains
-pending; this contract does not authorize SQL, ambient filesystem/DB access or a
+generate, transmit, renew retention or mutate canonical state. General Inspector UI is removed from Viewer by D-30; Operations inspection remains; this contract does not authorize SQL, ambient filesystem/DB access or a
 new background provider.
 
 Independent verification reading uses existing permitted same-Work observations.
@@ -714,9 +713,10 @@ Current Work copies use the single exact v4 format; old copies are Unsupported.
 
 ### Bounded Project data inspection threat model
 
-The local inspector reuses launched-Project authority. A Project selector may show
-only that authorized Project; switching to another Project requires a separately
-launched viewer. It grants no global inventory, database file, SQL, OS path reader,
+The Operations inspector reuses explicit Project authority. D-30 retires Viewer
+`/inspection`, `/inspection.json`, Tools and memory/document management POSTs.
+The table below names retained operations outside Viewer; only exact cited Source
+reads and request-scoped guarded confirmation retain HTTP surfaces. It grants no global inventory, database file, SQL, OS path reader,
 new role, credentials, provider permission or record mutation. Persisted bytes are
 not read authority. Search is literal substring matching over the displayed,
 permitted summary and identity only, after admission. No body/full-text index,
@@ -724,16 +724,16 @@ hidden-field filter, relevance ranking or hidden aggregate participates.
 
 | User task / existing route | Operations owner and exact scope | Permitted output | Deny / lifetime control |
 | --- | --- | --- | --- |
-| Analysis / `?view=tools&tool=status` | `health_profiled`, Project projection, `privacy_status`; launched Project and selected analysis | capability, coverage, freshness, failure and recovery guidance; provider state | no automatic repair/analyze/provider call; keep polyglot unsupported states |
-| Documents / `?view=tools&tool=documents`, `POST /documents/export` | `project_documents_read_profiled`, `publish_document`; Project, language, current read fingerprint | grounded preview, explicit bounded publication and adoption guidance | authenticate export; publication recheck; generation never implies adoption |
-| Memory / `?view=tools&tool=memory` | bounded inspection query over `canonical_basis`; current record identity/revision | class, role, lifecycle, bounded canonical quotation, explicit same-Project relations | no Source body in summary, no cross-Project join; exact detail must recheck revision |
-| Evidence / `?view=tools&tool=evidence` | same inspector plus retained evidence disclosures; Project/snapshot | Source metadata, Checkpoint and explicit relation inspection | preserve diagnostic/inventory access; never infer association by path/text/time/commit |
+| Analysis / CLI doctor, status, privacy | `health_profiled`, Project projection, `privacy_status`; launched Project and selected analysis | capability, coverage, freshness, failure and recovery guidance; provider state | no automatic repair/analyze/provider call; keep polyglot unsupported states |
+| Documents / CLI document, MCP document | `project_documents_read_profiled`, `publish_document`; Project, language, current read fingerprint | grounded preview, explicit bounded publication and adoption guidance | authenticate export; publication recheck; generation never implies adoption |
+| Memory / Operations inspection, CLI memory, MCP memory_correct | bounded inspection query over `canonical_basis`; current record identity/revision | class, role, lifecycle, bounded canonical quotation, explicit same-Project relations | no Source body in summary, no cross-Project join; exact detail must recheck revision |
+| Evidence / CLI inspect, MCP canonical_inspect | same inspector plus retained evidence disclosures; Project/snapshot | Source metadata, Checkpoint and explicit relation inspection | preserve diagnostic/inventory access; never infer association by path/text/time/commit |
 | Candidate inspection | `candidate_basis`, `inspect_candidate`, `candidate_evidence_detail`; Project, Candidate/revision | existing inspectable metadata and admitted bounded summary; explicit omission | expiry, cleanup and canonical-forgetting admission before search, counts, relations and paging; no withheld content hashes |
 | Derived inspection | `privacy_status`; Project and managed identity | kind, lifecycle, expiry and exact admitted canonical links only | no general Derived body endpoint; SourceObservation body still requires existing exact Work/revision scope; deleted/withheld content never searched |
 | Exact field / Source body | `canonical_evidence_detail`, `candidate_evidence_detail`; Project, class, identity, current revision, field and optional Work | bounded UTF-8 chunk, current disclosure state, continuation fingerprint | no locator evaluation; Source copy retention/deletion/Work barrier on every chunk; not-found and foreign identity indistinguishable |
-| Correction / `POST /memory/context/correct`, `/memory/decision/correct` | `correct_context_item`, `correct_decision`; current identity/revision and explicit user Source | existing domain receipt and refreshed current target | same Host/Origin, authenticity; no raw UPDATE; stale revision rejected |
-| Supersession / `POST /memory/decision/supersede` | `supersede_decision`; exact Decision and explicit user Source | new canonical identity and explicit supersedes link | no inferred choice, scope or user rationale |
-| Forget / `POST /memory/forget` | `forget_record`; exact canonical target, explicit user Source | completion or repair-required receipt | canonical + Candidate + managed Derived cleanup barrier; no DELETE endpoint |
+| Correction / CLI memory correct, MCP memory_correct | `correct_context_item`, `correct_decision`; current identity/revision and explicit user Source | existing domain receipt and refreshed current target | same Host/Origin, authenticity; no raw UPDATE; stale revision rejected |
+| Supersession / CLI memory supersede, MCP memory_supersede | `supersede_decision`; exact Decision and explicit user Source | new canonical identity and explicit supersedes link | no inferred choice, scope or user rationale |
+| Forget / CLI memory forget, MCP memory_forget | `forget_record`; exact canonical target, explicit user Source | completion or repair-required receipt | canonical + Candidate + managed Derived cleanup barrier; no DELETE endpoint |
 | Guarded / `/guarded/ID`, `POST /guarded/confirm` | `guarded_request`, `record_confirmation`; Project, request/revision/effect fingerprint | exact effect, confirm/deny and receipt | Origin + authenticity + exact scope; inspection never dispatches |
 | Static Viewer snapshot | existing snapshot publication and source readers | explicitly included bounded records, disclosure/omission and native anchors | no live queries/forms/script/authenticity; no new default bulk export |
 

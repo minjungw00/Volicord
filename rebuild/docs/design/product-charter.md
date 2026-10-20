@@ -276,7 +276,7 @@ Checkpoint는 의미 있는 작업 완료, 일시 중지 또는 handoff 경계�
 | 표면 | 초기 책임 |
 |---|---|
 | Agent conversation | Inquiry, Decision, Recall, 현재 작업과 코드 설명 |
-| Local viewer | Project Understanding을 기본으로 한 목표, 완료·현재·남은 작업, 다음 단계, Decision과 이유, 관련 코드, component·architecture·flow, Repository Map과 문서 preview; record·audit 상세는 더 깊은 inspection으로 제공 |
+| Local viewer | 설명 독자: Overview / Repository explanation / Work만 탐색. 실제 Work의 Decision과 이유, 관련 코드·구성요소·흐름, 정확한 인용 Source와 중요한 검증·한계를 읽음. 일반 DB 검사·진단·문서 관리·기억 관리는 CLI/MCP/Operations에서 제공 ([D-28–33](reader-experience-design.md)) |
 | CLI | repository-relative ordinary use와 task-oriented discovery를 제공하는 init/bind, understand/status, analyze, document, export/import, privacy, repair/reindex와 고위험 fallback |
 | MCP | recall, explain/search, request decision, checkpoint, analyze와 document의 고수준 기능 |
 

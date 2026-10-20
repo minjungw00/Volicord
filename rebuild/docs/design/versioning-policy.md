@@ -477,3 +477,11 @@ commits this basis before Checkpoint adoption, so another same-argv execution or
 modified target/Work cannot substitute for the original capture. Historical/report-only
 commands have no capture fingerprint and cannot acquire a scoped run by inference.
 Non-current canonical/bundle formats remain refused with no compatibility decoder.
+
+### Focused Viewer route retirement
+
+[Reader D-28–33 / AC-26–31](reader-experience-design.md) removes presentation
+selectors, routes and offline fragments, with controlled errors and no aliases.
+This changes no canonical, bundle, Analysis, retained explanation or document
+metadata format. Existing CLI/MCP/Operations readers keep exact-current decoding.
+Offline HTML is a publication, never an ingestible compatibility format.

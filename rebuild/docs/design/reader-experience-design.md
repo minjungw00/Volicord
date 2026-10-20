@@ -3,7 +3,7 @@
 Status: accepted experience requirements, adopted 2026-10-19. Implementation,
 focused technical checks, semantic quality and human acceptance are separate.
 
-This is the maintained entry for D-01–D-27 and AC-01–AC-25.
+This is the maintained entry for D-01–D-33 and AC-01–AC-31.
 D-19–D-27 adopt the subsequent 2026-10-19 user decisions; they do not
 retroactively qualify the rejected review_101901 output. Specialized owners
 retain architecture, domain, privacy, versioning and failure authority. Read this
@@ -54,7 +54,7 @@ that rejection. New output is unassessed until actually reviewed.
 | **D-02** | 디자인과 정보 설계를 비슷한 중요도의 필수 조건으로 다룬다. | 데이터 완료 후 마지막에 CSS만 정리하는 작업으로 축소하지 않는다. | U2 |
 | **D-03** | 기존 정보·시각 구조를 유지하는 것 자체를 목표로 삼지 않는다. | 기존 필드별 섹션·fallback·중복 메뉴를 새 스타일 아래 유지하지 않는다. | U2, U4 |
 | **D-04** | 브랜드는 좌측, 내비게이션 목록은 우측에 두고 저장소 설명을 포함한다. | 가운데 메뉴와 우측 읽기 전용 배지를 유지하지 않는다. | U4 |
-| **D-05** | 저장소 설명·결정·도구를 위한 별도의 두 번째 내비게이션을 없애거나 단일 내비게이션으로 통합한다. | 중복된 상·하단 Project 메뉴를 만들지 않는다. | U4 |
+| **D-05** | D-28 supersedes the earlier menu consolidation: precisely Overview / Repository explanation / Work form the single navigation. | 중복된 상·하단 Project 메뉴를 만들지 않는다. | U4 |
 | **D-06** | 읽기 전용 표시는 내비게이션 밖에 표시한다. | 수정 가능한 도구까지 제품 전체가 읽기 전용인 것처럼 표시하지 않는다. | U4; 권한 범위는 R8 |
 | **D-07** | 클릭 가능한 주요 요소에 버튼 등 명확하고 일관된 UI를 적용한다. | 기본 선 장식만으로 동작을 표시하거나 native 상호작용 의미를 없애지 않는다. | U4 |
 | **D-08** | 개요는 Project 이름·Project Purpose 중심으로 구성하고 중복된 ‘저장소 이해하기’ 요약 영역을 대체한다. | 저장소 기능 설명이나 제품 헌장을 canonical Project Purpose로 승격하지 않는다. | U4; 의미 경계는 R7 |
@@ -62,7 +62,7 @@ that rejection. New output is unassessed until actually reviewed.
 | **D-10** | 개요 heading은 해당 Project의 실제 이름이다. | `Volicord`를 하드코딩하거나 저장소 설명 제목으로 대체하지 않는다. | U4; 현황 확인 A1, R2 |
 | **D-11** | Work 카드 제목은 실제 요청을 바탕으로 생성된 작업 이름, 본문은 문제와 해결·조사 결과의 요약이다. | `작업 기록`과 긴 Goal 원문을 완성된 카드로 판정하지 않는다. 결과가 없으면 해결을 발명하지 않는다. | U4, U5 |
 | **D-12** | Work 카드에 작업 생성 시각과 마지막 작업 시각을 구분해 제공한다. | 하나의 `observed_at`을 두 사건으로 재사용하거나 Git·파일 시각으로 추정하지 않는다. | U4; 정확한 사건 정의는 §7 |
-| **D-13** | 프로젝트 결정 목록은 개요에서 제거하고 관련 Work 상세에서 맥락과 함께 다룬다. | Decision 저장·조회 기능을 삭제하거나 모든 Project 결정을 임의의 Work에 붙이지 않는다. | U4 |
+| **D-13** | D-29 supersedes Viewer-wide Decision inspection: related Decisions belong in their actual Work; unassociated Decisions remain outside Viewer. | Decision 저장·조회 기능을 삭제하거나 모든 Project 결정을 임의의 Work에 붙이지 않는다. | U4 |
 | **D-14** | Work 상세는 문제·수행 방식·메커니즘·결과·판단·한계를 연결하는 독자용 문서다. | 기존 레코드 필드의 이름만 바꿔 늘어놓는 구성을 재사용하지 않는다. | U1, U4, U5 |
 | **D-15** | 저장소 전체 이해는 Work가 없어도, Work가 있어도 독립적으로 제공한다. | 가짜 Work를 만들거나 Work 인용 목록으로 저장소 설명을 대체하지 않는다. | U1 |
 | **D-16** | 프로토타입은 디자인·UI 참고로 사용하며 실제 문장·결과·상태·코드 위치는 채택하지 않는다. | prototype 또는 평가 정답을 생성 입력·Product 데이터에 주입하지 않는다. | U3 |
@@ -83,10 +83,26 @@ original Korean plan are preserved evidence of feedback, not parallel authority.
 | **D-21** | Verification identifies named check, execution Source/run, target basis, time, outcome/termination, coverage and limits. | Exit zero is not assertion coverage; a later unrelated pass never resolves an earlier failure or establishes a retest. |
 | **D-22** | One accessible persistent document section navigation; warnings distinguish current blocking, historical failure, unverified and unavailable evidence. | Remove duplicated shortcuts; color alone and a generic disclaimer cannot carry material limits. |
 | **D-23** | A meaning-based evidence index connects article claims to code, commands and original records; raw objects require intentional inspection. | Raw-dump-first presentation and evidence counts do not establish explanation quality. |
-| **D-24** | Tools remain reachable through safe scoped inspection, including useful filtering, paging and relations. | No free SQL, browser DB access, arbitrary execution, cross-Project aggregate leaks or weaker protected actions. A scoped inspector is an implementation recommendation. |
+| **D-24** | D-30 supersedes the Viewer inspector requirement. Scoped inspection and protected operations remain available through Operations, CLI and MCP. | No free SQL, browser DB access, arbitrary execution, cross-Project aggregate leaks or weaker protected actions. A scoped inspector is an implementation recommendation. |
 | **D-25** | Explicit authorized task-time collection records actual states, attempts and checks with original identity/time/provenance. | No historical reconstruction, hidden capture, transcript/chain-of-thought retention or widened host/provider grant. |
 | **D-26** | Campaign admission is per case × claim, with a genuine prospective positive case for task-time collection. | Historical records, replay and synthetic controls keep useful applicability but cannot substitute for that positive case. |
 | **D-27** | Technical, evidence sufficiency, semantic, presentation, human and authority outcomes remain independent. | Source-first assessment precedes authored interpretation; presentation-first readers receive no answer oracle. Missing positive evidence cannot become a pass by exclusion. |
+
+### Focused Viewer boundary — accepted 2026-10-20
+
+These user decisions explicitly supersede the Viewer location of D-05, D-13 and
+D-24, and conflicting AC-10/15/22 wording. Their underlying record, permission,
+privacy and non-Viewer capabilities remain accepted. Earlier passing checks do
+not establish this new boundary; original feedback and evidence stay unchanged.
+
+| ID | Accepted outcome | Excluded interpretation |
+| --- | --- | --- |
+| **D-28** | Exactly Overview / Repository explanation / Work; brand left, navigation right, read-only disclosure outside navigation. | No Tools disclosure or second Project row. |
+| **D-29** | Explain actual related Decisions within Work, preserving alternatives, recommendation, user choice/rationale and applicability. | No standalone catalog, invented relation or lost unassociated records; CLI/MCP/Operations retain those reads. |
+| **D-30** | Remove Viewer management/inspection routes and selectors, with explicit controlled failures. | No orphan UI, silent fallback, hidden renderer or compatibility alias. |
+| **D-31** | Explain relevant structure and mechanisms contextually; exact cited code remains readable with original bytes and return point. | No unrelated generic Code catalog or loss of claim-specific evidence. |
+| **D-32** | Preserve existing non-Viewer operations and exact request-scoped guarded fallback with unchanged authority. | No navigable administration destination or implicit confirmation. |
+| **D-33** | Live/offline reading loads only required projections; offline carries bounded explanations and admitted Sources with truthful omissions/currentness. | No four Tools pages, document previews, bulk diagnostic/code export or generation on reads. |
 
 ### 3.1 ‘취소선’ 의견의 처리
 
@@ -100,7 +116,7 @@ original Korean plan are preserved evidence of feedback, not parallel authority.
 
 **확정 요구:** 브랜드 좌측, 탐색 목록 우측. `개요`, `저장소 설명`, `작업`을 동일한 주 탐색 체계에서 제공한다. 별도의 Project 읽기 메뉴 행을 없앤다.
 
-**설계 권고:** 주 탐색 옆의 하나의 `도구` 메뉴에 분석 상태, 문서, 기억·근거 검사, 필요할 때 찾는 전체 결정 기록 등을 배치한다. 이는 정확한 최종 메뉴 문구의 확정이 아니라 D-05·D-13과 기존 기능 접근성을 함께 만족하는 구성안이다. Work에 연결된 결정의 주 읽기 위치는 Work 상세다. 직접 주소로 여는 기존 Decision 기능과 연결되지 않은 결정의 검사 경로는 보존한다.
+**2026-10-20 accepted supersession (D-28–33):** Viewer is an explanation reader. Its only general destinations are Overview / Repository explanation / Work. Remove Tools, standalone Decisions, inspection, management and the generic Code catalog, including direct URLs and offline fragments. Work-linked Decisions and exact claim-specific Sources remain in the explanation. Project-wide/unassociated Decisions remain accessible through CLI/MCP/Operations; never fabricate a Work relation.
 
 좁은 화면에서는 같은 탐색 체계를 한 메뉴로 접거나 재배치할 수 있다. 두 번째 영구 메뉴 행을 다시 만들지 않고, 선택 상태·키보드 접근·현재 Project 문맥을 유지한다.
 
@@ -202,9 +218,9 @@ Work 상세는 `QuestionAnswers`의 enum 이름마다 제목을 붙이는 화면
 
 ### 8.2 실제로 관련된 Decision을 맥락에서 설명
 
-관련 Decision은 **이 Work에서 어떤 문제가 있었고 어떤 대안을 선택했으며 왜 그 선택이 적용되는지**를 설명한다. 선택·이유·적용 범위·상태와 근거를 확인하고, 필요하면 독립 Decision 상세로 이동한 뒤 해당 Work로 돌아올 수 있게 한다.
+관련 Decision은 **이 Work에서 어떤 문제가 있었고 어떤 대안을 선택했으며 왜 그 선택이 적용되는지**를 설명한다. 선택·이유·적용 범위·상태와 근거를 같은 Work 안에서 읽고, 정확한 인용 Source를 확인한 뒤 해당 설명으로 돌아온다.
 
-관계는 명시적인 Work scope 또는 해당 Work에 실제 적용된 Decision 관계를 따른다. 경로 중첩·시간 근접·같은 commit으로 새 관계를 만들지 않는다. Project 범위의 결정이나 미연결 기록은 별도 검사 경로로 접근 가능하게 유지하되 개요에 목록으로 되돌리지 않는다.
+관계는 명시적인 Work scope 또는 해당 Work에 실제 적용된 Decision 관계를 따른다. 경로 중첩·시간 근접·같은 commit으로 새 관계를 만들지 않는다. Project 범위의 결정이나 미연결 기록은 CLI/MCP/Operations로 검사하며 Viewer 목록이나 임의의 Work 관계로 되돌리지 않는다.
 
 사용자 이유, 에이전트 권고, 모델의 효과 해석은 같은 것이 아니다. 문서·코드에서 효과를 설명할 수 있어도 그것을 사용자나 원 개발자의 의도라고 기록하지 않는다.
 
@@ -242,7 +258,7 @@ Work 카드 개선을 이유로 저장소 전체 이해를 다시 빼지 않는�
 
 ### 9.3 분석 상태는 별도의 목적을 가진다
 
-Analysis/diagnostics는 어디까지 분석했는지, 어떤 capability가 부분·미지원·실패인지, 최신성·마지막 시도·유지된 이전 결과가 무엇인지, 어떤 복구가 필요한지 확인하는 화면이다. 전체 구조를 설명하는 대신 분석 상태를 나열하던 방식으로 돌아가지 않는다.
+Analysis/diagnostics는 CLI/MCP/Operations에서 분석 범위, capability, 최신성과 복구를 확인하는 기능이다. Viewer에는 해당 Repository/Work 설명의 결론에 영향을 주는 짧은 한계만 둔다. 전체 구조를 설명하는 대신 분석 상태를 나열하던 방식으로 돌아가지 않는다.
 
 부분 분석에서도 허용된 자료로 유용한 설명을 제공할 수 있어야 한다. 다중 언어 계약과 unsupported/degraded 처리는 보존하며, Volicord 자체가 Rust라는 이유로 분석 범위를 Rust만으로 줄이지 않는다.
 
@@ -368,12 +384,12 @@ Vue·React 또는 다른 FE의 채택은 미확정이다. 실제 정상 콘텐�
 | **AC-07** | D-12 | canonical 이력→시간 Projection→UI | 서로 다른 생성·마지막 작업 시각을 해당 사건 근거와 표시한다. 수정·import·동일 시각·Checkpoint 부재에서도 조작하지 않는다. 조회·재생성은 작업 시각을 바꾸지 않는다. |
 | **AC-08** | D-11, D-14 | Work selection·facts | 목록과 상세는 동일 Work다. 실행·보고·검증 coverage·검토·수락·다음 행동이 분리된다. 상세 prose 부재가 허용된 독립 사실을 지워서는 안 된다. |
 | **AC-09** | D-01~D-03, D-14 | host 조사·문서 모델·Viewer | 실제 Work의 문제·수행 방식·메커니즘·결과를 연결해 이해할 수 있다. 원문 결과나 enum별 제목 나열만으로 통과하지 않는다. |
-| **AC-10** | D-13 | Decision linkage·Work detail | 관련 선택·이유·대안·적용 범위를 정확한 Work에서 읽는다. 개요 결정 목록은 없고 미연결 결정의 검사 경로는 남는다. 잘못된 path/시점 연결은 거부한다. |
+| **AC-10** | D-13 | Decision linkage·Work detail | 관련 선택·이유·대안·적용 범위를 정확한 Work에서 읽는다. Viewer 결정 목록은 없고 미연결 결정은 기존 CLI/MCP/Operations에서 검사한다. 잘못된 path/시점 연결은 거부한다. |
 | **AC-11** | D-01, D-15 | Repository Intelligence·host·읽기 | Work0/Work-rich 모두 저장소의 역할·주요 책임·하나 이상의 중요한 완결된 메커니즘을 설명한다. 미분석·legacy 제외·동적/언어 경계를 숨기지 않는다. map/list만 있으면 실패한다. |
 | **AC-12** | D-01, D-02 | Source reader·HTTP·패널 | 중요한 claim의 관련 코드가 실제로 보이고 원문으로 돌아온다. 초기 생략·추가 조회·만료·삭제·오래된 링크·연속 선택·offline 제약을 정확히 처리한다. |
 | **AC-13** | D-01, D-16 | 설명 모델·recorder·privacy | 모든 제목·요약·표·도식·안내의 근거·revision·수명·fingerprint를 검증한다. 프로토타입 답안 주입, 무관한 근거, stale에서 임의로 잘라 살린 제목, 혼합 realization을 거부한다. |
 | **AC-14** | D-02, D-17 | UI·브라우저·사용자 관찰 | 실제 콘텐츠로 desktop/narrow 타이포·밀도·중요도·코드 가독성을 평가한다. native zoom·화면낭독기는 실제 검사 여부를 구분한다. 기술 체크와 실제 인간 이해·수용을 별도 기록한다. |
-| **AC-15** | D-17~D-18 | HTTP·install·전체 소비자 | local-only·권한·비변경 읽기·protected action·CLI/MCP·offline·기존 도구가 유지된다. 비용·설치 의존성을 실제 측정하고 부재를 0으로 표시하지 않는다. |
+| **AC-15** | D-17~D-18 | HTTP·install·전체 소비자 | local-only·권한·비변경 읽기·protected action·CLI/MCP·offline 기능이 유지되며 관리·검사·문서 도구는 Viewer 밖에서 제공한다 (D-30/32). 비용·설치 의존성을 실제 측정하고 부재를 0으로 표시하지 않는다. |
 | **AC-16** | D-03, D-17 | 통합·검증 owner | 관련 owner·fixture·schema·consumer·실제 테스트 의미가 새 계약과 일치한다. 현재 후보 기술 gate와 archive, 의미·디자인·사용자 수용을 분리한다. |
 
 ### Subsequent acceptance criteria
@@ -386,10 +402,21 @@ Vue·React 또는 다른 FE의 채택은 미확정이다. 실제 정상 콘텐�
 | **AC-19** | D-21 | Verification | Named command Source/run, selected target snapshot, original times, numeric exit/termination and bounded output remain inspectable; missing inspection/coverage/retest identity stays explicit. |
 | **AC-20** | D-22 | Document navigation/warnings | One persistent accessible control set works with fragments, keyboard, desktop pane, narrow focus and script-free export; warning severity reflects actual relevance. |
 | **AC-21** | D-23 | Evidence index | Claim-purpose navigation reaches permitted exact evidence and original records without default raw object dumps. |
-| **AC-22** | D-24 | Scoped inspector | Server enforces Project/Work/Source/revision, retention, paging and aggregate boundaries; SQL/filter injection, XSS and implicit writes/transmission are rejected; protected tools survive. |
+| **AC-22** | D-24, D-30 | Operations scoped inspection outside Viewer | Server enforces Project/Work/Source/revision, retention, paging and aggregate boundaries; SQL/filter injection, XSS and implicit writes/transmission are rejected; protected tools survive. |
 | **AC-23** | D-25 | Operations/public caller | Authorized actual task-time file/command capture reaches an exact permitted reader; two observed states or explicit missing-before, original time, outcomes and failed writes remain truthful. Missing trusted activation/source authority makes the prospective claim Blocked. |
 | **AC-24** | D-26 | Campaign admission | Per-task/claim applicability binds candidate, original input/Source/output and producer format/lifetime; historical positives remain alongside precise gaps; required prospective positives cannot be dropped to pass. |
 | **AC-25** | D-27 | Evaluation | Source-first and presentation-first order/provenance are recorded separately; technical checks, semantic sufficiency, presentation, human rejection/acceptance and authority have distinct results. |
+
+### Focused Viewer acceptance and evidence routing
+
+| ID | Requirement | Responsibility | Observable condition |
+| --- | --- | --- | --- |
+| **AC-26** | D-28 | Viewer shell/live/offline/browser | All three destinations work in workless and multiple-Work Projects at desktop/mobile widths; full HTML has no retired destination or second navigation row. |
+| **AC-27** | D-29 | Work/CLI/MCP/Operations | Related Decisions retain recorded authority, rationale and scope in the Work; unassociated records are absent from Viewer and remain readable outside it. |
+| **AC-28** | D-30 | HTTP/selector/CLI | Tools/Decisions/Code selectors, inspection GETs and obsolete memory/document POSTs fail explicitly without reading retired UI or mutating; wrong Project, Host/Origin and XSS remain denied. |
+| **AC-29** | D-32 | Host/Operations/CLI/guarded HTTP | Correction, supersession, forgetting, documents and exact guarded confirmation keep actual callers and permission/lifetime negatives. Only request-scoped non-navigable guarded flow may remain. |
+| **AC-30** | D-31 | Repository/Work/citation/browser | Exact permitted cited bytes and origin/return survive; relevant components are explained contextually without a bulk Code catalog. |
+| **AC-31** | D-33 | Materialization/offline/publication | No ordinary privacy/health/document/bulk-code projection; script-free selected explanations and bounded Sources remain readable and publication revalidates dependencies. Exact-current small captures are technical controls, with human acceptance unassessed. |
 
 ### 13.2 반드시 구분해 평가할 세 부류
 
@@ -429,7 +456,7 @@ Source-first에서는 원본을 먼저 조사하여 책임·메커니즘·중요
 ## Implementation responsibility and acceptance ledger
 
 D/AC wording above defines outcomes, not an API or crate taxonomy. The direct
-checks below establish only their stated scope. The ledger distinguishes implemented technical behavior from unfinished acceptance.
+checks below establish only their stated scope. The ledger records earlier candidate observations, not current passes for superseded Viewer surfaces. AC-26–31 require fresh validation; human acceptance remains separate.
 Existing safe-read/v4/citation tests establish regression infrastructure, not sufficient
 prose or human acceptance. Exact outputs and first host attempts remain ignored local
 evidence; no generated Product wording is checked into these design owners.
@@ -445,7 +472,7 @@ evidence; no generated Product wording is checked into these design owners.
 | AC-07 | canonical history → Work reading / Domain | canonical `original_revision_event_survives_correction_and_later_import` and projection `work_events_use_original_history_and_latest_recorded_instant_without_substitution` pass; live/offline dates checked |
 | AC-08 | shared Work selection / Projection | `work_history`, Host consumers, exact-scope and actual same-Work card/detail checks pass; reader understanding unassessed |
 | AC-09 | active host and reader document / Projection | one real record-supported Work narrative retained and displayed; human understanding and current-code explanation for this historical Work remain unassessed/unavailable |
-| AC-10 | Work Decision relations / Projection | `navigation` and actual Decision/tool journeys pass; human Decision comprehension unassessed |
+| AC-10 | Work Decision relations / Projection | Prior Decision/tool journeys covered a superseded candidate; revalidate contextual Decisions and non-Viewer inspection under AC-27/29; human comprehension unassessed |
 | AC-11 | repository explanation / Repository Intelligence, Projection | existing Workless/current v4 public consumers retained; nine focused repository lifecycle regressions pass. Fresh real repository semantic quality remains unfinished |
 | AC-12 | scoped Sources, HTTP and evidence panel / Privacy, Projection | six `citation_reading` lifecycle tests and 74 actual browser citation reads pass (en/ko, five widths, offline/deletion); reader comprehension unassessed |
 | AC-13 | producer/admission/common traversal / Projection, Privacy | MCP Work lifecycle, citation and budget controls pass Unicode, title-only deletion, wrong scope, formats and atomic failure; automatic bindings do not prove semantic entailment |
@@ -554,14 +581,11 @@ unobserved. The independent verification responsibility remains separately teste
 
 ### Local data inspection acceptance detail
 
-The secondary Tools disclosure exposes purpose-led inspection: select the authorized
-Project and record class, search displayed quotations/metadata, narrow typed state
-or role, page and open exact identities and permitted fields. Show why a row matters
-through role, state and explicit relationship labels. Keep raw envelopes closed by
-default. The launched viewer authorizes one Project; do not present a global Project
-catalog. Analysis and Documents keep their specialized journeys, and protected
-memory actions remain explicit. Static snapshots describe their included subset
-and keep native evidence links without live search or mutation controls.
+The former Tools inspector is retired from Viewer by D-30. Operations retains
+bounded Project queries, typed filters, exact revision/field reads and admitted
+relations. CLI/MCP preserve explicit memory, privacy and document operations.
+Viewer keeps contextual original records, verification and exact cited Sources;
+no general record browser or management form survives in live/offline reading.
 
 
 The explicit scoped verification producer supplies D-21 with named check/purpose,

@@ -170,7 +170,7 @@ Sources
 - 상태: `accepted`
 - 결정:
   - Agent conversation: Inquiry, Decision, Recall, 현재 작업과 코드 설명
-  - Local viewer: 프로젝트 개요, Repository Map, Decision trail, Checkpoint timeline, memory 수정·삭제, document preview
+  - Local viewer: Overview / Repository explanation / Work의 설명 읽기와 맥락 있는 Decision·정확한 Source 확인. 이전 Viewer 관리·검사·문서 preview 위치는 2026-10-20 [D-28–33](reader-experience-design.md)으로 superseded; CLI/MCP/Operations 기능과 권한은 유지
   - CLI: init, bind, health, analyze, export/import, repair, reindex, privacy 설정과 고위험 fallback
   - MCP: recall, explain/search, request decision, checkpoint, analyze와 document의 고수준 기능
   - viewer가 없어도 agent conversation과 CLI로 핵심 record를 읽고 수정할 수 있다.
@@ -423,7 +423,7 @@ clean install
   - user response source
 - 경로:
   - 가능한 경우 현재 host의 명시적 confirmation
-  - host가 지원하지 않으면 local viewer 또는 CLI fallback
+  - host가 지원하지 않으면 exact request-scoped local confirmation 또는 CLI fallback; Viewer 주 탐색에 관리 화면을 추가하지 않음
 - 제외:
   - 일반 코드 수정
   - 로컬 테스트

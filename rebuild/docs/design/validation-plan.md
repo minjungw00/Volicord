@@ -3157,11 +3157,11 @@ readback equality is never a semantic oracle. Missing real subjects due to curre
 schema/bundle/Source incompatibility remain class-specific blockers; historical
 bytes are preserved rather than converted or replaced with authored controls.
 
-### Bounded inspection security and review matrix
+### Operations inspection security and review matrix
 
 Before browser polishing, exercise the actual public HTTP consumer against the
 [privacy deny/allow table](privacy-and-provider-boundary.md#bounded-project-data-inspection-threat-model).
-`volicord-viewer/tests/inspection.rs` owns the independent Product matrix: mixed
+Operations inspection tests own the retained domain matrix outside Viewer: mixed
 Projects; withheld/expired/cleaned Candidate text; Derived content exclusion and
 pending canonical forgetting; Source body expiration and exact Work scope; hidden
 match counts, snippets, ordering and fingerprints; cross-Project relation targets;
@@ -3219,3 +3219,28 @@ fixtures may record explicitly synthetic articles through existing APIs and keep
 that origin visible. Native closed disclosures and catalog navigation are exercised
 as UI actions. Neither fake articles nor browser success establishes genuine user
 collection, semantic quality, human approval, Final or V11.
+
+### Focused three-destination Viewer validation
+
+[Reader AC-26–31](reader-experience-design.md) supersedes Viewer inspector/Tools
+acceptance in earlier support reports. Preserve those historical reports unchanged.
+Use `validate focused` only here, never Final, aggregate, gate or ordered V11.
+Check complete live/offline HTML, old selectors/inspection/management route denial,
+actual Work Decision content, exact cited Source open/return, Host/Origin/XSS, wrong
+Project and read non-mutation. Retain Operations/CLI/MCP memory, documents, privacy,
+inspection and guarded confirmation controls, including no-elicitation fallback.
+Record exact args, full stdout/stderr, numeric exit/signal and completion after
+each atomic commit. Small workless/populated screenshots are current technical
+samples; authored fixtures are not model-generation or human acceptance evidence.
+Missing trusted runtime collection authority remains precisely Blocked.
+
+| Entry point | Disposition | Reason / validation responsibility |
+| --- | --- | --- |
+| Viewer Tools/Decisions/Code selectors, four snapshot tool fragments | REMOVE FROM VIEWER | D-28/30/33; selection, full HTML/offline and browser checks |
+| `/inspection`, `/inspection.json`, memory POSTs, document export POST | REMOVE FROM VIEWER | General inspection/administration is outside reader; controlled route errors and unchanged canonical state |
+| Work-scoped/applied Decisions, verification, original records | KEEP CONTEXTUALLY | Explicit Work identity, recorded authority/reasons; no fabricated association |
+| Work/Repository claim citations and `/citation` | KEEP CONTEXTUALLY | Exact current realization, Source bytes, permission/lifetime and return point |
+| Relevant components/mechanisms previously reached via Code | KEEP CONTEXTUALLY | Repository explanation and grounded code citations; no unrelated catalog |
+| CLI/MCP/Operations Decision, inspect, privacy, documents, memory | KEEP OUTSIDE VIEWER | Existing domain callers retain authority and negative controls |
+| `/guarded/ID`, POST `/guarded/confirm` | KEEP OUTSIDE VIEWER | Actual MCP no-elicitation fallback needs exact request/revision/effect; no generic navigation, dispatch or new grant |
+| Current CLI help/README/browser/V11 consumers | UPDATE | Three destinations, contextual Decision/code and retired-route denial; historical evidence is unchanged |

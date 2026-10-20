@@ -924,9 +924,8 @@ Volicord를 설치하고 현재 저장소를 Project로 초기화한 뒤 Codex�
   확인하고 verified fact와 generated interpretation을 구분한다.
 - 관계가 본질적인 component/architecture/flow는 유용한 도식으로 보되, 각
   node/edge는 inspectable repository 또는 Decision relation에 연결된다.
-- Repository Map, Decision trail, Checkpoint timeline, canonical record·audit field는
-  deeper detail/inspection으로 탐색한다.
-- Overview, Work, Code Understanding, Decisions와 별도 Tools 목적별 화면을 선택한다.
+- Work 맥락의 원래 기록과 검증은 설명에서 확인하고, 전체 Repository Map·미연결 Decision·canonical 관리와 audit는 CLI/MCP/Operations로 검사한다.
+- Overview / Repository explanation / Work만 일반 탐색 목적지다. 실제 관련 Decision은 Work 안에서, 인용 코드는 정확한 Source 패널에서 읽는다. 독립 Decision/Code 목록·Tools·일반 검사·관리 경로는 Viewer에서 제거한다 ([D-28–33 / AC-26–31](reader-experience-design.md)).
 - code entity와 Decision에 연결된 개념 설명을 본다.
 - 네 필수 문서를 Markdown으로 export하고 self-contained HTML로 preview한다.
 - 현재 Viewer projection을 명시한 local path에 하나의 self-contained read-only HTML
@@ -1329,13 +1328,13 @@ a reader. Failed/old-format/oversized records preserve previous valid publicatio
 Normal and degraded screens must be presented as their actual class; technical
 checks do not establish host authorship, semantic adequacy or human acceptance.
 
-[Reader experience design](reader-experience-design.md) owns D-01–D-27 and
-AC-01–AC-25, supplementing scenario N and replacing obsolete Viewer layout rules.
+[Reader experience design](reader-experience-design.md) owns D-01–D-33 and
+AC-01–AC-31, supplementing scenario N and replacing obsolete Viewer layout rules.
 Normal real host-generated Work name/summary/detail, unavailable controls and actual
 human reading are independent acceptance classes. All-missing output fails normal
 content acceptance. Work0 repository access, exact Project/Purpose, single navigation,
-truthful dual event times and retained protected tools must reach live and offline
-consumers. Historical tests/evaluations prove only their candidate and assertions;
+truthful dual event times and contextual evidence must reach live and offline
+consumers; protected operations remain outside Viewer with exact request-scoped confirmation. Historical tests/evaluations prove only their candidate and assertions;
 the earlier delivered UI was rejected. New output remains unassessed until reviewed.
 
 AC-17–25 add flexible Work/Decision articles, independently sourced named verification,

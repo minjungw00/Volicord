@@ -169,13 +169,13 @@ key. A stale realization, generation/authorization failure, selection failure an
 genuinely absent information are distinct outcomes.
 
 The current experience requirements are [Reader experience design](reader-experience-design.md),
-D-01–D-27 / AC-01–AC-25. One right-aligned navigation includes Overview,
-Repository explanation, Work and a native Tools disclosure. The brand is left;
+D-01–D-33 / AC-01–AC-31. One right-aligned navigation includes precisely Overview,
+Repository explanation and Work. The brand is left;
 read-only status belongs outside navigation and describes the actual surface.
 Overview shows PROJECT OVERVIEW, the actual canonical Project name, canonical
 Purpose or short absence, Recent Work and All Work. It has no duplicate repository
-summary, RECENT WORK eyebrow or Project Decision list. Tools preserve unassociated
-Decision inspection and all protected operations.
+summary, RECENT WORK eyebrow or Project Decision list. Unassociated Decisions, administrative inspection and protected operations
+remain available through existing CLI/MCP/Operations, outside Viewer.
 
 Normal Work cards require a host-authored name and problem/actual-approach/outcome
 synopsis, exact lifecycle and separate creation/latest-record event bases. No
@@ -1122,7 +1122,7 @@ Document 수정이 semantic meaning을 바꾸면 adopted Source의 새 revision/
   audit appendix를 closed `<details>`로 제공한다.
 - PDF와 DOCX는 initial required output이 아니다.
 
-Local Viewer는 같은 current Project projection, health/privacy/document data와 human-first
+Local Viewer는 필요한 current Project explanation projection과 bounded admitted Sources의 human-first
 hierarchy를 하나의 self-contained read-only HTML snapshot으로 user-specified local
 destination에 publish할 수 있다. 이 Viewer snapshot은 네 generated document를 대체하거나
 그 metadata/adoption lifecycle을 공유하는 artifact가 아니다. Snapshot은 live listener,
@@ -1142,7 +1142,7 @@ Component/dependency와 flow figure는 self-contained accessible inline SVG이�
 Repository Intelligence entity, 각 edge는 resolved relation identity와 endpoint를
 `data-entity-id`/`data-relation-id`로 보존한다. Narrative realization은 이 topology를
 추가·삭제할 수 없다. Raw canonical rows, opaque identity와 exhaustive relation audit은
-Tools 또는 closed evidence disclosure에 남는다.
+CLI/MCP/Operations 또는 맥락에 필요한 closed evidence disclosure에 남는다.
 
 이 계약은 Markdown dialect, HTML renderer, template engine, CSS, sanitizer, viewer
 framework 또는 conversion library를 선택하지 않는다. Output format은 canonical
@@ -1289,19 +1289,19 @@ Selected Work code availability and Decision code-link gaps distinguish sections
 not requested from requested data that could not be read. Requested missing or
 failed graph input leaves canonical remainder readable with an affected-scope gap.
 
-The Viewer requests graph bodies only for Code and graph-bearing Tools sections;
-ordinary Overview/Work/Decision reads do not decode them or generate documents.
-Candidate inspection is requested only by Memory, Documents and snapshots. Full
+Viewer explanations and exact citation readers do not require a generic graph catalog.
+Ordinary reading and snapshots do not generate documents, load privacy inventories
+or run bulk health/diagnostics. Work-linked Candidate inspection remains explicitly
+scoped to actual Work context; it does not restore a Project inspector. Full
 document generation, narrative planning and realization reject any projection
 whose code or inspection section is `NotRequested`. An `Unavailable` requested
 section remains a legitimate degraded complete attempt and reports its gaps.
 Recall's existing metadata read and ordinary full document defaults are preserved.
 
-Local Operations owns selective reads and profiles. Store/recovery health can run
-without graph integrity validation, with that exclusion explicitly visible; Tools
-Status retains full integrity checking. Code uses one stored graph read, and the
-whole snapshot shares one canonical/analysis projection among all bounded sections
-and four document previews. Per-Work presentation never reopens/decode analysis.
+Local Operations owns selective reads and profiles. CLI doctor retains store/recovery
+health and full integrity checking. A Viewer snapshot shares one canonical/analysis
+metadata projection among bounded explanation sections, without document previews
+or a bulk Code/diagnostic catalog. Per-Work presentation never reopens analysis.
 These requirements add no persisted format, cache, analyzer invocation, provider
 call, canonical mutation or weakened correction/forgetting invalidation.
 
@@ -1835,8 +1835,8 @@ next-action metadata remains separate from original instructions and suggestions
 The single shell/Overview contract above and D-04–D-13 replace the former
 two-item masthead plus separate Project row, duplicate Overview repository summary,
 Project Decision list, neutral-title-as-normal-output and observation-time-only rules.
-Work-scoped and applied Decisions remain contextual; unassociated Decisions remain
-inspectable through Tools. Live and script-free snapshots share the same components,
+Work-scoped and applied Decisions remain within their related Work; unassociated
+Decisions remain inspectable through CLI/MCP/Operations outside Viewer. Live and script-free snapshots share the same components,
 exact identities and meaningful normal-versus-unavailable distinction. Snapshot
 publication grants no Runtime mutation capability.
 
@@ -2168,9 +2168,9 @@ models, with class, role, lifecycle, literal visible-summary search and stable
 identity pagination. Exact revision/field reads reuse existing evidence readers;
 relations use explicit canonical IDs and independently admitted endpoints. Full
 raw envelopes belong behind intentional inspection. Analysis health/recovery and
-Documents preview/export remain specialized tools. Memory and Evidence entry
-routes remain reachable; Work/Decision evidence indices retain their article
-context and return paths. See the [inspection threat model](privacy-and-provider-boundary.md#bounded-project-data-inspection-threat-model).
+Documents preview/export, memory and general evidence inspection remain
+CLI/MCP/Operations capabilities. D-30 removes their Viewer routes; contextual
+Work/Repository evidence indices retain exact citation and return paths. See the [inspection threat model](privacy-and-provider-boundary.md#bounded-project-data-inspection-threat-model).
 No durable schema or format changes are needed for this request-local projection.
 
 Scoped verification rows retain the original canonical `ScopedCheckRun` separately
