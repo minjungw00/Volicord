@@ -64,6 +64,21 @@ pub struct ForgettingStore {
 }
 
 impl ForgettingStore {
+    /// Inspect existing barriers without writer initialization or schema creation.
+    pub fn open_read_only(path: &Path) -> Result<Self, Error> {
+        let connection = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                | rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX,
+        )
+        .map_err(|error| Error::with_source("cannot read forgetting operation store", error))?;
+        connection
+            .busy_timeout(Duration::from_secs(5))
+            .map_err(|error| Error::with_source("cannot configure forgetting reader", error))?;
+        validate_schema(&connection)?;
+        Ok(Self { connection })
+    }
+
     pub fn open(path: &Path) -> Result<Self, Error> {
         let existed = path.try_exists().map_err(|error| {
             Error::with_source("cannot inspect forgetting operation store", error)
@@ -435,6 +450,54 @@ fn record_from_parts(kind: &str, identity: [u8; 16]) -> Result<CanonicalRecordId
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inspection_reads_committed_barriers_and_cannot_create_or_mutate_storage(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let path = root.path().join("forgetting.sqlite3");
+        assert!(ForgettingStore::open_read_only(&path).is_err());
+        assert!(!path.exists());
+        let operation = OperationId::from_bytes([1; 16]);
+        let project = ProjectId::from_bytes([2; 16]);
+        let mut writer = ForgettingStore::open(&path)?;
+        let original = writer.prepare(
+            operation,
+            project,
+            CanonicalRecordId::Source(SourceId::from_bytes([3; 16])),
+            SourceId::from_bytes([4; 16]),
+            10,
+        )?;
+        let transaction = writer
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute("UPDATE forgetting_operations SET state = 'completed'", [])?;
+        let mut jobs = Vec::new();
+        for _ in 0..6 {
+            let path = path.clone();
+            let original = original.clone();
+            jobs.push(std::thread::spawn(move || -> Result<(), String> {
+                let reader =
+                    ForgettingStore::open_read_only(&path).map_err(|e| format!("{e:?}"))?;
+                let barriers = reader
+                    .incomplete(Some(project))
+                    .map_err(|e| format!("{e:?}"))?;
+                assert_eq!(barriers, vec![original]);
+                assert!(reader
+                    .connection
+                    .execute("DELETE FROM forgetting_operations", [])
+                    .is_err());
+                Ok(())
+            }));
+        }
+        let results: Vec<_> = jobs.into_iter().map(|job| job.join()).collect();
+        for result in results {
+            result.map_err(|_| "forgetting reader thread failed")??;
+        }
+        transaction.rollback()?;
+        assert_eq!(writer.get(operation)?, original);
+        Ok(())
+    }
 
     #[test]
     fn durable_boundaries_reopen_without_losing_identity_or_progress(

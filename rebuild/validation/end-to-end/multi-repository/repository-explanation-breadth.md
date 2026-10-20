@@ -290,3 +290,17 @@ Package validation now rejects rehashed missing files, missing/percent-decoded f
 targets and duplicate IDs, in addition to existing containment, membership, credentials,
 private paths and hash rules. Final normal/degraded browser and archive receipts are
 candidate-bound in the delivery manifest, not inferred from older screenshots.
+
+
+The subsequent frozen-binary multi-process audit exposed a second inspection race:
+`cannot configure forgetting store` with SQLite `DatabaseBusy` (code 5). The
+separate ignored diagnostic Viewer changed only local error tracing and preserved
+that exact underlying error; serial probes alone had passed 60/60. Forgetting
+barrier inspection therefore also needs an existing read-only connection rather
+than writer initialization. Its new bounded reader does not create missing stores
+or change writer admission, deletion semantics, retention or publication formats.
+Concurrent barrier inspection verifies committed state under an active WAL writer
+and rejects mutation through the reader. Earlier passing serial or synthetic
+results do not erase the real HTTP 409 and Source/history timeout. Final receipts
+must use fixed executable hashes after this repair; workspace rebuilds previously
+changed an unfrozen capture's binary and the packager correctly rejected it.

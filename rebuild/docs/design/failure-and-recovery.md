@@ -490,6 +490,15 @@ Source support. This changes no mutation lock, writer policy, authority, revisio
 retention, schema or read-time regeneration behavior. Actual corrupt/unavailable
 stores and lifecycle/scope mismatches still withhold dependent content.
 
+Forgetting-barrier inspection likewise opens only an existing read-only database,
+with a five-second bounded reader wait, and never runs writer durability/schema
+initialization. A missing or malformed store fails closed; an ordinary read does
+not create it. Reads observe committed barriers while a writer is active. Mutating
+forgetting operations retain their zero-wait writer and exclusive mutation lock.
+A real multi-process Reader audit exposed this second writer-initialization race
+as `cannot configure forgetting store` / SQLite `DatabaseBusy`; healthy document
+reads could otherwise temporarily lose their current explanation and Source links.
+
 Evidence-detail `state: partial|complete` measures transport progress through a
 retained serialized field. `metadata.retained_state` independently reports
 retained, partially retained, withheld, unavailable, not retained or policy

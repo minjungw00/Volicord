@@ -3919,7 +3919,12 @@ impl LocalOperations {
         &self,
         project_id: ProjectId,
     ) -> Result<Vec<CanonicalInvalidation>, Error> {
-        let operations = self.open_forgetting()?.incomplete(Some(project_id))?;
+        let path = self.layout.forgetting_store();
+        let reader = ForgettingStore::open_read_only(&path)?;
+        volicord_local_platform::ensure_private_file(&path).map_err(|error| {
+            Error::with_source("forgetting operation store is not private", error)
+        })?;
+        let operations = reader.incomplete(Some(project_id))?;
         if operations.is_empty() {
             return Ok(Vec::new());
         }
