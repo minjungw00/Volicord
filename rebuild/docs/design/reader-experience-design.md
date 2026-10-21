@@ -497,6 +497,15 @@ Source-first에서는 원본을 먼저 조사하여 책임·메커니즘·중요
 
 ## Implementation responsibility and acceptance ledger
 
+Reading applicability is provided as typed shared data: explained snapshot,
+known generation time, read/export comparison basis and confirmed limitation.
+Changed/expired/deleted/withheld/comparison-unavailable states are distinct from
+initial and offline Source-window omissions. Source actions visibly identify
+path/range while retaining quiet heading provenance, exact claim identities,
+desktop nonmodal inspection and narrow-screen focus. Closing returns to the exact
+Source trigger if available; deep links fall back to the originating claim.
+These technical contracts do not establish human readability or acceptance.
+
 D/AC wording above defines outcomes, not an API or crate taxonomy. The direct
 checks below establish only their stated scope. The ledger records earlier candidate observations, not current passes for superseded Viewer surfaces. AC-26–31 require fresh validation; human acceptance remains separate.
 Existing safe-read/v4/citation tests establish regression infrastructure, not sufficient

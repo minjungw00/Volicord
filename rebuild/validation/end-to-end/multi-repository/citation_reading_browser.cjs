@@ -237,9 +237,13 @@ async function syntaxContrast(page) {
     await point.locator('.citation-status').filter({hasText:/Displayed/}).waitFor();
     await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:path.join(config.output,`rust-${width}-dark.png`)});await page.emulateMedia({colorScheme:'light'});
    }
+   await page.keyboard.press('Escape');
+   assert.equal(await page.evaluate(()=>document.activeElement.dataset.origin),await point.getAttribute('data-origin'));
+   assert.equal(await page.evaluate(()=>document.activeElement.getAttribute('href')),'#'+exactPoint,'return restores the exact Source trigger');
+   await openSource(page,8);
    await page.reload();await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
    assert.equal(await point.locator('.citation-inspection code').textContent(),fixture.originals[8]);
-   await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),await point.getAttribute('data-origin'));
+   await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),await point.getAttribute('data-origin'),'reload has no activating control; restore exact claim');
    await page.goBack();await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
    await point.locator('.return').click();
    // A second claim sharing the same Source must keep its own quote/return target.
@@ -292,7 +296,7 @@ async function syntaxContrast(page) {
   await context.route('**/citation?*',delayed);
   await page.locator('.doc a.evidence-link').nth(8).click();await arrived;
   await page.keyboard.press('Escape');
-  const originFocus=await page.evaluate(()=>document.activeElement.id);
+  const originFocus=await page.evaluate(()=>document.activeElement.dataset.origin);
   release();await context.unroute('**/citation?*',delayed);
   await page.locator('.doc a.evidence-link').nth(11).click();
   let active=page.locator('.source-point:target');
@@ -318,11 +322,11 @@ async function syntaxContrast(page) {
   const c=fixture.answers.prose[1].citations[0];
   result.deletion=command('delete',['--runtime',fixture.runtime,'--project',fixture.project,'repository','source','delete','--analysis',fixture.analysis,'--source',c.source_id,'--json']);
   const deleted=state();await selected.locator('.citation-read').click();
-  await selected.locator('.citation-status').filter({hasText:/unavailable or changed/}).waitFor();
+  await selected.locator('.citation-status').filter({hasText:/was deleted/}).waitFor();
   assert.equal(await selected.locator('pre.code-region').count(),0,'unavailable read removes cached code from this point');
   await page.screenshot({path:path.join(config.output,'unavailable.png')});
   const denied=await context.request.get(new URL(await selected.locator('.citation-inspection').getAttribute('data-citation-url'),base).href);
-  assert.equal(denied.status(),409);const deniedBytes=await denied.body();assert.ok(!deniedBytes.toString().includes(fixture.originals[8].split('\n')[0].trim()));result.unavailable_response_bytes=deniedBytes.length;
+  assert.equal(denied.status(),409);assert.equal((await denied.json()).reason,'deleted');const deniedBytes=await denied.body();assert.ok(!deniedBytes.toString().includes(fixture.originals[8].split('\n')[0].trim()));result.unavailable_response_bytes=deniedBytes.length;
   await selected.locator('.return').click();assert.equal(state(),deleted);
   await Promise.all(measured);
   assert.ok(result.reads.every(r=>r.bytes===undefined || r.bytes<=32768));

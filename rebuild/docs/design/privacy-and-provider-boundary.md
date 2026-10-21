@@ -801,6 +801,13 @@ sanitized delivery.
 
 ### Reader evidence visibility and authority
 
+Typed reading limitation and comparison metadata report existing authority and
+checks; they grant no body access. Publication pages and exact citation reads
+share current publication selection and lifecycle checks, then revalidate all
+Source dependencies. HTTP failure JSON carries a bounded typed reason without
+Source content. Withheld/expired/deleted content cannot populate visible code;
+retained observation fingerprints exclude ephemeral check times.
+
 [Reader D-34 / AC-32](reader-experience-design.md) changes default action visibility,
 not read authority. Quiet heading/lead provenance and prominent technical-claim
 actions use the same exact Project/subject/language/realization/unit/claim/range,

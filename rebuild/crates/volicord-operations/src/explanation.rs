@@ -39,33 +39,10 @@ impl LocalOperations {
         const CHUNK: usize = 8_192;
         const CONTENT: usize = 1_048_576;
         let _inspection = self.layout().acquire_health_lock()?;
-        let canonical = self.canonical_basis(project)?;
-        let records = self.privacy_status(project)?;
-        let target = purpose(subject, language);
-        let record = records
-            .managed_derived
-            .iter()
-            .rfind(|r| r.kind == ManagedDerivedKind::CachedSummary && r.purpose == target)
-            .ok_or_else(|| Error::new("publication unavailable: missing"))?;
-        if record.state != ManagedDerivedState::Current
-            || records
-                .withheld_for_canonical_forgetting
-                .contains(&record.id)
-        {
-            return Err(Error::new(
-                "publication unavailable: deleted, expired, invalidated or withheld",
-            ));
-        }
-        let retained = decode_explanation(record.content.as_deref())
-            .map_err(|(_, reason)| Error::new(reason))?;
-        let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
-        if !retained_matches(&plan, &retained) {
-            return Err(Error::new(
-                "publication basis changed; restart from a current publication",
-            ));
-        }
+        let (canonical, retained, publication_id) =
+            self.permitted_read_publication(project, subject, language)?;
         self.validate_subject_sources(&canonical, subject, &retained.realization)?;
-        let document = compact_publication(&retained, &record.id.to_string());
+        let document = compact_publication(&retained, &publication_id);
         let encoded = serde_json::to_string(&document)
             .map_err(|e| Error::with_source("publication encoding failed", e))?;
         if encoded.len() > CONTENT {
@@ -86,13 +63,87 @@ impl LocalOperations {
         }
         Ok(
             serde_json::json!({"project_id":project.to_string(),"subject":subject,"language":language,
-            "publication_id":record.id.to_string(),"realization_fingerprint":document["provenance"]["realization_fingerprint"],
+            "publication_id":publication_id,"realization_fingerprint":document["provenance"]["realization_fingerprint"],
             "fingerprint":fingerprint,"encoding":"compact_json_utf8","offset":offset,
             "chunk":&encoded[offset..end],"next_offset":(end < encoded.len()).then_some(end),
             "state":if end == encoded.len() {"complete"} else {"partial"},
             "total_utf8_bytes":encoded.len(),"remaining_utf8_bytes":encoded.len()-end,
-            "chunk_byte_limit":CHUNK,"supported_content_byte_limit":CONTENT,"read_only":true}),
+            "chunk_byte_limit":CHUNK,"supported_content_byte_limit":CONTENT,"response_byte_limit":65_536,
+            "applicability":validated_applicability(&retained),"read_only":true}),
         )
+    }
+
+    /// Shared publication authority for bounded document and exact citation reads.
+    /// The caller holds the inspection lock; Source validation follows selection.
+    fn permitted_read_publication(
+        &self,
+        project: ProjectId,
+        subject: ExplanationSubject,
+        language: &str,
+    ) -> Result<(CanonicalReadBasis, RetainedExplanation, String), Error> {
+        let canonical = self.canonical_basis(project)?;
+        let records = self.privacy_status(project)?;
+        let target = purpose(subject, language);
+        let record = records
+            .managed_derived
+            .iter()
+            .rfind(|r| r.kind == ManagedDerivedKind::CachedSummary && r.purpose == target)
+            .ok_or_else(|| {
+                Error::new("publication unavailable: missing")
+                    .with_reading_failure(ExplanationFailureReason::Missing)
+            })?;
+        let failure = if records
+            .withheld_for_canonical_forgetting
+            .contains(&record.id)
+        {
+            Some(ExplanationFailureReason::Withheld)
+        } else if record.state == ManagedDerivedState::Deleted {
+            Some(ExplanationFailureReason::Deleted)
+        } else if record
+            .retained_until
+            .is_some_and(|t| now_micros().is_ok_and(|now| t <= now))
+        {
+            Some(ExplanationFailureReason::Expired)
+        } else if record.state != ManagedDerivedState::Current {
+            Some(ExplanationFailureReason::Changed)
+        } else {
+            None
+        };
+        if let Some(failure) = failure {
+            return Err(
+                Error::new("publication is not current or permitted").with_reading_failure(failure)
+            );
+        }
+        let retained =
+            decode_explanation(record.content.as_deref()).map_err(|(state, reason)| {
+                Error::new(reason).with_reading_failure(
+                    ExplanationApplicability::unavailable(state)
+                        .limitation
+                        .unwrap_or(ExplanationFailureReason::Unavailable),
+                )
+            })?;
+        let plan = self
+            .prepare_subject_explanation(&canonical, subject, language)
+            .map_err(|e| {
+                if e.reading_failure().is_some() {
+                    e
+                } else {
+                    e.with_reading_failure(
+                        if matches!(subject, ExplanationSubject::Repository(_)) {
+                            ExplanationFailureReason::ComparisonUnavailable
+                        } else {
+                            ExplanationFailureReason::Unavailable
+                        },
+                    )
+                }
+            })?;
+        if !retained_matches(&plan, &retained) {
+            return Err(
+                Error::new("publication basis changed; reopen the current explanation")
+                    .with_reading_failure(ExplanationFailureReason::Changed),
+            );
+        }
+        Ok((canonical, retained, record.id.to_string()))
     }
 
     pub(crate) fn validate_read_publication(
@@ -316,37 +367,14 @@ impl LocalOperations {
         selection: &ExplanationCitationSelection,
     ) -> Result<serde_json::Value, Error> {
         let _inspection = self.layout().acquire_health_lock()?;
-        let canonical = self.canonical_basis(project)?;
-        let records = self.privacy_status(project)?;
-        let target = purpose(subject, language);
-        let record = records
-            .managed_derived
-            .iter()
-            .rev()
-            .find(|r| r.kind == ManagedDerivedKind::CachedSummary && r.purpose == target)
-            .ok_or_else(|| Error::new("selected citation unavailable; explanation missing"))?;
-        if record.state != ManagedDerivedState::Current
-            || records
-                .withheld_for_canonical_forgetting
-                .contains(&record.id)
-        {
-            return Err(Error::new(
-                "selected citation unavailable; explanation is not current or permitted",
-            ));
-        }
-        let retained = decode_explanation(record.content.as_deref())
-            .map_err(|(_, reason)| Error::new(reason))?;
+        let (canonical, retained, _) =
+            self.permitted_read_publication(project, subject, language)?;
         let provenance = ExplanationProvenance::from(&retained);
         if provenance.realization_fingerprint != selection.realization_fingerprint {
             return Err(Error::new(
                 "selected citation realization changed; reopen the current explanation",
-            ));
-        }
-        let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
-        if !retained_matches(&plan, &retained) {
-            return Err(Error::new(
-                "selected citation evidence changed; reopen the current explanation",
-            ));
+            )
+            .with_reading_failure(ExplanationFailureReason::Changed));
         }
         let unit = retained
             .realization
@@ -373,7 +401,7 @@ impl LocalOperations {
         let result = serde_json::json!({"project_id":project.to_string(),"subject":subject,
             "language":language,"realization_fingerprint":selection.realization_fingerprint,
             "unit_index":selection.unit_index,"citation_index":selection.citation_index,
-            "claim":claim,"chunk":chunk,"read_only":true,"semantic_approval":"not_established",
+            "claim":claim,"chunk":chunk,"applicability":validated_applicability(&retained),"read_only":true,"semantic_approval":"not_established",
             "text_byte_limit":EXPLANATION_SOURCE_RANGE_BYTE_LIMIT,"response_byte_limit":32_768});
         let bytes = serde_json::to_vec(&result)
             .map_err(|e| Error::with_source("citation encoding failed", e))?;
@@ -412,6 +440,9 @@ impl LocalOperations {
                     state: ExplanationState::Unavailable,
                     content: None,
                     diagnostic: Some(format!("explanation storage unavailable: {e}")),
+                    applicability: ExplanationApplicability::unavailable(
+                        ExplanationState::Unavailable,
+                    ),
                     source_excerpts: Vec::new(),
                     omitted_source_excerpt_count: 0,
                 }];
@@ -425,19 +456,29 @@ impl LocalOperations {
                     let language = record.purpose[prefix.len()..].to_owned();
                     let mut source_excerpts = Vec::new();
                     let mut omitted_source_excerpt_count = 0;
+                    let mut applicability = ExplanationApplicability::default();
                     let withheld = records.as_ref().is_ok_and(|inspection|
                         inspection.withheld_for_canonical_forgetting.contains(&record.id));
                     let (state, content, diagnostic) = if withheld {
                         (ExplanationState::Withheld,None,Some("canonical forgetting cleanup is pending; affected content is withheld".into()))
                     } else if record.state == ManagedDerivedState::Deleted {
                         (ExplanationState::Deleted,None,Some("explicitly deleted local explanation; no generation on read".into()))
+                    } else if record.retained_until.zip(now_micros().ok()).is_some_and(|(until, now)| until <= now) {
+                        applicability.limitation = Some(ExplanationFailureReason::Expired);
+                        (ExplanationState::Stale,None,Some("explanation retention expired; explicit fresh observation/generation is required".into()))
                     } else {
                         match decode_explanation(record.content.as_deref()) {
                             Err((state, diagnostic)) => (state, None, Some(diagnostic)),
                             Ok(retained) => {
+                                applicability = ExplanationApplicability::from_retained(&retained);
                                 preparations += 1;
                                 match self.prepare_subject_explanation(canonical, subject, &language) {
-                            Err(e) => (ExplanationState::Unavailable, None, Some(e.to_string())),
+                            Err(e) => {
+                                applicability.limitation = Some(e.reading_failure().unwrap_or(
+                                    if matches!(subject, ExplanationSubject::Repository(_)) { ExplanationFailureReason::ComparisonUnavailable } else { ExplanationFailureReason::Unavailable }));
+                                applicability.repository_comparison = RepositoryComparisonState::Unavailable;
+                                (ExplanationState::Unavailable, None, Some(e.to_string()))
+                            },
                             Ok(plan)
                                 if record.state == ManagedDerivedState::Current
                                     && retained_matches(&plan, &retained) =>
@@ -450,8 +491,23 @@ impl LocalOperations {
                                     ExplanationSubject::Decision(_) => Ok(()),
                                 };
                                 match validation {
-                                    Ok(()) => (ExplanationState::Current, Some(retained), None),
-                                    Err(error) => (ExplanationState::Stale,None,Some(format!("explanation Source dependency unavailable or changed: {error}; prepare and generate again"))),
+                                    Ok(()) => {
+                                        if retained.realization.citations().any(|c| c.use_kind == ExplanationSourceUse::CurrentCode) {
+                                            applicability.checked_at_unix_micros = now_micros().ok().map(|t| t.as_unix_micros());
+                                            applicability.repository_comparison = RepositoryComparisonState::VerifiedAtRead;
+                                        }
+                                        (ExplanationState::Current, Some(retained), None)
+                                    },
+                                    Err(error) => {
+                                        let reason = error.reading_failure().unwrap_or(ExplanationFailureReason::Unavailable);
+                                        applicability.limitation = Some(reason);
+                                        applicability.repository_comparison = match reason {
+                                            ExplanationFailureReason::Changed => RepositoryComparisonState::Changed,
+                                            ExplanationFailureReason::ComparisonUnavailable => RepositoryComparisonState::Unavailable,
+                                            _ => RepositoryComparisonState::NotChecked,
+                                        };
+                                        (ExplanationState::Stale,None,Some(format!("explanation Source dependency unavailable or changed: {error}; prepare and generate again")))
+                                    },
                                 }
                             }
                             Ok(_) => (
@@ -465,11 +521,15 @@ impl LocalOperations {
                         }
                             }
                         }};
+                    if applicability.limitation.is_none() && state != ExplanationState::Current {
+                        applicability.limitation = ExplanationApplicability::unavailable(state).limitation;
+                    }
                     ExplanationReading {
                         language,
                         state,
                         content,
                         diagnostic,
+                        applicability,
                         source_excerpts,
                         omitted_source_excerpt_count,
                     }
@@ -509,6 +569,7 @@ impl LocalOperations {
                 state: ExplanationState::Unavailable,
                 content: None,
                 diagnostic: Some(format!("explanation storage unavailable: {error}")),
+                applicability: ExplanationApplicability::unavailable(ExplanationState::Unavailable),
                 source_excerpts: Vec::new(),
                 omitted_source_excerpt_count: 0,
             }];
@@ -544,6 +605,19 @@ impl LocalOperations {
         preparations
     }
 }
+fn validated_applicability(retained: &RetainedExplanation) -> ExplanationApplicability {
+    let mut basis = ExplanationApplicability::from_retained(retained);
+    if retained
+        .realization
+        .citations()
+        .any(|c| c.use_kind == ExplanationSourceUse::CurrentCode)
+    {
+        basis.checked_at_unix_micros = now_micros().ok().map(|t| t.as_unix_micros());
+        basis.repository_comparison = RepositoryComparisonState::VerifiedAtRead;
+    }
+    basis
+}
+
 fn decode_explanation(
     content: Option<&str>,
 ) -> Result<RetainedExplanation, (ExplanationState, String)> {

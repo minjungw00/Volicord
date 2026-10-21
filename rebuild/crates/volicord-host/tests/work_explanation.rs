@@ -947,10 +947,23 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
         page(&mut f.host, continuation.clone())["result"]["isError"],
         true
     );
+    let fresh = page(&mut f.host, base.clone());
+    assert_eq!(fresh["result"]["isError"], false);
+    let fresh = &fresh["result"]["structuredContent"];
+    assert_eq!(
+        fresh["applicability"]["repository_comparison"],
+        "verified_at_read"
+    );
+    let mut current_continuation = base.clone();
+    current_continuation["offset"] = fresh["next_offset"].clone();
+    current_continuation["expected_fingerprint"] = fresh["fingerprint"].clone();
     f.host
         .operations()
         .delete_work_source_observation(f.project, f.work, f.source)?;
     assert_eq!(page(&mut f.host, base)["result"]["isError"], true);
+    let denied = page(&mut f.host, current_continuation);
+    assert_eq!(denied["result"]["isError"], true);
+    assert!(denied["result"]["structuredContent"].get("chunk").is_none());
     eprintln!(
         "publication retained={} projected={} max_mcp_envelope={} pages={pages} excerpt={}",
         original.to_string().len(),

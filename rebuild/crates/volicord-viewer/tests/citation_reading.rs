@@ -350,6 +350,13 @@ fn body(response: &str) -> Result<Value, Box<dyn Error>> {
     Ok(serde_json::from_str(raw)?)
 }
 
+fn failure_body(response: &str) -> Result<Value, Box<dyn Error>> {
+    assert!(response.starts_with("HTTP/1.1 409"));
+    Ok(serde_json::from_str(
+        response.split_once("\r\n\r\n").ok_or("HTTP body")?.1,
+    )?)
+}
+
 fn highlighting_sources() -> Vec<(String, String)> {
     [
         ("pages.py", format!("# page boundary\r\n{}", "# 한국어 🦀 repeated context\r\n".repeat(240))),
@@ -454,8 +461,29 @@ fn decoration_yields_to_the_existing_http_response_budget() -> Result<(), Box<dy
     let f = Fixture::new_kind(None, true)?;
     let mut realization = f.realization.clone();
     let mut unit = realization.paragraphs[1].clone();
+    // Leave at most a few bytes below the public response limit using measured
+    // undecorated output. Function refactors must not move this boundary control
+    // away from the boundary it is meant to exercise.
     unit.text = "한".repeat(8500);
     unit.citations.truncate(1);
+    unit.citations[0].claim_end_byte = unit.text.len();
+    unit.citations[0].claim_sha256 = explanation_text_hash(&unit.text);
+    realization.paragraphs = vec![unit.clone()];
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization.clone(),
+    )?;
+    let s = selection(&f, 0, 0, 0)?;
+    let baseline = f.ops.read_explanation_citation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        &s,
+    )?;
+    let additional = (32_768 - baseline.to_string().len() - 32) / 3;
+    unit.text.push_str(&"한".repeat(additional));
     unit.citations[0].claim_end_byte = unit.text.len();
     unit.citations[0].claim_sha256 = explanation_text_hash(&unit.text);
     realization.paragraphs = vec![unit];
@@ -466,17 +494,19 @@ fn decoration_yields_to_the_existing_http_response_budget() -> Result<(), Box<dy
         realization,
     )?;
     let s = selection(&f, 0, 0, 0)?;
-    let original = f.ops.read_explanation_citation(
+    let mut original = f.ops.read_explanation_citation(
         f.project,
         ExplanationSubject::Repository(f.analysis),
         "en",
         &s,
     )?;
-    let response = body(&f.get(&citation_target(&f, &s))?)?;
+    let mut response = body(&f.get(&citation_target(&f, &s))?)?;
     assert!(
         response["highlight"].is_null(),
         "decoration must yield instead of widening the bound"
     );
+    original["applicability"]["checked_at_unix_micros"] = serde_json::json!(null);
+    response["applicability"]["checked_at_unix_micros"] = serde_json::json!(null);
     assert_eq!(
         response, original,
         "Source, claim and all coordinates stay exact"
@@ -735,6 +765,11 @@ fn exact_citation_rejects_changed_output_wrong_subject_origin_and_deleted_suppor
     let privacy = f.ops.privacy_status(f.project)?;
     let unavailable = f.get(&citation_target(&f, &current))?;
     assert!(unavailable.starts_with("HTTP/1.1 409"));
+    assert_eq!(failure_body(&unavailable)?["reason"], "deleted");
+    assert_eq!(
+        f.answers()?.applicability.limitation,
+        Some(ExplanationFailureReason::Deleted)
+    );
     assert!(!unavailable.contains("return verify"));
     assert!(code_texts(&f.get("/?view=repository")?).is_empty());
     assert_eq!(canonical, f.ops.canonical_basis(f.project)?);
@@ -753,12 +788,18 @@ fn selected_citation_withholds_expired_corrupt_unsupported_and_changed_file_evid
         "corrupt_output",
         "corrupt_range",
         "changed_file",
+        "missing_repository",
         "redirected_file",
         "forgotten_source",
     ] {
         let f = Fixture::new()?;
         let chosen = selection(&f, 1, 0, 0)?;
-        if variant == "changed_file" {
+        if variant == "missing_repository" {
+            fs::rename(
+                f.temp.path().join("repo"),
+                f.temp.path().join("repository-unavailable"),
+            )?;
+        } else if variant == "changed_file" {
             fs::write(
                 f.temp.path().join("repo/admit.py"),
                 "def admit(value): return True\n",
@@ -849,6 +890,27 @@ fn selected_citation_withholds_expired_corrupt_unsupported_and_changed_file_evid
             "{variant}: {response}"
         );
         assert!(!response.contains("return verify"), "{variant}");
+        let expected = match variant {
+            "expired" => Some(("expired", ExplanationFailureReason::Expired)),
+            "changed_file" => Some(("changed", ExplanationFailureReason::Changed)),
+            "missing_repository" => Some((
+                "comparison_unavailable",
+                ExplanationFailureReason::ComparisonUnavailable,
+            )),
+            "unsupported_copy" | "unsupported_output" => {
+                Some(("unsupported", ExplanationFailureReason::Unsupported))
+            }
+            "corrupt_output" => Some(("corrupt", ExplanationFailureReason::Corrupt)),
+            _ => None,
+        };
+        if let Some((reason, typed)) = expected {
+            assert_eq!(failure_body(&response)?["reason"], reason, "{variant}");
+            assert_eq!(
+                f.answers()?.applicability.limitation,
+                Some(typed),
+                "{variant}"
+            );
+        }
         assert_eq!(before, f.ops.privacy_status(f.project)?);
     }
     Ok(())
@@ -1009,9 +1071,11 @@ fn quiet_heading_provenance_preserves_exact_claims_and_duplicate_bindings(
             assert!(f.originals.iter().any(|s| s.starts_with(chunk)));
         }
     }
+    let mut after = f.answers()?;
+    assert!(after.applicability.checked_at_unix_micros.is_some());
+    after.applicability.checked_at_unix_micros = before.applicability.checked_at_unix_micros;
     assert_eq!(
-        before,
-        f.answers()?,
+        before, after,
         "presentation must not modify admitted units or proof"
     );
     assert_eq!(canonical, f.ops.canonical_basis(f.project)?);

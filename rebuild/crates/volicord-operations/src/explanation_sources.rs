@@ -85,6 +85,10 @@ impl LocalOperations {
                 "explanation Source is unavailable: {}",
                 read.reason
             ))
+            .with_reading_failure(
+                read.failure
+                    .unwrap_or(volicord_projections::ExplanationFailureReason::Unavailable),
+            )
         })?;
         let fingerprint = explanation_text_hash(
             &serde_json::to_string(&observation)
@@ -250,6 +254,9 @@ impl LocalOperations {
                         volicord_local_platform::RepositoryRoot::open(&binding.absolute_path)
                             .map_err(|e| {
                                 Error::with_source("explanation repository unavailable", e)
+                            .with_reading_failure(
+                            volicord_projections::ExplanationFailureReason::ComparisonUnavailable,
+                        )
                             })?;
                     if root.canonical_path() != binding.absolute_path {
                         return Err(Error::new("explanation repository root was redirected; explicit binding is required"));
@@ -261,7 +268,7 @@ impl LocalOperations {
                             byte_base + body.len(),
                         )
                         .map_err(|e| {
-                            Error::with_source("explanation current excerpt unavailable", e)
+                            Error::with_source("explanation current excerpt unavailable", e).with_reading_failure(volicord_projections::ExplanationFailureReason::ComparisonUnavailable)
                         })?
                         .sha256
                     } else {
@@ -272,13 +279,16 @@ impl LocalOperations {
                                 16_384,
                             )
                             .map_err(|e| {
-                                Error::with_source("explanation current Source unavailable", e)
+                                Error::with_source("explanation current Source unavailable", e).with_reading_failure(volicord_projections::ExplanationFailureReason::ComparisonUnavailable)
                             })?;
                         format!("{:x}", sha2::Sha256::digest(&current))
                     };
                     if detail["sha256"] != current_hash {
                         return Err(Error::new(
                             "explanation Source bytes changed; observe and generate again",
+                        )
+                        .with_reading_failure(
+                            volicord_projections::ExplanationFailureReason::Changed,
                         ));
                     }
                     let analysis_id =
@@ -318,16 +328,19 @@ impl LocalOperations {
                             };
                         if repository_source.identity().to_string() != citation.repository_source_id
                             || repository_snapshot.to_string() != citation.repository_snapshot_id
-                            || self
-                                .observe_projection_repository(
-                                    basis,
-                                    repository_source.identity(),
-                                    &entries,
-                                )?
-                                .identity
-                                != repository_snapshot
                         {
-                            return Err(Error::new("explanation repository changed or is unavailable; analyze, observe and generate again"));
+                            return Err(Error::new(
+                                "explanation repository snapshot binding changed",
+                            )
+                            .with_reading_failure(
+                                volicord_projections::ExplanationFailureReason::Changed,
+                            ));
+                        }
+                        let comparison = self.observe_projection_repository(basis,repository_source.identity(),&entries)
+                            .map_err(|e|e.with_reading_failure(volicord_projections::ExplanationFailureReason::ComparisonUnavailable))?;
+                        if comparison.identity != repository_snapshot {
+                            return Err(Error::new("explanation repository changed; analyze, observe and generate again")
+                                .with_reading_failure(volicord_projections::ExplanationFailureReason::Changed));
                         }
                         current_snapshots.insert(
                             analysis_id,

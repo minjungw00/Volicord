@@ -93,6 +93,26 @@ pub(crate) struct ObservationRead {
     pub(crate) body: Option<Value>,
     pub(crate) metadata: Value,
     pub(crate) reason: &'static str,
+    pub(crate) failure: Option<volicord_projections::ExplanationFailureReason>,
+}
+
+pub(crate) fn observation_lifetime_failure(
+    record: &ManagedDerivedRecord,
+    withheld: bool,
+    now: TimestampMicros,
+) -> Option<volicord_projections::ExplanationFailureReason> {
+    use volicord_projections::ExplanationFailureReason as F;
+    if withheld {
+        Some(F::Withheld)
+    } else if record.state == ManagedDerivedState::Deleted {
+        Some(F::Deleted)
+    } else if record.retained_until.is_none_or(|t| t <= now) {
+        Some(F::Expired)
+    } else if record.state == ManagedDerivedState::Invalidated {
+        Some(F::Changed)
+    } else {
+        None
+    }
 }
 
 fn purpose(work: ContextItemId, source: SourceId) -> String {
@@ -119,6 +139,13 @@ impl LocalOperations {
                 Error::new("Source has no explicit observation association with the requested Work")
             })?;
         let now = now_micros()?;
+        let mut failure = observation_lifetime_failure(
+            record,
+            inspection
+                .withheld_for_canonical_forgetting
+                .contains(&record.id),
+            now,
+        );
         let mut reason = if record.state == ManagedDerivedState::Deleted {
             "source_body_deleted"
         } else if record.state == ManagedDerivedState::Invalidated {
@@ -132,7 +159,7 @@ impl LocalOperations {
         if matches!(
             record.state,
             ManagedDerivedState::Current | ManagedDerivedState::Stale
-        ) && record.retained_until.is_some_and(|t| t > now)
+        ) && failure.is_none()
         {
             let stored = PrivacyStore::open(self.layout().privacy_store())
                 .and_then(|store| store.get_derived(basis.project.id, record.id))
@@ -154,6 +181,7 @@ impl LocalOperations {
             }
             if header["work_revision"] != revision {
                 reason = "work_revision_changed";
+                failure = Some(volicord_projections::ExplanationFailureReason::Changed);
             } else if let Some(observation) = decode_observation(basis, work, source, &stored)? {
                 if let Some(before) = observation.detail["before_source_id"].as_str() {
                     let permitted_before = inspection
@@ -173,6 +201,9 @@ impl LocalOperations {
                         return Ok(ObservationRead {
                             body: None,
                             reason: "before_source_body_unavailable",
+                            failure: Some(
+                                volicord_projections::ExplanationFailureReason::Unavailable,
+                            ),
                             metadata: json!({"work_item_id":work.to_string(),"retained_state":"unavailable","evidence_use":"historical_observation_only"}),
                         });
                     }
@@ -187,8 +218,10 @@ impl LocalOperations {
         Ok(ObservationRead {
             body,
             reason,
+            failure,
             metadata: json!({"work_item_id":work.to_string(),
             "source_id":source.to_string(),"retained_state":reason,"managed_state":format!("{:?}",record.state).to_lowercase(),
+            "reading_failure":failure,
             "retained_until_unix_micros":record.retained_until.map(|t|t.as_unix_micros()),
             "privacy":"explicit_work_source_copy_only","evidence_use":"historical_observation_only_no_current_filesystem_assertion"}),
         })

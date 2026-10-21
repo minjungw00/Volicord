@@ -133,6 +133,7 @@ pub struct QuestionAnswers {
     pub facts: Vec<QuestionAnswer>,
     pub explanation_state: ExplanationState,
     pub diagnostic: Option<String>,
+    pub applicability: crate::ExplanationApplicability,
     pub provenance: Option<ExplanationProvenance>,
     pub source_excerpts: Vec<ExplanationSourceExcerpt>,
     pub omitted_source_excerpt_count: usize,
@@ -272,7 +273,11 @@ pub fn explanation_answers(
             })
             .collect()
     } else {
-        let (en,ko)=match state {
+        let (en,ko)=match reading.and_then(|r|r.applicability.limitation) {
+            Some(ExplanationFailureReason::Expired) => ("Retained evidence expired; canonical facts remain readable. Fresh observation and generation require an explicit request.","보존된 근거의 보존 기간이 만료되었습니다. 정식 기록은 계속 읽을 수 있으며 새 관측과 생성에는 명시적 요청이 필요합니다."),
+            Some(ExplanationFailureReason::Deleted) => ("The explanation or required evidence was deleted; independent recorded facts remain readable.","설명 또는 필수 근거가 삭제되었습니다. 독립적인 기록된 사실은 계속 읽을 수 있습니다."),
+            Some(ExplanationFailureReason::ComparisonUnavailable) => ("The current repository comparison is unavailable; no current-code explanation is shown. Independent recorded facts remain readable.","현재 저장소와 비교할 수 없어 현재 코드 설명을 표시하지 않습니다. 독립적인 기록된 사실은 계속 읽을 수 있습니다."),
+            _ => match state {
             ExplanationState::Stale=>("Explanation is stale; prepare and generate again.","설명의 근거가 변경되었습니다. 다시 준비하고 생성하세요."),
             ExplanationState::Corrupt=>("Explanation is corrupt; delete and regenerate.","설명이 손상되었습니다. 삭제한 뒤 다시 생성하세요."),
             ExplanationState::Unsupported=>("Explanation format is unsupported; delete and regenerate.","설명 형식을 지원하지 않습니다. 삭제한 뒤 다시 생성하세요."),
@@ -280,7 +285,7 @@ pub fn explanation_answers(
             ExplanationState::Withheld=>("Explanation is withheld by the canonical forgetting read barrier; repair local cleanup before reading affected content.","정식 기록 삭제의 읽기 차단으로 설명이 보류되었습니다. 영향을 받은 내용을 읽기 전에 로컬 정리를 복구하세요."),
             _ if reading.is_some()=>("Explanation is unavailable; canonical facts remain readable. Inspect the diagnostic for the affected dependency.","설명을 사용할 수 없습니다. Canonical 사실은 계속 읽을 수 있습니다. 영향을 받은 의존성은 진단에서 확인하세요."),
             _=>("Interpretation has not been generated in this language. Prepare evidence and ask the active host to explain it.","이 언어의 해석이 아직 생성되지 않았습니다. 근거를 준비하고 현재 호스트에 설명을 요청하세요."),
-        };
+        }};
         vec![QuestionAnswer {
             question: "ExplanationAvailability".into(),
             text: fixed(locale, en, ko),
@@ -317,6 +322,9 @@ pub fn explanation_answers(
         facts: Vec::new(),
         explanation_state: state,
         diagnostic: reading.and_then(|e| e.diagnostic.clone()),
+        applicability: reading
+            .map(|e| e.applicability.clone())
+            .unwrap_or_else(|| crate::ExplanationApplicability::unavailable(state)),
         provenance: current.map(Into::into),
         source_excerpts: if current.is_some() {
             reading

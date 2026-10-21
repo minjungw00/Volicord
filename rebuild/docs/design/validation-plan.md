@@ -2977,6 +2977,15 @@ headings, leads and code together. The existing negative/range/lifecycle control
 
 ### Bounded claim-to-Source reading support
 
+Typed applicability controls exercise actual HTTP and public read states for
+confirmed change, expired/deleted Source, missing repository comparison and
+unsupported/corrupt output. Current comparison timestamps may differ between
+nonmutating reads; stable prose, grounding, publication and Source bytes must
+remain equal. Browser checks restore the exact Source trigger on Escape, reject
+stale fetches and report typed deletion without cached code. Fresh normal Work
+output, newly authored transport controls, historical failure/replay and human
+acceptance are reported separately; all raw attempts remain ignored local artifacts.
+
 Complete-window controls include a Narrative mechanism after eight large leading
 ranges, a three-language claim whose every window must be complete, and actual
 maintained function regions beyond the file prefix. Independent original strings

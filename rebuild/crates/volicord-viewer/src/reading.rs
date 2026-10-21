@@ -426,7 +426,7 @@ fn reader_citation_actions(
             c.start_line,
             c.end_line
         );
-        html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{}\" title=\"{}\">{} {} ↗</a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&label),escape(&label),text(r.locale,"Source","근거"),n+1));
+        html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{}\" title=\"{}\">{} {} · <bdi class=\"source-label\">{}:{}–{}</bdi> ↗</a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&label),escape(&label),text(r.locale,"Source","근거"),n+1,escape(&c.locator),c.start_line,c.end_line));
     }
     html.push_str("</div>");
 }
@@ -698,9 +698,7 @@ fn render_document_body(
         ));
         work_event_times(html, r, w);
     }
-    if current {
-        html.push_str(&format!("<p class=\"interpretation\">{}</p>",text(r.locale,"Source-grounded host interpretation · verification, review and acceptance follow the original records.","Source에 근거한 호스트 해석 · 검증·검토·수락 상태는 원래 기록을 따릅니다.")));
-    }
+    render_applicability(html, r, answers, snapshot);
     if let Some(d) = decision {
         html.push_str(&format!("<p class=\"lead\" data-statement-role=\"verified-canonical\">{}</p><p class=\"record-strip\">{}</p>", escape(&decision_choice_attribution(&d.decision, r.locale)), brief_decision_state_label(d.decision.state, r.locale)));
     }
@@ -1308,21 +1306,155 @@ fn opening_context(
     }
 }
 
+fn limitation_label(
+    locale: ViewerLocale,
+    reason: Option<volicord_projections::ExplanationFailureReason>,
+) -> &'static str {
+    use volicord_projections::ExplanationFailureReason as F;
+    match reason {
+        Some(F::Changed) => text(
+            locale,
+            "The explanation basis changed; the article cannot be shown as current.",
+            "설명의 근거가 변경되어 현재 유효한 글로 표시할 수 없습니다.",
+        ),
+        Some(F::Expired) => text(
+            locale,
+            "Retained evidence expired; the article cannot be shown as current.",
+            "보존된 근거의 보존 기간이 만료되어 현재 유효한 글로 표시할 수 없습니다.",
+        ),
+        Some(F::Deleted) => text(
+            locale,
+            "The publication or a required Source was deleted.",
+            "설명 또는 필수 Source가 삭제되었습니다.",
+        ),
+        Some(F::Withheld) => text(
+            locale,
+            "Content is withheld by the forgetting barrier.",
+            "기록 삭제의 읽기 차단으로 내용을 보류했습니다.",
+        ),
+        Some(F::ComparisonUnavailable) => text(
+            locale,
+            "A current repository comparison is unavailable; no current-code claim is shown.",
+            "현재 저장소와 비교할 수 없어 현재 코드에 관한 주장을 표시하지 않습니다.",
+        ),
+        Some(F::Missing) => text(
+            locale,
+            "No interpretation is recorded in this language.",
+            "이 언어로 기록된 해석이 없습니다.",
+        ),
+        Some(F::Corrupt) => text(
+            locale,
+            "Retained content is corrupt.",
+            "보존된 내용이 손상되었습니다.",
+        ),
+        Some(F::Unsupported) => text(
+            locale,
+            "The retained format is unsupported.",
+            "보존 형식을 지원하지 않습니다.",
+        ),
+        _ => text(
+            locale,
+            "A required dependency is unavailable. Independent recorded facts remain readable.",
+            "필수 근거를 이용할 수 없습니다. 독립적인 기록된 사실은 계속 읽을 수 있습니다.",
+        ),
+    }
+}
+
+fn render_applicability(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    snapshot: bool,
+) {
+    use volicord_projections::RepositoryComparisonState as C;
+    let basis = &answers.applicability;
+    if basis.generated_at_unix_micros.is_none() && basis.explained_snapshots.is_empty() {
+        return;
+    }
+    let label = match (snapshot, basis.repository_comparison) {
+        (true, C::VerifiedAtRead) => text(
+            r.locale,
+            "Repository matched when this export was created; this file performs no current check.",
+            "내보낼 때 저장소가 일치했습니다. 이 파일은 현재 상태를 검사하지 않습니다.",
+        ),
+        (false, C::VerifiedAtRead) => text(
+            r.locale,
+            "Explained snapshot matched the repository at this read.",
+            "설명한 스냅샷이 이번 읽기에서 저장소와 일치했습니다.",
+        ),
+        (_, C::Changed) => text(
+            r.locale,
+            "Repository comparison: changed.",
+            "저장소 비교: 변경됨.",
+        ),
+        (_, C::Unavailable) => text(
+            r.locale,
+            "Repository comparison: unavailable.",
+            "저장소 비교: 이용 불가.",
+        ),
+        (_, C::NotChecked) => text(
+            r.locale,
+            "No current repository comparison is established for this publication.",
+            "이 설명에는 현재 저장소 비교가 확립되지 않았습니다.",
+        ),
+    };
+    html.push_str(&format!(
+        "<details class=\"applicability\" data-comparison-state=\"{}\"><summary>{}</summary><dl>",
+        serde_json::to_value(basis.repository_comparison)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_default(),
+        label
+    ));
+    for (label, value) in [
+        (
+            text(r.locale, "Generated at", "설명 생성 시각"),
+            basis.generated_at_unix_micros,
+        ),
+        (
+            text(
+                r.locale,
+                if snapshot {
+                    "Export comparison basis"
+                } else {
+                    "Checked at"
+                },
+                if snapshot {
+                    "내보내기 비교 근거 시각"
+                } else {
+                    "확인 시각"
+                },
+            ),
+            basis.checked_at_unix_micros,
+        ),
+    ] {
+        if let Some(value) = value {
+            html.push_str(&format!(
+                "<dt>{label}</dt><dd>{}</dd>",
+                timestamp_label(TimestampMicros::from_unix_micros(value), r.locale)
+            ));
+        }
+    }
+    for source in &basis.explained_snapshots {
+        html.push_str(&format!(
+            "<dt>{}</dt><dd><code>{}</code></dd><dt>Analysis</dt><dd><code>{}</code></dd>",
+            text(
+                r.locale,
+                "Explained repository snapshot",
+                "설명한 저장소 스냅샷"
+            ),
+            escape(&source.repository_snapshot_id),
+            escape(&source.analysis_snapshot_id)
+        ));
+    }
+    html.push_str("</dl></details>");
+}
+
 fn explanation_diagnostic(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>) {
     if let Some(diagnostic) = &answers.diagnostic {
         // Diagnostics remain exact in detail. The ordinary notice names only a
         // reason explicitly supplied by the dependency, never infers a cause.
-        let reason = if diagnostic.contains("source_body_expired") {
-            text(r.locale, "The retained Source body has expired; the interpretation cannot be shown as current.", "보존된 Source 본문의 보존 기간이 끝났습니다. 이 해석을 현재 유효한 설명으로 표시할 수 없습니다.")
-        } else if diagnostic.contains("Source bytes changed") {
-            text(r.locale, "Observed file bytes have changed; the interpretation cannot be shown as current.", "관측한 파일의 바이트가 변경되었습니다. 이 해석을 현재 유효한 설명으로 표시할 수 없습니다.")
-        } else if diagnostic.contains("current Source unavailable")
-            || diagnostic.contains("current excerpt unavailable")
-        {
-            text(r.locale, "A cited Source is no longer readable; the interpretation cannot be shown as current.", "인용된 Source를 더 이상 읽을 수 없습니다. 이 해석을 현재 유효한 설명으로 표시할 수 없습니다.")
-        } else {
-            text(r.locale, "The interpretation has an unavailable dependency or invalid content. Recorded facts remain readable; inspect the diagnostic for its exact cause.", "설명의 의존 근거를 이용할 수 없거나 내용이 유효하지 않습니다. 기록된 사실은 계속 읽을 수 있습니다. 정확한 원인은 진단에서 확인하세요.")
-        };
+        let reason = limitation_label(r.locale, answers.applicability.limitation);
         html.push_str(&format!(
             "<div class=\"reading-warning explanation-diagnostic\" role=\"note\" data-warning=\"source\" data-severity=\"caution\"><p class=\"dependency-reason\"><strong>{}:</strong> {}</p><details><summary>{}</summary><p>{}</p></details></div>",
             text(r.locale, "Explanation limitation", "설명 한계"), reason,

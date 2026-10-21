@@ -293,6 +293,12 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 
 ### Shared explanation content
 
+Typed applicability, lifecycle causes and dynamic read-comparison time are
+ephemeral reading metadata over existing current retained content. They do not
+alter authored units, provenance, canonical facts or document metadata v10 and
+require no migration. Export basis describes one static artifact; it is not a
+new compatibility input format.
+
 Complete-window allocation and `embedded_source_scope` are read-time projections;
 exact v6 citations already supply their complete windows and original claim
 identity. No focus field, retained-schema migration or old-output conversion is

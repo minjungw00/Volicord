@@ -12,8 +12,7 @@ use volicord_context::{
     SourcePayload,
 };
 use volicord_privacy::{
-    ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, ManagedDerivedState,
-    PrivacyStore,
+    ManagedCanonicalLink, ManagedDerivedDraft, ManagedDerivedKind, PrivacyStore,
 };
 use volicord_projections::{explanation_text_hash, ExplanationPlan};
 use volicord_repository_intelligence::{AnalysisMetadata, AnalysisSnapshotId, CanonicalGrounding};
@@ -374,7 +373,8 @@ impl LocalOperations {
         if repository.identity != analysis.repository_snapshot {
             return Err(Error::new(
                 "repository differs from the selected Analysis Snapshot; analyze explicitly again",
-            ));
+            )
+            .with_reading_failure(volicord_projections::ExplanationFailureReason::Changed));
         }
         Ok(repository)
     }
@@ -520,17 +520,17 @@ impl LocalOperations {
         let record = inspection.managed_derived.iter().find(|r| r.kind == ManagedDerivedKind::SourceObservation && r.purpose == purpose(analysis_id,source))
             .ok_or_else(|| Error::new("Source has no explicit association with this Project/repository/Analysis Snapshot"))?;
         let now = now_micros()?;
-        if !matches!(
-            record.state,
-            ManagedDerivedState::Current | ManagedDerivedState::Stale
-        ) || record.retained_until.is_none_or(|t| t <= now)
-            || inspection
+        if let Some(failure) = crate::source_observations::observation_lifetime_failure(
+            record,
+            inspection
                 .withheld_for_canonical_forgetting
-                .contains(&record.id)
-        {
+                .contains(&record.id),
+            now,
+        ) {
             return Err(Error::new(
                 "repository Source copy deleted, expired, invalidated or withheld",
-            ));
+            )
+            .with_reading_failure(failure));
         }
         let stored = PrivacyStore::open(self.layout().privacy_store())
             .and_then(|s| s.get_derived(project, record.id))
@@ -542,15 +542,20 @@ impl LocalOperations {
         if content.len() > volicord_privacy::MANAGED_DERIVED_CONTENT_BYTE_LIMIT {
             return Err(Error::new("Source copy exceeds content bound"));
         }
-        let header: Value = serde_json::from_str(content)
-            .map_err(|_| Error::new("corrupt repository Source copy"))?;
+        let header: Value = serde_json::from_str(content).map_err(|_| {
+            Error::new("corrupt repository Source copy")
+                .with_reading_failure(volicord_projections::ExplanationFailureReason::Corrupt)
+        })?;
         if header["format_kind"] != KIND || header["format_version"] != VERSION {
             return Err(Error::new(
                 "unsupported repository Source observation; explicitly observe again",
-            ));
+            )
+            .with_reading_failure(volicord_projections::ExplanationFailureReason::Unsupported));
         }
-        let observation: RepositoryObservation = serde_json::from_value(header)
-            .map_err(|_| Error::new("corrupt repository Source copy shape"))?;
+        let observation: RepositoryObservation = serde_json::from_value(header).map_err(|_| {
+            Error::new("corrupt repository Source copy shape")
+                .with_reading_failure(volicord_projections::ExplanationFailureReason::Corrupt)
+        })?;
         let binding = self
             .open_canonical_read_only()?
             .get_local_binding(project)

@@ -121,6 +121,14 @@ cause와 현재 workflow/required next action을 보존하며 internal storage s
 
 ### Shared explanation failure
 
+Operations supplies typed changed/expired/deleted/withheld/comparison-unavailable
+causes at the actual failed branch. Reader renderers do not classify diagnostic
+strings. Explained snapshots and known generation basis remain distinct from a
+current comparison; inability to perform that comparison is not confirmed change.
+An unavailable or generic dependency is never presented as a more specific cause
+without confirmation. Current publication/Source checks are shared by bounded
+MCP and exact citation reads. Dynamic check time changes no publication token.
+
 Work name, summary and article fail within their independently admitted publication
 scope (Projection's format-6 contract). A technical article Source failure cannot
 erase a separately current Goal-grounded name or report-grounded summary. A genuinely

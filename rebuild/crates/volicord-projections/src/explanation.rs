@@ -245,6 +245,7 @@ pub struct ExplanationReading {
     pub state: ExplanationState,
     pub content: Option<RetainedExplanation>,
     pub diagnostic: Option<String>,
+    pub applicability: crate::ExplanationApplicability,
     /// Read-time permitted, citation-only bytes. Never stored in the realization.
     pub source_excerpts: Vec<ExplanationSourceExcerpt>,
     pub omitted_source_excerpt_count: usize,

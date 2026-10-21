@@ -97,6 +97,11 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
 .badge { font-size:.8rem; color:var(--muted); }
 .source-point { margin:32px 0; padding:0; scroll-margin-top:20px; }
 .source-point:focus-visible { outline:3px solid var(--focus); outline-offset:-3px; }
+.source-label { overflow-wrap:anywhere; min-width:0; }
+.evidence-link { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+.applicability { color:var(--muted); font-size:.85rem; margin-block:12px; }
+.applicability code { overflow-wrap:anywhere; }
+.applicability dd { margin:0 0 8px; }
 .point-title { font-size:.85rem; color:var(--accent); font-weight:700; }
 .claim-quote { border-left:2px solid var(--accent); padding:8px 16px; margin:16px 0; font-size:.95rem; max-height:24vh; overflow:auto; }
 .source-path { font-family:ui-monospace,monospace; font-size:.8rem; margin:16px 0 6px; }

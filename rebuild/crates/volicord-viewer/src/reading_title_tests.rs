@@ -50,6 +50,7 @@ fn reading(w: &UnderstandingWork, r: &ViewerRequest, claim: &str) -> Explanation
         use_kind: ExplanationSourceUse::CurrentCode,
     };
     ExplanationReading {
+        applicability: ExplanationApplicability::default(),
         language: "en".into(),
         state: ExplanationState::Current,
         content: Some(RetainedExplanation {

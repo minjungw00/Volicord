@@ -8593,6 +8593,12 @@ fn canonical_cause_json(error: &volicord_operations::Error) -> Value {
 }
 
 fn operation_error(error: volicord_operations::Error) -> HostError {
+    if let Some(reason) = error.reading_failure() {
+        return HostError::with_details(
+            error.to_string(),
+            json!({"diagnostic":"explanation_read_unavailable","reason":reason}),
+        );
+    }
     if let Some(cause) = error.inquiry_cause() {
         if let Some(location) = cause.authoring_location() {
             return HostError::with_details(

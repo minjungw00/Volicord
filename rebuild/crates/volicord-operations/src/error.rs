@@ -5,6 +5,7 @@ pub struct Error {
     message: String,
     source: Option<Box<dyn StdError + Send + Sync>>,
     checkpoint_scope_violation: Option<Box<crate::CheckpointScopeViolation>>,
+    reading_failure: Option<volicord_projections::ExplanationFailureReason>,
 }
 
 impl Error {
@@ -13,6 +14,7 @@ impl Error {
             message: message.into(),
             source: None,
             checkpoint_scope_violation: None,
+            reading_failure: None,
         }
     }
 
@@ -24,6 +26,7 @@ impl Error {
             message: message.into(),
             source: Some(Box::new(source)),
             checkpoint_scope_violation: None,
+            reading_failure: None,
         }
     }
 
@@ -62,6 +65,23 @@ impl Error {
         &self.message
     }
 
+    pub fn reading_failure(&self) -> Option<volicord_projections::ExplanationFailureReason> {
+        self.reading_failure.or_else(|| {
+            self.source
+                .as_deref()
+                .and_then(|s| s.downcast_ref::<Self>())
+                .and_then(Self::reading_failure)
+        })
+    }
+
+    pub(crate) fn with_reading_failure(
+        mut self,
+        reason: volicord_projections::ExplanationFailureReason,
+    ) -> Self {
+        self.reading_failure = Some(reason);
+        self
+    }
+
     pub fn checkpoint_scope_violation(&self) -> Option<&crate::CheckpointScopeViolation> {
         self.checkpoint_scope_violation.as_deref()
     }
@@ -74,6 +94,7 @@ impl Error {
             message: message.into(),
             source: None,
             checkpoint_scope_violation: Some(Box::new(violation)),
+            reading_failure: None,
         }
     }
 }

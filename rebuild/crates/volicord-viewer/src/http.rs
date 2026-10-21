@@ -220,9 +220,16 @@ impl ViewerServer {
             citation_index: integer("citation")?,
             offset: integer("offset")?,
         };
-        let mut result = self.adapter.operations().read_explanation_citation(self.project_id,
-            subject,q.required("language")?,&selection).map_err(|_|
-                HttpFailure::new(409,"Conflict","This exact citation is unavailable or changed. Return to the explanation and reopen its current permitted version."))?;
+        let mut result = match self.adapter.operations().read_explanation_citation(self.project_id,
+            subject,q.required("language")?,&selection) {
+            Ok(result) => result,
+            Err(error) => return Ok(HttpResponse {
+                status:409,reason:"Conflict",content_type:"application/json; charset=utf-8",location:None,
+                body:serde_json::to_vec(&serde_json::json!({"reason":error.reading_failure().unwrap_or(volicord_projections::ExplanationFailureReason::Unavailable),
+                    "error":"This exact citation is unavailable or changed. Return to the explanation and reopen its current permitted version."}))
+                    .map_err(|_|HttpFailure::bad_request("citation failure encoding failed"))?,
+            }),
+        };
         // Decorate only the bytes returned by the scoped, current Source reader.
         // This ephemeral presentation metadata has no retained format/authority.
         let chunk = &result["chunk"];

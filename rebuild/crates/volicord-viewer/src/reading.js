@@ -1,6 +1,7 @@
 // Presentation and exact same-origin retained citation reads only. No writes.
 (() => {
   const saved = new Map();
+  const originTriggers = new Map();
   const narrow = matchMedia('(max-width:900px)');
   let selected = null;
   let focusedHash = null;
@@ -52,10 +53,11 @@
       if (url.origin !== location.origin || url.pathname !== '/citation') throw Error('scope');
       url.searchParams.set('offset', String(offset));
       const response = await fetch(url, {credentials:'same-origin', cache:'no-store', redirect:'error', signal:controller.signal});
-      if (!response.ok) throw Error('unavailable');
       const raw = await response.text();
       if (new TextEncoder().encode(raw).length > 32768) throw Error('bound');
-      const result = JSON.parse(raw), chunk = result.chunk;
+      const result = JSON.parse(raw);
+      if (!response.ok) { const error = Error('unavailable'); error.reason = result.reason; throw error; }
+      const chunk = result.chunk;
       const textBytes = typeof chunk?.text === 'string' ? new TextEncoder().encode(chunk.text).length : 0;
       const subjectIdentity = Array.isArray(result.subject?.identity)
         ? result.subject.identity.map(b => Number.isInteger(b) && b >= 0 && b <= 255 ? b.toString(16).padStart(2,'0') : '?').join('')
@@ -106,8 +108,15 @@
           other.querySelectorAll('pre.code-region,.code-caption').forEach(n => n.remove());
       });
       point.querySelectorAll('.initial-range-omission').forEach(n => n.hidden = true);
-      status.textContent = ko ? '이 정확한 인용은 이용할 수 없거나 변경되었습니다. 설명으로 돌아가 현재 버전을 다시 여세요.'
-        : 'This exact citation is unavailable or changed. Return to the explanation and reopen its current version.';
+      const reasons = {
+        expired: ko ? '보존 기간이 만료되었습니다.' : 'Retained evidence expired.',
+        deleted: ko ? '설명 또는 필수 Source가 삭제되었습니다.' : 'The publication or a required Source was deleted.',
+        changed: ko ? '설명 또는 근거가 변경되었습니다.' : 'The publication or its evidence changed.',
+        withheld: ko ? '기록 삭제의 읽기 차단으로 보류되었습니다.' : 'Content is withheld by the forgetting barrier.',
+        comparison_unavailable: ko ? '현재 저장소와 비교할 수 없습니다.' : 'A current repository comparison is unavailable.'
+      };
+      status.textContent = reasons[error.reason] || (ko ? '이 정확한 인용은 이용할 수 없거나 변경되었습니다. 설명으로 돌아가 현재 버전을 다시 여세요.'
+        : 'This exact citation is unavailable or changed. Return to the explanation and reopen its current version.');
       button.dataset.nextOffset = 0;
       button.textContent = ko ? '허용된 인용 다시 확인' : 'Check permitted citation again';
     } finally {
@@ -177,7 +186,8 @@
       selected = null;
       focusedHash = null;
       if (target) {
-        target.focus({preventScroll:true});
+        const trigger = originTriggers.get(target.id);
+        (trigger?.isConnected ? trigger : target).focus({preventScroll:true});
         const offset = saved.get(target.id);
         if (offset !== undefined) window.scrollTo(0, offset);
         else target.scrollIntoView({block:'center'});
@@ -210,6 +220,7 @@
     const link = event.target.closest('a.evidence-link');
     if (link && !selected) {
       saved.set(link.dataset.origin, scrollY);
+      originTriggers.set(link.dataset.origin, link);
       document.querySelectorAll('.document-nav[open]').forEach(toc => toc.open = false);
     }
   });

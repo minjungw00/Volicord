@@ -1549,6 +1549,28 @@ coordinates come from the Source owner. Inclusion establishes available code,
 not importance, entailment or complete repository understanding. Export creation
 continues to revalidate every used publication and Source dependency.
 
+### Typed explanation applicability
+
+Shared reading data carries the explained Repository/Analysis/Source snapshots,
+known generation time, actual read comparison time, repository comparison state
+and a typed limitation supplied by Operations/Source lifecycle owners. Verified
+comparison is scoped to that read; record-only publications establish no current
+repository comparison. Missing, changed, expired, deleted, withheld, unavailable
+comparison, corrupt and unsupported content remain distinct. Unknown detail is
+left unknown, never inferred from a diagnostic substring. A failed dependency
+withholds the affected article while independent name/summary and canonical facts
+keep their own authority.
+
+Dynamic comparison times live outside compact publication fingerprints, so a
+continuation preserves stable publication identity while every request rechecks
+authority. Live citation failures return typed reasons without Source bytes.
+Static rendering describes the comparison used at export creation and exposes
+the known export basis; it promises neither live retrieval nor continuing checks.
+Generation, comparison and export times are distinct. Raw diagnostics remain
+secondary inspection. Source actions display path/range and keep original
+claim/citation coordinates; closing inspection restores the exact activating
+control where it remains present, with the claim as the deep-link fallback.
+
 ### Revision-bound retained evidence detail
 
 Bounded MCP omissions do not grant raw-history or filesystem read authority.
