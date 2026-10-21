@@ -343,7 +343,9 @@ fn work_source_command() -> Command {
                 .value_parser(clap::value_parser!(u64).range(1..=300)))
             .arg(Arg::new("command").required(true).num_args(1..).last(true)
                 .value_name("PROGRAM [ARG...]")))
-        .subcommand(Command::new("list").about("List only exact-Work observation metadata and read selectors").arg(work()))
+        .subcommand(Command::new("list").about("Page exact-Work metadata through the canonical inspector; join compact JSON chunks, never Source bodies").arg(work())
+            .arg(Arg::new("offset").long("offset").value_parser(clap::value_parser!(usize)).default_value("0"))
+            .arg(Arg::new("expected-fingerprint").long("expected-fingerprint")))
         .subcommand(Command::new("read").about("Read one permitted retained observation; no filesystem fallback").arg(work()).arg(source()))
         .subcommand(Command::new("delete").about("Delete one Work Source copy, retaining canonical identity").arg(work()).arg(source()))
 }
@@ -359,7 +361,16 @@ fn dispatch_work_source(
     let project = resolve_project(operations, selection)?;
     let work = ContextItemId::from_bytes(parse_identity(required(args, "work")?)?);
     let receipt = match action {
-        "list" => return operations.explanation_source_manifest(project, work),
+        "list" => {
+            return operations.explanation_source_manifest(
+                project,
+                work,
+                *args
+                    .get_one::<usize>("offset")
+                    .ok_or_else(|| Error::new("offset required"))?,
+                args.get_one::<String>("expected-fingerprint").cloned(),
+            )
+        }
         "read" => {
             return operations.read_explanation_source(
                 project,
@@ -1093,10 +1104,10 @@ fn dispatch_explanation_action(
             let plan =
                 operations.prepare_explanation(project, subject, required(args, "language")?)?;
             let inventory = match subject {
-                volicord_projections::ExplanationSubject::Work(work)
-                | volicord_projections::ExplanationSubject::WorkName(work)
-                | volicord_projections::ExplanationSubject::WorkSummary(work) => {
-                    operations.explanation_source_manifest(project, work)?
+                volicord_projections::ExplanationSubject::Work(_)
+                | volicord_projections::ExplanationSubject::WorkName(_)
+                | volicord_projections::ExplanationSubject::WorkSummary(_) => {
+                    operations.explanation_source_discovery(&plan)
                 }
                 volicord_projections::ExplanationSubject::Repository(analysis) => json!({
                     "scope":"exact_repository_analysis",

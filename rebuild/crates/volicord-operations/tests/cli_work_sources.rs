@@ -99,6 +99,25 @@ impl Fixture {
         }
         self.ok(&args)
     }
+    fn manifest(&self) -> Result<Value, Box<dyn Error>> {
+        let mut page = self.ok(&["work", "source", "list", "--work", &self.work])?;
+        let mut text = page["chunk"].as_str().ok_or("chunk")?.to_owned();
+        while let Some(offset) = page["next_offset"].as_u64() {
+            page = self.ok(&[
+                "work",
+                "source",
+                "list",
+                "--work",
+                &self.work,
+                "--offset",
+                &offset.to_string(),
+                "--expected-fingerprint",
+                page["fingerprint"].as_str().ok_or("fingerprint")?,
+            ])?;
+            text.push_str(page["chunk"].as_str().ok_or("chunk")?);
+        }
+        Ok(serde_json::from_str(&text)?)
+    }
     fn read(&self, source: &str) -> Result<Value, Box<dyn Error>> {
         self.ok(&[
             "work", "source", "read", "--work", &self.work, "--source", source,
@@ -222,7 +241,7 @@ fn public_capture_read_compose_record_journey_uses_two_observed_states(
         command["observation"]["detail"]["started_at_unix_micros"].as_i64()
             <= command["observation"]["detail"]["ended_at_unix_micros"].as_i64()
     );
-    let manifest = f.ok(&["work", "source", "list", "--work", &f.work])?;
+    let manifest = f.manifest()?;
     assert_eq!(
         manifest["observations"].as_array().ok_or("manifest")?.len(),
         4
@@ -425,7 +444,7 @@ fn public_command_preserves_failure_termination_and_rejects_invalid_execution(
             "unused"
         )
         .is_err());
-    let manifest = f.ok(&["work", "source", "list", "--work", &f.work])?;
+    let manifest = f.manifest()?;
     assert_eq!(
         manifest["observations"].as_array().ok_or("manifest")?.len(),
         3

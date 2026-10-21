@@ -1681,6 +1681,23 @@ Work. Existing 2,048-byte UTF-8 chunks and continuation fingerprints bound this
 field independently of projection/Recall list limits. The manifest is not a
 semantic relevance selection and does not collect evidence.
 
+CLI/MCP preparation returns no inline Work observation inventory. Name preparation
+is Goal-only and never enumerates managed Source observations. Summary/article
+preparation advertises `source_inventory.discovery`, an exact Project/Work/Goal
+revision `canonical_inspect` selector for this existing field. Optional investigation
+reads only permitted metadata; selected body reads retain their independent generation
+request/Source authority. CLI `work source list --work WORK` delegates to that same
+reader, returning at most 2,048 UTF-8 chunk bytes. Continue with `--offset NEXT` and
+`--expected-fingerprint HASH`, concatenate in order and decode after the final chunk.
+The complete serialized manifest preserves every explicit association, including
+expired/deleted metadata and exact body selectors, without body contents. Fingerprints
+bind Project, Work, Goal revision, list content and lifecycle metadata; missing tokens,
+foreign continuations, additions, deletion/expiry or Goal correction reject continuation.
+Restart explicitly at offset zero after change; no silent offset shifting or partial
+list is presented as complete. Unrelated Work insertion does not change this list.
+The supported inspector recomputes full metadata for consistency on each page; this
+contract bounds delivery and preparation, not constant-time inventory traversal.
+
 A Source `body` read with exact Project, Source revision and `work_item_id` may
 return its permitted `volicord_source_observation` envelope. It carries Work and
 Source revisions, selected Repository/Analysis Snapshot and repository Source,
@@ -2046,10 +2063,12 @@ from another scope cannot authorize recording. No read or canonical write genera
 Name preparation contains only the current Goal identity/revision/field, original
 Source metadata and relevant conflict relations. It admits exactly one Heading
 grounded in `goal`, describing the requested action/problem, with no technical
-citations or result assertion. Summary preparation contains Goal plus the selected
-latest nonblank same-Work result, if any. It admits exactly one Synopsis with `goal`
-and, when present, `result`. The host explains reported problem/approach/outcome,
-preserving partial/failed/no-change meaning. A report is no current-code verification;
+citations or result assertion. Summary preparation follows the field selection in
+[Independent Work progress publications](#independent-work-progress-publications):
+Goal, latest nonblank report when present, current state, applicable recorded checks
+and coverage, independent review/acceptance resets, material limits and direction.
+It admits one Synopsis grounded in every selected field, preserving missing reports
+and partial/failed/paused/no-change meaning. A report is no current-code verification;
 technical assertions beyond it need their own permitted Source citations. Article
 preparation retains the full course and technical dependencies. Every scope fingerprints
 its exact Project/subject/language, current preparation instructions/budget, evidence
@@ -2072,7 +2091,7 @@ Counterexamples determine this boundary:
 | Input/change | Name | Summary | Article |
 | --- | --- | --- | --- |
 | Goal only, no code | Meaningful requested-action name | Request and unreported outcome | Missing/partial detail remains explicit |
-| New selected result Checkpoint | Unchanged Goal name remains current | Stale; explicitly author the new actual result | Full preparation becomes stale |
+| New selected progress, even with blank report | Unchanged Goal name remains current | Stale; explicitly author supported current progress and qualifications | Full preparation becomes stale |
 | Uncited technical copy expires | Record-only name remains current | Record-only report summary remains current | Citing article becomes stale |
 | Summary actually cites deleted Source | Goal name remains current | Withheld/stale; never drop citation after admission | Only affected publications become non-current |
 | Goal correction/forgetting | Non-current/deleted | Non-current/deleted | Non-current/deleted |

@@ -19,8 +19,47 @@ impl LocalOperations {
         &self,
         project: ProjectId,
         work: ContextItemId,
+        offset: usize,
+        expected_fingerprint: Option<String>,
     ) -> Result<Value, Error> {
-        self.work_source_manifest(&self.canonical_basis(project)?, work)
+        let basis = self.canonical_basis(project)?;
+        let revision = crate::source_observations::work_revision(&basis, work)?;
+        self.canonical_evidence_detail(
+            project,
+            &crate::EvidenceDetailRequest {
+                record_kind: "context_item".into(),
+                record_id: work.to_string(),
+                revision,
+                field: "source_observations".into(),
+                offset,
+                expected_fingerprint,
+                work_item_id: Some(work),
+            },
+        )
+    }
+
+    /// Preparation advertises the existing exact-field reader; it does not
+    /// enumerate observations or acquire any additional body authority.
+    pub fn explanation_source_discovery(
+        &self,
+        plan: &volicord_projections::ExplanationPlan,
+    ) -> Value {
+        match plan.subject {
+            ExplanationSubject::WorkName(_) => {
+                json!({"scope":"goal_only","body_authority":"not_granted"})
+            }
+            ExplanationSubject::Work(work) | ExplanationSubject::WorkSummary(work) => {
+                let goal = plan.evidence.iter().find(|e| e.key == "goal");
+                json!({"scope":"explicit_recorded_associations_only","body_authority":"not_granted",
+                    "discovery":{"tool":"canonical_inspect","project_id":plan.project_id,
+                        "record_kind":"context_item","record_id":work.to_string(),
+                        "work_item_id":work.to_string(),"revision":goal.map(|e|e.revision),
+                        "field":"source_observations","offset":0},
+                    "encoding":"compact_json_utf8","chunk_byte_limit":2048,
+                    "continuation":"Join chunks in next_offset order, then decode JSON. Send the same exact selector and returned fingerprint as expected_fingerprint on each continuation. A changed list or lifecycle rejects continuation; restart at offset 0. Metadata grants no Source body authority."})
+            }
+            _ => json!({"scope":"recorded_decision_only","body_authority":"not_granted"}),
+        }
     }
 
     /// Explicit read of one already retained and permitted Source; no capture,

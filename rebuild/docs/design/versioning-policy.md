@@ -528,3 +528,13 @@ explicit prepare/compose/record. Goal-only name and article contracts retain the
 independent meaning. Existing v6 evidence already encodes record/revision/field and
 Sources, so no durable format/version, decoder, canonical schema or migration changes.
 Original historical outputs remain unchanged; no automatic regeneration or rebinding.
+
+### Scoped Source discovery preparation
+
+Preparation payloads now advertise the existing exact-field metadata selector instead
+of inline Work Source inventories; Goal-only name preparation has no inventory.
+CLI Source list returns the same 2,048-byte `compact_json_utf8` pages and consistency
+fingerprint as `canonical_inspect`. This is an ephemeral public read/preparation
+change, not a retained representation or permission change. No durable version bump,
+legacy decoder or automatic regeneration is introduced; the progress plan change
+above separately requires explicit regeneration of affected summaries.

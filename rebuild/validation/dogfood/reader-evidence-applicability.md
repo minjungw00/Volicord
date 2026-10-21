@@ -274,3 +274,65 @@ Runner artifacts use `rebuild/.local/validation/*-work-progress-*`; original fai
 attempts are preserved alongside corrected successful controls. Complete numeric
 results and current-path output locations are reported in the delivery conversation.
 The authoritative gate, Final, official V11 and provider qualification are excluded.
+
+### Scoped discovery and actual-record readback
+
+The first implementation commit is `5e6f1ea2` (`feat: publish Work summaries from
+current progress evidence`). Its post-commit serial publication check passed 9
+Operations and 5 Viewer controls (exit 0). A preceding parallel run hit the existing
+one-second Source expiry window before admission; that original exit-101 attempt
+is preserved, not relabeled as a Product regression or erased by the serial result.
+
+Scope-specific preparation reuses the existing canonical inspector. A 512-observation
+control measured a 224,550-byte old payload: below the 256 KiB transport limit, so
+that attempt did not establish refusal. The final 640-observation control measured
+277,951 manifest bytes across 136 complete chunks and 280,107 bytes for the previous
+unpaged name payload shape. It reconstructs that payload shape rather than claiming
+a historic runtime refusal. New name/summary/article preparations stay below 32 KiB.
+Source IDs are checked against actual observation receipts, not renderer output.
+Missing tokens, foreign Project/Work, insertion, deletion, expiry and Goal correction
+have explicit consistency controls. The existing inspector still recomputes complete
+metadata on each chunk: delivery and preparation are bounded; traversal is not O(1).
+
+| Case | Applicable claim | Identity / limitation |
+| --- | --- | --- |
+| Existing Music Deck Work | Current field selection exposes a paused no-change investigation, reported VM check and qualifications despite no `state_change` report | Project `0f92697b812656f62f53ee3e6d88b3b0`, Work `76808dcabf7e044ecbaf5012add36222`, selected Checkpoint `2a16101b17cdaeee2abe8f27d57911e9` revision 1; original Goal is evaluation-oriented, not normal-content/name quality evidence |
+| Current-path summary over copied Music Deck records | Fresh CLI prepare/compose/record/status and Viewer export display current record-grounded progress independently of the unavailable article; Work/state/event/verification/Decision facts remain equal | Preparation `sha256:c6bd2d4ed7de6fcc3150306c3a50ea8c1f7d3b143a8575fbf8fea378a370c8b8`; realization `sha256:8255ad40b86c84643eef6f53832df87a899842383c0b7225067d9bb0adcf14dc`; self-reported dependent author, semantic approval not established |
+| Unfinished-result control | Blank report, paused state, failed check, rejected acceptance and unresolved limit survive actual public consumers | Viewer `unfinished_blank_report_progress_reaches_public_preparation_and_readers`; authored facts/prose, not an invented actual Work |
+| Discovery control | Goal-only preparation avoids all observation enumeration; summary/article use exact-field discovery and ordered consistent chunks through actual CLI/MCP | Viewer `large_source_history_uses_scope_only_preparation_and_consistent_inspector_pages`; synthetic disposable Source history, not a normal task |
+| Existing Volicord runtime copy | Public status inspection succeeds but supplies no Work | No fabricated positive; ordinary-task content and genuine current-session capture remain an evidence gap |
+
+Permitted originals were located at
+`rebuild/.local/reader-acceptance-20261021/{musicdeck,volicord}-runtime`.
+SQLite read-only backups go to `rebuild/.local/work-progress-20261022-attempt2/`;
+original records, evidence and the shared context were not rewritten. Source body
+lifetimes were not renewed; this actual-record example performed no Source capture
+or provider invocation. Disposable test observations remain separate controls.
+The new actual-record summary is based on canonical reports, not freshly observed
+code/execution. Its declaration preserves that missing report and unobserved real
+browser/device behavior, whole-tree coverage, trusted-host capture and acceptance.
+
+That new private directory retains exact inputs, process argv/exits/stdout/stderr,
+recorded realization, status readbacks, `example-manifest.json` with binary/source
+hashes, and `musicdeck-current-progress.html`. The record receipt SHA-256 is
+`449e3f4d5aa52c47a404584b92c64ab923c0962250e46dfdfb7f6aacd9101601`;
+the HTML SHA-256 is
+`1c062282f4dda10782a232104438bdf60920651808402d6cc82abe829aa56829`.
+The producer basis is `5e6f1ea2` plus the manifest's exact scoped-discovery source
+hashes, not a claim of a clean gate. Initial local script failures (relative-path
+URI and array identity supplied to subprocess) preceded Product execution and are
+separate tool errors. They did not mutate original evidence. Intermediate test
+compiler/control failures and the initially overbroad unavailable-continuation
+change are preserved under `*-work-progress-*` / `*-source-discovery-*`; the latter
+was narrowed to Source-list continuations, preserving other inspector behavior.
+Pre-commit exploratory source trees were not separately frozen; those logs do not
+supply clean-candidate gate evidence. Final commit checks are reported separately.
+
+Changed responsibilities/files: Projection `src/{explanation,reading}.rs` selects
+progress fields; Host `src/mcp.rs` and README expose the scope/selector contract;
+Operations `src/{cli,evidence,explanation_sources}.rs` delegates bounded discovery;
+Operations `tests/{work_publication,cli_work_sources}.rs` and Viewer
+`tests/work_publication.rs` exercise production/consumption. Maintained Projection,
+Reader, Privacy, Versioning and Validation owners plus this applicability report
+record the changed semantics. No legacy path, analyzer language capability, package
+boundary, durable format or Source permission changes.

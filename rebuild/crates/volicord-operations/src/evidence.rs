@@ -227,10 +227,17 @@ impl LocalOperations {
                     } else if let Some(work_id) = request.work_item_id {
                         // The same explicit observation association bounds metadata
                         // reads, without reading, renewing or restoring a body copy.
-                        let manifest = self.work_source_manifest(&basis, work_id)?;
-                        if manifest["observations"].as_array().is_some_and(|entries| {
-                            entries.iter().any(|entry| entry["source_id"] == *identity)
-                        }) {
+                        crate::source_observations::work_revision(&basis, work_id)?;
+                        if self
+                            .privacy_status(project)?
+                            .managed_derived
+                            .iter()
+                            .any(|record| {
+                                record.kind
+                                    == volicord_privacy::ManagedDerivedKind::SourceObservation
+                                    && record.purpose == format!("work-source:{work_id}:{identity}")
+                            })
+                        {
                             work = Some(work_id);
                         }
                     }
@@ -268,6 +275,13 @@ impl LocalOperations {
             metadata["retained_state"] = json!(body_reason.unwrap_or("unavailable"));
         }
         if revision != Some(request.revision) {
+            if request.field == "source_observations"
+                && (request.expected_fingerprint.is_some() || request.offset > 0)
+            {
+                return Err(Error::new(
+                    "evidence read basis unavailable; continuation rejected",
+                ));
+            }
             return Ok(unavailable(
                 project,
                 request,

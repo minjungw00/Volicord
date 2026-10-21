@@ -362,6 +362,7 @@ volicord work source observe --work WORK --analysis SNAPSHOT --path src/file.py 
 volicord work source observe --work WORK --analysis SNAPSHOT --path src/file.py --before-source SOURCE --retain-seconds 3600
 volicord work source run --work WORK --analysis SNAPSHOT --label "Named check" --timeout-seconds 60 --retain-seconds 3600 -- python3 -B -m unittest
 volicord work source list --work WORK
+volicord work source list --work WORK --offset NEXT --expected-fingerprint HASH
 volicord work source read --work WORK --source SOURCE
 volicord work source delete --work WORK --source SOURCE
 ```
@@ -379,14 +380,20 @@ is inferred. Raw argv is not retained and the Source label is not a run identity
 The host can consume the retained command/file via its existing scoped Source read
 and compose ranges into an explicitly authored Work explanation. CLI
 `work explain prepare`, `compose`, `record`, followed by `status` supplies the same
-consumer path. Separate `work source list` discovers observations; preparation does
-not silently collect or ingest all bodies. A fresh Work needs no fictional
+consumer path. `work source list` returns bounded compact-JSON chunks through the
+same canonical inspector; join them in next-offset order, carrying its fingerprint,
+then decode. Changed lists/lifecycles reject continuation and require an explicit
+restart. Name preparation uses the Goal alone and never enumerates Work Sources.
+Summary/article preparation supplies `source_inventory.discovery`, the exact
+canonical inspector selector, rather than the full list. Summary authoring includes
+selected current progress and its verification/review/acceptance/limit qualifications;
+missing reports remain missing. No preparation silently collects or ingests bodies. A fresh Work needs no fictional
 Checkpoint/Decision/retry. These public controls demonstrate mechanics only; a real
 task capture needs current trusted activation and source authority.
 
 For an explicitly requested Work explanation, call `work_explanation` with
 `action: generate`, exact `project_id`, `work_item_id` and `language`. The returned
-plan and scoped Source inventory are evidence, with status
+plan and scoped metadata discovery selector are evidence, with status
 `awaiting_host_interpretation`. The current authorized host investigates relevant
 permitted files via `work_source`, retrieves selected copies with `read_source`
 and the returned `generation_id`, then authors and submits `realization` through

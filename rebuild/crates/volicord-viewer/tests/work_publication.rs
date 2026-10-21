@@ -717,3 +717,264 @@ fn unfinished_blank_report_progress_reaches_public_preparation_and_readers(
     assert_eq!(privacy, f.operations.privacy_status(f.project)?);
     Ok(())
 }
+
+#[test]
+fn large_source_history_uses_scope_only_preparation_and_consistent_inspector_pages(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = f.goals["relay"];
+    let analysis = f
+        .operations
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let name_before =
+        f.operations
+            .prepare_explanation(f.project, ExplanationSubject::WorkName(id), "en")?;
+    let summary_before =
+        f.operations
+            .prepare_explanation(f.project, ExplanationSubject::WorkSummary(id), "en")?;
+    let observe = |seconds| {
+        f.operations.observe_work_file(FileObservationRequest {
+            project_id: f.project,
+            work_item_id: id,
+            analysis_snapshot_id: analysis,
+            path: "runtime/query_boundary.ts".into(),
+            byte_range: None,
+            before_source_id: None,
+            retain_seconds: seconds,
+        })
+    };
+    let mut expected = std::collections::BTreeSet::new();
+    for _ in 0..640 {
+        expected.insert(observe(3600)?.source_id.to_string());
+    }
+    let canonical = f.operations.canonical_basis(f.project)?;
+    let privacy = f.operations.privacy_status(f.project)?;
+    let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let mut discovery = Value::Null;
+    for scope in ["name", "summary", "article"] {
+        let prepared = call(
+            &mut host,
+            "work_explanation",
+            json!({"project_id":f.project.to_string(),"work_item_id":id.to_string(),"scope":scope,"action":"prepare","language":"en"}),
+        )?;
+        println!(
+            "source-discovery preparation: scope={scope} bytes={}",
+            prepared.to_string().len()
+        );
+        assert!(prepared.to_string().len() < 32768, "{scope}");
+        assert!(prepared["source_inventory"].get("observations").is_none());
+        if scope == "name" {
+            assert_eq!(prepared["source_inventory"]["scope"], "goal_only");
+            assert!(prepared["source_inventory"].get("discovery").is_none());
+            assert_eq!(prepared["plan"]["fingerprint"], name_before.fingerprint);
+        } else {
+            discovery = prepared["source_inventory"]["discovery"].clone();
+            assert_eq!(discovery["tool"], "canonical_inspect");
+            assert_eq!(discovery["record_id"], id.to_string());
+            if scope == "summary" {
+                assert_eq!(prepared["plan"]["fingerprint"], summary_before.fingerprint);
+            }
+        }
+    }
+    discovery.as_object_mut().ok_or("selector")?.remove("tool");
+    let first = call(&mut host, "canonical_inspect", discovery.clone())?;
+    let fingerprint = first["fingerprint"]
+        .as_str()
+        .ok_or("fingerprint")?
+        .to_owned();
+    let mut page = first.clone();
+    let mut encoded = String::new();
+    let mut page_count = 0;
+    loop {
+        assert_eq!(page["offset"], encoded.len());
+        assert_eq!(page["fingerprint"], fingerprint);
+        let chunk = page["chunk"].as_str().ok_or("chunk")?;
+        assert!(chunk.len() <= 2048);
+        encoded.push_str(chunk);
+        page_count += 1;
+        let Some(offset) = page["next_offset"].as_u64() else {
+            break;
+        };
+        discovery["offset"] = json!(offset);
+        discovery["expected_fingerprint"] = json!(fingerprint);
+        page = call(&mut host, "canonical_inspect", discovery.clone())?;
+    }
+    let manifest: Value = serde_json::from_str(&encoded)?;
+    let rows = manifest["observations"].as_array().ok_or("observations")?;
+    let actual: std::collections::BTreeSet<_> = rows
+        .iter()
+        .map(|e| e["source_id"].as_str().unwrap_or_default().to_owned())
+        .collect();
+    assert_eq!(rows.len(), 640);
+    assert_eq!(actual, expected, "no omitted or duplicate observations");
+    assert_eq!(
+        encoded.len(),
+        first["total_utf8_bytes"].as_u64().ok_or("total")? as usize
+    );
+    // Reproduce the reviewed unpaged payload shape and measure it. This is a
+    // scaling counterexample, not a claim of an observed historic host failure.
+    let old_payload = json!({"plan":name_before,"source_inventory":manifest});
+    let old_bytes = serde_json::to_vec(&old_payload)?.len();
+    assert!(old_bytes > 262144, "old payload size {old_bytes}");
+    println!("source-discovery: records=640 pages={page_count} full_manifest_bytes={} old_name_payload_bytes={old_bytes}",encoded.len());
+    let listed: Value = serde_json::from_str(&cli(
+        &f,
+        &[
+            "--json",
+            "work",
+            "source",
+            "list",
+            "--work",
+            &id.to_string(),
+        ],
+    )?)?;
+    assert_eq!(listed["chunk"], first["chunk"]);
+    let cli_second: Value = serde_json::from_str(&cli(
+        &f,
+        &[
+            "--json",
+            "work",
+            "source",
+            "list",
+            "--work",
+            &id.to_string(),
+            "--offset",
+            &first["next_offset"].to_string(),
+            "--expected-fingerprint",
+            &fingerprint,
+        ],
+    )?)?;
+    assert_eq!(cli_second["offset"], first["next_offset"]);
+    let mut request = EvidenceDetailRequest {
+        record_kind: "context_item".into(),
+        record_id: id.to_string(),
+        revision: 1,
+        field: "source_observations".into(),
+        work_item_id: Some(id),
+        offset: first["next_offset"].as_u64().ok_or("next")? as usize,
+        expected_fingerprint: Some(fingerprint.clone()),
+    };
+    let mut missing = request.clone();
+    missing.expected_fingerprint = None;
+    assert!(f
+        .operations
+        .canonical_evidence_detail(f.project, &missing)
+        .is_err());
+    let other = f
+        .operations
+        .record_current_host_user_context(
+            f.project,
+            "control".into(),
+            "foreign-work".into(),
+            "Investigate whether readQuery changes the supplied value.".into(),
+            ContextItemRole::Goal,
+            "Investigate whether readQuery changes the supplied value.".into(),
+        )?
+        .context_item_id;
+    let mut foreign = request.clone();
+    foreign.record_id = other.to_string();
+    foreign.work_item_id = Some(other);
+    assert!(f
+        .operations
+        .canonical_evidence_detail(f.project, &foreign)
+        .is_err());
+    let other_project = f
+        .operations
+        .initialize_project("foreign discovery", None)?
+        .project
+        .id;
+    assert!(f
+        .operations
+        .canonical_evidence_detail(other_project, &request)
+        .is_err());
+    // Unrelated Work/Project insertion does not change this exact list.
+    assert!(f
+        .operations
+        .canonical_evidence_detail(f.project, &request)
+        .is_ok());
+    assert_eq!(
+        canonical.checkpoint_history,
+        f.operations.canonical_basis(f.project)?.checkpoint_history
+    );
+    assert_eq!(privacy, f.operations.privacy_status(f.project)?);
+    let added = observe(3600)?;
+    assert!(f
+        .operations
+        .canonical_evidence_detail(f.project, &request)
+        .is_err());
+    let fresh = f
+        .operations
+        .explanation_source_manifest(f.project, id, 0, None)?;
+    request.expected_fingerprint = Some(
+        fresh["fingerprint"]
+            .as_str()
+            .ok_or("fresh fingerprint")?
+            .into(),
+    );
+    f.operations
+        .delete_work_source_observation(f.project, id, added.source_id)?;
+    assert!(f
+        .operations
+        .canonical_evidence_detail(f.project, &request)
+        .is_err());
+    let expires = observe(1)?;
+    let fresh = f
+        .operations
+        .explanation_source_manifest(f.project, id, 0, None)?;
+    request.expected_fingerprint = Some(
+        fresh["fingerprint"]
+            .as_str()
+            .ok_or("expiry fingerprint")?
+            .into(),
+    );
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    assert!(f
+        .operations
+        .canonical_evidence_detail(f.project, &request)
+        .is_err());
+    assert!(f
+        .operations
+        .read_explanation_source(f.project, id, expires.source_id)
+        .is_err());
+    let fresh = f
+        .operations
+        .explanation_source_manifest(f.project, id, 0, None)?;
+    request.expected_fingerprint = Some(
+        fresh["fingerprint"]
+            .as_str()
+            .ok_or("revision fingerprint")?
+            .into(),
+    );
+    let goal = canonical
+        .context_items
+        .iter()
+        .find(|c| c.id == id)
+        .ok_or("Goal")?;
+    f.operations.correct_context_item(
+        f.project,
+        id,
+        ContextItemCorrectionDraft {
+            expected_revision: goal.revision,
+            corrected_statement: format!("{}.", goal.statement),
+            user_authorization_source_id: goal.source_basis[0],
+            kind: CorrectionKind::Expression,
+        },
+    )?;
+    assert!(f
+        .operations
+        .canonical_evidence_detail(f.project, &request)
+        .is_err());
+    let refreshed =
+        f.operations
+            .prepare_explanation(f.project, ExplanationSubject::WorkName(id), "en")?;
+    assert_eq!(refreshed.evidence[0].revision, 2);
+    assert_eq!(
+        f.operations.explanation_source_discovery(&refreshed)["scope"],
+        "goal_only"
+    );
+    Ok(())
+}

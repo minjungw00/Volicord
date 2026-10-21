@@ -808,3 +808,13 @@ Source revision/hash/snapshots, canonical/evidence-key, lifetime/deletion and
 read-basis checks. Every admitted dependency remains validated even when its
 action is inside a closed disclosure. No file-level index, hidden button, GET or
 offline export grants unrelated access, new capture, retention renewal or transmission.
+
+### Scoped explanation Source discovery
+
+Goal-only name preparation performs no Work Source enumeration. Summary/article
+preparation advertises the existing `canonical_inspect` exact Goal revision/Work
+`source_observations` selector; CLI Source list uses the same bounded field reader.
+Metadata-only discovery preserves Project/Work identity and rejects changed or
+foreign continuation bases. It grants no command/file body access, collection,
+retention renewal, transmission or background authority. Every selected body still
+requires its original scoped supported reader and all lifetime/forgetting barriers.

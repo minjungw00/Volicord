@@ -3358,3 +3358,18 @@ Use `scripts/validate focused`; inspect preserved streams and numeric exits. The
 are authored controls, not real user activity, independent meaning review or human
 acceptance. Current-path actual-record examples and their gaps are recorded in the
 existing reader applicability report; no gate, Final or official V11 is invoked.
+
+### Scope-specific Source discovery controls
+
+Viewer `work_publication::large_source_history_uses_scope_only_preparation_and_consistent_inspector_pages`
+creates actual disposable Source observations, measures the previous unpaged name
+payload shape against the existing MCP limit, and exercises all metadata chunks
+through the supported MCP canonical inspector plus CLI Source list. Expected Source
+IDs come from observation receipts; duplicate/omitted IDs, foreign Project/Work,
+missing token, additions, deletion/expiry and Goal-revision continuations are negative
+controls. Preparation remains small for name/summary/article and Source insertion
+alone does not stale record-only plans. Operations `cli_work_sources`, `read_freshness`
+and Host `source_evidence` retain exact-body/authority/lifecycle controls. Run with
+`validate focused`, preserving the failed size/control attempts and final numeric
+measurements. These are authored scaling/transport controls, not naturalistic task,
+semantic assessment, human acceptance, gate or provider qualification evidence.

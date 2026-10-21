@@ -1630,15 +1630,7 @@ impl HostAdapter {
                     .operations
                     .prepare_explanation(project, subject, language)
                     .map_err(operation_error)?;
-                let manifest = match subject {
-                    ExplanationSubject::Work(work)
-                    | ExplanationSubject::WorkName(work)
-                    | ExplanationSubject::WorkSummary(work) => self
-                        .operations
-                        .explanation_source_manifest(project, work)
-                        .map_err(operation_error)?,
-                    _ => json!({"scope":"recorded_decision_only", "body_authority":"not_granted"}),
-                };
+                let manifest = self.operations.explanation_source_discovery(&plan);
                 let mut result = json!({"plan":plan,"source_inventory":manifest,"generation_status":"not_requested",
                     "read_only":true,"semantic_approval":"not_established"});
                 if args["action"] == "generate" {
@@ -1649,7 +1641,7 @@ impl HostAdapter {
                     result["generation_status"] = json!("awaiting_host_interpretation");
                     result["generation_id"] = json!(request_id.clone());
                     result["host_session_correlation"] = json!(self.host_session);
-                    result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Read plan.instructions and question_grounding: every paragraph needs genuinely supporting prepared canonical evidence_keys and the question's required key relationship, independently of Source citations. Discover existing Source copies in source_inventory; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Author a distinct heading and synopsis connecting the problem, actual approach and supported outcome; then write reader narrative. Use compose with this generation_id and a host-authored draft to derive mechanical citation bindings. Record the composed realization. A fresh record-only document can omit unavailable technical detail; technical claims keep their Source dependencies. A no-change investigation is not a patch. Host transmission authorization is separate from this canonical plan; missing plan data establishes neither consent nor its absence. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
+                    result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Read plan.instructions and question_grounding: every paragraph needs genuinely supporting prepared canonical evidence_keys and the question's required key relationship, independently of Source citations. Follow source_inventory.discovery through canonical_inspect, joining compact JSON chunks with exact selector, next_offset and expected_fingerprint; restart if the list changes. Discover only relevant Source copies; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Author a distinct heading and synopsis connecting the problem, actual approach and supported outcome; then write reader narrative. Use compose with this generation_id and a host-authored draft to derive mechanical citation bindings. Record the composed realization. A fresh record-only document can omit unavailable technical detail; technical claims keep their Source dependencies. A no-change investigation is not a patch. Host transmission authorization is separate from this canonical plan; missing plan data establishes neither consent nor its absence. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
                     if matches!(
                         subject,
                         ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
