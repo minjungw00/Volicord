@@ -10,6 +10,8 @@ mod answers;
 pub use answers::*;
 mod publication;
 pub use publication::*;
+mod source_windows;
+pub use source_windows::*;
 mod article;
 pub use article::*;
 mod analysis_status;

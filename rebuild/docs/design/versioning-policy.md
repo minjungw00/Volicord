@@ -293,6 +293,12 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 
 ### Shared explanation content
 
+Complete-window allocation and `embedded_source_scope` are read-time projections;
+exact v6 citations already supply their complete windows and original claim
+identity. No focus field, retained-schema migration or old-output conversion is
+introduced. The live 4 KiB citation page and 16 KiB shared inclusion bounds remain
+independent.
+
 The compact public publication table and identity-bound UTF-8 pages are ephemeral
 read projections. They preserve v6 retained meaning and need no retained-format,
 canonical-schema or document-metadata migration. Page tokens are current-build

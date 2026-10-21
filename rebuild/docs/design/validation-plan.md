@@ -2977,6 +2977,17 @@ headings, leads and code together. The existing negative/range/lifecycle control
 
 ### Bounded claim-to-Source reading support
 
+Complete-window controls include a Narrative mechanism after eight large leading
+ranges, a three-language claim whose every window must be complete, and actual
+maintained function regions beyond the file prefix. Independent original strings
+and function markers check full validation/return code, bytes and coordinates in
+live/static output. Initial and offline omissions are typed separately; remaining
+live citations retain exact paging and lifecycle negatives. These controls do not
+assert that every Source fits the inclusion budget or prove human comprehension.
+Static windows spanning multiple live pages decorate successive UTF-8 chunks
+with the same 4,096-byte / 256-token lexer bound. This retains complete text and
+offline syntax cues without expanding live-page or Source inclusion limits.
+
 Host `work_explanation::complete_publication_pages_preserve_independent_units_bindings_and_lifetimes`
 uses actual `tools/call` pages, a multibyte unit larger than one page, independently
 inspected retained units/citations/provenance, foreign selectors, missing/changed

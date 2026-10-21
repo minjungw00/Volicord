@@ -167,7 +167,7 @@ impl Fixture {
             plan_fingerprint:plan.fingerprint, language:"en".into(), generator:ExplanationGenerator {host:"authored-control".into(),session:"bounded-reader".into(),agent:None,model:None},
             paragraphs:vec![
                 RepositoryReaderUnit {question:ExplanationQuestion::Observation,text:"These inventory files are retained observations.".into(), evidence_keys:vec!["repository_basis".into()],sources:ranges(&(0..8).collect::<Vec<_>>())},
-                RepositoryReaderUnit {question:ExplanationQuestion::ReadingPoint,text:if production {"The exact citation reader checks the current retained realization and validates its Source dependencies before returning a bounded page."} else {"Admission calls verification; the retained result is conditional on acceptance."}.into(),evidence_keys:vec!["repository_basis".into()],sources:ranges(&[8,9,10])},
+                RepositoryReaderUnit {question:ExplanationQuestion::Narrative,text:if production {"The exact citation reader checks the current retained realization and validates its Source dependencies before returning a bounded page."} else {"Admission calls verification; the retained result is conditional on acceptance."}.into(),evidence_keys:vec!["repository_basis".into()],sources:ranges(&[8,9,10])},
                 RepositoryReaderUnit {question:ExplanationQuestion::Observation,text:if production {"The same reader rejects an old realization instead of rebinding its claim index."} else {"The same admission function is cited again with a different claim."}.into(),evidence_keys:vec!["repository_basis".into()],sources:ranges(&[8])},
             ]})?;
         ops.record_explanation(
@@ -226,18 +226,39 @@ fn important_late_multi_citation_survives_initial_and_offline_bounds() -> Result
     let privacy = f.ops.privacy_status(f.project)?;
     let answers = f.answers()?;
     assert_eq!(answers.explanation_state, ExplanationState::Current);
+    assert!(answers.source_excerpts.len() >= 3 && answers.source_excerpts.len() < 11);
     assert_eq!(
-        answers.source_excerpts.len(),
-        11,
-        "shared range counted once"
+        answers.embedded_source_scope[1].state,
+        SourceWindowState::Complete
     );
-    assert_eq!(answers.omitted_source_excerpt_count, 0);
+    assert_eq!(
+        answers.embedded_source_scope[1].included_citation_indices,
+        vec![0, 1, 2]
+    );
+    assert_eq!(
+        answers.embedded_source_scope[0].state,
+        SourceWindowState::InitialOmission
+    );
+    assert_eq!(
+        answers.source_reading_scope(true)[0].state,
+        SourceWindowState::OfflineOmission
+    );
+    assert_eq!(
+        answers.omitted_source_excerpt_count,
+        11 - answers.source_excerpts.len()
+    );
     let total: usize = answers.source_excerpts.iter().map(|e| e.text.len()).sum();
-    assert!((16_380..=16_384).contains(&total));
-    for (e, original) in answers.source_excerpts.iter().zip(&f.originals) {
-        assert_eq!(e.text, original[..e.text.len()]);
+    assert!(total <= 16_384);
+    for e in &answers.source_excerpts {
+        let index = f
+            .realization
+            .citations()
+            .position(|c| c.source_id == e.citation.source_id)
+            .ok_or("original source")?;
+        let original = &f.originals[index];
+        assert_eq!(&e.text, original);
         assert_eq!(e.omitted_utf8_bytes, original.len() - e.text.len());
-        assert!(e.text.len() <= 4096);
+        assert!(e.text.len() <= 16_384);
         assert_eq!(e.displayed_end_byte, e.text.len());
         assert_eq!(
             e.displayed_end_line,
@@ -269,7 +290,8 @@ fn important_late_multi_citation_survives_initial_and_offline_bounds() -> Result
         assert!(code_texts(&offline).iter().any(|s| s.contains(needle)));
     }
     assert!(!offline.contains("<script"));
-    assert!(offline.contains("Omitted UTF-8 bytes in this cited range"));
+    assert!(offline.contains("data-source-window-state=\"offline_omission\""));
+    assert!(offline.contains("All cited code included"));
     // A different traversal and duplicated early citations must preserve allocations.
     let mut reordered = f.realization.clone();
     reordered.paragraphs[0].citations.reverse();
@@ -879,12 +901,15 @@ fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
         .text
         .contains("self.validate_subject_sources_selected("));
     assert!(reader.text.contains("bytes.len() > 32_768"));
-    assert_eq!(answers.source_excerpts.len(), 11);
-    assert_eq!(answers.omitted_source_excerpt_count, 0);
+    assert!(answers.source_excerpts.len() >= 3);
+    assert_eq!(
+        answers.omitted_source_excerpt_count,
+        11 - answers.source_excerpts.len()
+    );
     assert!(answers
         .source_excerpts
         .iter()
-        .all(|e| !e.text.is_empty() && e.text.len() <= 4096));
+        .all(|e| !e.text.is_empty() && e.omitted_utf8_bytes == 0));
     assert!(
         answers
             .source_excerpts

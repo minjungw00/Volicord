@@ -1481,15 +1481,19 @@ fn cited_code_bounds(excerpt: bool) -> Result<(), Box<dyn Error>> {
     assert_eq!(answers.explanation_state, ExplanationState::Current);
     let used: usize = answers.source_excerpts.iter().map(|e| e.text.len()).sum();
     assert!(used <= 16_384);
-    assert_eq!(answers.omitted_source_excerpt_count, 0);
-    assert_eq!(answers.source_excerpts.len(), 7);
-    assert!(
-        used >= 16_360,
-        "unused capacity is returned to other unique ranges"
+    assert_eq!(
+        answers.omitted_source_excerpt_count + answers.source_excerpts.len(),
+        7
+    );
+    assert_eq!(
+        answers.source_excerpts.len(),
+        1,
+        "one complete overlapping range fits; no seven unusable prefixes"
     );
     let mut keys = std::collections::BTreeSet::new();
     for e in &answers.source_excerpts {
-        assert!(e.text.len() <= 4096);
+        assert!(e.text.len() <= 16_384);
+        assert_eq!(e.omitted_utf8_bytes, 0);
         assert_eq!(
             e.text,
             body[e.citation.start_byte - prefix.len()..e.displayed_end_byte - prefix.len()]

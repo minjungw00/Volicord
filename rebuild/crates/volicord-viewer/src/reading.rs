@@ -831,6 +831,7 @@ fn render_document_body(
         html.push_str(related);
         html.push_str("</section>");
     }
+    render_source_scope(html, r, answers, snapshot);
     render_evidence_index(html, r, answers);
     html.push_str("<div class=\"audit\">");
     if let Some(w) = work {
@@ -983,6 +984,49 @@ fn render_evidence_index(html: &mut String, r: &ViewerRequest, answers: &ReaderA
         html.push_str("</details>");
     }
     html.push_str("</details>");
+}
+
+fn render_source_scope(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    snapshot: bool,
+) {
+    let scope = answers.source_reading_scope(snapshot);
+    if scope.is_empty() {
+        return;
+    }
+    html.push_str(&format!("<details class=\"code-reading-scope\"><summary>{}</summary><p>{}</p><ul>",
+        text(r.locale,"Included code windows", "포함된 코드 범위"),
+        if snapshot { text(r.locale,"Offline verification covers only claims with all cited windows included below. Other supporting ranges are omitted; this file cannot retrieve them or compare with a current repository.","오프라인에서는 아래 모든 인용 범위가 포함된 주장만 코드로 확인할 수 있습니다. 나머지 근거 범위는 생략되었으며, 이 파일에서 가져오거나 현재 저장소와 비교할 수 없습니다.") }
+        else { text(r.locale,"Complete windows are included for the claims below. Remaining permitted ranges can be read through their exact Source actions.","아래 주장에는 완전한 코드 범위를 포함했습니다. 나머지 허용된 범위는 각 Source 동작으로 읽을 수 있습니다.") }));
+    for claim in scope {
+        let complete = claim.state == volicord_projections::SourceWindowState::Complete;
+        let state = match claim.state {
+            volicord_projections::SourceWindowState::Complete => "complete",
+            volicord_projections::SourceWindowState::InitialOmission => "initial_omission",
+            volicord_projections::SourceWindowState::OfflineOmission => "offline_omission",
+        };
+        html.push_str(&format!("<li data-source-window-state=\"{state}\" data-unit=\"{}\"><a href=\"#{}\">{} {}</a> · {}<ul>",claim.unit_index,
+            reader_claim_anchor(answers,claim.unit_index),text(r.locale,"Claim","주장"),claim.unit_index+1,
+            if complete {text(r.locale,"All cited code included","모든 인용 코드 포함")} else {text(r.locale,"Supporting code omitted","근거 코드 일부 생략")}));
+        for (n, c) in answers.prose[claim.unit_index].citations.iter().enumerate() {
+            html.push_str(&format!(
+                "<li><a href=\"#{}\">{}:{}–{}</a> · {}</li>",
+                source_point_anchor(answers, claim.unit_index, n),
+                escape(&c.locator),
+                c.start_line,
+                c.end_line,
+                if claim.included_citation_indices.contains(&n) {
+                    text(r.locale, "complete window", "완전한 범위")
+                } else {
+                    text(r.locale, "omitted", "생략")
+                }
+            ));
+        }
+        html.push_str("</ul></li>");
+    }
+    html.push_str("</ul></details>");
 }
 
 #[path = "reading_verification.rs"]
@@ -1335,9 +1379,10 @@ fn render_source_excerpts(
     for (index, answer) in answers.prose.iter().enumerate() {
         for (n, c) in answer.citations.iter().enumerate() {
             let anchor = source_point_anchor(answers, index, n);
-            let excerpt = answers.source_excerpts.iter().find(|e| {
-                source_excerpt_anchor(answers, &e.citation) == source_excerpt_anchor(answers, c)
-            });
+            let excerpt = answers
+                .source_excerpts
+                .iter()
+                .find(|e| e.citation.same_source_range(c));
             let claim = answer
                 .text
                 .get(c.claim_start_byte..c.claim_end_byte)
@@ -1458,9 +1503,9 @@ fn render_source_excerpts(
                     "Offline: only the displayed bytes are included. Additional omitted evidence cannot be retrieved from this document.",
                     "오프라인: 표시된 바이트만 포함됩니다. 이 문서에서는 추가 생략 근거를 가져올 수 없습니다.")));
             }
-            html.push_str(&format!("<details class=\"source-context\"><summary>{}</summary>{context}<p class=\"source-note\">{}: {} / 16,384 UTF-8 bytes · 4,096 / {}</p></details>",
+            html.push_str(&format!("<details class=\"source-context\"><summary>{}</summary>{context}<p class=\"source-note\">{}: {} / 16,384 UTF-8 bytes · {}</p></details>",
                 text(r.locale,"Observation scope and limits", "관측 범위와 한계"),text(r.locale,"Included unique cited text", "포함된 고유 인용 텍스트"),
-                answers.source_excerpts.iter().map(|e|e.text.len()).sum::<usize>(),text(r.locale,"range maximum", "범위별 최대")));
+                answers.source_excerpts.iter().map(|e|e.text.len()).sum::<usize>(),if snapshot {text(r.locale,"Offline: embedded windows only", "오프라인: 포함된 범위만 제공")} else {text(r.locale,"Live citation pages: up to 4,096 bytes", "실시간 인용 페이지: 최대 4,096바이트")}));
             html.push_str("<nav class=\"point-others\">");
             for (other, other_c) in answer
                 .citations

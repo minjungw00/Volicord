@@ -281,6 +281,24 @@ fn escape(source: &str) -> String {
 }
 
 pub(crate) fn html(source: &str, language: Option<Language>) -> String {
+    // Complete static windows use the same bounded lexer as successive live
+    // pages. Keep all source bytes and the existing per-page token limit;
+    // decoration must not disappear solely because a window spans two pages.
+    if source.len() > MAX_BYTES
+        && source.len() <= volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT
+    {
+        let mut rendered = String::new();
+        let mut remaining = source;
+        while !remaining.is_empty() {
+            let mut end = MAX_BYTES.min(remaining.len());
+            while !remaining.is_char_boundary(end) {
+                end -= 1;
+            }
+            rendered.push_str(&html(&remaining[..end], language));
+            remaining = &remaining[end..];
+        }
+        return rendered;
+    }
     let mut html = String::new();
     let mut end = 0;
     for token in tokens(source, language) {

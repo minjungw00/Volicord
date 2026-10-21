@@ -44,12 +44,20 @@ async function initialCode(page) {
   spans:code.querySelectorAll('span').length,numbers:code.parentElement.querySelector('.source-line-numbers').children.length,
   tags:[...code.querySelectorAll('*')].map(n=>n.tagName),html:code.innerHTML,
  })));
- assert.equal(observed.length,12,'all original and shared claim excerpts remain present');
+ const allCitations=fixture.answers.prose.flatMap(unit=>unit.citations);
+ const included=new Set(fixture.answers.source_excerpts.map(e=>e.citation.source_id));
+ assert.equal(observed.length,allCitations.filter(c=>included.has(c.source_id)).length,'each included window remains accessible from every distinct claim');
  for(const code of observed){
-  const expected=fixture.answers.source_excerpts.find(e=>e.citation.source_id===code.source);
-  assert.ok(expected);assert.equal(code.text,expected.text,'parsed static/offline code equals original admitted UTF-8');
+  const originalIndex=allCitations.findIndex(c=>c.source_id===code.source);
+  assert.ok(originalIndex>=0);
+  assert.equal(code.text,fixture.originals[originalIndex],'complete static/offline code equals independent original UTF-8');
   assert.equal(code.numbers,code.text.split('\n').length-Number(code.text.endsWith('\n')));
-  assert.ok(code.spans<=256);assert.ok(code.tags.every(tag=>tag==='SPAN'),'captured text never becomes HTML');
+  assert.ok(code.spans<=256*Math.ceil(Buffer.byteLength(code.text)/4096));assert.ok(code.tags.every(tag=>tag==='SPAN'),'captured text never becomes HTML');
+ }
+ // This task selects the three-Source mechanism, not merely the last link.
+ for(const index of [8,9,10]) {
+  const source=allCitations[index].source_id;
+  assert.ok(observed.some(c=>c.source===source && c.text===fixture.originals[index]),'every critical mechanism window is available in full');
  }
  return {code_elements:observed.length,code_utf8_bytes:observed.reduce((n,c)=>n+Buffer.byteLength(c.text),0),
   token_spans:observed.reduce((n,c)=>n+c.spans,0),highlight_markup_bytes:observed.reduce((n,c)=>n+Buffer.byteLength(c.html)-Buffer.byteLength(c.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')),0)};

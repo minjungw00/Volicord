@@ -136,6 +136,7 @@ pub struct QuestionAnswers {
     pub provenance: Option<ExplanationProvenance>,
     pub source_excerpts: Vec<ExplanationSourceExcerpt>,
     pub omitted_source_excerpt_count: usize,
+    pub embedded_source_scope: Vec<crate::ClaimSourceWindows>,
 }
 impl QuestionAnswers {
     /// Authored derived heading from the permitted output, with original Goal fallback
@@ -329,7 +330,9 @@ pub fn explanation_answers(
         } else {
             0
         },
+        embedded_source_scope: Vec::new(),
     };
+    result.embedded_source_scope = result.source_reading_scope(false);
     if let Some(e) = current.filter(|e| matches!(e.subject, ExplanationSubject::Repository(_))) {
         result.facts.extend(repository_scope_facts(e, locale));
     }

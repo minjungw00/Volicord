@@ -1531,6 +1531,24 @@ or a foreign selector reject continuation. Exact citation requests retain the
 existing independently bounded Source reader and authority. This is nonmutating
 transport completion, not semantic approval or an enduring currentness promise.
 
+### Complete embedded code windows
+
+The 16,384-byte shared excerpt budget selects whole cited windows. Each authored
+unit offers its complete set of unique ranges as a bundle; smaller complete
+bundles precede larger ones, with Source identity as deterministic tie-break.
+Additional whole supporting windows may use remaining capacity. No prose role
+(including Narrative versus ReadingPoint) grants priority and no range is divided
+into an equal prefix to claim coverage. Live exact citation pages keep their
+separate 4,096-byte limit and can reach any remaining permitted range.
+
+`embedded_source_scope` names original unit indices and included/omitted citation
+indices. A complete code-reading claim requires all its ranges in full. Reader
+and static export expose this declared scope; offline omissions cannot promise
+live retrieval or current comparison. Source identity and exact UTF-8/line/hash
+coordinates come from the Source owner. Inclusion establishes available code,
+not importance, entailment or complete repository understanding. Export creation
+continues to revalidate every used publication and Source dependency.
+
 ### Revision-bound retained evidence detail
 
 Bounded MCP omissions do not grant raw-history or filesystem read authority.

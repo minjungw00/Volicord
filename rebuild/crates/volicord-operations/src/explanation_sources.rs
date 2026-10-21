@@ -441,7 +441,7 @@ impl LocalOperations {
             if selection.is_none() && excerpt_keys.insert(key) {
                 let mut bytes = range
                     .len()
-                    .min(volicord_projections::EXPLANATION_SOURCE_RANGE_BYTE_LIMIT);
+                    .min(volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT);
                 while !range.is_char_boundary(bytes) {
                     bytes -= 1;
                 }
@@ -514,11 +514,11 @@ fn bound_expiry(
     Ok(())
 }
 
-/// Reserve at most half the existing budget for representative reading-point
-/// evidence, then share the remainder across every unique range. Select the
-/// shortest range in each authored reading point (stable identity breaks ties),
-/// so a complete bounded mechanism can survive unrelated leading excerpts.
-/// This is presentation priority, never semantic validation of the author's claim.
+/// Select complete claim windows, independently of paragraph role. A bundle
+/// contains every cited range for one unit; short complete bundles precede
+/// larger ones. Then include any complete supporting ranges that still fit.
+/// No equal-prefix clipping can hide a function's material return/cleanup path.
+/// Selection is presentation scope, never an assessment of claim importance.
 fn bound_excerpts(
     excerpts: &mut Vec<volicord_projections::ExplanationSourceExcerpt>,
     response: &ExplanationRealization,
@@ -532,64 +532,45 @@ fn bound_excerpts(
             format!("{:?}", c.use_kind),
         )
     };
-    let representatives: std::collections::BTreeSet<_> = response
+    let sizes: std::collections::BTreeMap<_, _> = excerpts
+        .iter()
+        .filter(|e| e.omitted_utf8_bytes == 0)
+        .map(|e| (key(&e.citation), e.text.len()))
+        .collect();
+    let mut bundles: Vec<_> = response
         .generated_units()
-        .filter(|u| u.question == volicord_projections::ExplanationQuestion::ReadingPoint)
+        .filter(|u| !u.citations.is_empty())
         .filter_map(|u| {
-            u.citations
+            let keys: std::collections::BTreeSet<_> = u.citations.iter().map(key).collect();
+            let size = keys
                 .iter()
-                .min_by_key(|c| (c.end_byte.saturating_sub(c.start_byte), key(c)))
-                .map(key)
+                .try_fold(0usize, |sum, k| sizes.get(k).map(|size| sum + size))?;
+            Some((size, keys))
         })
         .collect();
-    let prioritized: Vec<_> = excerpts
-        .iter()
-        .map(|e| representatives.contains(&key(&e.citation)))
-        .collect();
-    let mut order: Vec<_> = (0..excerpts.len()).collect();
-    order.sort_by_key(|&i| key(&excerpts[i].citation));
-    let mut ends = vec![0; excerpts.len()];
+    bundles.sort();
+    let mut selected = std::collections::BTreeSet::new();
     let mut remaining = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
-    for priority_phase in [true, false] {
-        let mut quota = if priority_phase {
-            volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT / 2
-        } else {
-            remaining
-        };
-        loop {
-            let mut advanced = false;
-            for &i in &order {
-                if priority_phase && !prioritized[i] {
-                    continue;
-                }
-                if let Some(ch) = excerpts[i].text[ends[i]..].chars().next() {
-                    if ch.len_utf8() <= quota {
-                        ends[i] += ch.len_utf8();
-                        remaining -= ch.len_utf8();
-                        quota -= ch.len_utf8();
-                        advanced = true;
-                    }
-                }
-            }
-            if !advanced {
-                break;
-            }
+    for (_, keys) in bundles {
+        let added: usize = keys
+            .iter()
+            .filter(|k| !selected.contains(*k))
+            .map(|k| sizes[k])
+            .sum();
+        if added <= remaining {
+            remaining -= added;
+            selected.extend(keys);
         }
     }
-    for (e, end) in excerpts.iter_mut().zip(ends) {
-        e.omitted_utf8_bytes += e.text.len() - end;
-        e.text.truncate(end);
-        e.displayed_end_byte = e.citation.start_byte + end;
-        e.displayed_end_line = e.citation.start_line
-            + e.text
-                .as_bytes()
-                .get(..end.saturating_sub(1))
-                .unwrap_or_default()
-                .iter()
-                .filter(|b| **b == b'\n')
-                .count();
+    let mut supporting: Vec<_> = sizes.iter().collect();
+    supporting.sort_by_key(|(k, size)| (**size, (*k).clone()));
+    for (k, size) in supporting {
+        if !selected.contains(k) && *size <= remaining {
+            selected.insert(k.clone());
+            remaining -= size;
+        }
     }
-    let omitted = excerpts.iter().filter(|e| e.text.is_empty()).count();
-    excerpts.retain(|e| !e.text.is_empty());
-    omitted
+    let before = excerpts.len();
+    excerpts.retain(|e| selected.contains(&key(&e.citation)));
+    before - excerpts.len()
 }
