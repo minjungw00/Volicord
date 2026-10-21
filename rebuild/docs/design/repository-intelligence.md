@@ -568,7 +568,7 @@ Normal request의 cache miss는 normalized JSON을 bounded buffered stream으로
 binding을 계속 검사한다. 전체 이력을 한 snapshot씩 검사하는 explicit health/repair는
 bulk JSON decoding을 유지한다. 두 read mode는 같은 wire format과 complete graph를
 검증하며 별도 schema 또는 historical compatibility 경로가 아니다.
-Cache의 streamed MessagePack을 낮은 압축 수준과 bounded 64 MiB 긴 거리 매칭으로
+Cache의 streamed MessagePack을 낮은 압축 수준과 bounded 8 MiB 긴 거리 매칭으로
 무손실 압축하여 section 사이의 먼 반복도 재사용한다. Cache header/schema, exact
 snapshot 검증과 두 항목 retention은 바뀌지 않는다.
 Snapshot publication은 normalized JSON shape 조각, value stream, typed capability metadata를
@@ -595,7 +595,7 @@ locality를 유지한다. Historical manifest와 payload bytes를 다시 정렬�
 
 Shape/value blob은 content identity 게시 전에 blob별로 무손실 압축할 수 있으며 reader는
 저장 bytes의 identity를 먼저 검증한 뒤 원래 token stream을 복원한다. Value delta가 최신
-complete base의 압축 representation보다 충분히 작지 않으면 writer는 그 snapshot을 새
+complete base의 압축 representation보다 작지 않으면 writer는 그 snapshot을 새
 complete base로 게시하고, 후속 snapshot은 가장 최신의 검증 가능한 complete base를
 선택한다. 따라서 작은 source 변화가 장기 history에서 full-value copy 누적으로 확대되지
 않으며, 압축 방식과 base 회전은 Analysis Snapshot domain schema나 identity 의미를 바꾸지
@@ -609,6 +609,13 @@ retained되는 동안 계속 reachable하다. Ordinary analysis와 forced reinde
 detach한 뒤 어떤 retained manifest에서도 reachable하지 않은 crash residue blob만 삭제한다.
 불명확하거나 읽을 수 없는 manifest가 있으면 ordinary collection은 fail closed한다. 따라서
 canonical context는 blob 생존에 의존하지 않으며 orphan Derived blob은 실제 회수 가능하다.
+
+이미 retained된 base에
+대한 delta는 complete representation보다 작으면 선택한다. 추가 절반 절감 조건으로 더
+큰 complete base를 게시하지 않으며 모든 retained history의 content root를 보존한다.
+Delta 계산용 decoded base는 competing complete 표현의 압축 전에 해제한다.
+Scalar 참조는 little-endian byte allocation을 최종 value stream으로 재사용하고
+symbol prefix를 앞에 채운다. 복원 JSON/scalar 순서와 모든 identity는 그대로 유지한다.
 
 Bounded work의 Materiality Review/revision, executable scope와 Checkpoint가 이미 읽은
 baseline은 structural refresh의 previous input으로 재사용한다. 현재 inventory와 content/

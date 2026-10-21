@@ -27,7 +27,6 @@ const ANALYSIS_CACHE_EXTENSION: &str = "snapshot";
 const CHUNK_MIN_BYTES: usize = 8 * 1024;
 const CHUNK_MAX_BYTES: usize = 32 * 1024;
 const CHUNK_WINDOW_BYTES: usize = 63;
-const SMALL_COMPLETE_VALUES_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct AnalysisHeader {
@@ -93,9 +92,15 @@ pub(crate) fn encode_analysis(
         Some(base) => NormalizingWriter::with_base_symbols(&unpack_blob(&base.packed)?)?,
         None => NormalizingWriter::default(),
     };
+    #[cfg(test)]
+    trace_analysis_memory("base_symbols");
     serde_json::to_writer(&mut encoder, analysis)
         .map_err(|error| Error::with_source("cannot normalize Analysis Snapshot", error))?;
+    #[cfg(test)]
+    trace_analysis_memory("normalized_writer");
     let normalized = encoder.finish()?;
+    #[cfg(test)]
+    trace_analysis_memory("normalized_finished");
     let shapes = content_defined_chunks(&normalized.shape)
         .into_iter()
         .map(|chunk| {
@@ -106,25 +111,9 @@ pub(crate) fn encode_analysis(
     // Only packed chunks are used from here. Do not retain the full shape
     // allocation while expanding the base and building the value delta.
     drop(normalized.shape);
-    let complete_values = pack_blob(&normalized.values)?;
-    let (values, values_base_blob) = if let Some(base) = base_values {
-        // Normalization only needs the base symbols. Keep the full reference
-        // stream packed until delta generation, after encoder scratch is gone.
-        let unpacked = unpack_blob(&base.packed)?;
-        let base_hash = base.hash;
-        drop(base.packed);
-        let delta = pack_delta(&unpacked, &normalized.values)?;
-        if delta.len() < complete_values.len()
-            && (complete_values.len() <= SMALL_COMPLETE_VALUES_BYTES
-                || delta.len() < complete_values.len() / 2)
-        {
-            (delta, Some(base_hash))
-        } else {
-            (complete_values, None)
-        }
-    } else {
-        (complete_values, None)
-    };
+    #[cfg(test)]
+    trace_analysis_memory("shapes_packed");
+    let (values, values_base_blob) = pack_analysis_values(&normalized.values, base_values)?;
     drop(normalized.values);
     let values_hash = digest(&values);
     let metadata = pack_blob_at_level(
@@ -164,6 +153,53 @@ pub(crate) fn encode_analysis(
         metadata,
         metadata_hash,
     })
+}
+
+fn pack_analysis_values(
+    current: &[u8],
+    base_values: Option<PackedAnalysisValues>,
+) -> Result<(Vec<u8>, Option<String>), Error> {
+    Ok(if let Some(base) = base_values {
+        // Normalization only needs the base symbols. Keep the full reference
+        // stream packed until delta generation, after encoder scratch is gone.
+        let base_hash = base.hash;
+        let delta = {
+            let unpacked = unpack_blob(&base.packed)?;
+            #[cfg(test)]
+            trace_analysis_memory("base_values_unpacked");
+            drop(base.packed);
+            pack_delta(&unpacked, current)?
+        };
+        #[cfg(test)]
+        trace_analysis_memory("delta_packed");
+        // The full decoded base is scratch for the delta. Release it before
+        // allocating the competing complete representation.
+        let complete_values = pack_blob(current)?;
+        // The base is already retained. Publish the smaller incremental
+        // representation; requiring a 50% saving needlessly retains another
+        // complete base even when a delta saves tens of megabytes.
+        if delta.len() < complete_values.len() {
+            (delta, Some(base_hash))
+        } else {
+            (complete_values, None)
+        }
+    } else {
+        (pack_blob(current)?, None)
+    })
+}
+
+#[cfg(test)]
+fn trace_analysis_memory(stage: &str) {
+    if std::env::var_os("VOLICORD_ANALYSIS_RESOURCE_MANIFEST").is_some() {
+        if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+            let values = status
+                .lines()
+                .filter(|line| line.starts_with("VmRSS:") || line.starts_with("VmHWM:"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            eprintln!("analysis_resource stage={stage} {values}");
+        }
+    }
 }
 
 pub(crate) fn read_manifest(path: &Path) -> Result<AnalysisManifest, Error> {
@@ -338,7 +374,7 @@ fn write_analysis_cache_value(
     // A large graph repeats facts across sections farther apart than the
     // default window. Reuse them without raising the compression level.
     encoder
-        .window_log(26)
+        .window_log(23)
         .and_then(|_| encoder.long_distance_matching(true))
         .map_err(|error| {
             Error::with_source("cannot configure Analysis read cache encoder", error)
@@ -787,7 +823,7 @@ struct NormalizingWriter {
     shape: Vec<u8>,
     symbols: Vec<Rc<[u8]>>,
     symbol_index: HashMap<Rc<[u8]>, u32>,
-    references: Vec<u32>,
+    references: Vec<u8>,
     token: Vec<u8>,
     in_string: bool,
     escaped: bool,
@@ -889,7 +925,7 @@ impl NormalizingWriter {
         // symbols own independent bytes and retain the same first-seen indices.
         self.token.clear();
         self.shape.push(b'$');
-        self.references.push(index);
+        self.references.extend_from_slice(&index.to_le_bytes());
         Ok(())
     }
 
@@ -905,7 +941,7 @@ impl NormalizingWriter {
         // stream length. Holding copied shapes or a geometrically grown values
         // buffer alongside baseline/current graphs raises long-lived MCP peaks.
         drop(self.symbol_index);
-        let scalar_count = self.references.len() as u64;
+        let scalar_count = (self.references.len() / 4) as u64;
         let shape_length = self.shape.len();
         let header_length = SHAPE_MAGIC.len() + 8;
         let mut shape = self.shape;
@@ -917,28 +953,34 @@ impl NormalizingWriter {
         shape[..SHAPE_MAGIC.len()].copy_from_slice(SHAPE_MAGIC);
         shape[SHAPE_MAGIC.len()..header_length]
             .copy_from_slice(&(shape_length as u64).to_le_bytes());
-        let value_length = self
+        let prefix_length = self
             .symbols
             .iter()
             .try_fold(VALUES_MAGIC.len() + 16, |length, symbol| {
                 length.checked_add(8)?.checked_add(symbol.len())
             })
-            .and_then(|length| length.checked_add(self.references.len().checked_mul(4)?))
             .ok_or_else(|| Error::new("Analysis value stream length is unsupported"))?;
-        let mut values = Vec::new();
+        let reference_length = self.references.len();
+        let value_length = prefix_length
+            .checked_add(reference_length)
+            .ok_or_else(|| Error::new("Analysis value stream length is unsupported"))?;
+        let mut values = self.references;
         values
-            .try_reserve_exact(value_length)
+            .try_reserve_exact(prefix_length)
             .map_err(|error| Error::with_source("cannot allocate Analysis value stream", error))?;
-        values.extend_from_slice(VALUES_MAGIC);
-        put_u64(&mut values, self.symbols.len() as u64);
-        for symbol in self.symbols {
-            put_u64(&mut values, symbol.len() as u64);
-            values.extend_from_slice(&symbol);
-        }
-        put_u64(&mut values, self.references.len() as u64);
-        for reference in self.references {
-            values.extend_from_slice(&reference.to_le_bytes());
-        }
+        values.resize(value_length, 0);
+        values.copy_within(..reference_length, prefix_length);
+        (|| -> std::io::Result<()> {
+            let mut prefix = &mut values[..prefix_length];
+            prefix.write_all(VALUES_MAGIC)?;
+            prefix.write_all(&(self.symbols.len() as u64).to_le_bytes())?;
+            for symbol in self.symbols {
+                prefix.write_all(&(symbol.len() as u64).to_le_bytes())?;
+                prefix.write_all(&symbol)?;
+            }
+            prefix.write_all(&scalar_count.to_le_bytes())
+        })()
+        .map_err(|error| Error::with_source("cannot write Analysis value prefix", error))?;
         Ok(Normalized {
             shape,
             values,
@@ -1091,6 +1133,86 @@ mod tests {
     use serde_json::json;
     use std::{cell::Cell, rc::Rc};
 
+    #[test]
+    fn normalization_reuses_reference_storage_without_changing_wire_bytes() -> Result<(), Error> {
+        for (input, symbols, references) in [
+            (b"[]".as_slice(), Vec::new(), Vec::new()),
+            (
+                br#"["a","b","a"]"#.as_slice(),
+                vec![br#""a""#.as_slice(), br#""b""#.as_slice()],
+                vec![0_u32, 1, 0],
+            ),
+        ] {
+            let mut writer = NormalizingWriter::default();
+            writer
+                .write_all(input)
+                .map_err(|error| Error::with_source("cannot normalize fixture", error))?;
+            writer.references.reserve(1024);
+            let allocation = writer.references.as_ptr();
+            let normalized = writer.finish()?;
+            assert_eq!(normalized.values.as_ptr(), allocation);
+            let mut expected = VALUES_MAGIC.to_vec();
+            put_u64(&mut expected, symbols.len() as u64);
+            for symbol in symbols {
+                put_u64(&mut expected, symbol.len() as u64);
+                expected.extend_from_slice(symbol);
+            }
+            put_u64(&mut expected, references.len() as u64);
+            for reference in references {
+                expected.extend_from_slice(&reference.to_le_bytes());
+            }
+            assert_eq!(normalized.values, expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn large_profitable_delta_does_not_require_another_complete_base() -> Result<(), Error> {
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut random = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state.to_le_bytes()
+        };
+        let base = (0..12 * 1024 * 1024 / 8)
+            .flat_map(|_| random())
+            .collect::<Vec<_>>();
+        let mut current = base.clone();
+        for chunk in current[..9 * 1024 * 1024].chunks_exact_mut(8) {
+            chunk.copy_from_slice(&random());
+        }
+        let complete = pack_blob(&current)?;
+        let packed = pack_blob(&base)?;
+        let hash = digest(&packed);
+        let (selected, selected_base) = pack_analysis_values(
+            &current,
+            Some(PackedAnalysisValues {
+                hash: hash.clone(),
+                packed,
+            }),
+        )?;
+        assert!(complete.len() > 8 * 1024 * 1024);
+        assert!(selected.len() > complete.len() / 2);
+        assert!(selected.len() < complete.len());
+        assert_eq!(selected_base.as_deref(), Some(hash.as_str()));
+        assert_eq!(apply_delta(&base, &unpack_blob(&selected)?)?, current);
+        let (standalone, selected_base) = pack_analysis_values(&current, None)?;
+        assert!(selected_base.is_none());
+        assert_eq!(unpack_blob(&standalone)?, current);
+        let replacement = vec![0; current.len()];
+        let (standalone, selected_base) = pack_analysis_values(
+            &replacement,
+            Some(PackedAnalysisValues {
+                hash,
+                packed: pack_blob(&base)?,
+            }),
+        )?;
+        assert!(selected_base.is_none());
+        assert_eq!(unpack_blob(&standalone)?, replacement);
+        Ok(())
+    }
+
     /// With no override this uses actual small polyglot Product output. A retained
     /// large manifest can be supplied for the same read/use/write path without
     /// rebuilding a different repository or changing its Source/snapshot identity.
@@ -1180,9 +1302,20 @@ mod tests {
             encoded.metadata_hash,
             encoded.shapes.len()
         );
-        drop((baseline, current));
         let output = temporary.path().join("roundtrip");
         std::fs::create_dir_all(output.join("blobs"))?;
+        if std::env::var_os("VOLICORD_ANALYSIS_RESOURCE_PUBLISHED_CACHE").is_some() {
+            let cache = output.join("cache");
+            std::fs::create_dir(&cache)?;
+            let temporary_cache = cache.join("pending");
+            write_analysis_cache(&mut File::create(&temporary_cache)?, &current)?;
+            let hash = digest_file(&temporary_cache)?;
+            std::fs::rename(
+                temporary_cache,
+                analysis_cache_path(&output, current.identity, &hash),
+            )?;
+        }
+        drop((baseline, current));
         let manifest: AnalysisManifest = serde_json::from_slice(&encoded.manifest)?;
         if let Some(base) = &manifest.values_base_blob {
             let name = format!("{base}.values");
@@ -1211,8 +1344,9 @@ mod tests {
         drop(encoded);
         if std::env::var_os("VOLICORD_ANALYSIS_RESOURCE_PAIRED_READER").is_some() {
             // Normal Work consumers retain a baseline while reading the current
-            // graph. The copied publication has no read cache, so this exercises
-            // the actual fallback without changing either input or graph scope.
+            // graph. By default the copy has no read cache; the explicit cache
+            // mode instead exercises the current publication codec. Neither
+            // mode changes the input or graph scope.
             let baseline = read_analysis(&input)?;
             for _ in 0..3 {
                 assert_eq!(fingerprint(&read_analysis(&path)?)?, expected);

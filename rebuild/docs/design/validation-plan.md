@@ -1359,6 +1359,17 @@ requires typed values before the complete JSON payload has been read; exact leng
 schema, trailing data and overflow controls apply to both decoders. Normal requests
 stream their fallback decode, while explicit health/repair retain bulk per-snapshot
 inspection. Neither mode changes the V11 collector, graph scope or resource limits.
+`VOLICORD_ANALYSIS_RESOURCE_PUBLISHED_CACHE=1` additionally publishes the current
+streamed cache into the disposable copy and measures its consumer rather than
+the cache-absent fallback. Input graph, retained original bytes, fingerprint and
+corruption checks remain the same. Test-only allocation-stage receipts distinguish
+normalization, shape packing, expanded base and encoded publication peaks.
+Reference allocation reuse preserves exact value-stream bytes; decoded delta
+scratch ends before competing complete compression. Profitable large deltas are
+chosen even when their saving is below one half; an incompressible 12 MiB control
+checks retained-base selection, exact reconstruction and independent complete
+fallback. The cache keeps an 8 MiB long-distance window and both retained cache
+identities. None of these changes raises a V11 or publication budget.
 
 ### Phase 8 naturalistic Dogfood qualification
 
