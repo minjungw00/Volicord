@@ -3027,6 +3027,19 @@ No Final, V11, campaign or provider qualification is implied.
 
 ### Current reader experience validation
 
+Linux installation acceptance uses the current V08 requirement matrix, including
+real-listener Reader/retired-route checks and exact request-scoped Guarded fallback.
+Repeated confirmation and denial must reject before creating a canonical Source;
+check the original canonical basis and response as well as the HTTP refusal.
+Retired Viewer correction/export requirements route to explicit denial, with
+supported memory/document operations retained under their non-Viewer owners.
+Reinstall continuity uses complete typed portable export equality and independent
+complete CLI selected-Work reads. Bounded Recall may change its explicit transport
+omissions as truthful freshness metadata grows; verify visible values and omission
+counts against the complete read rather than treating transport shape as canonical
+memory. Missing/changed evidence, foreign identity and unjustified freshness drift
+remain negative controls. This changes no Product budget or omission policy.
+
 [Reader experience AC ledger](reader-experience-design.md#implementation-responsibility-and-acceptance-ledger)
 routes all D/AC requirements to implementation, direct checks and unfinished human
 or external conditions. Neutral fallback, single observation date, two-item masthead

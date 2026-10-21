@@ -15,6 +15,9 @@ REMOVED_FORMS = (
     ("viewer", "export", "--output", "out.html", "--level", "working"),
     ("viewer", "export", "--output", "out.html", "--view", "overview"),
     ("viewer", "open", "--view", "invalid"),
+    ("viewer", "open", "--view", "code"),
+    ("viewer", "open", "--view", "decisions"),
+    ("viewer", "open", "--view", "tools"),
     ("project", "init", "Old"),
     ("health", "PROJECT"),
     ("recall", "PROJECT"),
@@ -63,7 +66,9 @@ def main() -> int:
         project_id = json.loads(initialized.stdout)["project_id"]
         maintained = (
             ("viewer whole snapshot", ["--runtime", str(runtime), "--project", project_id, "viewer", "export", "--output", str(root / "viewer.html"), "--language", "en"]),
-            ("viewer purpose selection", ["viewer", "open", "--view", "code", "--help"]),
+            ("viewer overview selection", ["viewer", "open", "--view", "overview", "--help"]),
+            ("viewer repository selection", ["viewer", "open", "--view", "repository", "--help"]),
+            ("viewer work selection", ["viewer", "open", "--view", "work", "--help"]),
             ("codex enable", ["--runtime", str(runtime), "--repository", str(repository), "codex", "enable"]),
             ("context export", ["--runtime", str(runtime), "--repository", str(repository), "context", "export", "--output", str(root / "bundle.json")]),
             ("document export", ["--runtime", str(runtime), "--repository", str(repository), "document", "export", "handoff-resume", "--format", "markdown", "--output", str(root / "handoff.md"), "--language", "en"]),

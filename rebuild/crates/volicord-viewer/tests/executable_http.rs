@@ -297,6 +297,28 @@ fn real_listener_rejects_retired_surfaces_and_preserves_reading() {
             .canonical_basis(project)
             .expect("unchanged basis")
     );
+    let work = operations
+        .transition_work(
+            project,
+            volicord_operations::WorkTransition::StartNew {
+                host: "authored-control".into(),
+                session: "fresh-reader".into(),
+                user_turn: "Inspect the newly recorded reading request".into(),
+                statement: "Inspect the newly recorded reading request".into(),
+            },
+        )
+        .expect("new Work")
+        .context_item_id;
+    let fresh_basis = operations.canonical_basis(project).expect("fresh basis");
+    let fresh = get(&viewer.address, &format!("/?view=work&work={work}"));
+    assert!(fresh.starts_with("HTTP/1.1 200"));
+    assert!(fresh.contains("Inspect the newly recorded reading request"));
+    assert_eq!(
+        fresh_basis,
+        operations
+            .canonical_basis(project)
+            .expect("read is unchanged")
+    );
 }
 
 #[test]
@@ -344,6 +366,12 @@ fn real_listener_preserves_exact_guarded_fallback_and_rejects_untrusted_response
         .and_then(|s| s.split('"').next())
         .expect("token");
     assert!(!target.contains(token));
+    let untrusted = exchange(
+        &viewer.address,
+        &format!("GET {target} HTTP/1.1\r\nHost: foreign.invalid\r\nConnection: close\r\n\r\n"),
+    );
+    assert!(untrusted.starts_with("HTTP/1.1 421"));
+    assert!(!untrusted.contains(&request.effect_fingerprint));
     let body = format!(
         "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&confirmation_decision=confirm&user_turn=Confirm+this+test+artifact&guarded={}",
         request.confirmation_request_identity, request.request_revision,

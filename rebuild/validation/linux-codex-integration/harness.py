@@ -32,6 +32,7 @@ EXPECTED_TOOLS = [
     "repository_analyze",
     "work_source",
     "work_explanation",
+    "decision_explanation",
     "engineering_choice_discovery",
     "materiality_review",
     "learning_deliberation",
@@ -627,6 +628,7 @@ def repository_files(repository: Path) -> dict[str, str]:
 def assert_reinstall_recall(
     before: dict[str, Any], after: dict[str, Any],
     files_before: dict[str, str], files_after: dict[str, str],
+    work_before: dict[str, Any], work_after: dict[str, Any],
 ) -> None:
     removed = {".codex/config.toml", ".codex/volicord-integration.json"}
     require(removed <= files_before.keys(), "baseline lacks owned integration files")
@@ -654,6 +656,18 @@ def assert_reinstall_recall(
         "compared_repository_snapshot": compared, "reason": reason,
     }
     expected = deepcopy(before)
+    # Recall is a bounded transport, not the canonical continuity oracle. A
+    # longer stale reason can move its selected Work across a field boundary.
+    # Independently read complete CLI status, then verify every visible value
+    # and explicit omission against that original on both sides.
+    require(work_before == work_after, "reinstall changed complete selected Work facts")
+    for brief, work in [(before, work_before), (after, work_after)]:
+        evidence = deepcopy(work["evidence"])
+        # Recall deliberately requests no code projection. These exact three
+        # fields describe that read profile, not a missing canonical record.
+        evidence.update(analysis_snapshot_ids=[], repository_snapshot_ids=[], code_availability="unknown")
+        assert_transport_view(brief["selected_work"]["evidence"], evidence)
+    expected["selected_work"]["evidence"] = after["selected_work"]["evidence"]
     snapshot = expected["snapshots"][0]
     snapshot["freshness"] = freshness
     included_paths = {
@@ -670,7 +684,55 @@ def assert_reinstall_recall(
             capability["coverage"]["stale"] = capability["coverage"]["included"]
     # Exact expected transition, not a field-name filter: unknown drift, including
     # arbitrary coverage/reason/next-step changes, fails this fixture.
-    require(after == expected, "Recall drift exceeds justified repository freshness transition")
+    assert_transport_view(after, expected)
+
+
+def assert_transport_view(view: Any, original: Any) -> None:
+    """Verify a bounded read against an independently read complete CLI value."""
+    if view == original:
+        return
+    if isinstance(view, dict) and isinstance(original, dict):
+        visible = {k: v for k, v in view.items() if k != "transport_omission"}
+        require(visible.keys() <= original.keys(), "transport invented a Work field")
+        omitted = original.keys() - visible.keys()
+        marker = view.get("transport_omission")
+        if omitted:
+            require(isinstance(marker, dict) and marker.get("reason") == "serialized_byte_budget",
+                    "missing Work fields lack an explicit budget omission")
+            require(set(marker) <= {"reason", "basis", "omitted_field_count", "exact_json_bytes"},
+                    "unknown Work field omission")
+            if "omitted_field_count" in marker:
+                require(marker["omitted_field_count"] == len(omitted), "wrong omitted Work field count")
+            else:
+                exact = len(json.dumps(original, ensure_ascii=False, separators=(",", ":")).encode())
+                require(marker.get("exact_json_bytes") == exact, "wrong omitted Work field bytes")
+        else:
+            require(marker is None, "spurious Work field omission")
+        for key, value in visible.items():
+            assert_transport_view(value, original[key])
+        return
+    if isinstance(view, list) and isinstance(original, list):
+        visible = view
+        if view and isinstance(view[-1], dict) and set(view[-1]) == {"transport_omission"}:
+            marker = view[-1]["transport_omission"]
+            visible = view[:-1]
+            require(marker.get("reason") == "serialized_byte_budget"
+                    and marker.get("omitted_count") == len(original) - len(visible)
+                    and marker["omitted_count"] > 0, "wrong omitted Work suffix")
+            require(set(marker) <= {"reason", "basis", "omitted_count", "first_omitted_identity"},
+                    "unknown suffix omission metadata")
+            first = original[len(visible)]
+            identity = next((first[k] for k in ("identity", "candidate_id", "choice_id", "analysis_snapshot")
+                             if isinstance(first, dict) and k in first), None)
+            if len(json.dumps(identity, ensure_ascii=False, separators=(",", ":"))) > 128:
+                identity = None
+            require(marker.get("first_omitted_identity") == identity, "wrong omitted suffix identity")
+        else:
+            require(len(view) == len(original), "missing Work suffix lacks an explicit omission")
+        for value, full in zip(visible, original):
+            assert_transport_view(value, full)
+        return
+    require(False, "bounded Work value differs from complete CLI evidence")
 
 
 def require_rejected(check, message: str) -> None:
@@ -685,6 +747,7 @@ def exercise_reinstall_negative_checks(
     cli: Path, env: dict[str, str], repository: Path, runtime: Path,
     temporary: Path, checkpoint_id: str, before: dict[str, Any], after: dict[str, Any],
     files_before: dict[str, str], files_after: dict[str, str],
+    work_before: dict[str, Any], work_after: dict[str, Any],
 ) -> None:
     # Real supported canonical deletion in an isolated copy, while the latest
     # Checkpoint and Goal still make Recall usable. No direct SQLite mutation.
@@ -721,18 +784,32 @@ def exercise_reinstall_negative_checks(
     for field in ("next_step", "project_name"):
         changed = deepcopy(after)
         changed[field] = "unjustified freshness drift"
-        require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after),
+        require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after, work_before, work_after),
                          f"arbitrary Recall {field} drift escaped validation")
     changed = deepcopy(after)
     changed["snapshots"][0]["freshness"]["reason"] = "unrelated provider failure"
-    require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after),
+    require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after, work_before, work_after),
                      "arbitrary freshness reason escaped validation")
     changed = deepcopy(after)
     changed["snapshots"][0]["capabilities"][0]["coverage"]["covered_file_count"] += 1
-    require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after),
+    require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after, work_before, work_after),
                      "arbitrary coverage drift escaped validation")
-    require_rejected(lambda: assert_reinstall_recall(before, after, files_before, files_before),
+    require_rejected(lambda: assert_reinstall_recall(before, after, files_before, files_before, work_before, work_after),
                      "stale Recall without integration removal escaped validation")
+    changed = deepcopy(after)
+    changed["selected_work"]["work_item_id"] = "00" * 16
+    require_rejected(lambda: assert_reinstall_recall(before, changed, files_before, files_after, work_before, work_after),
+                     "foreign Work identity escaped transport validation")
+    require_rejected(lambda: assert_transport_view({"text": "changed"}, {"text": "original"}),
+                     "changed visible evidence escaped transport validation")
+    require_rejected(lambda: assert_transport_view({}, {"text": "original"}),
+                     "silent missing evidence escaped transport validation")
+    require_rejected(lambda: assert_transport_view({"transport_omission": {
+        "reason": "serialized_byte_budget", "omitted_field_count": 2}}, {"text": "original"}),
+                     "wrong omitted field count escaped transport validation")
+    require_rejected(lambda: assert_transport_view([{"transport_omission": {
+        "reason": "serialized_byte_budget", "omitted_count": 2}}], ["original"]),
+                     "wrong omitted suffix escaped transport validation")
 
 
 def repository_sources(path: Path) -> list[dict[str, Any]]:
@@ -1658,6 +1735,9 @@ def main() -> int:
         recall_before = json.loads(run([
             str(cli), "--json", "--repository", str(repository), "recall",
         ], env).stdout)
+        work_before = json.loads(run([
+            str(cli), "--json", "--repository", str(repository), "status",
+        ], env).stdout)["selected_work"]
         canonical = runtime / "canonical.sqlite3"
         disabled = json.loads(
             run([
@@ -1692,10 +1772,13 @@ def main() -> int:
         recall_after = json.loads(run([
             str(cli), "--json", "--repository", str(repository), "recall",
         ], env).stdout)
+        work_after = json.loads(run([
+            str(cli), "--json", "--repository", str(repository), "status",
+        ], env).stdout)["selected_work"]
         export_canonical(cli, env, repository, canonical_after)
         assert_canonical_continuity(canonical_before, canonical_after)
         files_after = repository_files(repository)
-        assert_reinstall_recall(recall_before, recall_after, files_before, files_after)
+        assert_reinstall_recall(recall_before, recall_after, files_before, files_after, work_before, work_after)
         require(recall_after["project_id"] == project_id, "reinstall resolved another Project")
         tables, _ = portable_tables(canonical_after)
         require(len(tables["projects"]) == 1 and len(tables["context_items"]) == 1
@@ -1792,6 +1875,7 @@ def main() -> int:
         exercise_reinstall_negative_checks(
             cli, env, repository, runtime, temporary, checkpoint["checkpoint_id"],
             recall_before, recall_after, files_before, files_after,
+            work_before, work_after,
         )
 
         export_canonical(cli, env, repository, after_refresh)

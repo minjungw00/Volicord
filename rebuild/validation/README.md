@@ -63,6 +63,17 @@ explanation operations or host generation. The separate
 reports/commit identities only and supplies no current Product result.
 Authenticated `codex_probe.py` remains a separate authorized external check.
 
+The V08 matrix routes current Reader destinations and retired memory/document
+route refusal to executable HTTP tests. Exact request-scoped Guarded fallback has
+its own real-listener test, including Host/Origin/token rejection and duplicate
+response nonmutation. Non-Viewer correction, documents and single-use dispatch
+keep their Operations/CLI/MCP owners; the matrix grants no retired Viewer surface.
+Reinstall also compares complete selected Work facts through independent CLI
+`status` reads. Every visible bounded Recall value and explicit field/suffix
+omission is checked against those facts. A longer truthful stale-analysis reason
+can change 56 KiB transport selection without changing canonical history; silent
+loss, altered text/identity and incorrect omission counts still fail.
+
 `rebuild/scripts/validate focused sessionstart -- python3 -B
 rebuild/validation/dogfood/activation_fixture.py` checks the real CLI hook in a
 disposable authorized repository, including all four activation sources, exact
