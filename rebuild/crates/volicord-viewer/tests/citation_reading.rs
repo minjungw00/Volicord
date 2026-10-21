@@ -580,11 +580,9 @@ fn concurrent_selected_refresh_and_document_reads_keep_original_bytes_and_state(
                 None
             };
             let analysis = f.analysis;
-            let target = if index < 4 {
-                targets[index].0.clone()
-            } else {
-                "/?view=repository".into()
-            };
+            let target = targets
+                .get(index)
+                .map_or_else(|| "/?view=repository".into(), |(target, _)| target.clone());
             jobs.push(std::thread::spawn(move || -> Result<String, String> {
                 barrier.wait();
                 let server = ViewerServer::new(
