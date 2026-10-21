@@ -293,6 +293,11 @@ Git history에 이전 implementation이 있다는 사실은 supported input form
 
 ### Shared explanation content
 
+The compact public publication table and identity-bound UTF-8 pages are ephemeral
+read projections. They preserve v6 retained meaning and need no retained-format,
+canonical-schema or document-metadata migration. Page tokens are current-build
+equality checks including managed publication identity, never portable versions.
+
 Format 6 adds independently admitted `work_name` and `work_summary` publication
 subjects referencing the existing Goal-backed Work, alongside `work` article.
 Each has its own exact preparation, realization, managed purpose, dependencies and

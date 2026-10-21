@@ -52,7 +52,7 @@ use volicord_projections::{
     UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingWork,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 24] = [
+pub const HOST_TOOL_NAMES: [&str; 25] = [
     "project_resolve",
     "project_initialize",
     "project_health",
@@ -62,6 +62,7 @@ pub const HOST_TOOL_NAMES: [&str; 24] = [
     "work_source",
     "work_explanation",
     "decision_explanation",
+    "explanation_read",
     "engineering_choice_discovery",
     "materiality_review",
     "learning_deliberation",
@@ -214,6 +215,7 @@ impl HostAdapter {
                 "repository_analyze" => self.repository_analyze(&arguments),
                 "work_source" => self.work_source(&arguments),
                 "work_explanation" | "decision_explanation" => self.work_explanation(&arguments),
+                "explanation_read" => self.explanation_read(&arguments),
                 "engineering_choice_discovery" => self.engineering_choice_discovery(&arguments),
                 "materiality_review" => self.materiality_review(&arguments),
                 "learning_deliberation" => self.learning_deliberation(&arguments),
@@ -241,7 +243,11 @@ impl HostAdapter {
             {
                 repository_read_tool_result(value, &arguments)
             }
-            Ok(value) if name == "work_explanation" || name == "decision_explanation" => {
+            Ok(value)
+                if name == "work_explanation"
+                    || name == "decision_explanation"
+                    || name == "explanation_read" =>
+            {
                 explanation_tool_result(value)
             }
             Ok(value)
@@ -686,6 +692,55 @@ impl HostAdapter {
                 _ => FixedLocale::English,
             },
         ))
+    }
+
+    fn explanation_read(&self, args: &Value) -> Result<Value, HostError> {
+        let identity = required_str(args, "subject_id")?;
+        let subject = match required_str(args, "subject_kind")? {
+            "repository" => ExplanationSubject::Repository(
+                AnalysisSnapshotId::from_hex(identity).map_err(HostError::new)?,
+            ),
+            "work" => {
+                ExplanationSubject::Work(ContextItemId::from_bytes(parse_identity(identity)?))
+            }
+            "work_name" => {
+                ExplanationSubject::WorkName(ContextItemId::from_bytes(parse_identity(identity)?))
+            }
+            "work_summary" => ExplanationSubject::WorkSummary(ContextItemId::from_bytes(
+                parse_identity(identity)?,
+            )),
+            "decision" => {
+                ExplanationSubject::Decision(DecisionId::from_bytes(parse_identity(identity)?))
+            }
+            _ => return Err(HostError::new("unsupported explanation subject")),
+        };
+        let language = required_str(args, "language")?;
+        if args["action"] == "citation" {
+            return self
+                .operations
+                .read_explanation_citation(
+                    project(args)?,
+                    subject,
+                    language,
+                    &volicord_operations::ExplanationCitationSelection {
+                        realization_fingerprint: required_str(args, "realization_fingerprint")?
+                            .into(),
+                        unit_index: args["unit_index"].as_u64().unwrap_or(0) as usize,
+                        citation_index: args["citation_index"].as_u64().unwrap_or(0) as usize,
+                        offset: args["offset"].as_u64().unwrap_or(0) as usize,
+                    },
+                )
+                .map_err(operation_error);
+        }
+        self.operations
+            .read_explanation_page(
+                project(args)?,
+                subject,
+                language,
+                args["offset"].as_u64().unwrap_or(0) as usize,
+                args["expected_fingerprint"].as_str(),
+            )
+            .map_err(operation_error)
     }
 
     fn repository_analyze(&self, args: &Value) -> Result<Value, HostError> {
@@ -3034,6 +3089,65 @@ fn work_explanation_draft_schema() -> Value {
     schema
 }
 
+fn explanation_read_schema() -> Value {
+    let common = || {
+        vec![
+            ("project_id", identity_schema("Exact Project")),
+            (
+                "subject_kind",
+                enum_schema(
+                    "Publication subject",
+                    &[
+                        "repository",
+                        "work",
+                        "work_name",
+                        "work_summary",
+                        "decision",
+                    ],
+                ),
+            ),
+            (
+                "subject_id",
+                text_schema(
+                    "Exact Analysis Snapshot (repository) or canonical Work/Decision identity",
+                    32,
+                    64,
+                ),
+            ),
+            (
+                "language",
+                text_schema("Exact publication language", 1, 128),
+            ),
+            (
+                "offset",
+                unsigned_schema("UTF-8 byte offset; start at zero", 0),
+            ),
+        ]
+    };
+    let mut page = common();
+    page.extend([
+        ("action", enum_schema("Read publication", &["page"])),
+        ("expected_fingerprint", fingerprint_schema()),
+    ]);
+    let mut citation = common();
+    citation.extend([
+        ("action", enum_schema("Read exact citation", &["citation"])),
+        ("realization_fingerprint", fingerprint_schema()),
+        (
+            "unit_index",
+            unsigned_schema("Original zero-based authored unit", 0),
+        ),
+        (
+            "citation_index",
+            unsigned_schema("Original zero-based unit citation", 0),
+        ),
+    ]);
+    json!({"oneOf":[
+        object_schema(page, &["action","project_id","subject_kind","subject_id","language","offset"]),
+        object_schema(citation, &["action","project_id","subject_kind","subject_id","language","offset","realization_fingerprint","unit_index","citation_index"])
+    ]})
+}
+
 fn explanation_tool_result(value: Value) -> Result<Value, HostError> {
     // Full grounding is never shortened to fit transport. Avoid duplicating a
     // 128 KiB plan as escaped JSON in both text and structured content.
@@ -3045,6 +3159,8 @@ fn explanation_tool_result(value: Value) -> Result<Value, HostError> {
             json!({"diagnostic":"explanation_transport_budget_exceeded",
                 "measured_result_bytes":measured_bytes,
                 "limit_bytes":volicord_operations::HOST_READ_RESULT_BYTE_BUDGET,
+                "complete_publication_read":{"tool":"explanation_read","action":"page","offset":0,
+                    "selectors":"Use the exact Project, subject kind/identity and language of this publication. tools/list describes continuation."},
                 "truncated":false}),
         ));
     }
@@ -3052,12 +3168,16 @@ fn explanation_tool_result(value: Value) -> Result<Value, HostError> {
 }
 
 fn repository_read_tool_result(value: Value, arguments: &Value) -> Result<Value, HostError> {
+    let subject = value["repository_explanation"]["provenance"]["subject"]["identity"].clone();
     explanation_tool_result(value).map_err(|mut error| {
         if let Some(details) = error.details.as_mut() {
             let project = &arguments["project_id"];
             let language = arguments["requested_language"].as_str().unwrap_or("en");
             let locale = arguments["fixed_locale"].as_str().unwrap_or("en");
-            error.message = "complete explanation result exceeds MCP transport budget; read the retained repository document with CLI repository explain read or Viewer; no grounding was truncated and no regeneration is required".into();
+            error.message = "complete explanation result exceeds MCP transport budget; consume the exact publication with explanation_read pages; no grounding was truncated and no regeneration is required".into();
+            details["complete_publication_read"] = json!({"tool":"explanation_read",
+                "arguments":{"action":"page","project_id":project,"subject_kind":"repository",
+                    "subject_id":subject,"language":language,"offset":0}});
             details["read_only_recovery"] = json!({
                 "cli_arguments":["--project",project,"repository","explain","read","--language",language],
                 "viewer_arguments":["--project",project,"viewer","open","--view","repository","--language",language,"--locale",locale],
@@ -3163,6 +3283,11 @@ impl ToolContract {
 
 fn tool_contract(name: &str) -> Option<ToolContract> {
     let (description, input_schema, behavior) = match name {
+        "explanation_read" => (
+            "Consume one complete permitted publication through bounded compact_json_utf8 pages. Start action=page, offset=0 with an exact subject and language. Concatenate chunks in next_offset order and decode only after state=complete; expand unit citation binding indices from bindings. Continue with the same selectors and returned expected_fingerprint. All dependencies are revalidated on every page; changed/replaced/expired/deleted/withheld content rejects rather than splicing. A unit may span chunks. This is transport completion, not semantic approval or currentness beyond this read. action=citation reads an exact unit/citation from that realization, in at most 4096 retained UTF-8 bytes; no filesystem fallback, capture, generation or renewal.",
+            explanation_read_schema(),
+            ToolBehavior::ReadOnlyClosed,
+        ),
         "project_resolve" => (
             "Read-only resolve the existing Volicord Project bound to an absolute local repository path. In a fresh project-scoped session do this before repository inspection, edits, or continuation; after a found result, Recall must succeed before that work. Initialize explicitly only after a not_found result.",
             object_schema(

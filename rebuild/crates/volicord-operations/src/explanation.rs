@@ -25,6 +25,76 @@ fn purpose(subject: ExplanationSubject, language: &str) -> String {
     format!("explanation:{}:{language}", subject.key())
 }
 impl LocalOperations {
+    /// Bounded lossless reading of one exact admitted publication. Every page
+    /// revalidates all dependencies, including dependencies outside that page.
+    /// Offsets are UTF-8 bytes of compact JSON, not paragraph or file offsets.
+    pub fn read_explanation_page(
+        &self,
+        project: ProjectId,
+        subject: ExplanationSubject,
+        language: &str,
+        offset: usize,
+        expected_fingerprint: Option<&str>,
+    ) -> Result<serde_json::Value, Error> {
+        const CHUNK: usize = 8_192;
+        const CONTENT: usize = 1_048_576;
+        let _inspection = self.layout().acquire_health_lock()?;
+        let canonical = self.canonical_basis(project)?;
+        let records = self.privacy_status(project)?;
+        let target = purpose(subject, language);
+        let record = records
+            .managed_derived
+            .iter()
+            .rfind(|r| r.kind == ManagedDerivedKind::CachedSummary && r.purpose == target)
+            .ok_or_else(|| Error::new("publication unavailable: missing"))?;
+        if record.state != ManagedDerivedState::Current
+            || records
+                .withheld_for_canonical_forgetting
+                .contains(&record.id)
+        {
+            return Err(Error::new(
+                "publication unavailable: deleted, expired, invalidated or withheld",
+            ));
+        }
+        let retained = decode_explanation(record.content.as_deref())
+            .map_err(|(_, reason)| Error::new(reason))?;
+        let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
+        if !retained_matches(&plan, &retained) {
+            return Err(Error::new(
+                "publication basis changed; restart from a current publication",
+            ));
+        }
+        self.validate_subject_sources(&canonical, subject, &retained.realization)?;
+        let document = compact_publication(&retained, &record.id.to_string());
+        let encoded = serde_json::to_string(&document)
+            .map_err(|e| Error::with_source("publication encoding failed", e))?;
+        if encoded.len() > CONTENT {
+            return Err(Error::new(format!("unsupported publication reading size: {} bytes exceeds {CONTENT}; no content returned", encoded.len())));
+        }
+        let fingerprint = explanation_text_hash(&encoded);
+        if (offset > 0 && expected_fingerprint.is_none())
+            || expected_fingerprint.is_some_and(|expected| expected != fingerprint)
+        {
+            return Err(Error::new("publication continuation changed or belongs to another Project, subject, language or realization"));
+        }
+        if offset >= encoded.len() || !encoded.is_char_boundary(offset) {
+            return Err(Error::new("invalid publication UTF-8 offset"));
+        }
+        let mut end = (offset + CHUNK).min(encoded.len());
+        while !encoded.is_char_boundary(end) {
+            end -= 1;
+        }
+        Ok(
+            serde_json::json!({"project_id":project.to_string(),"subject":subject,"language":language,
+            "publication_id":record.id.to_string(),"realization_fingerprint":document["provenance"]["realization_fingerprint"],
+            "fingerprint":fingerprint,"encoding":"compact_json_utf8","offset":offset,
+            "chunk":&encoded[offset..end],"next_offset":(end < encoded.len()).then_some(end),
+            "state":if end == encoded.len() {"complete"} else {"partial"},
+            "total_utf8_bytes":encoded.len(),"remaining_utf8_bytes":encoded.len()-end,
+            "chunk_byte_limit":CHUNK,"supported_content_byte_limit":CONTENT,"read_only":true}),
+        )
+    }
+
     pub(crate) fn validate_read_publication(
         &self,
         project: ProjectId,

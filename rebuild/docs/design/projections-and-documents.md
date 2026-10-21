@@ -1510,6 +1510,27 @@ and record grounding. Selected Work answers receive a larger section allowance w
 the unchanged total response byte budget; excessive grounding still uses exact counted
 transport omissions. These changes do not attest generated prose entailment.
 
+### Complete publication reading
+
+`explanation_read` exposes a read-time compact publication without changing
+retained explanation v6. Exact Project/subject/language select a publication;
+its managed identity, preparation and realization participate in the page
+fingerprint. Ordered units retain text, question, evidence keys and exact claim
+coordinates/hashes. Equal Source/range bindings share a table entry. Provenance
+citations are the ordered concatenation of unit citations, not a duplicated list.
+No authored section or evidence reference is dropped to fit a response.
+
+Pages contain up to 8,192 UTF-8 bytes of compact JSON; units may span pages.
+Consumers join chunks in `next_offset` order, check the same fingerprint and
+decode only after explicit `complete`. Overall supported compact content is
+1,048,576 bytes; excess is an explicit unsupported-size failure, never truncated
+success. Existing retained/admission and 256 KiB MCP envelope limits are unchanged.
+Every request revalidates all publication dependencies under the inspection lock.
+Replacement (even equal wording), expiry, deletion, withholding, changed evidence
+or a foreign selector reject continuation. Exact citation requests retain the
+existing independently bounded Source reader and authority. This is nonmutating
+transport completion, not semantic approval or an enduring currentness promise.
+
 ### Revision-bound retained evidence detail
 
 Bounded MCP omissions do not grant raw-history or filesystem read authority.

@@ -811,6 +811,11 @@ offline export grants unrelated access, new capture, retention renewal or transm
 
 ### Scoped explanation Source discovery
 
+`explanation_read` pages and exact citation selections use this same permitted
+publication/Source authority. Every request checks all dependencies and the
+forgetting barrier under the inspection lock. A table binding, continuation,
+locator or previous successful prefix never grants access after dependency loss.
+
 Goal-only name preparation performs no Work Source enumeration. Summary/article
 preparation advertises the existing `canonical_inspect` exact Goal revision/Work
 `source_observations` selector; CLI Source list uses the same bounded field reader.

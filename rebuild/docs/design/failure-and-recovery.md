@@ -482,6 +482,13 @@ stored analysis. Ordinary reading performs neither action.
 
 ### Exact retained evidence read failure
 
+Complete MCP consumption also has `explanation_read` publication pages. A
+continuation fingerprint binds the entire compact document and managed publication
+identity, not merely its prefix. Missing/foreign tokens, replacement and any lost
+dependency reject before returning a suffix. There is no historical fallback,
+successful incomplete document or assumption that a paragraph fits one chunk.
+The intact repository response's size refusal advertises this bounded read path.
+
 An intact Repository MCP result exceeding the existing transport limit reports
 its measured UTF-8 result size and limit, without partial prose. Recovery points
 to the same Project/language in local `repository explain read` or the Repository

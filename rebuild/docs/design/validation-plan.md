@@ -2977,6 +2977,14 @@ headings, leads and code together. The existing negative/range/lifecycle control
 
 ### Bounded claim-to-Source reading support
 
+Host `work_explanation::complete_publication_pages_preserve_independent_units_bindings_and_lifetimes`
+uses actual `tools/call` pages, a multibyte unit larger than one page, independently
+inspected retained units/citations/provenance, foreign selectors, missing/changed
+tokens, equal-wording replacement and deleted Source rejection. It measures
+retained/projected/MCP-envelope bytes separately. Real retained large-publication
+replay remains a separate measurement; neither authored controls nor replay imply
+fresh generation or human acceptance. Every run uses `validate focused`.
+
 `volicord-viewer --test citation_reading` uses a fresh independent polyglot control:
 eight large unrelated leading ranges precede one three-Source mechanism, with a
 second claim sharing one range. Real Product composition/retention, Operations,

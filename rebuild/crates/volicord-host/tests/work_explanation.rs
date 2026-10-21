@@ -823,6 +823,145 @@ fn citation_metadata_uses_response_headroom_without_expanding_source_authority(
 }
 
 #[test]
+fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    let generation = f.generate()?;
+    let read = f.read(&generation, f.source)?;
+    let mut realized = response(&generation, &read)?;
+    // One unit exceeds a page, including multibyte characters and JSON escapes.
+    realized.paragraphs.push(ExplanationParagraph {
+        question: ExplanationQuestion::Narrative,
+        text: format!("Authored transport control: {}", "한🙂\"\\\n".repeat(1800)),
+        evidence_keys: vec!["goal".into()],
+        citations: vec![],
+    });
+    let citation = realized.paragraphs[1].citations[0].clone();
+    realized.paragraphs[1].citations = vec![citation; 8];
+    let args = f.record_args(&generation, &realized)?;
+    let receipt = success(&mut f.host, args)?;
+    let original = receipt["explanation"].clone();
+    let before = f.host.operations().canonical_basis(f.project)?;
+    let privacy_before = f.host.operations().privacy_status(f.project)?;
+    let base = json!({"action":"page","project_id":f.project.to_string(),"subject_kind":"work",
+        "subject_id":f.work.to_string(),"language":"en","offset":0});
+    fn page(host: &mut HostAdapter, args: Value) -> Value {
+        host.handle(json!({"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"explanation_read","arguments":args}})).unwrap_or(Value::Null)
+    }
+    let mut args = base.clone();
+    let mut encoded = String::new();
+    let mut pages = 0;
+    let mut envelope_max = 0;
+    let mut continuation = Value::Null;
+    loop {
+        let response = page(&mut f.host, args.clone());
+        assert_eq!(response["result"]["isError"], false, "{response}");
+        envelope_max = envelope_max.max(response.to_string().len());
+        assert!(response.to_string().len() < 262_144);
+        let result = &response["result"]["structuredContent"];
+        let chunk = result["chunk"].as_str().ok_or("chunk")?;
+        assert!(chunk.len() <= 8192);
+        assert_eq!(result["offset"], encoded.len());
+        encoded.push_str(chunk);
+        pages += 1;
+        if result["next_offset"].is_null() {
+            assert_eq!(result["state"], "complete");
+            assert_eq!(result["remaining_utf8_bytes"], 0);
+            assert_eq!(result["total_utf8_bytes"], encoded.len());
+            break;
+        }
+        args["offset"] = result["next_offset"].clone();
+        args["expected_fingerprint"] = result["fingerprint"].clone();
+        continuation = args.clone();
+    }
+    assert!(pages >= 3);
+    let doc: Value = serde_json::from_str(&encoded)?;
+    // Independent retained inspection, not compact_publication as the oracle.
+    for (unit, expected) in doc["units"].as_array().ok_or("units")?.iter().zip(
+        original["realization"]["paragraphs"]
+            .as_array()
+            .ok_or("original units")?,
+    ) {
+        assert_eq!(unit["question"], expected["question"]);
+        assert_eq!(unit["text"], expected["text"]);
+        assert_eq!(unit["evidence_keys"], expected["evidence_keys"]);
+        let mut expanded = Vec::new();
+        for claim in unit["citations"].as_array().ok_or("citations")? {
+            let mut c =
+                doc["bindings"][claim["binding"].as_u64().ok_or("binding")? as usize].clone();
+            for field in ["claim_start_byte", "claim_end_byte", "claim_sha256"] {
+                c[field] = claim[field].clone();
+            }
+            expanded.push(c);
+        }
+        assert_eq!(json!(expanded), expected["citations"]);
+    }
+    assert_eq!(
+        doc["units"].as_array().ok_or("units")?.len(),
+        realized.paragraphs.len()
+    );
+    assert_eq!(doc["bindings"].as_array().ok_or("bindings")?.len(), 1);
+    assert_eq!(
+        doc["provenance"]["generator"],
+        original["realization"]["generator"]
+    );
+    assert_eq!(
+        doc["provenance"]["generated_at_unix_micros"],
+        original["generated_at_unix_micros"]
+    );
+    for (field, value) in [
+        ("language", json!("ko")),
+        ("subject_kind", json!("work_summary")),
+        ("subject_id", json!("00".repeat(16))),
+        ("project_id", json!("00".repeat(16))),
+        ("expected_fingerprint", json!("00".repeat(32))),
+        ("offset", json!(1)),
+    ] {
+        let mut wrong = continuation.clone();
+        wrong[field] = value;
+        // A valid arbitrary UTF-8 offset remains supported; only identity and
+        // missing/changed token are rejected, not page-size multiples.
+        if field != "offset" {
+            assert_eq!(page(&mut f.host, wrong)["result"]["isError"], true);
+        }
+    }
+    let mut missing = continuation.clone();
+    missing
+        .as_object_mut()
+        .ok_or("args")?
+        .remove("expected_fingerprint");
+    assert_eq!(page(&mut f.host, missing)["result"]["isError"], true);
+    assert_eq!(before, f.host.operations().canonical_basis(f.project)?);
+    assert_eq!(
+        privacy_before,
+        f.host.operations().privacy_status(f.project)?
+    );
+    // Same wording and plan recorded again is still a different publication.
+    f.host.operations().record_explanation(
+        f.project,
+        ExplanationSubject::Work(f.work),
+        "en",
+        realized,
+    )?;
+    assert_eq!(
+        page(&mut f.host, continuation.clone())["result"]["isError"],
+        true
+    );
+    f.host
+        .operations()
+        .delete_work_source_observation(f.project, f.work, f.source)?;
+    assert_eq!(page(&mut f.host, base)["result"]["isError"], true);
+    eprintln!(
+        "publication retained={} projected={} max_mcp_envelope={} pages={pages} excerpt={}",
+        original.to_string().len(),
+        encoded.len(),
+        envelope_max,
+        0
+    );
+    Ok(())
+}
+
+#[test]
 fn wrong_scopes_ranges_hashes_bindings_and_denied_retrieval_preserve_previous_record(
 ) -> Result<(), Box<dyn Error>> {
     let mut f = Fixture::new()?;
