@@ -1976,6 +1976,14 @@ The existing reader-unit envelope and exhaustive traversal remain shared with Wo
 and Decision. Repository roles are optional heading/synopsis/purpose/observation/
 reading_point/limits. Every unit needs exact prepared evidence keys, and every
 non-limits unit needs current-code Source citations from that exact Analysis Snapshot.
+Repository operations may use the existing `flow_step` units, with exact
+`repository_basis` and current-code citations. Authored order is retained through
+composition, storage, bounded CLI/MCP reading and live/script-free ordered lists.
+These are static source interpretations unless execution is separately established;
+step order is not an execution observation or a new diagram topology. This corrects
+a Repository-only admission omission without changing the v6 envelope or the
+Work/Decision/name/summary grounding rules. Repository preparation fingerprints
+change and require fresh explicit authorship; short Work publications do not.
 Scope-only limits can use repository basis without a technical Source assertion.
 Product composition derives Source revision/locator, absolute UTF-8 ranges/lines and
 range/claim hashes from explicit host-selected spans; the host authors prose, not

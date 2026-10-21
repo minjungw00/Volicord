@@ -16,11 +16,16 @@ import urllib.request
 
 class Fragments(HTMLParser):
     def __init__(self):
-        super().__init__(); self.ids = []; self.targets = []
+        super().__init__(); self.ids = []; self.targets = []; self.code = []; self.in_code = False
     def handle_starttag(self, tag, attrs):
         values = dict(attrs)
+        if tag == 'code': self.in_code = True
         if 'id' in values: self.ids.append(values['id'])
         if values.get('href', '').startswith('#'): self.targets.append(values['href'][1:])
+    def handle_endtag(self, tag):
+        if tag == 'code': self.in_code = False
+    def handle_data(self, data):
+        if self.in_code: self.code.append(data)
 
 
 def main():
@@ -61,7 +66,10 @@ def main():
             text = 'Authored control: greeting constructs a salutation from its input name.'
             paragraphs = [{'question': role, 'text': wording, 'evidence_keys': ['repository_basis'],
                            'sources': [{'source_id': source, 'start_byte': 0, 'end_byte': len(source_text.encode()), 'claim': None}]}
-                          for role, wording in [('heading', 'Authored repository reading'), ('synopsis', text), ('observation', text), ('reading_point', 'Read greeting to inspect how the name enters the return value.')]]
+                          for role, wording in [('heading', 'Authored repository reading'), ('synopsis', text), ('observation', text),
+                                                ('flow_step', 'Receive the supplied name as the greeting argument.'),
+                                                ('flow_step', 'Return the salutation joined to that name.'),
+                                                ('reading_point', 'Read greeting to inspect how the name enters the return value.')]]
             paragraphs.append({'question': 'limits', 'text': 'Authored control only; no execution, semantic review or user approval is established.', 'evidence_keys': ['repository_basis'], 'sources': []})
             draft = {'plan_fingerprint': prepared['fingerprint'], 'language': 'en', 'generator': {'host': 'authored-control', 'session': 'public-entrypoint', 'agent': None, 'model': None}, 'paragraphs': paragraphs}
             draft_path = temporary / 'draft.json'; draft_path.write_text(json.dumps(draft))
@@ -70,6 +78,9 @@ def main():
             call('record', 'repository', 'explain', 'record', '--analysis', analysis, '--input', response_path)
             answers = call('read', 'repository', 'explain', 'read')['answers']
             assert answers['explanation_state'] == 'current' and answers['prose'][1]['text'] == text
+            assert [unit['text'] for unit in answers['prose']] == [unit['text'] for unit in response['paragraphs']]
+            steps = [unit for unit in answers['prose'] if unit['question'] == 'FlowStep']
+            assert len(steps) == 2 and all(unit['citations'] for unit in steps)
             facts = {a['question']: a['text'] for a in answers['facts']}
             assert 'Cited Source area: . (1 files)' in facts['RepositoryScope']
             assert 'Excluded boundaries: 1' in facts['RepositoryCoverage']
@@ -85,6 +96,7 @@ def main():
             assert not result.get('isError'), result
             assert result['structuredContent']['repository_explanation']['provenance'] == answers['provenance']
             assert result['structuredContent']['repository_explanation']['facts'] == answers['facts']
+            assert result['structuredContent']['repository_explanation']['prose'] == answers['prose']
             # Real loopback HTTP, complete process cleanup even on assertion failure.
             stderr = (output / 'viewer.stderr').open('wb'); stdout = (output / 'viewer.stdout').open('wb')
             viewer = subprocess.Popen([str(binaries / 'volicord-viewer'), '--runtime', str(runtime), '--project', project, '--bind', '127.0.0.1:0'], stdout=stdout, stderr=stderr)
@@ -101,16 +113,29 @@ def main():
                 if name == 'work':
                     assert 'No Work has been recorded' in page
                     continue
+                if name == 'overview':
+                    # Overview links to the repository destination; it does not
+                    # repeat a second repository-summary card (Reader D-28).
+                    assert text not in page
+                    assert 'view=repository' in page
+                    continue
                 assert 'Authored repository reading' in page
-                if name == 'repository': assert text in page
-                if name != 'overview':
-                    assert source_text.replace("'", '&#39;')[:12] in page
                 if name == 'repository':
-                    assert page.index('data-question="RepositoryScope"') < page.index('class="document-nav"')
+                    assert text in page
+                    assert '<ol class="article-flow">' in page
+                    assert page.index(steps[0]['text']) < page.index(steps[1]['text'])
+                if name != 'overview':
+                    parsed = Fragments(); parsed.feed(page)
+                    assert source_text in ''.join(parsed.code)
+                if name == 'repository':
+                    assert 'data-question="RepositoryScope"' in page
+                    assert 'class="document-nav"' in page
                 assert 'repository-explanation' in page or 'view=repository' in page
             snapshot = output / 'offline.html'
             call('snapshot', 'viewer', 'export', '--output', snapshot)
             html = snapshot.read_text(); assert text in html and '<script' not in html and '<form' not in html
+            assert '<ol class="article-flow">' in html
+            assert html.index(steps[0]['text']) < html.index(steps[1]['text'])
             fragments = Fragments(); fragments.feed(html)
             assert len(fragments.ids) == len(set(fragments.ids)), 'duplicate offline fragments'
             assert not (set(fragments.targets) - set(fragments.ids)), 'broken offline source navigation'

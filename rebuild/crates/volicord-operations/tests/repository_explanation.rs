@@ -331,6 +331,95 @@ fn response(f: &Fixture, source: SourceId) -> Result<ExplanationRealization, Box
         },
     )?)
 }
+
+#[test]
+fn repository_flow_steps_preserve_grounding_order_and_publication_lifetime(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let subject = ExplanationSubject::Repository(f.analysis);
+    let plan = f.ops.prepare_explanation(f.project, subject, "en")?;
+    assert!(plan
+        .question_grounding
+        .iter()
+        .any(|r| r.question == ExplanationQuestion::FlowStep));
+    let mut flow = response(&f, id)?;
+    flow.paragraphs[0].question = ExplanationQuestion::FlowStep;
+    let mut second = flow.paragraphs[0].clone();
+    second.text = "Return the greeting with the supplied name.".into();
+    second.citations[0].claim_end_byte = second.text.len();
+    second.citations[0].claim_sha256 = explanation_text_hash(&second.text);
+    flow.paragraphs.push(second);
+    f.ops
+        .record_explanation(f.project, subject, "en", flow.clone())?;
+    let before = f.ops.privacy_status(f.project)?;
+    let read = f.ops.read_repository_explanation(f.project, "en")?;
+    assert_eq!(
+        read.prose
+            .iter()
+            .map(|p| p.text.as_str())
+            .collect::<Vec<_>>(),
+        flow.paragraphs
+            .iter()
+            .map(|p| p.text.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(read.prose.iter().all(|p| p.question == "FlowStep"));
+    let mut page = f
+        .ops
+        .read_explanation_page(f.project, subject, "en", 0, None)?;
+    let mut complete = String::new();
+    loop {
+        complete.push_str(page["chunk"].as_str().ok_or("chunk")?);
+        let Some(offset) = page["next_offset"].as_u64() else {
+            break;
+        };
+        page = f.ops.read_explanation_page(
+            f.project,
+            subject,
+            "en",
+            offset as usize,
+            Some(page["fingerprint"].as_str().ok_or("fingerprint")?),
+        )?;
+    }
+    let document: Value = serde_json::from_str(&complete)?;
+    assert_eq!(document["units"][1]["question"], "flow_step");
+    assert_eq!(document["units"][1]["text"], flow.paragraphs[1].text);
+    assert_eq!(f.ops.privacy_status(f.project)?, before);
+    for failure in ["uncited", "claim", "binding", "format"] {
+        let mut bad = flow.clone();
+        match failure {
+            "uncited" => bad.paragraphs[1].citations.clear(),
+            "claim" => bad.paragraphs[1].text.push_str("Unsupported addition"),
+            "binding" => bad.paragraphs[1].citations[0].analysis_snapshot_id = "0".repeat(64),
+            _ => bad.format_version += 1,
+        }
+        if failure == "claim" {
+            // Alter an actually bound span, rather than append an uncited claim
+            // whose truth cannot be decided by structural validation.
+            bad.paragraphs[1].text.replace_range(..1, "X");
+        }
+        assert!(
+            f.ops
+                .record_explanation(f.project, subject, "en", bad)
+                .is_err(),
+            "{failure}"
+        );
+        assert_eq!(f.ops.privacy_status(f.project)?, before);
+    }
+    f.ops
+        .delete_repository_source_observation(f.project, f.analysis, id)?;
+    assert!(f
+        .ops
+        .read_explanation_page(f.project, subject, "en", 0, None)
+        .is_err());
+    let read = f.ops.read_repository_explanation(f.project, "en")?;
+    assert_ne!(read.explanation_state, ExplanationState::Current);
+    assert!(read.prose.iter().all(|p| p.question != "FlowStep"));
+    assert!(read.provenance.is_none());
+    Ok(())
+}
+
 #[test]
 fn work_free_retention_reading_and_failed_write_atomicity() -> Result<(), Box<dyn Error>> {
     let f = fixture()?;

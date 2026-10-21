@@ -3401,3 +3401,15 @@ and Host `source_evidence` retain exact-body/authority/lifecycle controls. Run w
 `validate focused`, preserving the failed size/control attempts and final numeric
 measurements. These are authored scaling/transport controls, not naturalistic task,
 semantic assessment, human acceptance, gate or provider qualification evidence.
+
+### Repository operation publication controls
+
+Operations `repository_explanation::repository_flow_steps_preserve_grounding_order_and_publication_lifetime`
+checks ordered Repository operations, complete bounded publication reconstruction,
+uncited/edited-claim/wrong-analysis/non-current refusal, atomic failed admission and
+Source deletion. `end-to-end/multi-repository/repository_reading.py` exercises the
+existing flow units through actual CLI compose/record, MCP, live HTTP and script-free
+export. Its Overview and highlighted-code assertions follow the current Reader;
+it does not require the retired duplicate repository-summary card or literal raw
+HTML source prefixes. This is authored technical support, separate from current-host
+normal repository/Work outputs, semantic usefulness and human understanding.

@@ -872,6 +872,7 @@ fn question_grounding(
             (Purpose, vec!["repository_basis".into()]),
             (Observation, vec!["repository_basis".into()]),
             (ReadingPoint, vec!["repository_basis".into()]),
+            (FlowStep, vec!["repository_basis".into()]),
         ],
         ExplanationSubject::Decision(_) => vec![
             (UserRationale, vec!["user_rationale".into()]),
