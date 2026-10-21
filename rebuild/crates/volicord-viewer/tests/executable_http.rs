@@ -8,7 +8,11 @@ use std::{
     time::Duration,
 };
 use tempfile::TempDir;
-use volicord_operations::{LocalOperations, RuntimeLayout};
+use volicord_context::{Clock, Principal, PrincipalKind, SystemClock, TimestampMicros};
+use volicord_operations::{
+    ConfirmationDecision, GuardedEffectCategory, GuardedEffectDraft, GuardedRisk, GuardedStore,
+    LocalOperations, RequestingProvenance, RuntimeLayout,
+};
 
 struct ViewerProcess {
     child: Child,
@@ -293,6 +297,146 @@ fn real_listener_rejects_retired_surfaces_and_preserves_reading() {
             .canonical_basis(project)
             .expect("unchanged basis")
     );
+}
+
+#[test]
+fn real_listener_preserves_exact_guarded_fallback_and_rejects_untrusted_responses() {
+    let temporary = TempDir::new().expect("temporary root");
+    let operations =
+        LocalOperations::new(RuntimeLayout::new(temporary.path().join("runtime")).expect("layout"));
+    let project = operations
+        .initialize_project("Guarded reader", None)
+        .expect("Project")
+        .project
+        .id;
+    let now = SystemClock.now().expect("clock");
+    let request = operations
+        .create_guarded_request(GuardedEffectDraft {
+            project_id: project,
+            exact_action: "publish test artifact".into(),
+            target: "registry/test".into(),
+            expected_effect: "public artifact".into(),
+            risk: GuardedRisk {
+                category: GuardedEffectCategory::ExternalDeploymentOrPublicPublication,
+                concrete_consequence: "public artifact".into(),
+            },
+            scope: vec!["release:test".into()],
+            expires_at: TimestampMicros::from_unix_micros(now.as_unix_micros() + 60_000_000),
+            requesting_provenance: RequestingProvenance {
+                actor: Principal {
+                    kind: PrincipalKind::Agent,
+                    identity: "authored-control".into(),
+                },
+                host: Some("codex".into()),
+                session: None,
+                basis: vec!["test only; no dispatch".into()],
+            },
+        })
+        .expect("request");
+    let viewer = start_viewer(operations.layout().root(), &project.to_string());
+    let target = format!("/guarded/{}", request.confirmation_request_identity);
+    let page = get(&viewer.address, &target);
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(!page.contains("<nav"), "Guarded fallback is request scoped");
+    let token = page
+        .split("name=\"request_authenticity\" value=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .expect("token");
+    assert!(!target.contains(token));
+    let body = format!(
+        "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&confirmation_decision=confirm&user_turn=Confirm+this+test+artifact&guarded={}",
+        request.confirmation_request_identity, request.request_revision,
+        request.effect_fingerprint, request.confirmation_request_identity,
+    );
+    let authenticated = format!("{body}&request_authenticity={token}");
+    let origin = format!("http://{}", viewer.address);
+    let before = operations.canonical_basis(project).expect("before");
+    for (payload, host, request_origin, site) in [
+        (
+            body.clone(),
+            viewer.address.as_str(),
+            Some(origin.as_str()),
+            Some("same-origin"),
+        ),
+        (
+            format!("{body}&request_authenticity=wrong"),
+            viewer.address.as_str(),
+            Some(origin.as_str()),
+            Some("same-origin"),
+        ),
+        (
+            authenticated.clone(),
+            "localhost:1",
+            Some(origin.as_str()),
+            Some("same-origin"),
+        ),
+        (
+            authenticated.clone(),
+            viewer.address.as_str(),
+            Some("http://untrusted.invalid"),
+            Some("same-origin"),
+        ),
+        (
+            authenticated.clone(),
+            viewer.address.as_str(),
+            Some(origin.as_str()),
+            Some("cross-site"),
+        ),
+    ] {
+        let response = post_with_context(
+            &viewer.address,
+            "/guarded/confirm",
+            &payload,
+            host,
+            request_origin,
+            site,
+        );
+        let expected = if host == viewer.address {
+            "HTTP/1.1 403"
+        } else {
+            "HTTP/1.1 421"
+        };
+        assert!(response.starts_with(expected), "{response}");
+        assert_eq!(
+            before,
+            operations.canonical_basis(project).expect("rejected basis")
+        );
+        assert!(GuardedStore::open(operations.layout().guarded_store())
+            .expect("store")
+            .response(
+                request.confirmation_request_identity,
+                request.request_revision
+            )
+            .expect("response")
+            .is_none());
+    }
+    let response = post(&viewer.address, "/guarded/confirm", &body, token);
+    assert!(response.starts_with("HTTP/1.1 303"), "{response}");
+    let stored = GuardedStore::open(operations.layout().guarded_store())
+        .expect("store")
+        .response(
+            request.confirmation_request_identity,
+            request.request_revision,
+        )
+        .expect("response")
+        .expect("confirmed");
+    assert_eq!(stored.decision, ConfirmationDecision::Confirmed);
+    assert_eq!(stored.effect_fingerprint, request.effect_fingerprint);
+    let confirmed = operations
+        .canonical_basis(project)
+        .expect("confirmed basis");
+    assert!(confirmed
+        .sources
+        .iter()
+        .any(|s| s.source.id == stored.user_response_source_id));
+    let replay = post(&viewer.address, "/guarded/confirm", &body, token);
+    assert!(!replay.starts_with("HTTP/1.1 303"), "{replay}");
+    assert_eq!(
+        confirmed,
+        operations.canonical_basis(project).expect("replay basis")
+    );
+    assert!(!format!("{confirmed:?}").contains(token));
 }
 
 #[test]

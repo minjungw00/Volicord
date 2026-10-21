@@ -3132,6 +3132,14 @@ impl LocalOperations {
                 "confirmation does not match the current logical request identity, revision, and fingerprint",
             ));
         }
+        if guarded
+            .response(request_identity, request_revision)?
+            .is_some()
+        {
+            return Err(Error::new(
+                "a confirmation response already exists for this exact request revision",
+            ));
+        }
         let source = self.create_user_source(request.project_id, host, session, user_turn)?;
         let response =
             ConfirmationResponse::exact_for(&request, decision, source.id, now_micros()?)?;

@@ -137,6 +137,23 @@ fn exact_cli_confirmation_is_source_linked_single_use_and_operation_linked(
         .sources
         .iter()
         .any(|source| source.source.id == response.user_response_source_id));
+    for decision in [
+        ConfirmationDecision::Confirmed,
+        ConfirmationDecision::Denied,
+    ] {
+        assert!(operations
+            .record_confirmation(
+                candidate.confirmation_request_identity,
+                candidate.request_revision,
+                &candidate.effect_fingerprint,
+                decision,
+                "codex".into(),
+                "replay".into(),
+                "Repeated input must not become a new canonical Source".into(),
+            )
+            .is_err());
+        assert_eq!(canonical, operations.canonical_basis(project)?);
+    }
     let mut dispatcher = FakeDispatcher::new(DispatchObservation::DispatchedAndCompleted {
         diagnostic: Some("published".into()),
     });

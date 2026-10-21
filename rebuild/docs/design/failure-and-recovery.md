@@ -482,6 +482,12 @@ stored analysis. Ordinary reading performs neither action.
 
 ### Exact retained evidence read failure
 
+Repeated Guarded confirmation for an already answered exact request revision is
+refused under the Local Operations mutation lock before recording a user Source.
+The original response and canonical basis remain unchanged for either repeated
+confirmation or denial. HTTP, CLI and MCP share this check; rejection neither
+dispatches an effect nor creates a new canonical audit event.
+
 Canonical inspection in Operations uses the maintained read-only Store connection,
 including its existing bounded reader contention policy. Concurrent document and
 selected-citation readers must not use zero-wait writer initialization and mistake
