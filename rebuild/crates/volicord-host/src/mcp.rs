@@ -1654,7 +1654,7 @@ impl HostAdapter {
                         subject,
                         ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
                     ) {
-                        result["next_action"] = json!("The authorized active host authors exactly the prepared name or summary scope. Follow plan.instructions and question_grounding; name uses Goal alone, summary binds Goal and actual report, and any technical assertion needs permitted Source retrieval with this same generation_id and scope. Compose, then record. Each scope replaces only its own publication; never extract or rebind stale article text. No automatic model dispatch or new authority is granted.");
+                        result["next_action"] = json!("The authorized active host authors exactly the prepared name or summary scope. Follow plan.instructions and question_grounding; name uses Goal alone, summary binds Goal, selected report and current progress qualifications (state, verification coverage, review/acceptance resets, limits and next direction), and any technical assertion needs permitted Source retrieval with this same generation_id and scope. Compose, then record. Each scope replaces only its own publication; never extract or rebind stale article text. No automatic model dispatch or new authority is granted.");
                     }
                     if matches!(subject, ExplanationSubject::Work(_)) {
                         let article = result["next_action"].as_str().unwrap_or_default();

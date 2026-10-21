@@ -605,7 +605,7 @@ impl WorkHistory<'_> {
 
 /// Any explicit reported change is a conservative coverage boundary. No kind or
 /// fixture label supplies verification applicability.
-fn has_reported_change(cp: &volicord_context::Checkpoint) -> bool {
+pub(crate) fn has_reported_change(cp: &volicord_context::Checkpoint) -> bool {
     !cp.changed_paths.is_empty()
         || !cp.changed_source_basis.is_empty()
         || cp

@@ -779,3 +779,243 @@ fn goal_forgetting_deletes_every_linked_scope_and_language_without_erasing_other
     );
     Ok(())
 }
+
+#[test]
+fn blank_reports_select_current_progress_and_invalidate_each_material_qualification(
+) -> Result<(), Box<dyn Error>> {
+    use serde_json::json;
+    let f = fixture()?;
+    let id = f.goals["goal_only"];
+    let summary = ExplanationSubject::WorkSummary(id);
+    record(
+        &f,
+        ExplanationSubject::WorkName(id),
+        "en",
+        "Investigate relay progress",
+    )?;
+    record(
+        &f,
+        summary,
+        "en",
+        "Relay work is requested; no result is reported.",
+    )?;
+    record(
+        &f,
+        summary,
+        "ko",
+        "릴레이 작업을 요청했으며 결과는 아직 보고되지 않았습니다.",
+    )?;
+    let original_name = work(&f, id)?.reading.name_explanations;
+    let basis = f.operations.canonical_basis(f.project)?;
+    let goal = basis
+        .context_items
+        .iter()
+        .find(|c| c.id == id)
+        .ok_or("Goal")?;
+    let user = goal.source_basis[0];
+    let passed = basis
+        .sources
+        .iter()
+        .find(|s| {
+            matches!(&s.source.payload,
+        SourcePayload::CommandExecution { outcome, .. } if outcome.exit_code == Some(0))
+        })
+        .ok_or("pass Source")?
+        .source
+        .id;
+    let failed = basis.sources.iter().find(|s| matches!(&s.source.payload,
+        SourcePayload::CommandExecution { outcome, .. } if outcome.exit_code.is_some_and(|code| code != 0))).ok_or("failure Source")?.source.id;
+    let mut cp = CheckpointDraft {
+        expected_project_revision: basis.project.revision,
+        work_item_id: Some(id),
+        kind: CheckpointKind::Handoff,
+        goal: goal.statement.clone(),
+        work_state: WorkState::InProgress,
+        state_change: None,
+        source_basis: vec![user],
+        changed_source_basis: vec![],
+        changed_paths: vec![],
+        applied_decisions: vec![],
+        verification: vec![VerificationFact {
+            scoped_run: None,
+            state: VerificationState::Passed,
+            source_id: Some(passed),
+            outcome: Some("Authored passing control".into()),
+        }],
+        user_review: UserReviewFact {
+            state: UserReviewState::Reviewed,
+            source_id: Some(user),
+        },
+        user_acceptance: UserAcceptanceFact {
+            state: UserAcceptanceState::Accepted,
+            source_id: Some(user),
+        },
+        known_limits: vec![],
+        non_goals: vec![],
+        open_questions: vec![],
+        next_step: "Investigate the relay boundary".into(),
+        handoff_to: Some("next-agent".into()),
+    };
+    for (index, case) in [
+        "initial-progress",
+        "blank-path-change",
+        "failed-verification",
+        "paused",
+        "acceptance-rejected",
+        "review-reset",
+        "acceptance-reset",
+        "limit",
+        "new-direction",
+    ]
+    .iter()
+    .enumerate()
+    {
+        match *case {
+            "blank-path-change" => {
+                cp.changed_paths = vec!["python/worker.py".into()];
+                cp.changed_source_basis = vec![user];
+                cp.verification.clear();
+            }
+            "failed-verification" => {
+                cp.changed_paths.clear();
+                cp.changed_source_basis.clear();
+                cp.verification = vec![VerificationFact {
+                    scoped_run: None,
+                    state: VerificationState::Failed,
+                    source_id: Some(failed),
+                    outcome: Some("Authored failing control".into()),
+                }];
+            }
+            "paused" => cp.work_state = WorkState::Paused,
+            "acceptance-rejected" => cp.user_acceptance.state = UserAcceptanceState::Rejected,
+            "review-reset" => {
+                cp.user_review = UserReviewFact {
+                    state: UserReviewState::NotRequested,
+                    source_id: None,
+                }
+            }
+            "acceptance-reset" => {
+                cp.user_acceptance = UserAcceptanceFact {
+                    state: UserAcceptanceState::NotRequested,
+                    source_id: None,
+                }
+            }
+            "limit" => cp.known_limits = vec!["Relay cancellation is still uninvestigated".into()],
+            "new-direction" => cp.next_step = "Investigate cancellation propagation next".into(),
+            _ => (),
+        }
+        cp.expected_project_revision = f.operations.canonical_basis(f.project)?.project.revision;
+        Store::open(f.operations.layout().canonical_store())?.record_checkpoint(
+            OperationId::from_bytes((5000_u128 + index as u128).to_be_bytes()),
+            f.project,
+            cp.clone(),
+        )?;
+        let stale = work(&f, id)?;
+        assert_eq!(stale.reading.name_explanations, original_name, "{case}");
+        assert!(
+            stale
+                .reading
+                .summary_explanations
+                .iter()
+                .all(|r| r.state == ExplanationState::Stale),
+            "{case}"
+        );
+        let plan = f.operations.prepare_explanation(f.project, summary, "en")?;
+        assert!(
+            !plan.evidence.iter().any(|e| e.key == "result"),
+            "blank report must stay missing"
+        );
+        assert!(plan.evidence.len() <= 8, "no full history");
+        let field = |key: &str| plan.evidence.iter().find(|e| e.key == key).ok_or("field");
+        assert_eq!(field("latest_state")?.field, "work_state");
+        assert_eq!(field("review")?.field, "user_review");
+        assert_eq!(field("acceptance")?.field, "user_acceptance");
+        assert_eq!(
+            field("verification")?.sources,
+            vec![
+                if *case == "initial-progress" || *case == "blank-path-change" {
+                    passed.to_string()
+                } else {
+                    failed.to_string()
+                }
+            ]
+        );
+        if *case == "blank-path-change" {
+            assert_eq!(
+                field("verification")?.content["coverage"],
+                "historical_after_reported_change"
+            );
+            assert_eq!(
+                field("verification_coverage")?.content["reported_change"],
+                json!(null)
+            );
+            assert_eq!(
+                field("verification_coverage")?.content["paths"],
+                json!(["python/worker.py"])
+            );
+        }
+        if *case == "review-reset" {
+            assert_eq!(field("review")?.content["state"], "NotRequested");
+        }
+        if *case == "acceptance-reset" {
+            assert_eq!(field("acceptance")?.content["state"], "NotRequested");
+        }
+        if *case == "new-direction" {
+            assert_eq!(
+                field("next_step")?.content,
+                "Investigate cancellation propagation next"
+            );
+        }
+        let mut incomplete = draft(&plan, "An incompatible Goal-only progress claim");
+        incomplete.paragraphs[0].evidence_keys = vec!["goal".into()];
+        assert!(f
+            .operations
+            .compose_subject_explanation(f.project, summary, incomplete)
+            .is_err());
+        let prose = match *case {
+            "initial-progress" => "Relay investigation is in progress without a reported result; a check passed and review and acceptance were recorded, which do not establish completion.",
+            "blank-path-change" => "Relay investigation is in progress without a result report. A worker change follows the historical passing check; current verification coverage is unknown.",
+            "failed-verification" => "Relay investigation has no reported result and its latest check failed; the work remains in progress.",
+            "paused" => "Relay investigation is paused without a reported result; its latest check failed.",
+            "acceptance-rejected" => "Relay investigation is paused without a reported result, with failed verification and rejected acceptance.",
+            "review-reset" => "Relay investigation is paused with failed verification and rejected acceptance; review has reset to not requested. No result is reported.",
+            "acceptance-reset" => "Relay investigation is paused with failed verification. Review and acceptance are not requested; no result is reported.",
+            "limit" => "Relay investigation is paused with failed verification and no result report. Cancellation remains uninvestigated; review and acceptance are not requested.",
+            _ => "Relay investigation is paused with failed verification and no reported result. Cancellation remains uninvestigated, review and acceptance are not requested, and cancellation propagation is the next investigation.",
+        };
+        record(&f, summary, "en", prose)?;
+        let current = work(&f, id)?;
+        assert_eq!(
+            work_answers(&current, "en", FixedLocale::English)
+                .card_summary()
+                .map(|s| s.text.as_str()),
+            Some(prose)
+        );
+        assert_eq!(
+            current
+                .reading
+                .summary_explanations
+                .iter()
+                .find(|r| r.language == "ko")
+                .ok_or("ko")?
+                .state,
+            ExplanationState::Stale
+        );
+        record(
+            &f,
+            summary,
+            "ko",
+            "진행 근거를 갱신한 기술 검증용 요약입니다. 실제 사용자 평가가 아닙니다.",
+        )?;
+    }
+    // The selected verification Source has normal canonical forgetting consequences.
+    f.operations
+        .forget_record(f.project, CanonicalRecordId::Source(failed), user)?;
+    assert!(work(&f, id)?
+        .reading
+        .summary_explanations
+        .iter()
+        .all(|r| r.state == ExplanationState::Deleted));
+    assert_eq!(work(&f, id)?.reading.name_explanations, original_name);
+    Ok(())
+}

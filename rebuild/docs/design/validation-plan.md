@@ -3343,3 +3343,18 @@ Its explicit CLI measurement support retains original drafts and process/size/re
 receipts without generating prose or assigning semantic scores. Source-first expected
 tasks, generated interpretation, structural admission, independent review and user
 acceptance remain separate. Unavailable A/B/D conditions are not inferred from C.
+
+### Work progress publication controls
+
+Focused Operations `work_publication` verifies blank-report state/check failure,
+review/rejection/acceptance reset, limits/direction, verification after changed paths,
+exact field Sources, missing reports, failed admission, language isolation and
+forgetting through actual prepare/compose/record/public projection. Viewer
+`work_publication` exercises unfinished progress through CLI preparation, MCP host
+production, CLI/MCP reads, HTTP and script-free export, without an article or reads
+mutating records. Existing article-only deletion/expiry, Goal correction/forgetting,
+no-change report and out-of-order history controls retain independent responsibilities.
+Use `scripts/validate focused`; inspect preserved streams and numeric exits. These
+are authored controls, not real user activity, independent meaning review or human
+acceptance. Current-path actual-record examples and their gaps are recorded in the
+existing reader applicability report; no gate, Final or official V11 is invoked.

@@ -519,3 +519,12 @@ records without reviving stale prose. Current v6 units already express integrati
 overview and distinct flows through cited narrative, so this change introduces no
 new format/version, decoder, publication scope or dependency pruning. Work name,
 summary, article and Decision plans retain their independent contracts and budgets.
+
+### Work progress preparation
+
+Field-selected Work progress changes ephemeral summary preparation, instructions and
+admission fingerprints; earlier Goal/report-only summaries become Stale and require
+explicit prepare/compose/record. Goal-only name and article contracts retain their
+independent meaning. Existing v6 evidence already encodes record/revision/field and
+Sources, so no durable format/version, decoder, canonical schema or migration changes.
+Original historical outputs remain unchanged; no automatic regeneration or rebinding.

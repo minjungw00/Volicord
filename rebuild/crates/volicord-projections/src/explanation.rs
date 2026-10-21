@@ -294,6 +294,21 @@ pub fn prepare_explanation(
     };
     let index = crate::reading::WorkHistoryIndex::new(canonical);
     let history = index.0.get(&work).ok_or("Work not found in this Project")?;
+    if matches!(
+        subject,
+        ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
+    ) {
+        let evidence = short_work_evidence(
+            history,
+            matches!(subject, ExplanationSubject::WorkSummary(_)),
+        );
+        let question = if matches!(subject, ExplanationSubject::WorkName(_)) {
+            "work_name"
+        } else {
+            "work_summary"
+        };
+        return finish_plan(canonical, subject, question, language, evidence);
+    }
     let selected = history.materialize(canonical);
     let mut evidence = Vec::new();
     let mut add = |key: &str, basis: &crate::ReadingBasis, content: Value| {
@@ -313,16 +328,8 @@ pub fn prepare_explanation(
         });
     };
     add("goal", &selected.reading.goal.basis, json!(selected.title));
-    if matches!(subject, ExplanationSubject::WorkName(_)) {
-        return finish_plan(canonical, subject, "work_name", language, evidence);
-    }
     if let Some(result) = &selected.reading.answers.result {
         add("result", &result.basis, json!(result.original_text));
-    }
-    if matches!(subject, ExplanationSubject::WorkSummary(_)) {
-        // The selected result includes its exact report revision and Sources.
-        // Absence is fingerprinted, so a first/new result requires new admission.
-        return finish_plan(canonical, subject, "work_summary", language, evidence);
     }
     add(
         "next_step",
@@ -471,6 +478,145 @@ pub fn prepare_explanation(
         }));
     }
     finish_plan(canonical, subject, "work_outcome", language, evidence)
+}
+
+/// Select fields, not the article history. Every qualification has its own exact
+/// revision/field/Source basis; command bodies are never needed to report facts.
+fn short_work_evidence(
+    history: &crate::reading::WorkHistory<'_>,
+    summary: bool,
+) -> Vec<ExplanationEvidence> {
+    let goal = history.goal;
+    let mut evidence = vec![ExplanationEvidence {
+        key: "goal".into(),
+        record_kind: "context_item".into(),
+        identity: goal.id.to_string(),
+        revision: goal.revision,
+        field: "statement".into(),
+        sources: goal.source_basis.iter().map(ToString::to_string).collect(),
+        content: json!(goal.statement),
+    }];
+    if !summary {
+        return evidence;
+    }
+    let mut add = |key: &str,
+                   cp: &volicord_context::Checkpoint,
+                   field: &str,
+                   sources: Vec<volicord_context::SourceId>,
+                   content: Value| {
+        evidence.push(ExplanationEvidence {
+            key: key.into(),
+            record_kind: "checkpoint".into(),
+            identity: cp.id.to_string(),
+            revision: cp.revision,
+            field: field.into(),
+            sources: sources.iter().map(ToString::to_string).collect(),
+            content,
+        });
+    };
+    if let Some(report) = history.checkpoints.iter().rev().find(|cp| {
+        cp.state_change
+            .as_deref()
+            .is_some_and(|s| !s.trim().is_empty())
+    }) {
+        add(
+            "result",
+            report,
+            "state_change",
+            report.source_basis.clone(),
+            json!(report.state_change),
+        );
+        if history
+            .checkpoints
+            .last()
+            .is_some_and(|latest| latest.id != report.id)
+            && (!report.known_limits.is_empty() || !report.non_goals.is_empty())
+        {
+            add(
+                "result_limits",
+                report,
+                "known_limits,non_goals",
+                report.source_basis.clone(),
+                json!({"known_limits":report.known_limits,"non_goals":report.non_goals}),
+            );
+        }
+    }
+    if let Some(latest) = history.checkpoints.last() {
+        add(
+            "latest_state",
+            latest,
+            "work_state",
+            latest.source_basis.clone(),
+            json!({"observed_at":latest.recorded_at.as_unix_micros(),"work_state":format!("{:?}", latest.work_state)}),
+        );
+        add(
+            "review",
+            latest,
+            "user_review",
+            latest.user_review.source_id.into_iter().collect(),
+            json!({"state":format!("{:?}", latest.user_review.state),"source_id":latest.user_review.source_id.map(|id|id.to_string())}),
+        );
+        add(
+            "acceptance",
+            latest,
+            "user_acceptance",
+            latest.user_acceptance.source_id.into_iter().collect(),
+            json!({"state":format!("{:?}", latest.user_acceptance.state),"source_id":latest.user_acceptance.source_id.map(|id|id.to_string())}),
+        );
+        add(
+            "limits",
+            latest,
+            "known_limits,non_goals",
+            latest.source_basis.clone(),
+            json!({"known_limits":latest.known_limits,"non_goals":latest.non_goals}),
+        );
+        add(
+            "next_step",
+            latest,
+            "next_step",
+            latest.source_basis.clone(),
+            json!(latest.next_step),
+        );
+    }
+    if let Some((position, verification)) = history
+        .checkpoints
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, cp)| !cp.verification.is_empty())
+    {
+        let later_change = history.checkpoints[position + 1..]
+            .iter()
+            .rev()
+            .find(|cp| crate::reading::has_reported_change(cp));
+        add(
+            "verification",
+            verification,
+            "verification",
+            verification
+                .verification
+                .iter()
+                .filter_map(|v| v.source_id)
+                .collect(),
+            json!({"observed_at":verification.recorded_at.as_unix_micros(),"facts":verification.verification.iter().map(|v|json!({"state":format!("{:?}",v.state),"source_id":v.source_id.map(|id|id.to_string()),"outcome":v.outcome,"scoped_run":v.scoped_run})).collect::<Vec<_>>(),
+                "coverage":if later_change.is_some() {"historical_after_reported_change"} else {"no_later_reported_change_not_coverage_proof"}}),
+        );
+        if let Some(change) = later_change {
+            add(
+                "verification_coverage",
+                change,
+                "state_change,changed_paths,changed_source_basis",
+                change
+                    .source_basis
+                    .iter()
+                    .chain(&change.changed_source_basis)
+                    .copied()
+                    .collect(),
+                json!({"reported_change":change.state_change,"paths":change.changed_paths,"source_ids":change.changed_source_basis}),
+            );
+        }
+    }
+    evidence
 }
 
 fn prepare_decision(
@@ -633,7 +779,7 @@ fn finish_plan(
         .collect();
     let questions = match subject {
         ExplanationSubject::WorkName(_) => "Author exactly one heading naming this Work from its original Goal. Describe the requested problem/action, never claim an implementation or successful outcome. No technical Source is needed for a request-grounded name.",
-        ExplanationSubject::WorkSummary(_) => "Author exactly one synopsis connecting the Goal problem to the actually reported approach/outcome. When result exists cite result as well as goal; preserve partial, failed and unchanged outcomes. Without result describe only the request and unreported outcome. Canonical reports establish reported meaning, not current-code verification. Any implementation claim beyond the report needs its own permitted Source citations. This is an independently admitted summary, not an extract of an article.",
+        ExplanationSubject::WorkSummary(_) => "Author exactly one concise current-progress synopsis connecting the Goal to the actually reported approach/result and latest state. Use all selected field keys; summarize material qualifications rather than listing metadata. Without result, keep the report missing while describing supported progress. Preserve partial, failed, paused, abandoned and no-change outcomes. Review and acceptance are independent, including explicit resets; checks never imply completion or acceptance. Latest nonempty verification is a recorded fact, not current-code proof; verification_coverage marks a later meaningful change even with blank report. Preserve result_limits and current limits and next direction; a blank next_step has no older fallback. Canonical reports and checks establish reported meaning without command bodies. Claims about observed implementation/execution beyond these facts need their own permitted Source citations. Never invent an approach, completion or acceptance or extract article prose. This summary has independent admission and lifetime.",
         ExplanationSubject::Work(_) => "Author heading/synopsis and a task-specific article from goal, reported result/change:*, chronological course:* history, verification, next_step and limits:*. Reports establish no code mechanism. Read permitted callers/helpers/config/tests; paths alone prove no effect. Summarize command outcomes with citations; raw logs/JSON stay in Source inspection. Later reports never erase earlier failures or prove a retest.",
         ExplanationSubject::Repository(_) => "Explain the repository as a system across its material responsibilities, relationships and distinct significant operations, independently of Work. repository_basis supports scope, identity and limitations; technical meaning needs actual retrieved Source evidence. Inventory/structural coverage is not complete semantic understanding.",
         ExplanationSubject::Decision(_) => "Explain question_context, alternatives/consequences, recorded recommendation AND its rationale, actual user choice/delegation and only recorded user_rationale, scope/assumptions/revisit limits. Distinguish later interpretation. Missing technical Source limits verification, never erases recorded reasons. Selection proves no implementation or performance. Invent no user reason.",
@@ -821,6 +967,17 @@ pub fn validate_explanation(
     {
         return Err(
             "Work name describes the Goal; technical claims belong in summary/article".into(),
+        );
+    }
+    if matches!(plan.subject, ExplanationSubject::WorkSummary(_))
+        && plan
+            .evidence
+            .iter()
+            .any(|e| !response.paragraphs[0].evidence_keys.contains(&e.key))
+    {
+        return Err(
+            "Work summary must ground Goal and every selected current-progress qualification"
+                .into(),
         );
     }
     if response

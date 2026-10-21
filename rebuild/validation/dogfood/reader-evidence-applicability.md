@@ -256,3 +256,21 @@ are documented in [the independent follow-up](../end-to-end/multi-repository/rep
 That evidence does not renew this historical campaign, establish trusted automatic
 task-time capture, supply missing command bodies, erase user rejection or certify
 human acceptance. The fresh review package's own manifest owns its final candidate.
+
+## Work progress summary delivery (2026-10-22)
+
+Starting candidate: clean `cdc37dade10e51417fb28a1ed5d00e7a639ffcdc`.
+This changes the earlier intentional Goal/report-only summary contract. The shared
+ignored context remains untouched. No trusted SessionStart activation, new provider
+permission, independent qualitative review or human acceptance is inferred.
+
+| Case | Applicable claim | Limit |
+| --- | --- | --- |
+| Operations `work_publication::blank_reports_select_current_progress_and_invalidate_each_material_qualification` | Actual preparation/compose/record/read of blank-report state, failure, changed-path historical coverage, rejection/resets, limits and direction; exact field Sources, stale sibling language and forgetting | Authored canonical control, not actual task activity; failed assertions and compiler attempts remain in focused artifacts |
+| Viewer `work_publication::unfinished_blank_report_progress_reaches_public_preparation_and_readers` | CLI preparation and MCP production of a paused, failed, rejected, unfinished result with no report; CLI/MCP, HTTP and script-free export preserve the independent summary without an article; reads do not mutate facts | Authored prose; transport/admission is not semantic or human approval |
+| Existing independent `work_publication` controls | No-change report, Goal correction/forgetting, article-only Source deletion, actually cited summary expiry, out-of-order report and exact Work/language replacement | Fixture controls; previous outputs and feedback are historical |
+
+Runner artifacts use `rebuild/.local/validation/*-work-progress-*`; original failed
+attempts are preserved alongside corrected successful controls. Complete numeric
+results and current-path output locations are reported in the delivery conversation.
+The authoritative gate, Final, official V11 and provider qualification are excluded.

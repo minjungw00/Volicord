@@ -526,13 +526,16 @@ evidence; no generated Product wording is checked into these design owners.
 
 Use current explanation format 6 with independently admitted Work name, summary
 and article publications, as specified by Projection. Name is grounded in the Goal;
-summary binds the Goal and selected actual report (or explicitly unreported outcome).
+summary binds the Goal, selected actual report (or explicitly unreported outcome),
+latest state, applicable recorded verification/coverage, independent review and
+acceptance including resets, material limits and current direction. Projection owns
+the narrow field-selection rules; blank reports do not hide current progress.
 Technical claims retain their own permitted Source dependencies. Each publication
 has its own preparation, exact language/realization, retention and replacement.
 Unavailable article support withholds that article without erasing a separately
 current card. Never extract text from an invalid realization, remove dependencies
 after admission or silently combine scopes under one article identity. Goal correction
-or forgetting still invalidates all genuinely dependent scopes. A new reported result
+or forgetting still invalidates all genuinely dependent scopes. New selected progress
 requires fresh summary admission while a Goal-only name remains current.
 
 The explicit producer is the current authorized host using Work explanation

@@ -97,7 +97,7 @@ fn produce(
             vec![json!({"question":"heading","text":text[0],"evidence_keys":["goal"],"sources":[]})]
         }
         "summary" => vec![
-            json!({"question":"synopsis","text":text[1],"evidence_keys":["goal","result"],"sources":[]}),
+            json!({"question":"synopsis","text":text[1],"evidence_keys":request["plan"]["evidence"].as_array().ok_or("evidence")?.iter().map(|e| e["key"].clone()).collect::<Vec<_>>(),"sources":[]}),
         ],
         _ => vec![
             json!({"question":"heading","text":if language=="ko" {"관측한 쿼리 반환 구조"}else{"Observed query return mechanism"},"evidence_keys":["goal"],"sources":[]}),
@@ -367,7 +367,7 @@ fn cited_summary_has_its_own_exact_http_authority_and_cannot_borrow_article_iden
             .prepare_explanation(f.project, ExplanationSubject::WorkSummary(id), "en")?;
     let response=f.operations.compose_subject_explanation(f.project,plan.subject,WorkExplanationDraft {
         plan_fingerprint:plan.fingerprint,language:"en".into(),generator:ExplanationGenerator {host:"authored-control".into(),session:"summary-citation".into(),agent:None,model:None},
-        paragraphs:vec![WorkReaderUnit {question:ExplanationQuestion::Synopsis,text:"The report describes an unchanged input return; the observed implementation directly returns value.".into(),evidence_keys:vec!["goal".into(),"result".into()],sources:vec![WorkClaimRange {source_id:source.to_string(),field:"body".into(),use_kind:ExplanationSourceUse::CurrentCode,start_byte:0,end_byte:57,claim:None}]}]})?;
+        paragraphs:vec![WorkReaderUnit {question:ExplanationQuestion::Synopsis,text:"The report describes an unchanged input return; the observed implementation directly returns value.".into(),evidence_keys:plan.evidence.iter().map(|e|e.key.clone()).collect(),sources:vec![WorkClaimRange {source_id:source.to_string(),field:"body".into(),use_kind:ExplanationSourceUse::CurrentCode,start_byte:0,end_byte:57,claim:None}]}]})?;
     let retained = f.operations.record_explanation(
         f.project,
         ExplanationSubject::WorkSummary(id),
@@ -598,4 +598,122 @@ fn source_id_from_hex(value: &str) -> Result<SourceId, Box<dyn Error>> {
         *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)?;
     }
     Ok(SourceId::from_bytes(bytes))
+}
+
+#[test]
+fn unfinished_blank_report_progress_reaches_public_preparation_and_readers(
+) -> Result<(), Box<dyn Error>> {
+    let mut input: Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+    input["prior_checkpoint_count"] = json!(0);
+    input["later_checkpoint_count"] = json!(0);
+    input["unassociated_checkpoint"] = json!(false);
+    input["decisions"] = json!([]);
+    input["works"] = json!([{"key":"relay","title":"Investigate relay cancellation before changing it.","paths":[],"checkpoints":[{
+        "key":"unfinished","work":"Paused","verification":"Failed","review":"NotRequested","acceptance":"Rejected",
+        "state_change":null,"next_step":"Inspect cancellation propagation","limits":["Cancellation propagation remains uninvestigated"]}]}]);
+    let f = reading_fixture::fixture_scenario(input)?;
+    let id = f.goals["relay"];
+    let prepared: Value = serde_json::from_str(&cli(
+        &f,
+        &[
+            "--json",
+            "work",
+            "explain",
+            "prepare",
+            "--work",
+            &id.to_string(),
+            "--scope",
+            "summary",
+        ],
+    )?)?;
+    let keys: Vec<_> = prepared["plan"]["evidence"]
+        .as_array()
+        .ok_or("evidence")?
+        .iter()
+        .map(|e| e["key"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "goal",
+            "latest_state",
+            "review",
+            "acceptance",
+            "limits",
+            "next_step",
+            "verification"
+        ]
+    );
+    assert_eq!(
+        prepared["plan"]["evidence"][1]["content"]["work_state"],
+        "Paused"
+    );
+    assert_eq!(
+        prepared["plan"]["evidence"][6]["content"]["facts"][0]["state"],
+        "Failed"
+    );
+    let text = ["Investigate relay cancellation", "Relay investigation is paused without a reported result. Verification failed and acceptance was rejected; review is not requested. Cancellation propagation remains uninvestigated and is the next direction.", ""];
+    let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    for scope in ["name", "summary"] {
+        produce(
+            &mut host,
+            &f,
+            "en",
+            scope,
+            SourceId::from_bytes([0; 16]),
+            &text,
+        )?;
+    }
+    let canonical = f.operations.canonical_basis(f.project)?;
+    let privacy = f.operations.privacy_status(f.project)?;
+    let status: Value = serde_json::from_str(&cli(&f, &["--json", "status"])?)?;
+    assert_eq!(
+        status["selected_work"]["answers"]["work_summary"]["prose"][0]["text"],
+        text[1]
+    );
+    assert_eq!(
+        status["selected_work"]["answers"]["explanation_state"],
+        "missing"
+    );
+    assert!(cli(&f, &["status"])?.contains(text[1]));
+    for tool in ["recall", "repository_understanding"] {
+        let read = call(
+            &mut host,
+            tool,
+            json!({"project_id":f.project.to_string(),"requested_language":"en","fixed_locale":"en"}),
+        )?;
+        assert!(read.to_string().contains(text[1]), "{tool}");
+    }
+    for path in [
+        "/?view=overview&language=en&locale=en".to_owned(),
+        format!("/?view=work&work={id}&language=en&locale=en"),
+    ] {
+        assert!(get(&f, &path)?.contains(text[1]));
+    }
+    let adapter = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let snapshot = adapter.render_snapshot(
+        &ViewerRequest {
+            project_id: f.project,
+            locale: ViewerLocale::English,
+            view: ViewerView::Work { work: Some(id) },
+            requested_language: "en".into(),
+            guarded_request: None,
+        },
+        TimestampMicros::from_unix_micros(1),
+    )?;
+    assert!(snapshot.html.contains(text[1]));
+    assert!(!snapshot.html.contains("<script"));
+    let destination = f._temporary.path().join("unfinished.html");
+    f.operations.publish_viewer_snapshot(
+        &snapshot.html,
+        &destination,
+        f.project,
+        &snapshot.canonical_read_fingerprint,
+        &snapshot.explanations,
+        &snapshot.verification_basis,
+    )?;
+    assert!(std::fs::read_to_string(destination)?.contains(text[1]));
+    assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
+    assert_eq!(privacy, f.operations.privacy_status(f.project)?);
+    Ok(())
 }

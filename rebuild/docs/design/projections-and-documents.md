@@ -464,6 +464,40 @@ recording time and generator status without duplicating original evidence text.
 Canonical links cover every used record and Source. No canonical schema, Viewer
 database, provider invocation, background opt-in or adoption authority is introduced.
 
+#### Independent Work progress publications
+
+`WorkName` selects only the exact Goal statement/revision/Sources. `WorkSummary`
+selects fields before article/history materialization, within the same Project/Work,
+ordered by `(recorded_at, checkpoint_id)`. It never receives article prose, Decisions,
+Project Purpose or complete chronological evidence as a substitute for progress.
+
+| Key | Selection and exact field | Meaning / absence |
+| --- | --- | --- |
+| `goal` | Current Goal `statement` | Request, never achieved outcome |
+| `result` | Latest nonblank `state_change` | Reported approach/result; later blanks do not erase it; absent remains unreported |
+| `latest_state` | Latest Checkpoint `work_state` | Independent lifecycle, never inferred from checks; Goal-only is Open |
+| `verification` | Latest nonempty `verification` | Individual recorded facts/outcomes and their own Sources; no command body needed |
+| `verification_coverage` | Latest meaningful change after selected verification: `state_change,changed_paths,changed_source_basis` | Historical verification after change even with blank report; absence is no proof of coverage |
+| `review`, `acceptance` | Latest Checkpoint `user_review`, `user_acceptance`, independently | Preserve explicit NotRequested reset and rejection; no inherited approval |
+| `limits` | Latest Checkpoint `known_limits,non_goals` | Current qualifications, including empty replacement |
+| `result_limits` | Selected report's `known_limits,non_goals`, when nonempty and distinct from latest | Do not drop the earlier report's qualifications when later progress is recorded |
+| `next_step` | Latest Checkpoint `next_step` | Current direction; blank never falls back to an older direction |
+
+Each key preserves exact record identity/revision/field and only that field's Source
+basis. Verification coverage uses the shared reported-change predicate, including
+changed paths or changed Sources; it does not infer execution or assertions from
+paths. Selected revisions, content, field Sources and relevant conflicts/status enter
+the summary fingerprint, even when a new Checkpoint has no report. A correction,
+forgetting, material state/check/review/reset/limit/direction change requires explicit
+fresh preparation and admission. Earlier unselected history and unrelated article
+Sources do not become dependencies. The single synopsis must reference Goal and all
+selected qualification keys. This establishes structural grounding, not prose truth;
+authoring must keep material qualifications and the missing report meaningful.
+Record-only facts survive disposal of uncited command/file bodies. Actual Source
+citations independently retain all currentness, expiry, deletion and forgetting
+consequences. Replacement is exact Project/Work/scope/language, with independent
+name/summary/article validity. Reads and state changes never initiate generation.
+
 #### Explanation byte contract
 
 All dimensions are UTF-8 bytes, including JSON string escaping. Character count,
