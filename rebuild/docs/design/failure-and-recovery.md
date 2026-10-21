@@ -482,6 +482,13 @@ stored analysis. Ordinary reading performs neither action.
 
 ### Exact retained evidence read failure
 
+An intact Repository MCP result exceeding the existing transport limit reports
+its measured UTF-8 result size and limit, without partial prose. Recovery points
+to the same Project/language in local `repository explain read` or the Repository
+Viewer, preserving the selected Runtime. An oversized Overview may suggest a
+scoped MCP read, explicitly subject to the same limit. Reading an already retained
+article requires no new preparation, generation, Source retention or transmission.
+
 Repeated Guarded confirmation for an already answered exact request revision is
 refused under the Local Operations mutation lock before recording a user Source.
 The original response and canonical basis remain unchanged for either repeated

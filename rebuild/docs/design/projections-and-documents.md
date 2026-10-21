@@ -528,8 +528,11 @@ request-body bound applies to mutation requests, not explanation read responses.
 Dogfood retains up to 32 MiB process stdout / 1 MiB stderr; private review body bounds
 remain 1 MiB per selected stage / 32 MiB per projection with explicit incompleteness.
 Those aggregate bounds are not new per-explanation storage/decoder limits.
-`repository_understanding` uses full shared answers and section cardinality bounds;
-its MCP serializer currently has no Recall-style byte ceiling. External host capture
+`repository_understanding` uses full shared answers and section cardinality bounds.
+A current Repository article, including the scoped article read, uses the complete
+256 KiB MCP result bound without Recall-style field omissions. Over-bound reads
+report measured size and exact local CLI/Viewer reading alternatives; preparation
+or regeneration is not recovery for a retained document. External host capture
 limits remain separately observable and cannot be inferred from local decode success.
 
 Reads select the latest locally inserted envelope per publication subject/language and recompute
@@ -2212,8 +2215,9 @@ including rows beyond display bounds, remain in an explicitly disclosed JSON rea
 model and independent canonical audit. No assertion or comparable retest is inferred from labels, quotations or exits.
 
 The shared live/offline article renderer uses one compact native TOC disclosure.
-The closed control is sticky; its expanded outline occupies normal flow and never
-covers the selected text. Basic links work without JavaScript. Material warning labels distinguish latest reported failure, prior adverse
+Both the closed control and expanded outline remain sticky after deep scrolling,
+with a bounded independently scrollable list and target offsets that keep the
+selected text visible. Basic links work without JavaScript. Material warning labels distinguish latest reported failure, prior adverse
 observations, coverage uncertainty, Source unavailability and rejected acceptance;
 missing prose alone is not critical. Claim-purpose evidence disclosures point to
 exact admitted Source selections and original records, with code before optional

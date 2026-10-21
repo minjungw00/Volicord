@@ -180,7 +180,7 @@ impl HostAdapter {
         };
         Some(match response {
             Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
-            Err(error) => rpc_error(id, -32602, &error.to_string()),
+            Err(error) => rpc_host_error(id, error),
         })
     }
 
@@ -235,13 +235,13 @@ impl HostAdapter {
         };
         match result {
             Ok(value)
-                if name == "work_explanation"
-                    || name == "decision_explanation"
-                    || (name == "repository_understanding"
-                        && (arguments["reading_focus"] == "repository_explanation"
-                            || value["repository_explanation"]["explanation_state"]
-                                == "current")) =>
+                if name == "repository_understanding"
+                    && (arguments["reading_focus"] == "repository_explanation"
+                        || value["repository_explanation"]["explanation_state"] == "current") =>
             {
+                repository_read_tool_result(value, &arguments)
+            }
+            Ok(value) if name == "work_explanation" || name == "decision_explanation" => {
                 explanation_tool_result(value)
             }
             Ok(value)
@@ -3046,10 +3046,41 @@ fn explanation_tool_result(value: Value) -> Result<Value, HostError> {
     // Full grounding is never shortened to fit transport. Avoid duplicating a
     // 128 KiB plan as escaped JSON in both text and structured content.
     let result = json!({"content":[{"type":"text","text":"Exact Product explanation result is in structuredContent."}],"structuredContent":value,"isError":false});
-    if result.to_string().len() > volicord_operations::HOST_READ_RESULT_BYTE_BUDGET {
-        return Err(HostError::new("complete explanation result exceeds MCP transport budget; inspect scoped Source metadata through canonical_inspect or use CLI preparation; no grounding was truncated"));
+    let measured_bytes = result.to_string().len();
+    if measured_bytes > volicord_operations::HOST_READ_RESULT_BYTE_BUDGET {
+        return Err(HostError::with_details(
+            "complete explanation result exceeds MCP transport budget; inspect scoped Source metadata through canonical_inspect or use explicit local explanation commands; no grounding was truncated",
+            json!({"diagnostic":"explanation_transport_budget_exceeded",
+                "measured_result_bytes":measured_bytes,
+                "limit_bytes":volicord_operations::HOST_READ_RESULT_BYTE_BUDGET,
+                "truncated":false}),
+        ));
     }
     Ok(result)
+}
+
+fn repository_read_tool_result(value: Value, arguments: &Value) -> Result<Value, HostError> {
+    explanation_tool_result(value).map_err(|mut error| {
+        if let Some(details) = error.details.as_mut() {
+            let project = &arguments["project_id"];
+            let language = arguments["requested_language"].as_str().unwrap_or("en");
+            let locale = arguments["fixed_locale"].as_str().unwrap_or("en");
+            error.message = "complete explanation result exceeds MCP transport budget; read the retained repository document with CLI repository explain read or Viewer; no grounding was truncated and no regeneration is required".into();
+            details["read_only_recovery"] = json!({
+                "cli_arguments":["--project",project,"repository","explain","read","--language",language],
+                "viewer_arguments":["--project",project,"viewer","open","--view","repository","--language",language,"--locale",locale],
+                "runtime":"Use the same installed binary and selected Runtime as this MCP connection.",
+                "generation_required":false,
+            });
+            if arguments["reading_focus"] != "repository_explanation" {
+                details["scoped_mcp_read"] = json!({"tool":"repository_understanding",
+                    "arguments":{"project_id":project,"requested_language":language,
+                        "fixed_locale":locale,"reading_focus":"repository_explanation"},
+                    "limit_notice":"The scoped document keeps the same transport limit and may also be refused intact."});
+            }
+        }
+        error
+    })
 }
 
 fn tool_catalog() -> Vec<Value> {
@@ -8373,6 +8404,14 @@ fn workflow_disposition_name(value: WorkflowDisposition) -> &'static str {
     }
 }
 
+fn rpc_host_error(id: Value, error: HostError) -> Value {
+    let mut response = rpc_error(id, -32602, &error.to_string());
+    if let Some(details) = error.details {
+        response["error"]["data"] = details;
+    }
+    response
+}
+
 fn rpc_error(id: Value, code: i64, message: &str) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}})
 }
@@ -8814,6 +8853,79 @@ fn work_check_recording_schema() -> Value {
 #[cfg(test)]
 mod draft_budget_tests {
     use super::*;
+
+    #[test]
+    fn explanation_transport_boundary_and_repository_read_recovery_are_exact() {
+        let limit = volicord_operations::HOST_READ_RESULT_BYTE_BUDGET;
+        let empty_bytes = explanation_tool_result(json!({"text":""}))
+            .unwrap()
+            .to_string()
+            .len();
+        for size in [limit - 1, limit, limit + 1] {
+            let value = json!({"text":"x".repeat(size - empty_bytes)});
+            let result = explanation_tool_result(value);
+            if size <= limit {
+                assert_eq!(result.unwrap().to_string().len(), size);
+            } else {
+                let details = result.unwrap_err().details.unwrap();
+                assert_eq!(details["measured_result_bytes"], size);
+                assert_eq!(details["limit_bytes"], limit);
+                assert_eq!(details["truncated"], false);
+            }
+        }
+        let project = ProjectId::from_bytes([9; 16]).to_string();
+        for focus in ["overview", "repository_explanation"] {
+            let args = json!({"project_id":project,"requested_language":"ko-KR",
+                "fixed_locale":"ko","reading_focus":focus});
+            let error =
+                repository_read_tool_result(json!({"text":"한글🙂".repeat(limit / 4)}), &args)
+                    .unwrap_err();
+            let wire = rpc_host_error(json!(7), error);
+            assert_eq!(wire["id"], 7);
+            assert!(wire.get("result").is_none());
+            let details = &wire["error"]["data"];
+            assert_eq!(
+                details["diagnostic"],
+                "explanation_transport_budget_exceeded"
+            );
+            assert!(details["measured_result_bytes"].as_u64().unwrap() > limit as u64);
+            assert_eq!(
+                details["read_only_recovery"]["cli_arguments"],
+                json!([
+                    "--project",
+                    project,
+                    "repository",
+                    "explain",
+                    "read",
+                    "--language",
+                    "ko-KR"
+                ])
+            );
+            assert_eq!(
+                details["read_only_recovery"]["viewer_arguments"],
+                json!([
+                    "--project",
+                    project,
+                    "viewer",
+                    "open",
+                    "--view",
+                    "repository",
+                    "--language",
+                    "ko-KR",
+                    "--locale",
+                    "ko"
+                ])
+            );
+            assert_eq!(details["read_only_recovery"]["generation_required"], false);
+            assert_eq!(
+                details.get("scoped_mcp_read").is_some(),
+                focus == "overview"
+            );
+            let encoded = details.to_string();
+            assert!(encoded.len() < 4096);
+            assert!(!encoded.contains("한글🙂"));
+        }
+    }
 
     #[test]
     fn initial_presentation_preserves_exact_prerequisite_outcome_context() {
