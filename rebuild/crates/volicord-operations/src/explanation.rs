@@ -474,10 +474,15 @@ impl LocalOperations {
                                 preparations += 1;
                                 match self.prepare_subject_explanation(canonical, subject, &language) {
                             Err(e) => {
-                                applicability.limitation = Some(e.reading_failure().unwrap_or(
-                                    if matches!(subject, ExplanationSubject::Repository(_)) { ExplanationFailureReason::ComparisonUnavailable } else { ExplanationFailureReason::Unavailable }));
-                                applicability.repository_comparison = RepositoryComparisonState::Unavailable;
-                                (ExplanationState::Unavailable, None, Some(e.to_string()))
+                                let reason = e.reading_failure().unwrap_or(
+                                    if matches!(subject, ExplanationSubject::Repository(_)) { ExplanationFailureReason::ComparisonUnavailable } else { ExplanationFailureReason::Unavailable });
+                                applicability.limitation = Some(reason);
+                                applicability.repository_comparison = match reason {
+                                    ExplanationFailureReason::Changed => RepositoryComparisonState::Changed,
+                                    ExplanationFailureReason::ComparisonUnavailable => RepositoryComparisonState::Unavailable,
+                                    _ => RepositoryComparisonState::NotChecked,
+                                };
+                                (if reason == ExplanationFailureReason::Changed { ExplanationState::Stale } else { ExplanationState::Unavailable }, None, Some(e.to_string()))
                             },
                             Ok(plan)
                                 if record.state == ManagedDerivedState::Current

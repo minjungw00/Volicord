@@ -3413,3 +3413,13 @@ export. Its Overview and highlighted-code assertions follow the current Reader;
 it does not require the retired duplicate repository-summary card or literal raw
 HTML source prefixes. This is authored technical support, separate from current-host
 normal repository/Work outputs, semantic usefulness and human understanding.
+
+The [investigated publication report](../../validation/end-to-end/multi-repository/investigated-publication-report.md)
+owns the focused source-first/dependent coverage, original-publication A/B byte costs,
+diagram comparison and non-adoption, real Work identity/recovery limits and concrete
+live/offline observations. It supplies no independent or human acceptance. Relevant
+controls are Viewer `complete_reader_mechanisms_fit_together_without_dropping_source_dependencies`,
+Operations `confirmed_repository_changes_are_distinct_from_unavailable_comparison`,
+existing Source/retention/Work tests and current public consumers. Preserve whole
+snapshot/noncited dependencies and grounded editorial headings unless another measured
+obligation establishes a safe necessary policy change; the report does not do so.

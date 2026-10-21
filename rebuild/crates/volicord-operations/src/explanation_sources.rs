@@ -454,7 +454,7 @@ impl LocalOperations {
             if selection.is_none() && excerpt_keys.insert(key) {
                 let mut bytes = range
                     .len()
-                    .min(volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT);
+                    .min(volicord_projections::EXPLANATION_SOURCE_WINDOW_BYTE_LIMIT);
                 while !range.is_char_boundary(bytes) {
                     bytes -= 1;
                 }

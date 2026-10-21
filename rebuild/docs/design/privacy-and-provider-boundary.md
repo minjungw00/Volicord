@@ -808,6 +808,13 @@ Source dependencies. HTTP failure JSON carries a bounded typed reason without
 Source content. Withheld/expired/deleted content cannot populate visible code;
 retained observation fingerprints exclude ephemeral check times.
 
+The read-time aggregate for already permitted explanation windows is 32,768 UTF-8
+bytes, with the existing 16,384-byte per-window bound and 4,096-byte live citation
+chunks. This budget neither expands original Source collection nor retains bytes
+in explanation storage, changes expiry, authorizes transmission or grants access to
+uncited material. Larger embedded reading scope still revalidates every dependency
+before live reading and offline publication, including nonvisible dependencies.
+
 [Reader D-34 / AC-32](reader-experience-design.md) changes default action visibility,
 not read authority. Quiet heading/lead provenance and prominent technical-claim
 actions use the same exact Project/subject/language/realization/unit/claim/range,

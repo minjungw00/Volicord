@@ -125,6 +125,11 @@ Operations supplies typed changed/expired/deleted/withheld/comparison-unavailabl
 causes at the actual failed branch. Reader renderers do not classify diagnostic
 strings. Explained snapshots and known generation basis remain distinct from a
 current comparison; inability to perform that comparison is not confirmed change.
+
+This distinction also applies when Repository preparation detects the mismatch
+before Source validation: confirmed changed identity produces stale content and a
+changed comparison, while an absent repository produces unavailable content and
+comparison-unavailable. Both withhold prose and code without writes or fallback.
 An unavailable or generic dependency is never presented as a more specific cause
 without confirmation. Current publication/Source checks are shared by bounded
 MCP and exact citation reads. Dynamic check time changes no publication token.

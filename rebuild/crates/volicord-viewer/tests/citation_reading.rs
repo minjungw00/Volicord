@@ -248,7 +248,7 @@ fn important_late_multi_citation_survives_initial_and_offline_bounds() -> Result
         11 - answers.source_excerpts.len()
     );
     let total: usize = answers.source_excerpts.iter().map(|e| e.text.len()).sum();
-    assert!(total <= 16_384);
+    assert!(total <= EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT);
     for e in &answers.source_excerpts {
         let index = f
             .realization
@@ -978,7 +978,7 @@ fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
             .iter()
             .map(|e| e.text.len())
             .sum::<usize>()
-            <= 16384
+            <= EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT
     );
     let mut changed = f.realization.clone();
     changed.paragraphs.reverse();
@@ -1010,6 +1010,86 @@ fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
         .iter()
         .any(|s| s.contains("bytes.len() > 32_768")));
     assert!(!html.contains("<script"));
+    Ok(())
+}
+
+#[test]
+fn complete_reader_mechanisms_fit_together_without_dropping_source_dependencies(
+) -> Result<(), Box<dyn Error>> {
+    let full = include_str!("../../volicord-operations/src/operations.rs");
+    let start = full
+        .find("    pub fn publish_viewer_snapshot(")
+        .ok_or("publication start")?;
+    let end = start
+        + full[start..]
+            .find("    pub fn inquiry_frontier(")
+            .ok_or("publication end")?;
+    let mut sources: Vec<_> = (0..11)
+        .map(|i| {
+            (
+                format!("inventory{i}.py"),
+                "# retained inventory\n".repeat(300),
+            )
+        })
+        .collect();
+    sources[7] = ("publication.rs".into(), full[start..end].into());
+    let mut f = Fixture::new_sources(None, true, Some(sources))?;
+    let caller = f.realization.paragraphs[0].citations[7].clone();
+    let unit = &mut f.realization.paragraphs[1];
+    unit.text = "The reader validates Source dependencies before returning bytes; local publication independently revalidates canonical, explanation and verification bases under its mutation lock.".into();
+    unit.citations.push(caller);
+    for citation in &mut unit.citations {
+        citation.claim_start_byte = 0;
+        citation.claim_end_byte = unit.text.len();
+        citation.claim_sha256 = explanation_text_hash(&unit.text);
+    }
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        f.realization.clone(),
+    )?;
+    let privacy = f.ops.privacy_status(f.project)?;
+    let answers = f.answers()?;
+    let mechanism_bytes: usize = f.originals[7..].iter().map(String::len).sum();
+    assert!(mechanism_bytes > 16_384 && mechanism_bytes <= 32_768);
+    assert_eq!(
+        answers.embedded_source_scope[1].state,
+        SourceWindowState::Complete
+    );
+    assert_eq!(
+        answers.embedded_source_scope[1].included_citation_indices,
+        vec![0, 1, 2, 3]
+    );
+    let destination = f.temp.path().join("complete-mechanisms.html");
+    ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .export_snapshot(&f.request(), &destination)?;
+    let offline = fs::read_to_string(destination)?;
+    for html in [f.get("/?view=repository")?, offline] {
+        let shown = code_texts(&html);
+        for original in &f.originals[7..] {
+            assert!(
+                shown.iter().any(|text| text == original),
+                "complete function window missing"
+            );
+        }
+    }
+    assert_eq!(privacy, f.ops.privacy_status(f.project)?);
+    // More embedded bytes grant no fallback authority after Source deletion.
+    let id = &f.realization.paragraphs[1].citations[2].source_id;
+    let mut bytes = [0; 16];
+    for (n, byte) in bytes.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&id[n * 2..n * 2 + 2], 16)?;
+    }
+    f.ops.delete_repository_source_observation(
+        f.project,
+        f.analysis,
+        volicord_context::SourceId::from_bytes(bytes),
+    )?;
+    let denied = f.answers()?;
+    assert_ne!(denied.explanation_state, ExplanationState::Current);
+    assert!(denied.source_excerpts.is_empty());
+    println!("complete production mechanism windows: {mechanism_bytes} bytes");
     Ok(())
 }
 

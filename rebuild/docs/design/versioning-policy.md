@@ -132,6 +132,16 @@ ranking 또는 동등한 rebuildable representation의 compatible read boundary�
 
 ## 7. Generated-document metadata version
 
+Increasing the read-time aggregate of already admitted complete Source windows from
+16,384 to 32,768 bytes changes no retained explanation or document metadata shape.
+The explanation remains exact-current v6; no decoder, conversion or historical
+rebinding is added. Source capture and each embedded window remain bounded to
+16,384 bytes, and exact citation read chunks to 4,096. Existing publications are
+revalidated before showing additional permitted windows. Work name/summary plans,
+retained identities and expiry are unchanged, so this reading change alone requires
+zero short-publication regeneration. Repository flow-role admission separately
+changes Repository preparation fingerprints, as specified by Projection.
+
 Generated-document metadata version은 Markdown/HTML document가 Project, snapshot,
 Decision, Source, coverage, omission, uncertainty, generator와 adoption basis를 어떻게
 기록하는지 식별한다. Content/output format과 metadata version은 구분한다.

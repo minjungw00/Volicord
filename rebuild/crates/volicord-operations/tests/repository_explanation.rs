@@ -421,6 +421,69 @@ fn repository_flow_steps_preserve_grounding_order_and_publication_lifetime(
 }
 
 #[test]
+fn confirmed_repository_changes_are_distinct_from_unavailable_comparison(
+) -> Result<(), Box<dyn Error>> {
+    for change in ["cited", "nearby_noncited", "unrelated_included", "missing"] {
+        let f = fixture()?;
+        let id = source(&observe(&f, "main.py", None)?)?;
+        f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            response(&f, id)?,
+        )?;
+        let before = f.ops.privacy_status(f.project)?;
+        match change {
+            "cited" => fs::write(
+                f.root.join("main.py"),
+                "def salute(name):\n    return '안녕 ' + name\n",
+            )?,
+            "nearby_noncited" => {
+                let text = fs::read_to_string(f.root.join("main.py"))?;
+                fs::write(
+                    f.root.join("main.py"),
+                    format!("{text}\n# outside the citation\n"),
+                )?;
+            }
+            "unrelated_included" => {
+                fs::write(f.root.join(".gitignore"), "ignored.py\n# comment\n")?
+            }
+            _ => fs::rename(&f.root, f.root.with_extension("unavailable"))?,
+        }
+        let read = f.ops.read_repository_explanation(f.project, "en")?;
+        let unavailable = change == "missing";
+        assert_eq!(
+            read.explanation_state,
+            if unavailable {
+                ExplanationState::Unavailable
+            } else {
+                ExplanationState::Stale
+            },
+            "{change}"
+        );
+        assert_eq!(
+            read.applicability.limitation,
+            Some(if unavailable {
+                ExplanationFailureReason::ComparisonUnavailable
+            } else {
+                ExplanationFailureReason::Changed
+            })
+        );
+        assert_eq!(
+            read.applicability.repository_comparison,
+            if unavailable {
+                RepositoryComparisonState::Unavailable
+            } else {
+                RepositoryComparisonState::Changed
+            }
+        );
+        assert!(read.provenance.is_none() && read.source_excerpts.is_empty());
+        assert_eq!(f.ops.privacy_status(f.project)?, before);
+    }
+    Ok(())
+}
+
+#[test]
 fn work_free_retention_reading_and_failed_write_atomicity() -> Result<(), Box<dyn Error>> {
     let f = fixture()?;
     let first =

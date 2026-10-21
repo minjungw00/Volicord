@@ -1533,13 +1533,25 @@ transport completion, not semantic approval or an enduring currentness promise.
 
 ### Complete embedded code windows
 
-The 16,384-byte shared excerpt budget selects whole cited windows. Each authored
+The 32,768-byte shared excerpt budget selects whole cited windows. Each authored
 unit offers its complete set of unique ranges as a bundle; smaller complete
 bundles precede larger ones, with Source identity as deterministic tie-break.
 Additional whole supporting windows may use remaining capacity. No prose role
 (including Narrative versus ReadingPoint) grants priority and no range is divided
 into an equal prefix to claim coverage. Live exact citation pages keep their
 separate 4,096-byte limit and can reach any remaining permitted range.
+
+This is a read-time aggregate, with the existing 16,384-byte maximum per embedded
+window. It does not increase Source observation, preparation, realization, retained
+metadata, HTTP or MCP transport limits. Two actual multi-operation publications
+require 32,435 and 23,051 distinct cited-window bytes; even perfect overlap sharing
+would require 31,593 and 20,943 bytes. At 16,384 bytes their complete authored scope
+lost 9 and 5 windows, including browser command delivery and publication validation.
+Exact shared ranges were already deduplicated; clipping windows or removing essential
+claims would not meet that reading obligation. The scoped aggregate now fits both
+without reauthoring or changing their admitted identities. Above-bound content still
+has explicit omissions; no automatic full-source embedding is promised. Measurements
+and alternatives are recorded in the validation report linked by Validation.
 
 `embedded_source_scope` names original unit indices and included/omitted citation
 indices. A complete code-reading claim requires all its ranges in full. Reader
@@ -1560,6 +1572,12 @@ comparison, corrupt and unsupported content remain distinct. Unknown detail is
 left unknown, never inferred from a diagnostic substring. A failed dependency
 withholds the affected article while independent name/summary and canonical facts
 keep their own authority.
+
+A confirmed repository identity mismatch during preparation is `stale` with
+comparison `changed`, just as a mismatch during later Source validation is. It
+must not be reported as an unavailable comparison. A missing repository remains
+`unavailable` with `comparison_unavailable`; unknown checks remain `not_checked`.
+The reason is carried by the dependency owner, not parsed from diagnostics.
 
 Dynamic comparison times live outside compact publication fingerprints, so a
 continuation preserves stable publication identity while every request rechecks
@@ -1832,18 +1850,13 @@ and generated explanation never create Decisions or Learning participation.
 Current retained Work answers carry a read-time, citation-only `source_excerpts`
 basis from Operations. Each excerpt retains its exact Source/Work revision,
 observation time, citation/range/claim hash and observed comparison. The shared
-bound is 16,384 UTF-8 text bytes, at most 4,096 per unique cited range; clipped
-ranges report displayed byte/line ends and exact omitted bytes, while completely
-omitted ranges keep a counted navigation placeholder. Initial selection shares capacity
-progressively across unique verified ranges, in stable range-identity order. At most
-half of the existing shared budget first serves one representative range per authored
-ReadingPoint: the shortest cited range, with stable range identity breaking ties.
-The remainder (including unused priority capacity) serves all ranges. This permits
-a complete bounded core mechanism instead of prefixes alone, while keeping capacity
-for other ranges. Reading-point priority never changes claim spans or certifies the
-author's relevance; impossible complete inclusion remains explicitly clipped. Duplicate/shared claims consume one share;
-reordering citations cannot starve a later mechanism. This selection makes no claim
-about semantic importance or entailment. No uncited Source, current
+bound is 32,768 UTF-8 text bytes, with complete windows at most 16,384 bytes each.
+The [complete-window contract](#complete-embedded-code-windows) supersedes the earlier
+prefix allocation and ReadingPoint priority: complete unit bundles precede whole
+supporting ranges, independent of prose role. Exact repeated ranges consume one
+share; unavailable or over-bound windows retain counted navigation placeholders.
+Live citation chunks remain independently bounded to 4,096 bytes. Selection changes
+neither claim spans nor semantic importance or entailment. No uncited Source, current
 file fallback or new Source observation is materialized. Only Current permitted
 interpretations supply excerpts. Source bytes remain disposable managed content;
 they are never copied into the retained explanation envelope.

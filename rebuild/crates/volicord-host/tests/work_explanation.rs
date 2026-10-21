@@ -1493,15 +1493,15 @@ fn cited_code_bounds(excerpt: bool) -> Result<(), Box<dyn Error>> {
     let answers = work_answers(w, "en", FixedLocale::English);
     assert_eq!(answers.explanation_state, ExplanationState::Current);
     let used: usize = answers.source_excerpts.iter().map(|e| e.text.len()).sum();
-    assert!(used <= 16_384);
+    assert!(used <= EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT);
     assert_eq!(
         answers.omitted_source_excerpt_count + answers.source_excerpts.len(),
         7
     );
     assert_eq!(
         answers.source_excerpts.len(),
-        1,
-        "one complete overlapping range fits; no seven unusable prefixes"
+        2,
+        "two complete overlapping ranges fit; no seven unusable prefixes"
     );
     let mut keys = std::collections::BTreeSet::new();
     for e in &answers.source_excerpts {

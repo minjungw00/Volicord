@@ -268,7 +268,11 @@ pub struct ExplanationSourceExcerpt {
     pub observation_region: Option<Value>,
     pub execution: Option<Value>,
 }
-pub const EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT: usize = 16_384;
+/// Read-time aggregate only: complete cited windows for ordinary multi-operation
+/// explanations. Source capture, retained content and citation pages stay bounded
+/// independently; exceeding this total still reports exact omitted windows.
+pub const EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT: usize = 32_768;
+pub const EXPLANATION_SOURCE_WINDOW_BYTE_LIMIT: usize = 16_384;
 pub const EXPLANATION_SOURCE_RANGE_BYTE_LIMIT: usize = 4_096;
 
 pub fn prepare_explanation(
