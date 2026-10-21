@@ -48,8 +48,8 @@
         ],
         [
           "viewer",
-          "rebuild/crates/volicord-viewer/tests/http.rs",
-          "forgetting_http_cleans_linked_local_content_and_preserves_unrelated"
+          "rebuild/crates/volicord-viewer/tests/work_explanation.rs",
+          "preparation_record_read_correction_delete_and_forget_use_current_operations"
         ]
       ]
     },
@@ -87,7 +87,7 @@
         [
           "viewer",
           "rebuild/crates/volicord-viewer/tests/viewer.rs",
-          "candidate_view_distinguishes_empty_unavailable_corrupt_and_unsupported_dependencies"
+          "ordinary_readers_leave_unrequested_candidate_inspection_explicitly_unrequested"
         ]
       ]
     },
@@ -146,7 +146,7 @@
         [
           "viewer",
           "rebuild/crates/volicord-viewer/tests/http.rs",
-          "concurrent_viewer_forgetting_preserves_cleanup_and_unrelated_controls"
+          "concurrent_guarded_http_responses_commit_one_source_and_preserve_unrelated_context"
         ]
       ]
     },
@@ -203,8 +203,8 @@
         ],
         [
           "viewer",
-          "rebuild/crates/volicord-viewer/tests/viewer.rs",
-          "project_understanding_renders_three_stable_work_items_as_separate_hierarchy"
+          "rebuild/crates/volicord-viewer/tests/reading.rs",
+          "bounded_whole_snapshot_has_only_unique_existing_fragment_targets"
         ]
       ]
     },

@@ -89,11 +89,12 @@ fn request_authenticity(response: &str) -> String {
     response[start..end].to_owned()
 }
 
-#[test]
-fn guarded_http_fallback_preserves_exact_request_revision_and_source() {
-    let (_temporary, server, project) = setup();
+fn new_guarded_request(
+    server: &ViewerServer,
+    project: ProjectId,
+) -> volicord_operations::GuardedEffectCandidate {
     let now = SystemClock.now().expect("clock");
-    let request = server
+    server
         .adapter()
         .operations()
         .create_guarded_request(GuardedEffectDraft {
@@ -117,7 +118,13 @@ fn guarded_http_fallback_preserves_exact_request_revision_and_source() {
                 basis: vec!["test".into()],
             },
         })
-        .expect("create Guarded request");
+        .expect("create Guarded request")
+}
+
+#[test]
+fn guarded_http_fallback_preserves_exact_request_revision_and_source() {
+    let (_temporary, server, project) = setup();
+    let request = new_guarded_request(&server, project);
     let shown = exchange(
         &server,
         format!(
@@ -212,6 +219,85 @@ fn guarded_http_fallback_preserves_exact_request_revision_and_source() {
         .sources
         .iter()
         .any(|basis| basis.source.id == stored.user_response_source_id));
+}
+
+#[test]
+fn concurrent_guarded_http_responses_commit_one_source_and_preserve_unrelated_context() {
+    let (_temporary, server, project) = setup();
+    let operations = server.adapter().operations();
+    let unrelated = operations
+        .initialize_project("Unrelated confirmation control", None)
+        .expect("unrelated Project")
+        .project
+        .id;
+    let unrelated_before = operations
+        .canonical_basis(unrelated)
+        .expect("unrelated before");
+    let request = new_guarded_request(&server, project);
+    let before = operations.canonical_basis(project).expect("before");
+    let runtime = operations.layout().root().to_path_buf();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let handles = (0..2).map(|_| {
+        let runtime = runtime.clone();
+        let request = request.clone();
+        let barrier = barrier.clone();
+        std::thread::spawn(move || {
+            let server = ViewerServer::new(
+                ViewerAdapter::new(LocalOperations::new(RuntimeLayout::new(runtime).expect("layout"))),
+                project, ViewerLocale::English, ViewerView::Overview, "en".into(),
+                AUTHORITY.parse().expect("authority"),
+            ).expect("server");
+            let shown = exchange(&server, format!(
+                "GET /guarded/{} HTTP/1.1\r\nHost: {AUTHORITY}\r\n\r\n", request.confirmation_request_identity));
+            let token = request_authenticity(&shown);
+            let body = format!(
+                "confirmation_request_id={}&request_revision={}&effect_fingerprint={}&confirmation_decision=confirm&user_turn=Confirm+the+exact+test+request&guarded={}",
+                request.confirmation_request_identity, request.request_revision,
+                request.effect_fingerprint, request.confirmation_request_identity,
+            );
+            barrier.wait();
+            exchange(&server, post("/guarded/confirm", &body, &token))
+        })
+    }).collect::<Vec<_>>();
+    let responses = handles
+        .into_iter()
+        .map(|h| h.join().expect("HTTP writer"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        responses
+            .iter()
+            .filter(|r| r.starts_with("HTTP/1.1 303"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        responses
+            .iter()
+            .filter(|r| r
+                .contains("a confirmation response already exists for this exact request revision"))
+            .count(),
+        1
+    );
+    let after = operations.canonical_basis(project).expect("after");
+    assert_eq!(after.sources.len(), before.sources.len() + 1);
+    let response = GuardedStore::open(operations.layout().guarded_store())
+        .expect("store")
+        .response(
+            request.confirmation_request_identity,
+            request.request_revision,
+        )
+        .expect("response")
+        .expect("one committed response");
+    assert!(after
+        .sources
+        .iter()
+        .any(|s| s.source.id == response.user_response_source_id));
+    assert_eq!(
+        unrelated_before,
+        operations
+            .canonical_basis(unrelated)
+            .expect("unrelated after")
+    );
 }
 
 #[test]

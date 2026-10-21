@@ -148,6 +148,14 @@ fn bounded_whole_snapshot_has_only_unique_existing_fragment_targets(
             volicord_context::TimestampMicros::from_unix_micros(123),
         )?
         .html;
+    assert!(fixture.goals.len() >= 3);
+    for work in fixture.goals.values() {
+        assert_eq!(
+            page.matches(&format!("id=\"work-{work}\"")).count(),
+            1,
+            "same-title Works retain their independent snapshot destinations"
+        );
+    }
     let mut ids = std::collections::BTreeSet::new();
     for rest in page.split(" id=\"").skip(1) {
         let id = rest.split('"').next().ok_or("id")?;

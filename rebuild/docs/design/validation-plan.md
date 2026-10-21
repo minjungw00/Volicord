@@ -166,6 +166,13 @@ workspace run. Official V11's Rust fixture-control invocations also remain becau
 they seed/inspect that journey's actual Runtime Home and Project.
 
 Contract coverage is registration/execution evidence, not a semantic oracle.
+Its maintained Viewer entries follow the current reader boundary: canonical
+forgetting is observed through dependent article withdrawal, while mutations
+remain in Operations/CLI/MCP. General readers explicitly leave Candidate
+inspection NotRequested even when that unrelated store fails. The remaining
+request-scoped Guarded HTTP writer has concurrent confirmation/source-uniqueness
+coverage, and whole snapshots retain distinct Work destinations. Retired Viewer
+management/inspection tests are not required entry points or compatibility gates.
 The mapping's owner is `exact_candidate_final_workspace_tests`. Static inspection
 accepts only direct integration-test declarations with plain `#[test]`, strips
 comments/literals, and rejects ignored/conditional/nested/ordinary declarations.

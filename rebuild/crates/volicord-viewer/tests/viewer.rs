@@ -7,6 +7,79 @@ use volicord_operations::LocalOperations;
 use volicord_viewer::*;
 
 #[test]
+fn ordinary_readers_leave_unrequested_candidate_inspection_explicitly_unrequested(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::{
+        CandidateDependencyState, ProjectionDetail, ProjectionReadRequirements, ReadSectionState,
+        WorkSelector,
+    };
+    for state in ["empty", "unavailable", "corrupt", "unsupported"] {
+        let f = reading_fixture::fixture()?;
+        let path = f.operations.layout().candidate_store();
+        match state {
+            "unavailable" => {
+                std::fs::remove_file(&path)?;
+                std::fs::create_dir(&path)?;
+            }
+            "corrupt" => {
+                rusqlite::Connection::open(&path)?.execute("DROP TABLE candidates", [])?;
+            }
+            "unsupported" => {
+                rusqlite::Connection::open(&path)?.execute(
+                    "UPDATE metadata SET value = '999' WHERE key = 'schema_version'",
+                    [],
+                )?;
+            }
+            _ => assert!(f
+                .operations
+                .candidate_basis(f.project)?
+                .candidates
+                .is_empty()),
+        }
+        let canonical = f.operations.canonical_basis(f.project)?;
+        let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+        let (projection, profile) = viewer.operations().project_projection_read_profiled(
+            f.project,
+            WorkSelector::Repository,
+            ProjectionDetail::default(),
+            ProjectionReadRequirements {
+                code: false,
+                inspection: false,
+            },
+        )?;
+        assert_eq!(
+            projection.candidate_dependency,
+            CandidateDependencyState::NotRequested
+        );
+        assert_eq!(
+            projection.sections.inspection,
+            ReadSectionState::NotRequested
+        );
+        assert_eq!(profile.candidate_reads, 0);
+        for view in [
+            ViewerView::Overview,
+            ViewerView::RepositoryExplanation,
+            ViewerView::Work { work: None },
+        ] {
+            let request = ViewerRequest {
+                project_id: f.project,
+                locale: ViewerLocale::English,
+                view,
+                requested_language: "en".into(),
+                guarded_request: None,
+            };
+            let (page, profile) = viewer.render_profiled(&request, "unused")?;
+            assert_eq!(profile.projection.candidate_reads, 0, "{state}");
+            assert!(!page.html.contains("/inspection"));
+            assert!(!page.html.contains("view=tools"));
+            assert!(!page.html.contains("<form"));
+        }
+        assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
+    }
+    Ok(())
+}
+
+#[test]
 fn every_reader_and_snapshot_omits_retired_surfaces_without_loading_bulk_projections(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let f = reading_fixture::fixture()?;
