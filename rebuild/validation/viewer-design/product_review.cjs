@@ -38,14 +38,14 @@ async function sourceJourney(page,c,width,offline,selector,answers,destination){
  const article=page.locator(selector),tasks=sourceTasks(c,destination,answers),critical=[];
  for(const task of tasks){
   const link=await criticalLink(article,task);
-  critical.push(await inspectSource(page,c,width,offline,article,link,task,destination));
+  critical.push(await inspectSource(page,c,width,offline,article,link,task,destination,answers));
  }
  // Keep the separate last-link regression; it cannot discharge a critical task.
  const links=article.locator('a.evidence-link:visible');
- const last=await links.count()?await inspectSource(page,c,width,offline,article,links.last(),null,destination):{state:'absent'};
+ const last=await links.count()?await inspectSource(page,c,width,offline,article,links.last(),null,destination,answers):{state:'absent'};
  return {state:tasks.length?'read':c.source_tasks[destination].state,critical,last};
 }
-async function inspectSource(page,c,width,offline,article,link,task,destination){
+async function inspectSource(page,c,width,offline,article,link,task,destination,answers){
  const target=(await link.getAttribute('href')).slice(1),origin=await link.getAttribute('data-origin');
  const point=page.locator(`[id="${target}"]`);
  let pending=task&&!offline?citationResponse(page,task,0):null;
@@ -61,14 +61,28 @@ async function inspectSource(page,c,width,offline,article,link,task,destination)
    ({bytes,pages}=await criticalBytes(page,point,task,false,pending));
   }else{const status=point.locator('.citation-status');if(await status.count())await status.filter({hasText:/Displayed|표시 범위/}).waitFor();}
  }else if(task)({bytes,pages}=await criticalBytes(page,point,task,true));
- assert.equal(await point.locator('.code-region').last().evaluate(n=>getComputedStyle(n).fontSize),width<=600?'12px':width<=900?'13px':'15px');
+ let omitted=false;
+ if(offline&&!task){
+  const unit=Number(await point.locator('[data-paragraph]').getAttribute('data-paragraph'))-1;
+  const citationIndex=Number(target.match(/-c(\d+)$/)?.[1])-1;
+  const citation=answers.prose[unit]?.citations[citationIndex];assert.ok(citation,'last Source has an exact original binding');
+  assert.equal(await point.getAttribute('data-source-id'),citation.source_id);
+  const fields=['source_id','source_revision','observation_fingerprint','analysis_snapshot_id','repository_snapshot_id','repository_source_id','locator','field','start_byte','end_byte','start_line','end_line','range_sha256','use_kind'];
+  const excerpt=answers.source_excerpts.find(e=>fields.every(key=>e.citation[key]===citation[key]));
+  if(!excerpt){
+   omitted=true;assert.equal(await point.locator('.code-region').count(),0,'omitted supporting window cannot fabricate code');
+   assert.match(await point.textContent(),/This cited range was omitted by the shared code-reading bound|이 인용 범위는 공통 코드 읽기 한도로 생략/);
+   assert.equal(await point.locator('.citation-inspection').count(),0,'offline omission grants no live retrieval');
+  }
+ }
+ if(!omitted)assert.equal(await point.locator('.code-region').last().evaluate(n=>getComputedStyle(n).fontSize),width<=600?'12px':width<=900?'13px':'15px');
  await capture(page,c,sourceCaptureName(destination,offline,task),width);
  const returnId=(await point.locator('.return').getAttribute('href')).slice(1);assert.equal(returnId,origin);
  if(!offline){await page.reload();await point.waitFor({state:'visible'});await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),returnId);
   await page.goBack();await point.waitFor({state:'visible'});await page.goForward();assert.equal(new URL(page.url()).hash,'#'+returnId);
  }else await point.locator('.return').click();
  assert.equal(new URL(page.url()).hash,'#'+returnId);
- return {state:'read',target,returnId,unit_index:task?.unit_index,citation_index:task?.citation_index,source_id:task?.citation.source_id,realization_fingerprint:task?.realization_fingerprint,claim_sha256:task?.citation.claim_sha256,range_sha256:task?.citation.range_sha256,bytes,pages};
+ return {state:omitted?'offline_omission':'read',target,returnId,unit_index:task?.unit_index,citation_index:task?.citation_index,source_id:task?.citation.source_id,realization_fingerprint:task?.realization_fingerprint,claim_sha256:task?.citation.claim_sha256,range_sha256:task?.citation.range_sha256,bytes,pages};
 }
 (async()=>{let browser;try{
  if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');

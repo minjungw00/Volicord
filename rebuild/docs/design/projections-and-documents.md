@@ -1560,10 +1560,13 @@ identity, check-time meaning, Source retention or any transport/excerpt limit.
 ### Complete embedded code windows
 
 The 32,768-byte shared excerpt budget selects whole cited windows. Each authored
-unit offers its complete set of unique ranges as a bundle; smaller complete
-bundles precede larger ones, with Source identity as deterministic tie-break.
-Additional whole supporting windows may use remaining capacity. No prose role
-(including Narrative versus ReadingPoint) grants priority and no range is divided
+unit offers its complete set of unique ranges as a bundle, visited in original
+authored reading order. A fitting complete mechanism is not displaced just because
+later supporting windows are smaller. Shared exact ranges consume one allocation;
+an oversized bundle is skipped without reserving or clipping its windows.
+Additional whole supporting windows may use remaining capacity in size/Source
+identity order. No prose role (including Narrative versus ReadingPoint) grants
+priority and no range is divided
 into an equal prefix to claim coverage. Live exact citation pages keep their
 separate 4,096-byte limit and can reach any remaining permitted range.
 

@@ -1261,3 +1261,268 @@ fn seed_evidence_priority_browser_control() -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+
+#[test]
+fn important_complete_window_survives_smaller_supporting_windows() -> Result<(), Box<dyn Error>> {
+    fn window(full: &str, first: &str, next: &str) -> Result<String, Box<dyn Error>> {
+        let start = full.find(first).ok_or("function start")?;
+        let end = start + full[start..].find(next).ok_or("function end")?;
+        Ok(full[start..end].into())
+    }
+    let explanation = include_str!("../../volicord-operations/src/explanation.rs");
+    let repository = include_str!("../../volicord-operations/src/repository_explanation.rs");
+    let mut sources = Vec::new();
+    for (name, full, first, next) in [
+        (
+            "page.rs",
+            explanation,
+            "    pub fn read_explanation_page(",
+            "    fn permitted_read_publication(",
+        ),
+        (
+            "authority.rs",
+            explanation,
+            "    fn permitted_read_publication(",
+            "    pub(crate) fn validate_read_publication(",
+        ),
+        (
+            "publication.rs",
+            explanation,
+            "    pub(crate) fn validate_read_publication(",
+            "    pub fn prepare_explanation(",
+        ),
+        (
+            "record.rs",
+            explanation,
+            "    pub fn record_explanation(",
+            "    pub fn delete_explanations(",
+        ),
+        (
+            "compose.rs",
+            repository,
+            "    pub fn compose_repository_explanation(",
+            "    pub fn repository_explanation_evidence(",
+        ),
+        (
+            "plan.rs",
+            repository,
+            "    pub(crate) fn repository_explanation_plan(",
+            "    pub(crate) fn current_explanation_repository(",
+        ),
+        (
+            "observe.rs",
+            repository,
+            "    pub fn observe_repository_file(",
+            "    pub(crate) fn repository_source_metadata(",
+        ),
+        (
+            "citation.rs",
+            explanation,
+            "    pub fn read_explanation_citation(",
+            "    pub(crate) fn attach_explanations(",
+        ),
+        (
+            "current.rs",
+            repository,
+            "    pub(crate) fn current_explanation_repository(",
+            "    pub fn observe_repository_file(",
+        ),
+        (
+            "metadata.rs",
+            repository,
+            "    pub(crate) fn repository_source_metadata(",
+            "    pub fn read_repository_explanation_source(",
+        ),
+        (
+            "repository_source.rs",
+            repository,
+            "    pub fn read_repository_explanation_source(",
+            "    pub fn delete_repository_source_observation(",
+        ),
+    ] {
+        sources.push((name.into(), window(full, first, next)?));
+    }
+    let important = &sources[10].1;
+    let support_size: usize = sources[..10].iter().map(|(_, text)| text.len()).sum();
+    assert!(important.len() <= EXPLANATION_SOURCE_WINDOW_BYTE_LIMIT);
+    assert!(sources[..10]
+        .iter()
+        .all(|(_, text)| text.len() < important.len()));
+    assert!(support_size > EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT - important.len());
+    let capture =
+        std::env::var_os("VOLICORD_EXCERPT_COMPETITION_CAPTURE").map(std::path::PathBuf::from);
+    if let Some(path) = &capture {
+        fs::create_dir(path)?;
+    }
+    let mut f = Fixture::new_sources(capture.as_deref(), false, Some(sources))?;
+    if capture.is_some() {
+        f.temp.disable_cleanup(true);
+    }
+    let important_citation = f.realization.paragraphs[1].citations[2].clone();
+    let supports: Vec<_> = f.realization.paragraphs[0]
+        .citations
+        .iter()
+        .cloned()
+        .chain(f.realization.paragraphs[1].citations[..2].iter().cloned())
+        .collect();
+    let unit = |question, text: String, mut citation: ExplanationCitation| {
+        citation.claim_start_byte = 0;
+        citation.claim_end_byte = text.len();
+        citation.claim_sha256 = explanation_text_hash(&text);
+        ExplanationParagraph {
+            question,
+            text,
+            evidence_keys: vec!["repository_basis".into()],
+            citations: vec![citation],
+        }
+    };
+    for role in [
+        ExplanationQuestion::Narrative,
+        ExplanationQuestion::ReadingPoint,
+        ExplanationQuestion::Heading,
+    ] {
+        let mut realization = f.realization.clone();
+        realization.paragraphs = vec![unit(role,
+            "Read the repository Source loader from its lifetime checks through the final observation and fingerprint return.".into(),important_citation.clone())];
+        // A second claim shares the exact complete window and consumes no new text budget.
+        realization.paragraphs.push(unit(ExplanationQuestion::Observation,
+            "The same Source loader exposes the identity and content checks for this reading question.".into(),important_citation.clone()));
+        realization
+            .paragraphs
+            .extend(supports.iter().enumerate().map(|(i, citation)| {
+                unit(
+                    ExplanationQuestion::Narrative,
+                    format!("Supporting implementation {}.", i + 1),
+                    citation.clone(),
+                )
+            }));
+        let receipt = f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            realization.clone(),
+        )?;
+        f.realization = realization;
+        let answers = f.answers()?;
+        let selected = selection(&f, 0, 0, 0)?;
+        let mut live = Vec::new();
+        let mut offset = 0;
+        loop {
+            let selected = ExplanationCitationSelection {
+                offset,
+                ..selected.clone()
+            };
+            let page = body(&f.get(&citation_target(&f, &selected))?)?;
+            live.extend_from_slice(
+                page["chunk"]["text"]
+                    .as_str()
+                    .ok_or("Source text")?
+                    .as_bytes(),
+            );
+            let Some(next) = page["chunk"]["next_offset"].as_u64() else {
+                break;
+            };
+            offset = next as usize;
+        }
+        assert_eq!(live, f.originals[10].as_bytes());
+        let destination = f.temp.path().join(format!("competition-{role:?}.html"));
+        ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+            .export_snapshot(&f.request(), &destination)?;
+        let offline = fs::read_to_string(&destination)?;
+        let live_html = f.get("/?view=repository")?;
+        if let Some(path) = &capture {
+            fs::write(
+                path.join(format!("{role:?}-receipt.json")),
+                serde_json::to_vec_pretty(&serde_json::json!({"explanation":receipt}))?,
+            )?;
+            fs::write(
+                path.join(format!("{role:?}-realization.json")),
+                serde_json::to_vec_pretty(&f.realization)?,
+            )?;
+            fs::write(
+                path.join(format!("{role:?}-answers.json")),
+                serde_json::to_vec_pretty(&answers)?,
+            )?;
+            fs::write(path.join(format!("{role:?}-live.http")), &live_html)?;
+            fs::write(
+                path.join(format!("fixture-{role:?}.json")),
+                serde_json::to_vec_pretty(&serde_json::json!({
+                    "runtime":f.ops.layout().root(),"project":f.project.to_string(),"analysis":f.analysis.to_string(),
+                    "repository":f.temp.path().join("repo"),"critical_source":f.originals[10],
+                    "critical_citation":f.realization.paragraphs[0].citations[0],"offline":destination,"role":format!("{role:?}"),
+                    "original_realization":path.join(format!("{role:?}-realization.json")),
+                    "recording_receipt":path.join(format!("{role:?}-receipt.json")),
+                    "public":path.join(format!("{role:?}-answers.json")),
+                    "reader_question":"Where does the loader compare the retained copy with its canonical File binding and compute the fingerprint returned with the observation?",
+                    "provenance":"authored contention control with exact current implementation windows; no human or model verdict"
+                }))?,
+            )?;
+        }
+        let included: usize = answers.source_excerpts.iter().map(|e| e.text.len()).sum();
+        assert!(included <= EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT);
+        assert!(answers
+            .source_excerpts
+            .iter()
+            .all(|e| e.omitted_utf8_bytes == 0));
+        for html in [live_html, offline] {
+            assert!(code_texts(&html).iter().any(|s|s==&f.originals[10]),
+                "the reader cannot inspect the complete Source loader while smaller supporting windows compete ({role:?})");
+        }
+        assert_eq!(
+            answers
+                .source_excerpts
+                .iter()
+                .filter(|e| e.citation.source_id == important_citation.source_id)
+                .count(),
+            1
+        );
+        assert_eq!(
+            answers.embedded_source_scope[0].state,
+            SourceWindowState::Complete
+        );
+        assert_eq!(
+            answers.embedded_source_scope[1].state,
+            SourceWindowState::Complete
+        );
+        for scope in &answers.embedded_source_scope[2..] {
+            let citation = &f.realization.paragraphs[scope.unit_index].citations[0];
+            let included = answers
+                .source_excerpts
+                .iter()
+                .any(|e| e.citation.source_id == citation.source_id);
+            assert_eq!(
+                scope.state,
+                if included {
+                    SourceWindowState::Complete
+                } else {
+                    SourceWindowState::InitialOmission
+                }
+            );
+            assert_eq!(
+                scope.included_citation_indices,
+                if included { vec![0] } else { vec![] }
+            );
+            assert_eq!(
+                scope.omitted_citation_indices,
+                if included { vec![] } else { vec![0] }
+            );
+        }
+        for scope in answers.source_reading_scope(true) {
+            assert_eq!(
+                scope.state,
+                if scope.omitted_citation_indices.is_empty() {
+                    SourceWindowState::Complete
+                } else {
+                    SourceWindowState::OfflineOmission
+                }
+            );
+        }
+        assert_eq!(
+            answers.omitted_source_excerpt_count,
+            11 - answers.source_excerpts.len()
+        );
+        assert!(answers.omitted_source_excerpt_count > 0);
+        println!("competition {role:?}: important={} support={support_size} included={included} omitted={}",f.originals[10].len(),answers.omitted_source_excerpt_count);
+    }
+    Ok(())
+}

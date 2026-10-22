@@ -569,8 +569,9 @@ fn bound_expiry(
 }
 
 /// Select complete claim windows, independently of paragraph role. A bundle
-/// contains every cited range for one unit; short complete bundles precede
-/// larger ones. Then include any complete supporting ranges that still fit.
+/// contains every cited range for one unit, in authored reading order. Small
+/// supporting windows cannot displace an earlier complete mechanism. Then include
+/// any complete supporting ranges that still fit.
 /// No equal-prefix clipping can hide a function's material return/cleanup path.
 /// Selection is presentation scope, never an assessment of claim importance.
 fn bound_excerpts(
@@ -591,7 +592,7 @@ fn bound_excerpts(
         .filter(|e| e.omitted_utf8_bytes == 0)
         .map(|e| (key(&e.citation), e.text.len()))
         .collect();
-    let mut bundles: Vec<_> = response
+    let bundles: Vec<_> = response
         .generated_units()
         .filter(|u| !u.citations.is_empty())
         .filter_map(|u| {
@@ -602,7 +603,6 @@ fn bound_excerpts(
             Some((size, keys))
         })
         .collect();
-    bundles.sort();
     let mut selected = std::collections::BTreeSet::new();
     let mut remaining = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
     for (_, keys) in bundles {

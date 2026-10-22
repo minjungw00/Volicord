@@ -3575,3 +3575,24 @@ Request-owned inputs must be released on return/failure. Shared inputs do not
 replace each Source's exact association, lifecycle, format or content checks,
 become a freshness receipt, survive forgetting, or renew retention. Keep profiling
 in private diagnostics and validation artifacts, outside the ordinary reader UI.
+
+### Competing complete excerpt windows
+
+An allocation change needs a concrete missing evidence window under actual
+consumption, even when the window itself fits the unchanged aggregate. Viewer
+`citation_reading::important_complete_window_survives_smaller_supporting_windows`
+offers complete current implementation windows in authored reading order with a
+Source-first binding/fingerprint inspection question. It preserves the original
+record and validates all prose roles, shared-range deduplication, complete included
+bytes and exact initial/offline omission states. Existing complete-mechanism,
+range, lifecycle and public-consumer controls remain applicable.
+
+The [actual consumer](../../validation/README.md#excerpt-competition-consumption)
+checks actual MCP reconstruction, loopback HTTP citation paging and CLI offline
+export against the original recorded Source bytes. Preserve the negative original
+allocation and every environment-blocked attempt. Compare the same publication
+with the corrected allocator; do not reauthor, replace Source identities, increase
+limits or treat live continuation as offline availability. Original permitted
+publications whose complete windows already fit must retain identical excerpts,
+claim bindings and omission scopes. These checks establish technical access,
+not semantic entailment or a human answer to the reading question.

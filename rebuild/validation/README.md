@@ -1372,3 +1372,38 @@ server exit code; inspect the focused runner's result. Small samples report
 median/min/max, without a p95 claim. These are focused technical comparisons,
 separate from model quality, independent semantic assessment, human acceptance,
 Final or V11 qualification.
+
+## Excerpt competition consumption
+
+Viewer `citation_reading::important_complete_window_survives_smaller_supporting_windows`
+uses complete current implementation windows and an independently chosen binding /
+fingerprint reading question. The important window fits the existing aggregate,
+while smaller supporting windows together compete for that capacity. Narrative,
+ReadingPoint and Heading share the same allocation behavior; a repeated range
+uses one share, all included windows remain complete, and other ranges retain
+exact initial/offline omission states. This is an authored technical control,
+not a naturalistic publication, isolated semantic review or human answer.
+
+Set `VOLICORD_EXCERPT_COMPETITION_CAPTURE` to a fresh absolute ignored directory
+when running that exact test through `validate focused` to retain original Source
+copies, recording receipts, realizations, answers, HTTP and offline output. Each
+role keeps its own `fixture-ROLE.json`; failed fixtures also remain available.
+`end-to-end/multi-repository/excerpt_competition_read.py --fixture FIXTURE
+--bin-dir BIN --output NEW` then consumes all pages and distinct citation windows
+through actual MCP, checks the selected citation on a real loopback Viewer, and
+reads the actual CLI export without network. Its default requires the complete
+critical window in both initial HTML and offline code. Explicit `--expected omitted`
+records a negative baseline; it does not establish a successful reading outcome.
+Reuse that same retained publication/Source identity for the before/after consumer
+comparison, with unchanged original inputs and new output directories. Local
+listener/browser tooling must be available. Profiling, model quality and human
+comprehension are separate observations.
+
+The existing `viewer-design/product_review.cjs` keeps every declared critical
+Source's complete-byte check. Its separate noncritical last-link journey accepts
+an offline omission only when the exact public binding has no embedded excerpt,
+no fabricated code or live inspection control is present, the omission is visible,
+and return navigation still reaches that claim. Run
+`product_review_source_self_test.cjs CONFIG` against the captured exports to retain
+missing/wrong/truncated critical-Source counterexamples; a working omitted
+supporting link never substitutes for critical evidence.
