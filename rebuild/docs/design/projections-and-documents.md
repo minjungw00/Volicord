@@ -1649,6 +1649,20 @@ and repeated reads; completing a detail field never resets any earlier omission.
 
 ### Work course evidence in explanations
 
+Verification count labels use **Checkpoint verification reports across the selected
+Work's history** as their unit. Each exact Checkpoint/revision/vector position is
+one report, even when several reports cite the same Command Source or repeat the
+same free-text test count. Shared answers and Viewer use the same report summary.
+The public verification read DTO exposes `report_count_unit`, `report_count_scope`,
+computed `report_counts` and `reported_test_count_basis: original_report_text_only`;
+these are read-time labels/counts over `checks`, never new stored facts.
+Executions remain separately identified Source observations. Explicitly reported
+test counts stay attributed to the original report and its scope; the current
+canonical facts contain no structured test-count field. Do not parse outcome or
+assertion text into a canonical total, sum repetitions into unique tests, or infer
+new observed runs, coverage, completion or acceptance. Unknown test counts remain
+unknown. This display clarification adds no schema/version or verification event.
+
 Work explanation preparation reads the complete exact-Goal Checkpoint history
 before presentation bounds. `course:*` carries each recorded goal, boundary kind,
 next action and open Question references; `limits:*` retains limits and non-goals; `change:*` preserves

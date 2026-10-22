@@ -65,8 +65,8 @@ fn reused_execution_keeps_both_checkpoint_reports_across_cli_mcp_live_and_offlin
     input["prior_checkpoint_count"] = serde_json::json!(0);
     input["later_checkpoint_count"] = serde_json::json!(0);
     input["works"][0]["checkpoints"] = serde_json::json!([
-        {"key":"first-failure","work":"Paused","verification":"Failed","outcome":"widget assertion failed","state_change":null,"paths":[]},
-        {"key":"same-run-reported-again","work":"Paused","verification":"Failed","outcome":"same original widget failure, reported again","state_change":null,"paths":[]},
+        {"key":"first-failure","work":"Paused","verification":"Failed","outcome":"3 VM tests reported failed; widget assertion failed","state_change":null,"paths":[]},
+        {"key":"same-run-reported-again","work":"Paused","verification":"Failed","outcome":"same original 3 VM tests reported failed again","state_change":null,"paths":[]},
         {"key":"different-check","work":"Paused","verification":"Passed","outcome":"an unrelated diagnostic exited zero; assertions unspecified","state_change":null,"paths":[]}
     ]);
     let f = reading_fixture::fixture_scenario(input)?;
@@ -76,6 +76,31 @@ fn reused_execution_keeps_both_checkpoint_reports_across_cli_mcp_live_and_offlin
     let report = f.operations.read_work_verification(f.project, work)?;
     assert_eq!(report.checks.len(), 3);
     assert_eq!(report.executions.len(), 2);
+    assert_eq!(report.report_count(ReportedCheckState::Failed), 2);
+    assert_eq!(report.report_count(ReportedCheckState::Passed), 1);
+    let en_summary = report.report_summary(FixedLocale::English);
+    let ko_summary = report.report_summary(FixedLocale::Korean);
+    assert!(
+        en_summary.contains("Verification reports (Work Checkpoint history): 1 passed · 2 failed")
+    );
+    assert!(en_summary.contains("no test total is inferred"));
+    assert!(ko_summary.contains("검증 보고 (Work Checkpoint 이력): 1 통과 · 2 실패"));
+    // The unstructured three-test quotations remain unchanged. They supply
+    // neither six unique tests nor a test count for the unrelated passing report.
+    let projection = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::ExactWork(work))?;
+    let selected = projection.selected_work.ok_or("selected Work")?;
+    for locale in [FixedLocale::English, FixedLocale::Korean] {
+        let answers = work_answers(&selected, "en", locale);
+        let summary = answers
+            .facts
+            .iter()
+            .find(|f| f.question == "VerificationReportSummary")
+            .ok_or("report summary")?;
+        assert_eq!(summary.text, report.report_summary(locale));
+        assert_eq!(summary.evidence_keys.len(), 3);
+    }
     let failed = report
         .executions
         .iter()
@@ -101,6 +126,22 @@ fn reused_execution_keeps_both_checkpoint_reports_across_cli_mcp_live_and_offlin
         assert_eq!(check.applicability, VerificationApplicability::Unknown);
     }
     let expected = serde_json::to_value(&report)?;
+    assert_eq!(
+        expected["report_count_unit"],
+        "checkpoint_verification_report"
+    );
+    assert_eq!(
+        expected["report_count_scope"],
+        "selected_work_checkpoint_history"
+    );
+    assert_eq!(
+        expected["reported_test_count_basis"],
+        "original_report_text_only"
+    );
+    assert_eq!(
+        expected["report_counts"],
+        serde_json::json!({"total":3,"passed":1,"failed":2,"partial":0,"not_run":0})
+    );
     let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
     assert_eq!(
         run_cli(
@@ -142,6 +183,10 @@ fn reused_execution_keeps_both_checkpoint_reports_across_cli_mcp_live_and_offlin
     );
     let live = get(&f, &format!("/?view=work&work={work}"));
     assert!(live.starts_with("HTTP/1.1 200"));
+    assert!(live.contains(&en_summary));
+    assert!(!live.contains("Recorded checks: "));
+    let korean = get(&f, &format!("/?view=work&work={work}&locale=ko"));
+    assert!(korean.contains(&ko_summary));
     for execution in &report.executions {
         assert_eq!(
             live.matches(&format!(
@@ -169,6 +214,7 @@ fn reused_execution_keeps_both_checkpoint_reports_across_cli_mcp_live_and_offlin
         .html;
     assert!(!offline.contains("<script"));
     assert!(!offline.contains("<form"));
+    assert!(offline.contains(&en_summary));
     for check in &report.checks {
         assert!(offline.contains(check.original_outcome.as_deref().ok_or("original report")?));
     }

@@ -25,6 +25,21 @@ fn original_reports_preserve_failure_unrelated_pass_skip_and_historical_coverage
     let work = f.goals["older"];
     let report = f.operations.read_work_verification(f.project, work)?;
     assert_eq!(report.checks.len(), 3);
+    assert_eq!(report.report_count(ReportedCheckState::NotRun), 1);
+    assert!(report
+        .report_summary(FixedLocale::English)
+        .contains("1 not run"));
+    let empty = WorkVerificationReport::default();
+    assert_eq!(empty.report_count(ReportedCheckState::Passed), 0);
+    assert!(empty
+        .report_summary(FixedLocale::English)
+        .contains("none recorded"));
+    assert!(!empty
+        .report_summary(FixedLocale::English)
+        .contains("0 tests"));
+    let empty_json = serde_json::to_value(&empty)?;
+    assert_eq!(empty_json["report_counts"]["total"], 0);
+    assert!(empty_json.get("test_count").is_none());
     assert_eq!(
         report
             .checks

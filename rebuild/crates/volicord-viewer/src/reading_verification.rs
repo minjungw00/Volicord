@@ -105,35 +105,7 @@ pub(super) fn render_digest(
     report: &WorkVerificationReport,
 ) {
     html.push_str("<p class=\"verification-digest source-note\">");
-    if report.checks.is_empty() {
-        html.push_str(text(
-            r.locale,
-            "No verification recorded in a Checkpoint.",
-            "Checkpoint에 기록된 검증 없음.",
-        ));
-    } else {
-        html.push_str(text(r.locale, "Recorded checks: ", "기록된 검증: "));
-        for state in [
-            ReportedCheckState::Passed,
-            ReportedCheckState::Failed,
-            ReportedCheckState::Partial,
-            ReportedCheckState::NotRun,
-        ] {
-            let count = report
-                .checks
-                .iter()
-                .filter(|c| c.reported_state == state)
-                .count();
-            if count > 0 {
-                html.push_str(&format!("{} {} · ", count, state.label(r.locale.fixed())));
-            }
-        }
-        html.push_str(text(
-            r.locale,
-            "Current coverage follows each report's stated limits. ",
-            "현재 coverage는 각 보고의 명시된 한계를 따릅니다. ",
-        ));
-    }
+    html.push_str(&escape(&report.report_summary(r.locale.fixed())));
     html.push_str(&format!(
         " <a href=\"#{}\">{}</a></p>",
         document_anchor(answers, "verification"),
@@ -325,7 +297,7 @@ pub(super) fn render_verification(
 ) {
     html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary><p>{}</p><p class=\"source-note\">{}</p>",
         document_anchor(answers,"verification"),text(r.locale,"Verification report", "검증 보고"),
-        text(r.locale,"Observed executions and Checkpoint reports have separate provenance. Exit status proves no assertions.", "실행 관측과 Checkpoint 보고는 출처가 다릅니다. 종료 코드만으로 assertion을 확정하지 않습니다."),
+        text(r.locale,"Each entry is a Checkpoint verification report, not a test. Reported test counts remain attributed original text; repeated reports are not extra tests or newly observed runs. Observed executions have separate provenance. Exit status proves no assertions.", "각 항목은 테스트 개수가 아닌 Checkpoint 검증 보고입니다. 보고된 테스트 수는 원문에 귀속하며 반복 보고를 추가 테스트나 새 관측 실행으로 세지 않습니다. 실행 관측의 출처는 별도이며 종료 코드만으로 assertion을 확정하지 않습니다."),
         if report.checks.iter().all(|c|matches!(c.scoped_run,EvidenceDetail::NotObserved)) {text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Environment, assertion detail and coverage are shown only when observed.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 환경·assertion 상세·coverage는 관측되었을 때만 표시합니다.")} else {text(r.locale,"Only explicit recorded relationships support comparison. Earlier failures remain original facts; environment and coverage descriptions are attributed operator reports.","명시적으로 기록된 관계만 비교를 뒷받침합니다. 이전 실패는 원래 사실로 보존하며 환경과 coverage 설명은 작업자 보고로 표시합니다.")}));
     render_article_layer(html, r, answers, ArticleLayer::Verification);
     if report.checks.is_empty() {
@@ -479,7 +451,11 @@ pub(super) fn render_verification(
     }
     html.push_str(&format!(
         "<p class=\"source-note\">{}: {} / {} · {}: {} / {}. <a href=\"#{}\">{}</a></p></details>",
-        text(r.locale, "Displayed reports / total", "표시된 보고 / 전체"),
+        text(
+            r.locale,
+            "Displayed verification reports / total reports",
+            "표시된 검증 보고 / 전체 보고"
+        ),
         report.checks.len().min(64),
         report.checks.len(),
         text(

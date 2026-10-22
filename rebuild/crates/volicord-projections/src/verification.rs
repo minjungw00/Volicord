@@ -206,10 +206,81 @@ pub struct ExecutionReading {
     pub assertion_result: EvidenceDetail<String>,
     pub checkpoint_reports: Vec<VerificationReference>,
 }
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct WorkVerificationReport {
     pub checks: Vec<VerificationReading>,
     pub executions: Vec<ExecutionReading>,
+}
+
+// Read-time metadata, not new canonical totals or a stored second count authority.
+impl Serialize for WorkVerificationReport {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        #[derive(Serialize)]
+        struct Counts {
+            total: usize,
+            passed: usize,
+            failed: usize,
+            partial: usize,
+            not_run: usize,
+        }
+        let mut value = serializer.serialize_struct("WorkVerificationReport", 6)?;
+        value.serialize_field("report_count_unit", "checkpoint_verification_report")?;
+        value.serialize_field("report_count_scope", "selected_work_checkpoint_history")?;
+        value.serialize_field("reported_test_count_basis", "original_report_text_only")?;
+        value.serialize_field(
+            "report_counts",
+            &Counts {
+                total: self.checks.len(),
+                passed: self.report_count(ReportedCheckState::Passed),
+                failed: self.report_count(ReportedCheckState::Failed),
+                partial: self.report_count(ReportedCheckState::Partial),
+                not_run: self.report_count(ReportedCheckState::NotRun),
+            },
+        )?;
+        value.serialize_field("checks", &self.checks)?;
+        value.serialize_field("executions", &self.executions)?;
+        value.end()
+    }
+}
+
+impl WorkVerificationReport {
+    /// Count canonical report entries across the selected Work's Checkpoint
+    /// history. Repeated Source references remain distinct reports. Neither
+    /// free-text outcomes nor execution identities supply a test count.
+    pub fn report_count(&self, state: ReportedCheckState) -> usize {
+        self.checks
+            .iter()
+            .filter(|c| c.reported_state == state)
+            .count()
+    }
+
+    /// Shared by public answers and Viewer; no parsing or inferred test totals.
+    pub fn report_summary(&self, locale: crate::FixedLocale) -> String {
+        let counts = [
+            ReportedCheckState::Passed,
+            ReportedCheckState::Failed,
+            ReportedCheckState::Partial,
+            ReportedCheckState::NotRun,
+        ]
+        .into_iter()
+        .filter_map(|state| {
+            let count = self.report_count(state);
+            (count > 0).then(|| format!("{count} {}", state.label(locale)))
+        })
+        .collect::<Vec<_>>()
+        .join(" · ");
+        match locale {
+            crate::FixedLocale::English if counts.is_empty() =>
+                "Verification reports (Work Checkpoint history): none recorded.".into(),
+            crate::FixedLocale::Korean if counts.is_empty() =>
+                "검증 보고 (Work Checkpoint 이력): 기록 없음.".into(),
+            crate::FixedLocale::English => format!(
+                "Verification reports (Work Checkpoint history): {counts}. Reported test counts: see individual original reports; no test total is inferred."),
+            crate::FixedLocale::Korean => format!(
+                "검증 보고 (Work Checkpoint 이력): {counts}. 보고된 테스트 수는 각 원래 보고문에서 확인하며 테스트 총수를 추론하지 않습니다."),
+        }
+    }
 }
 
 pub(crate) fn verification_report(

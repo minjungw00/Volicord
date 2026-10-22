@@ -807,6 +807,9 @@ fn finish_plan(
     ) {
         plan.instructions = format!("{questions} Use the requested language, exact current fingerprint and format {EXPLANATION_VERSION}, and self-reported host/session/agent/model (unknown model null). Every unit needs the exact prepared evidence keys required above. Source/claim coordinates and hashes are bound by explicit compose from permitted selections. Never extract, relabel or rebind an earlier article or other publication. Record only this scope; sibling publications have separate provenance and validity. Structural admission establishes no semantic approval, verification or acceptance. Host authority is external; preparation grants no transmission or background permission. Ordinary reads never generate.");
     }
+    if matches!(subject, ExplanationSubject::WorkSummary(_)) {
+        plan.instructions.push_str(" Verification entries count reports, not tests. Attribute explicitly reported test counts to their original report and scope; never parse free text into canonical totals or add repeated reports as distinct tests, executions, coverage or acceptance.");
+    }
     if matches!(
         subject,
         ExplanationSubject::Work(_) | ExplanationSubject::Decision(_)

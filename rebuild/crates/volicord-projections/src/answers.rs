@@ -736,6 +736,23 @@ pub fn work_answers(
             |s| key(s, "work_state"),
         ),
     ));
+    result.facts.push(fact(
+        "VerificationReportSummary",
+        work.reading.verification_report.report_summary(locale),
+        work.reading
+            .verification_report
+            .checks
+            .iter()
+            .map(|check| {
+                format!(
+                    "checkpoint:{}@{}:verification[{}]",
+                    check.original.checkpoint_id,
+                    check.original.checkpoint_revision,
+                    check.original.verification_index
+                )
+            })
+            .collect(),
+    ));
     if work.reading.verification_report.checks.is_empty() {
         result.facts.push(fact(
             "VerificationState",

@@ -3470,6 +3470,21 @@ record and process teardown rather than terminating Node before evidence is save
 
 ### Source-first effect comparison
 
+Verification-unit controls use Viewer
+`work_explanation::reused_execution_keeps_both_checkpoint_reports_across_cli_mcp_live_and_offline`
+and Operations `work_verification`. Shared `WorkVerificationReport` report counting
+and `VerificationReportSummary` facts supply public answers and the Viewer digest.
+The scoped CLI/MCP verification DTO carries explicit report units/scope, computed
+report counts and original-text-only test-count basis even when a full Overview
+exceeds its transport bound. Refusal of an oversized Overview remains explicit;
+use complete publication pages and scoped verification reads without truncation.
+Repeated same-Source reports with explicitly quoted test counts still count as
+reports; an unrelated successful report with no test count remains unknown. Exercise
+NotRun and empty histories without inferring zero tests. Original outcome strings,
+execution joins and report references remain unchanged through CLI/MCP and live/offline
+reading. A fresh actual Work readback must distinguish its two reports from the
+three-case suite reported in each, without recording a new test run.
+
 `end-to-end/multi-repository/effect_review.py` implements the bounded
 [reader assessment procedure](../../validation/end-to-end/multi-repository/repository-reader-assessment.md).
 Freeze original files and permitted Product Source receipts before new prose;
