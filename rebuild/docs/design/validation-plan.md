@@ -3496,6 +3496,12 @@ fixtures containing desired wording or hashes alone cannot satisfy this demonstr
 Use focused checks only for the bounded correction; preserve numeric exits and
 report failed/unrun/environment-blocked outcomes without authoritative qualification.
 
+Authoring guidance shares the existing preparation byte bound with evidence.
+Keep it concise and exercise Viewer's existing `large_retained_envelopes` consumer
+control after changing shared instructions. Preserve original evidence and all
+byte limits; do not shrink the positive fixture or raise limits to pay for
+duplicated instructions. Full procedure detail remains in the assessment owner.
+
 Actual Product review also namespaces Source captures by Repository/Work destination,
 live/offline mode and exact unit/citation indices. Equal coordinates in the two
 documents must not overwrite either capture; screenshot writes refuse existing files.
