@@ -80,7 +80,13 @@ async function inspect(page,c,qa,url,width,mode,language) {
       await page.keyboard.press('Escape');
     } else {await point.locator('.return').focus();await page.keyboard.press('Enter');}
     await page.waitForURL(u=>u.hash==='#'+origin);
-    assert.equal(await page.evaluate(()=>document.activeElement.id),origin,'exact claim return');
+    // Live inspection restores the exact activating control. Script-free native
+    // fragments focus the originating claim, whose anchor is the return target.
+    await page.waitForFunction(({origin,fragment,live})=>live
+      ? document.activeElement?.getAttribute('data-origin')===origin&&document.activeElement?.getAttribute('href')===fragment
+      : document.activeElement?.id===origin,{origin,fragment,live:mode==='live'});
+    if(mode==='live')assert.equal(await evidence.evaluate(n=>document.activeElement===n),true,'exact Source trigger return');
+    else assert.equal(await page.evaluate(()=>document.activeElement.id),origin,'exact offline claim return');
     await page.goBack();assert.equal(new URL(page.url()).hash,fragment);
     await page.goForward();assert.equal(new URL(page.url()).hash,'#'+origin);
   }
