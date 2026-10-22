@@ -1,6 +1,14 @@
 const {test} = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const {createOutput,publication} = require('./product_review_controls.cjs');
+test('same Source coordinates in Repository and Work retain separate live/offline captures',()=>{
+  const {sourceCaptureName}=require('./product_review_controls.cjs');
+  const names=[];
+  for(const destination of ['repository','work'])for(const offline of [false,true])
+    for(const task of [null,{unit_index:5,citation_index:1}])names.push(sourceCaptureName(destination,offline,task));
+  assert.equal(new Set(names).size,8);
+  assert.throws(()=>sourceCaptureName('unscoped',false,null),/destination/);
+});
 test('failed and successful observations cannot be overwritten by reruns',()=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'reader-review-'));
   try {const out=path.join(root,'attempt');createOutput(out);fs.writeFileSync(path.join(out,'result.json'),'original failure');

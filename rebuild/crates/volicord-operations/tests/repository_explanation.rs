@@ -234,6 +234,10 @@ fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_ac
         "failure/exit",
         "unknown/omitted",
         "canonical Project Purpose",
+        "core domain record relationships before storage",
+        "required callees/callbacks",
+        "earlier language is never the expected answer",
+        "effect_review.py",
     ] {
         assert!(
             instructions.contains(obligation),

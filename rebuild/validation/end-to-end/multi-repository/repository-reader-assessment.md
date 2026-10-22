@@ -30,6 +30,35 @@ allowed inputs, evaluator identity, input hashes, timestamps and original respon
 If that separation cannot be demonstrated, mark the reading dependent/not blind.
 Agent observations never become actual human acceptance.
 
+For important effect claims, use `effect_review.py freeze --input ORIGINAL.json
+--output NEW_BASIS_DIRECTORY` before reading new prose. Each expectation records
+conditions, distinct state objects, effects and bounded non-effects, evidence scope,
+and exact required implementation/callee/callback ranges. Supply original file hashes
+and actual permitted Product Source read receipts; the tool verifies their bytes and
+seals a copy. A receiver calling a helper proves neither queue deletion nor request
+cancellation. Inspect the helper and any callback that produces the claimed effect.
+Missing permitted bodies remain a scoped gap; do not renew or rebind an old Source.
+
+After supported composition, recording and public readback, save the exact public
+`QuestionAnswers` object. `effect_review.py prepare --basis BASIS --publication
+PUBLIC.json --output NEW_ATTEMPT` seals those inputs and neutral comparison instructions
+before the first response. A reviewer then supplies exact unit/UTF-8 claim coordinates,
+quotes, supported/contradicted/unestablished verdicts and reasons for every expectation.
+`effect_review.py assess --attempt ATTEMPT --response FIRST_RESPONSE.json` preserves
+that response before validation. Contradictions, unestablished or missing explanations,
+inflated evidence scope and absent effect-producing citations fail the comparison.
+A supported verdict is still the reviewer's judgment, never machine-proven entailment.
+Self-tests exercise the protocol, not repository semantic quality. Demonstrate actual
+semantic rejection against independently inspected originals as separate evidence.
+
+Apply the same expectations to critical shared claims in all applicable languages and
+revisions, including headings and synopsis. Earlier English text is no oracle. Changed
+Source bytes or scope require a fresh basis and assessment; original attempts remain.
+The comparison package contains expectations and therefore is **dependent**, even if
+its reviewer is fresh. A presentation-first evaluator must instead receive only the
+identified public reading material and neutral tasks described above, with no shared
+context, defect descriptions, expected answers, previous findings or feedback.
+
 Only after first reading is sealed should the source-first evaluator compare the
 publication against the frozen expectations. Report important missing responsibilities
 and causal bridges, unsupported assertions and relevance of each reviewed claim's

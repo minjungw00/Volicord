@@ -1475,6 +1475,20 @@ consequences/trade-offs, agent recommendation basis, user reason only when prese
 scope/assumptions/revisit conditions. Recording still validates grounding structure,
 not prose entailment; source-rich and absent-evidence controls remain independent.
 
+Critical effect authoring retains Source-first conditions, distinct state objects,
+implementations and necessary callee/callback effects, bounded non-effects and
+static/reported/observed scope before comparing prose. Exact caller citations alone
+do not establish completion, deletion or cancellation. Check shared critical claims
+in every applicable language/revision against that Source basis, never another
+language's wording. Changed Source or scope requires reassessment. The maintained
+[reader assessment procedure](../../validation/end-to-end/multi-repository/repository-reader-assessment.md)
+seals inputs and preserves attributed comparisons separately from mechanical admission
+and human acceptance. This adds no durable Product schema or semantic classifier.
+Repository introductions explain purpose and core record relationships before storage
+and authority detail; Work introductions explain actual investigation/actions, reported
+results, current state and limits before evaluation/field-authoring notes. Neither
+ordering rule imposes section quotas or fabricates missing records.
+
 Shared Repository Snapshot Source provenance binds observation identity but does not
 seed every code entity into a Work. Work architecture seeds use bounded File/Symbol
 locators, changed paths, explicit canonical links or declared component identity;

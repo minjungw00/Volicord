@@ -79,22 +79,24 @@ def copy_product_outputs(observed, output, cases):
     if not isinstance(bindings, dict):
         raise ValueError('review driver must bind output files before packaging')
     allowed = set()
-    pages = ('overview', 'repository', 'works', 'work', 'decision', 'source',
+    pages = ('overview', 'repository', 'works', 'work', 'decision',
         'status', 'documents', 'memory', 'evidence', 'offline-overview',
-        'offline-work', 'offline-repository', 'offline-source')
+        'offline-work', 'offline-repository', 'repository-source', 'work-source',
+        'offline-repository-source', 'offline-work-source')
     for case in cases:
         case_scope(case)
         key = case['key']
         allowed.add(key + '-offline.html')
         for width in (1440, 1024, 768, 390, 320):
             allowed.update(f'{key}-{page}-{width}.png' for page in pages)
-            for task in case.get('source_tasks', {}).values():
+            for destination, task in case.get('source_tasks', {}).items():
+                require(destination in {'repository', 'work'}, 'exact Source destination required')
                 selected = task.get('by_language', {}).get(case.get('language'), task)
                 for claim in selected.get('claims', []):
                     unit, citation = claim['unit_index'], claim['citation_index']
                     require(type(unit) is int and unit >= 0 and type(citation) is int and citation >= 0, 'invalid critical Source screenshot indices')
                     allowed.update(f'{key}-{page}-u{unit}-c{citation}-{width}.png'
-                        for page in ('source', 'offline-source'))
+                        for page in (destination + '-source', 'offline-' + destination + '-source'))
     boundary.copy_bound(observed, output, allowed, bindings)
     boundary.write_new(output, 'result.json', json.dumps(boundary.sanitized_result(meta), ensure_ascii=False, indent=2).encode())
 

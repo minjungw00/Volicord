@@ -29,6 +29,13 @@ function documentMetrics() {
 }
 module.exports = {createOutput, publication, documentMetrics};
 
+function sourceCaptureName(destination, offline, task) {
+  assert.ok(['repository', 'work'].includes(destination), 'exact Source destination required');
+  return (offline ? 'offline-' : '') + destination + '-source'
+    + (task ? `-u${task.unit_index}-c${task.citation_index}` : '');
+}
+module.exports.sourceCaptureName = sourceCaptureName;
+
 // CDP SystemInfo CPU is cumulative OS time across every thread of each process.
 // Unlike document TaskDuration, these counters survive navigation. Processes
 // lost between samples leave an explicit partial measurement.

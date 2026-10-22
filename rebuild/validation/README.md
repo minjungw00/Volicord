@@ -18,6 +18,11 @@ The [repository reader assessment procedure](end-to-end/multi-repository/reposit
 separates frozen source-first expectations, author inputs and presentation-first
 evaluation. Portable review tasks ask for system responsibilities, distinct flows,
 claim relevance and scroll-then-open navigation without supplying case answers.
+`end-to-end/multi-repository/effect_review.py` seals Source-first effect expectations
+from original files and permitted Source receipts, then preserves exact public inputs
+and the first attributed comparison. Missing implementation/callback ranges and
+contradicted effects fail separately from byte-valid citations. Follow the assessment
+procedure for commands and isolation limits; this is no automatic semantic oracle.
 
 ## Commands
 

@@ -3468,6 +3468,43 @@ their actual disclosure controls before focus/reading; hidden links cannot satis
 critical task. A pending response failure must reach the driver's normal failure
 record and process teardown rather than terminating Node before evidence is saved.
 
+### Source-first effect comparison
+
+`end-to-end/multi-repository/effect_review.py` implements the bounded
+[reader assessment procedure](../../validation/end-to-end/multi-repository/repository-reader-assessment.md).
+Freeze original files and permitted Product Source receipts before new prose;
+record conditions, effect-producing implementations, required callees/callbacks,
+bounded non-effects and static/reported/observed scope. Prepare an exact public
+publication package before the first comparison response. Preserve its input
+hashes/instructions, first response, failures and later feedback in new ignored
+attempt directories. Range correspondence alone never establishes an effect.
+
+| Changed responsibility | Producer | Consumer/check | Limit |
+| --- | --- | --- | --- |
+| Effect investigation and introductory meaning | Shared CLI/MCP explanation preparation | Operations `repository_explanation`, Host `work_explanation`; fresh supported authoring and public readback | Instructions and admission cannot attest semantic truth |
+| Source-first effect expectations, attributed verdicts and implementation-range completeness | `effect_review.py freeze/prepare/assess` | `effect_review_self_test.py`; actual unchanged original-module check and original-publication negative comparison | Self-tests establish protocol behavior; actual verdicts remain attributed review |
+| Fresh reader meaning and exact evidence | Supported compose/record; shared answers | Actual CLI/MCP complete reading, live/offline Viewer critical Source tasks | Technical checks, dependent comparison, isolated reading and human acceptance remain separate |
+
+Compare shared critical claims across applicable languages/revisions to the same
+original basis, never English wording. Changed source/scope needs a fresh basis.
+The source-comparison package includes expectations, so it is dependent. A fresh
+presentation-first evaluator receives only identified public reading material and
+neutral tasks, withholding shared context, defects, answers, previous findings and
+feedback. If isolation is unavailable, record that gap and continue permitted
+correction. Reject the actual false effect using inspected original implementations;
+fixtures containing desired wording or hashes alone cannot satisfy this demonstration.
+Use focused checks only for the bounded correction; preserve numeric exits and
+report failed/unrun/environment-blocked outcomes without authoritative qualification.
+
+Actual Product review also namespaces Source captures by Repository/Work destination,
+live/offline mode and exact unit/citation indices. Equal coordinates in the two
+documents must not overwrite either capture; screenshot writes refuse existing files.
+The package consumer selects the same destination-specific names. The existing
+`product_review_controls_self_test.cjs` and `package_product_review_self_test.py`
+cover that collision and packaging; a fresh actual browser attempt checks the
+delivered source/return journeys. Preserve any earlier colliding attempt and disclose
+its lost first pixels; later captures cannot restore overwritten observations.
+
 ### Citation reading attempt preservation
 
 Citation browser evidence is one immutable attempt per newly created output

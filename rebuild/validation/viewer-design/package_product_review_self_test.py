@@ -80,16 +80,18 @@ class ReviewPackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); observed = root / 'observed'; observed.mkdir()
             (observed / 'recorded-offline.html').write_text('<!doctype html><p>Actual bounded Product export</p>')
-            (observed / 'recorded-source-u12-c0-390.png').write_bytes(png())
+            for destination in ('repository', 'work'):
+                (observed / f'recorded-{destination}-source-u12-c0-390.png').write_bytes(png())
             seal(observed)
             (observed / 'source-first-expectations.json').write_text('private evaluator answer')
             (observed / 'runtime').mkdir()
             (observed / 'runtime' / 'private.sqlite3').write_text('not a review export')
-            c = {**case(), 'language': 'en', 'source_tasks': {'work': {'by_language': {
-                'en': {'claims': [{'unit_index': 12, 'citation_index': 0}]}}}}}
+            c = {**case(), 'language': 'en', 'source_tasks': {destination: {'by_language': {
+                'en': {'claims': [{'unit_index': 12, 'citation_index': 0}]}}} for destination in ('repository', 'work')}}
             package.copy_product_outputs(observed, root / 'package', [c])
             self.assertEqual(sorted(p.name for p in (root / 'package').iterdir()),
-                ['recorded-offline.html', 'recorded-source-u12-c0-390.png', 'result.json'])
+                ['recorded-offline.html', 'recorded-repository-source-u12-c0-390.png',
+                 'recorded-work-source-u12-c0-390.png', 'result.json'])
             self.assertEqual((root / 'package' / 'recorded-offline.html').read_bytes(),
                 (observed / 'recorded-offline.html').read_bytes())
 
