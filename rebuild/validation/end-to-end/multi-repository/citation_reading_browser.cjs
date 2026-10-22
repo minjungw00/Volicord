@@ -5,17 +5,18 @@ const {spawn,spawnSync,execFileSync}=require('node:child_process');
 const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
 
 function reviewedFiles(directory){const files={};for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name);if(!fs.lstatSync(file).isFile()||!['.png','.html'].includes(path.extname(name)))continue;const bytes=fs.readFileSync(file);files[name]={sha256:require('node:crypto').createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};}return files;}
+const controlsPath=require.resolve('../../viewer-design/product_review_controls.cjs');
+const {createOutput}=require(controlsPath);
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
-const {chromium}=require(config.playwright);
-if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');
-const fixture=JSON.parse(fs.readFileSync(path.join(config.fixture,'fixture.json'),'utf8'));
-fs.mkdirSync(config.output,{recursive:true});
+// Claim the attempt before setup, child processes or any evidence write.
+createOutput(config.output);
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 function utf8Prefix(source,offset=0){
  const b=Buffer.from(source);let end=Math.min(b.length,offset+4096);
  while(end<b.length && (b[end]&0xc0)===0x80)end--;
  return b.subarray(offset,end).toString('utf8');
 }
+let fixture;
 function state(){
  return execFileSync('python3',['-c',`import sqlite3,json,hashlib,sys,pathlib
 result={}
@@ -109,24 +110,39 @@ async function syntaxContrast(page) {
  });
 }
 (async()=>{
- const fontCheck=spawnSync('fc-list',[':lang=ko'],{encoding:'utf8',env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
- fs.writeFileSync(path.join(config.output,'korean-fonts.stdout'),fontCheck.stdout||'');fs.writeFileSync(path.join(config.output,'korean-fonts.stderr'),fontCheck.stderr||'');
- assert.equal(fontCheck.status,0);assert.ok(fontCheck.stdout.trim(),'Korean-capable fonts required');
- const result={initial_unique_text_bytes:fixture.answers.source_excerpts.reduce((n,e)=>n+Buffer.byteLength(e.text),0),
-  omitted_unique_ranges:fixture.answers.omitted_source_excerpt_count,
-  admitted_cited_source_bytes:fixture.originals.reduce((n,s)=>n+Buffer.byteLength(s),0),
-  offline_html_bytes:fs.statSync(path.join(config.fixture,'offline.html')).size,
-  candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
-  worktree_diff_sha256:hash(execFileSync('git',['diff','HEAD','--','rebuild'])),
-  executable_sha256:hash(fs.readFileSync(config.viewer)),fixture_sha256:hash(fs.readFileSync(path.join(config.fixture,'fixture.json'))),
-  driver_sha256:hash(fs.readFileSync(__filename)),
-  semantic_approval:'not_established',human_comprehension:'pending',design_acceptance:'pending',commands,reads:[],screens:[]};
- const child=spawn(config.viewer,['--runtime',fixture.runtime,'--project',fixture.project,'--bind','127.0.0.1:0','--view','repository'],{stdio:['ignore','pipe','pipe']});
- let stdout='',stderr='';child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);
- let browser,base,stopped=false;
- const exit=new Promise(resolve=>child.on('exit',(code,signal)=>resolve({code,signal})));
+ const result={commands,reads:[],screens:[],attempt_output:path.resolve(config.output),
+  config_sha256:hash(fs.readFileSync(process.argv[2])),
+  controls_sha256:hash(fs.readFileSync(controlsPath)),driver_sha256:hash(fs.readFileSync(__filename)),
+  semantic_approval:'not_established',human_comprehension:'pending',design_acceptance:'pending'};
+ let child,exit,browser,base,stopped=false,stdout='',stderr='';
+ function fail(error){
+  if(result.outcome!=='failed'){result.outcome='failed';result.error=error.stack||String(error);}
+  else (result.teardown_errors??=[]).push(error.stack||String(error));
+  process.exitCode=1;
+ }
  try {
+  const {chromium}=require(config.playwright);
+  if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');
+  fixture=JSON.parse(fs.readFileSync(path.join(config.fixture,'fixture.json'),'utf8'));
+  const fontCheck=spawnSync('fc-list',[':lang=ko'],{encoding:'utf8',env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
+  result.font_check={argv:['fc-list',':lang=ko'],exit:fontCheck.status,signal:fontCheck.signal,error:fontCheck.error?.message};
+  fs.writeFileSync(path.join(config.output,'korean-fonts.stdout'),fontCheck.stdout||'');fs.writeFileSync(path.join(config.output,'korean-fonts.stderr'),fontCheck.stderr||'');
+  if(fontCheck.error)throw fontCheck.error;
+  assert.equal(fontCheck.status,0);assert.ok(fontCheck.stdout.trim(),'Korean-capable fonts required');
+  Object.assign(result,{initial_unique_text_bytes:fixture.answers.source_excerpts.reduce((n,e)=>n+Buffer.byteLength(e.text),0),
+   omitted_unique_ranges:fixture.answers.omitted_source_excerpt_count,
+   admitted_cited_source_bytes:fixture.originals.reduce((n,s)=>n+Buffer.byteLength(s),0),
+   offline_html_bytes:fs.statSync(path.join(config.fixture,'offline.html')).size,
+   candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
+   worktree_diff_sha256:hash(execFileSync('git',['diff','HEAD','--','rebuild'])),
+   executable_sha256:hash(fs.readFileSync(config.viewer)),cli_sha256:hash(fs.readFileSync(config.cli)),
+   fixture_sha256:hash(fs.readFileSync(path.join(config.fixture,'fixture.json')))});
+  child=spawn(config.viewer,['--runtime',fixture.runtime,'--project',fixture.project,'--bind','127.0.0.1:0','--view','repository'],{stdio:['ignore','pipe','pipe']});
+  child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);
+  // close also covers failed spawn and waits for both streams to finish.
+  exit=new Promise(resolve=>child.on('close',(code,signal)=>resolve({code,signal})));
   base=await new Promise((resolve,reject)=>{
+   child.once('error',error=>{clearTimeout(timer);reject(error);});
    const timer=setTimeout(()=>reject(Error('listener startup timeout')),10000);
    child.stderr.on('data',()=>{const match=stderr.match(/http:\/\/127\.0\.0\.1:\d+\//);if(match){clearTimeout(timer);resolve(match[0]);}});
    child.on('exit',()=>{clearTimeout(timer);reject(Error(stderr));});
@@ -363,9 +379,10 @@ async function syntaxContrast(page) {
    await offline.close();
   } finally {fs.renameSync(fixture.runtime+'.unavailable',fixture.runtime);}
   result.outcome='passed';
- } catch(e){result.outcome='failed';result.error=e.stack;process.exitCode=1;}
+ } catch(e){fail(e);}
  finally {
-  if(browser)await browser.close();if(!stopped){child.kill('SIGTERM');result.listener=await exit;}
+  try{if(browser)await browser.close();}catch(e){fail(e);}
+  try{if(child&&!stopped){child.kill('SIGTERM');result.listener=await exit;}}catch(e){fail(e);}
   fs.writeFileSync(path.join(config.output,'viewer.stdout'),stdout);fs.writeFileSync(path.join(config.output,'viewer.stderr'),stderr);
   result.files=reviewedFiles(config.output);
   fs.writeFileSync(path.join(config.output,'result.json'),JSON.stringify(result,null,2));

@@ -191,6 +191,8 @@ def main():
         require(meta.get('executable_sha256', meta.get('viewer_sha256')) == result['executable_sha256'], 'supplement viewer changed')
         driver = Path(__file__).with_name('inspection_browser.cjs') if name == 'inspection' else Path(__file__).parents[1] / 'end-to-end/multi-repository/citation_reading_browser.cjs'
         require(meta['driver_sha256'] == digest(driver), 'supplement driver changed')
+        if name == 'citation':
+            require(meta.get('controls_sha256') == digest(Path(__file__).with_name('product_review_controls.cjs')), 'citation output controls changed')
         if not args.early:
             require(meta.get('worktree_diff_sha256', meta.get('diff_sha256')) == hashlib.sha256(b'').hexdigest(), 'supplement source was dirty')
         destination = output / name

@@ -8,6 +8,74 @@ test('failed and successful observations cannot be overwritten by reruns',()=>{
     createOutput(path.join(root,'retry'));
   } finally {fs.rmSync(root,{recursive:true});}
 });
+// Exercise the actual CLI entry point, including its failure/finally writes.
+// These authored process controls require no installed browser or Product Runtime.
+test('citation entry point preserves attempts before setup and across teardown failure',()=>{
+ const {spawnSync}=require('node:child_process');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'citation-attempt-'));
+ const driver=path.resolve(__dirname,'../end-to-end/multi-repository/citation_reading_browser.cjs');
+ const snapshot=out=>Object.fromEntries(fs.readdirSync(out).sort().map(n=>[n,fs.readFileSync(path.join(out,n))]));
+ try {
+  const fixture=path.join(root,'fixture');fs.mkdirSync(fixture);
+  fs.writeFileSync(path.join(fixture,'fixture.json'),JSON.stringify({runtime:fixture,project:'authored-control',originals:[],answers:{source_excerpts:[]}}));
+  fs.writeFileSync(path.join(fixture,'offline.html'),'authored offline control');
+  const fonts=path.join(root,'fc-list');fs.writeFileSync(fonts,'#!/bin/sh\necho authored-font\n',{mode:0o700});
+  const viewer=path.join(root,'viewer');fs.writeFileSync(viewer,`#!${process.execPath}\nconsole.error('http://127.0.0.1:1/');setInterval(()=>{},1000);\n`,{mode:0o700});
+  const playwright=path.join(root,'playwright.cjs');
+  fs.writeFileSync(playwright,`const fs=require('node:fs'),path=require('node:path');
+   fs.writeFileSync(path.join(__dirname,'loaded'),'setup reached');
+   exports.chromium={launch:async()=>({version:()=> 'authored process control',
+    newContext:async()=>{const c=JSON.parse(fs.readFileSync(process.argv[2]));
+     fs.writeFileSync(path.join(c.output,'live-en-1440.html'),'original partial HTML');
+     fs.writeFileSync(path.join(c.output,'en-1440.png'),Buffer.from([0,255,1]));
+     throw Error('first controlled reading failure');},close:async()=>{throw Error('secondary teardown failure');}})};`);
+  let index=0;
+  function invoke(output,overrides={}) {
+   const config=path.join(root,`config-${index++}.json`);
+   fs.writeFileSync(config,JSON.stringify({output,fixture,viewer,playwright,cli:viewer,...overrides}));
+   const run=spawnSync(process.execPath,[driver,config],{encoding:'utf8',timeout:15000,env:{...process.env,PATH:root+path.delimiter+process.env.PATH}});
+   assert.ifError(run.error);return run;
+  }
+  for(const outcome of ['passed','failed']) {
+   const output=path.join(root,outcome);fs.mkdirSync(output);
+   for(const name of ['result.json','viewer.stdout','viewer.stderr','korean-fonts.stdout','korean-fonts.stderr','delete.stdout','delete.stderr','live-en-1440.html','en-1440.png'])
+    fs.writeFileSync(path.join(output,name),name==='result.json'?JSON.stringify({outcome}):Buffer.from([0,255,2]));
+   const original=snapshot(output);const run=invoke(output);
+   assert.equal(run.status,1);assert.match(run.stderr,/EEXIST/);assert.deepEqual(snapshot(output),original);
+  }
+  // Existing directory symlinks and dangling symlinks follow mkdir's existing
+  // EEXIST policy; a link cannot redirect a retry into preserved output.
+  for(const target of ['passed','missing']) {
+   const output=path.join(root,'link-'+target);fs.symlinkSync(path.join(root,target),output);
+   const original=snapshot(path.join(root,'passed'));const run=invoke(output);
+   assert.equal(run.status,1);assert.match(run.stderr,/EEXIST/);
+   assert.deepEqual(snapshot(path.join(root,'passed')),original);assert.equal(fs.readlinkSync(output),path.join(root,target));
+  }
+  const file=path.join(root,'existing-file');fs.writeFileSync(file,'original file');
+  assert.match(invoke(file).stderr,/EEXIST/);assert.equal(fs.readFileSync(file,'utf8'),'original file');
+  const empty=path.join(root,'empty');fs.mkdirSync(empty);
+  assert.match(invoke(empty).stderr,/EEXIST/);assert.deepEqual(fs.readdirSync(empty),[]);
+  assert.equal(invoke(path.join(root,'missing-parent','attempt')).status,1);
+  assert.equal(fs.existsSync(path.join(root,'missing-parent')),false,'no recursive parent creation');
+  assert.equal(fs.existsSync(path.join(root,'loaded')),false,'refusal precedes even dependency setup');
+  const failed=path.join(root,'first');assert.equal(invoke(failed).status,1);
+  const result=JSON.parse(fs.readFileSync(path.join(failed,'result.json')));
+  assert.match(result.error,/first controlled reading failure/);
+  assert.match(result.teardown_errors[0],/secondary teardown failure/);
+  assert.equal(result.listener.signal,'SIGTERM');
+  assert.match(fs.readFileSync(path.join(failed,'viewer.stderr'),'utf8'),/127.0.0.1/);
+  assert.ok(result.controls_sha256);assert.equal(result.attempt_output,failed);
+  const original=snapshot(failed);assert.match(invoke(failed).stderr,/EEXIST/);assert.deepEqual(snapshot(failed),original);
+  const retry=path.join(root,'retry');assert.equal(invoke(retry).status,1);
+  assert.notEqual(JSON.parse(fs.readFileSync(path.join(retry,'result.json'))).attempt_output,result.attempt_output);
+  assert.deepEqual(snapshot(failed),original,'new attempt preserves first failure and partial bytes');
+  for(const overrides of [{playwright:path.join(root,'missing-module')},{viewer:path.join(root,'missing-viewer')},{fontconfig:path.join(root,'missing-fonts')}]) {
+   const output=path.join(root,`setup-${index}`);assert.equal(invoke(output,overrides).status,1);
+   assert.equal(JSON.parse(fs.readFileSync(path.join(output,'result.json'))).outcome,'failed');
+   const before=snapshot(output);assert.match(invoke(output).stderr,/EEXIST/);assert.deepEqual(snapshot(output),before);
+  }
+ } finally {fs.rmSync(root,{recursive:true});}
+});
 test('populated and genuinely workless positives each require their own current repository article',()=>{
   for (const work_history of [[],[{work_item_id:'work',answers:{explanation_state:'current'}}]]) {
     const c={expected_repository_state:'current',...(work_history.length?{normal_work:'work'}:{})};

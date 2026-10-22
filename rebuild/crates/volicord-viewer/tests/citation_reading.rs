@@ -925,7 +925,8 @@ fn seed_citation_browser_runtime() -> Result<(), Box<dyn Error>> {
         return Ok(());
     };
     let output = std::path::Path::new(&output);
-    fs::create_dir_all(output)?;
+    // Every browser attempt, including a retry, owns a fresh retained fixture.
+    fs::create_dir(output)?;
     let f = Fixture::new_sources(
         Some(output),
         custom.is_none(),

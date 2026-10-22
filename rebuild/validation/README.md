@@ -1154,6 +1154,22 @@ test retains independent authored input and script-free export privately.
 paths, runs local browser navigation/deletion/offline checks and retains exact
 candidate hashes, numeric child outcomes, sizes, timings and screenshots.
 Each attempt uses a fresh fixture/output; failure artifacts are preserved.
+The output parent must already exist. The driver uses the maintained
+`viewer-design/product_review_controls.cjs` exclusive `createOutput` before
+setup or any write; an existing directory, file or directory symlink is refused
+with `EEXIST`. It never recursively creates parents or resets an old attempt.
+Use a new config/output identity and newly seeded fixture for retries: the
+journey deletes a Source and temporarily renames its disposable Runtime during
+offline checks. The fixture seed also refuses existing capture directories.
+Setup/reading failures retain their first cause, partial HTML/screenshots,
+command streams and listener termination; later teardown failures are separate.
+Result metadata binds config, driver and shared controls. Citation supplements
+must match the controls hash when consumed by `package_product_review.py`.
+Run `validate focused citation-attempts -- node --test
+rebuild/validation/viewer-design/product_review_controls_self_test.cjs` and
+`validate focused citation-packaging -- python3 -B
+rebuild/validation/viewer-design/package_product_review_self_test.py` for direct
+entry-point preservation and packaging controls without an installed browser.
 These are technical observations, not human comprehension or semantic approval.
 
 Reader collection applicability is documented in

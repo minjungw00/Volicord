@@ -362,6 +362,28 @@ class BuilderIdentityTests(unittest.TestCase):
                     self.assertNotIn(private, combined)
                 self.assertTrue(all(Path(n).suffix in {'.html', '.json', '.png'} for n in z.namelist()))
             self.assertEqual(originals, {p.name: p.read_bytes() for p in observed.iterdir()})
+            citation = root / 'citation'; citation.mkdir()
+            (citation / 'review.html').write_bytes(HTML)
+            supplement = seal(citation)
+            supplement.update(candidate=head, outcome='passed', executable_sha256=package.digest(viewer),
+                driver_sha256=package.digest(Path(package.__file__).parents[1] / 'end-to-end/multi-repository/citation_reading_browser.cjs'),
+                controls_sha256=meta['controls_sha256'])
+            supplement_path = citation / 'result.json'
+            supplement_path.write_text(json.dumps(supplement))
+            citation_originals = {p.name: p.read_bytes() for p in citation.iterdir()}
+            def package_citation(name):
+                return subprocess.run([sys.executable, '-B', package.__file__, '--config', str(config),
+                    '--citation-review', str(citation), '--output', str(root / name), '--early'], text=True, capture_output=True)
+            accepted = package_citation('with-citation')
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            self.assertEqual(citation_originals, {p.name: p.read_bytes() for p in citation.iterdir()})
+            for controls in [None, 'b' * 64]:
+                if controls is None: supplement.pop('controls_sha256')
+                else: supplement['controls_sha256'] = controls
+                supplement_path.write_text(json.dumps(supplement))
+                rejected = package_citation('citation-controls-' + str(controls))
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertIn('citation output controls changed', rejected.stderr)
             saved = meta['controls_sha256']; meta['controls_sha256'] = 'b' * 64
             (observed / 'result.json').write_text(json.dumps(meta))
             rejected = subprocess.run([sys.executable, '-B', package.__file__, '--config', str(config), '--output', str(root / 'changed-controls'), '--early'], text=True, capture_output=True)

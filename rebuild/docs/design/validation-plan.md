@@ -3467,3 +3467,31 @@ lifecycle's current visible notices. Supporting verification Sources are opened 
 their actual disclosure controls before focus/reading; hidden links cannot satisfy a
 critical task. A pending response failure must reach the driver's normal failure
 record and process teardown rather than terminating Node before evidence is saved.
+
+### Citation reading attempt preservation
+
+Citation browser evidence is one immutable attempt per newly created output
+directory. `citation_reading_browser.cjs` uses the existing
+`product_review_controls.cjs::createOutput` before setup, subprocesses or writes.
+Its existing nonrecursive `mkdir` semantics apply: an existing file, directory
+or symlink at the output path refuses admission; parents must already exist.
+This does not introduce a stronger ancestor-symlink policy than that helper.
+No failure, teardown or retry may enter the write path after refused admission.
+Accepted attempts retain partial output and the first failure; teardown errors
+are additional facts. Retry supplies a new config/output identity and a fresh
+fixture, because the supported journey deletes a Source. The retained fixture
+seed refuses an existing output rather than replacing its original bytes.
+
+| Changed evidence contract | Producer | Direct consumer | Existing scoped check | Evidence limit |
+| --- | --- | --- | --- | --- |
+| Exclusive admission before all command streams, HTML, screenshots and result/teardown writes; first failure retained | Citation driver using maintained `createOutput` | Real driver CLI and its config caller | `product_review_controls_self_test.cjs` invokes actual entry point with passed/failed directories, pre-invocation names/bytes, symlinks, setup/spawn/teardown failures and a separate retry | Authored process controls; full real-browser journey still requires fresh fixture and installed tools |
+| Fresh retry fixture | `seed_citation_browser_runtime` with either capture environment variable | Citation browser config | Exact scoped `citation_reading` seed invocation, then existing-path negative control | Authored retained Product fixture; no historical replay or human acceptance |
+| Shared output controls identity must match | Citation result `controls_sha256` | `package_product_review.py --citation-review` | `package_product_review_self_test.py` actual builder accepts bound supplement and rejects absent/changed controls | Technical file binding only; historical evidence stays unchanged and may no longer satisfy current packaging |
+
+Run these checks through `validate focused`, retaining inputs, candidate/tool
+identities, numeric exits and original separate streams. For browser observations,
+compare independently recorded original names/bytes before invoking collisions
+against successful and failed attempts. Preserve the first partial/failed attempt
+when running a new successful retry. Existing complete-window, dynamic applicability
+time and disclosure assertions retain their meaning; these controls add no semantic,
+human, provider, aggregate-gate or authoritative qualification claim.
