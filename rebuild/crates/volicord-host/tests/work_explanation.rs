@@ -936,6 +936,44 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
         privacy_before,
         f.host.operations().privacy_status(f.project)?
     );
+    // A warm reader must still observe all repository dependencies on every
+    // request, including uncited files and same-size edits with restored mtimes.
+    // No canonical revision or earlier complete publication can prove equality.
+    for (path, edited) in [
+        ("main.py", "def value():\n    return 8\n"),
+        ("caller.custom", "other()\n"),
+    ] {
+        let path = f.temp.path().join("repo").join(path);
+        let original_bytes = fs::read(&path)?;
+        let original_mtime = fs::metadata(&path)?.modified()?;
+        fs::write(&path, edited)?;
+        fs::File::options()
+            .write(true)
+            .open(&path)?
+            .set_times(fs::FileTimes::new().set_modified(original_mtime))?;
+        assert_eq!(fs::metadata(&path)?.len(), original_bytes.len() as u64);
+        assert_eq!(before, f.host.operations().canonical_basis(f.project)?);
+        let denied = page(&mut f.host, continuation.clone());
+        assert_eq!(denied["result"]["isError"], true, "{denied}");
+        assert!(denied["result"]["structuredContent"].get("chunk").is_none());
+        fs::write(&path, original_bytes)?;
+        fs::File::options()
+            .write(true)
+            .open(&path)?
+            .set_times(fs::FileTimes::new().set_modified(original_mtime))?;
+        let restored = page(&mut f.host, continuation.clone());
+        assert_eq!(restored["result"]["isError"], false, "{restored}");
+    }
+    let repository = f.temp.path().join("repo");
+    let unavailable = f.temp.path().join("unavailable-repository");
+    fs::rename(&repository, &unavailable)?;
+    let denied = page(&mut f.host, continuation.clone());
+    assert_eq!(denied["result"]["isError"], true, "{denied}");
+    fs::rename(&unavailable, &repository)?;
+    assert_eq!(
+        page(&mut f.host, continuation.clone())["result"]["isError"],
+        false
+    );
     // Same wording and plan recorded again is still a different publication.
     f.host.operations().record_explanation(
         f.project,

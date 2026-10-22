@@ -126,8 +126,22 @@ impl LocalOperations {
         work: ContextItemId,
         source: SourceId,
     ) -> Result<ObservationRead, Error> {
-        let revision = work_revision(basis, work)?;
+        work_revision(basis, work)?;
         let inspection = self.privacy_status(basis.project.id)?;
+        self.source_observation_read_with_inspection(basis, work, source, &inspection)
+    }
+
+    pub(crate) fn source_observation_read_with_inspection(
+        &self,
+        basis: &CanonicalReadBasis,
+        work: ContextItemId,
+        source: SourceId,
+        inspection: &volicord_privacy::ProjectPrivacyInspection,
+    ) -> Result<ObservationRead, Error> {
+        let revision = work_revision(basis, work)?;
+        if inspection.project_id != basis.project.id {
+            return Err(Error::new("Source inspection belongs to another Project"));
+        }
         let record = inspection
             .managed_derived
             .iter()

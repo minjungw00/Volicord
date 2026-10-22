@@ -425,6 +425,132 @@ fn repository_flow_steps_preserve_grounding_order_and_publication_lifetime(
 }
 
 #[test]
+fn publication_requests_recheck_sources_beyond_the_returned_page() -> Result<(), Box<dyn Error>> {
+    for change in ["delete", "expire", "corrupt", "forget"] {
+        let mut f = fixture()?;
+        fs::write(f.root.join("support.py"), "def support():\n    return 11\n")?;
+        f.analysis = f
+            .ops
+            .analyze(f.project, vec!["secret.py".into()])?
+            .value
+            .ok_or("analysis")?
+            .analysis
+            .identity;
+        let first = source(&observe(&f, "main.py", None)?)?;
+        let late = source(&observe(&f, "support.py", None)?)?;
+        let subject = ExplanationSubject::Repository(f.analysis);
+        let plan = f.ops.prepare_explanation(f.project, subject, "en")?;
+        let realization = f.ops.compose_repository_explanation(
+            f.project,
+            f.analysis,
+            RepositoryExplanationDraft {
+                plan_fingerprint: plan.fingerprint,
+                language: "en".into(),
+                generator: ExplanationGenerator {
+                    host: "authored-control".into(),
+                    session: "request-sharing".into(),
+                    agent: None,
+                    model: None,
+                },
+                paragraphs: vec![
+                    RepositoryReaderUnit {
+                        question: ExplanationQuestion::Observation,
+                        text: format!("Greeting context: {}", "안녕 \"quoted\"\\\n".repeat(650)),
+                        evidence_keys: vec!["repository_basis".into()],
+                        sources: vec![RepositoryClaimRange {
+                            source_id: first,
+                            start_byte: 0,
+                            end_byte: 15,
+                            claim: None,
+                        }],
+                    },
+                    RepositoryReaderUnit {
+                        question: ExplanationQuestion::Observation,
+                        text: "The separate support function returns 11.".into(),
+                        evidence_keys: vec!["repository_basis".into()],
+                        sources: vec![RepositoryClaimRange {
+                            source_id: late,
+                            start_byte: 0,
+                            end_byte: 29,
+                            claim: None,
+                        }],
+                    },
+                ],
+            },
+        )?;
+        f.ops
+            .record_explanation(f.project, subject, "en", realization)?;
+        let page = f
+            .ops
+            .read_explanation_page(f.project, subject, "en", 0, None)?;
+        let offset = page["next_offset"].as_u64().ok_or("partial page")? as usize;
+        let fingerprint = page["fingerprint"].as_str().ok_or("fingerprint")?;
+        // Warm the same owner with both exact Source and continuation reads.
+        f.ops
+            .read_repository_explanation_source(f.project, f.analysis, late)?;
+        f.ops
+            .read_explanation_page(f.project, subject, "en", offset, Some(fingerprint))?;
+        match change {
+            "delete" => {
+                f.ops
+                    .delete_repository_source_observation(f.project, f.analysis, late)?;
+            }
+            "forget" => {
+                let authorization = f.ops.record_user_source(
+                    f.project,
+                    "authored-control".into(),
+                    "request-sharing".into(),
+                    "Forget the support Source".into(),
+                )?;
+                let auth = source(&serde_json::json!({"source_id":authorization.identity}))?;
+                f.ops.forget_record(
+                    f.project,
+                    volicord_context::CanonicalRecordId::Source(late),
+                    auth,
+                )?;
+            }
+            _ => {
+                // Out-of-band lifetime/integrity mutation cannot be hidden by
+                // earlier request inputs or canonical revision equality.
+                let db = rusqlite::Connection::open(f.ops.layout().privacy_store())?;
+                let (id, raw): (Vec<u8>, String) = db.query_row(
+                    "SELECT id,record_json FROM managed_derived WHERE record_json LIKE ?1",
+                    [format!("%repository-source:{}:{}%", f.analysis, late)],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )?;
+                let mut record: Value = serde_json::from_str(&raw)?;
+                if change == "expire" {
+                    record["retained_until"] = serde_json::json!(1);
+                } else {
+                    record["content"] = serde_json::json!("invalid Source JSON");
+                }
+                db.execute(
+                    "UPDATE managed_derived SET record_json=?1 WHERE id=?2",
+                    rusqlite::params![serde_json::to_string(&record)?, id],
+                )?;
+            }
+        }
+        let before = f.ops.privacy_status(f.project)?;
+        for offset in [0, offset] {
+            assert!(
+                f.ops
+                    .read_explanation_page(
+                        f.project,
+                        subject,
+                        "en",
+                        offset,
+                        (offset > 0).then_some(fingerprint)
+                    )
+                    .is_err(),
+                "{change}"
+            );
+        }
+        assert_eq!(f.ops.privacy_status(f.project)?, before);
+    }
+    Ok(())
+}
+
+#[test]
 fn confirmed_repository_changes_are_distinct_from_unavailable_comparison(
 ) -> Result<(), Box<dyn Error>> {
     for change in ["cited", "nearby_noncited", "unrelated_included", "missing"] {

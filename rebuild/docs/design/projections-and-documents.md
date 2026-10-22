@@ -1545,6 +1545,18 @@ or a foreign selector reject continuation. Exact citation requests retain the
 existing independently bounded Source reader and authority. This is nonmutating
 transport completion, not semantic approval or an enduring currentness promise.
 
+Within one Source validation call, Operations may share its current canonical
+basis, privacy inspection and verified repository Analysis metadata across exact
+Source reads. Each Source still passes its own association, availability, revision,
+retention/forgetting, format, content and citation checks. These borrowed inputs
+and decoded bodies are request-owned and dropped on return or failure; there is
+no cross-request entry, eviction policy, durable cache or additional content owner.
+Every page and citation request starts fresh authority/lifetime checks and the
+existing full current repository observation, including uncited dependencies.
+Previously returned bytes, canonical revision equality, timestamps or a TTL never
+replace that observation. Sharing does not change compact bytes, continuation
+identity, check-time meaning, Source retention or any transport/excerpt limit.
+
 ### Complete embedded code windows
 
 The 32,768-byte shared excerpt budget selects whole cited windows. Each authored

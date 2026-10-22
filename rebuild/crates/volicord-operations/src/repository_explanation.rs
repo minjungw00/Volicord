@@ -517,6 +517,31 @@ impl LocalOperations {
         let canonical = self.canonical_basis(project)?;
         let analysis = self.repository_source_metadata(project, analysis_id)?;
         let inspection = self.privacy_status(project)?;
+        self.read_repository_explanation_source_with_basis(
+            &canonical,
+            &analysis,
+            &inspection,
+            source,
+        )
+    }
+
+    /// Request-owned inputs may be shared across exact Source reads. They are
+    /// observations, never authority for another request; every body still passes
+    /// its own association, lifetime, canonical binding and integrity checks.
+    pub(crate) fn read_repository_explanation_source_with_basis(
+        &self,
+        canonical: &CanonicalReadBasis,
+        analysis: &AnalysisMetadata,
+        inspection: &volicord_privacy::ProjectPrivacyInspection,
+        source: SourceId,
+    ) -> Result<Value, Error> {
+        let project = canonical.project.id;
+        let analysis_id = analysis.identity;
+        if inspection.project_id != project || analysis.project.identity() != project {
+            return Err(Error::new(
+                "repository Source read bases belong to another Project",
+            ));
+        }
         let record = inspection.managed_derived.iter().find(|r| r.kind == ManagedDerivedKind::SourceObservation && r.purpose == purpose(analysis_id,source))
             .ok_or_else(|| Error::new("Source has no explicit association with this Project/repository/Analysis Snapshot"))?;
         let now = now_micros()?;

@@ -79,7 +79,18 @@ impl LocalOperations {
         work: ContextItemId,
         source: SourceId,
     ) -> Result<Value, Error> {
-        let read = self.source_observation_read(basis, work, source)?;
+        let inspection = self.privacy_status(basis.project.id)?;
+        self.explanation_source_with_inspection(basis, work, source, &inspection)
+    }
+
+    fn explanation_source_with_inspection(
+        &self,
+        basis: &CanonicalReadBasis,
+        work: ContextItemId,
+        source: SourceId,
+        inspection: &volicord_privacy::ProjectPrivacyInspection,
+    ) -> Result<Value, Error> {
+        let read = self.source_observation_read_with_inspection(basis, work, source, inspection)?;
         let observation = read.body.ok_or_else(|| {
             Error::new(format!(
                 "explanation Source is unavailable: {}",
@@ -137,13 +148,42 @@ impl LocalOperations {
         selection: Option<(&volicord_projections::ExplanationCitation, usize)>,
     ) -> Result<ValidatedExplanationSources, Error> {
         let mut selected = None;
+        // All entries belong to this validation call. Nothing survives a page,
+        // citation request, failure, deletion or forgetting operation. In
+        // particular a previous successful read cannot bypass fresh inspection.
+        let inspection = response
+            .citations()
+            .next()
+            .map(|_| self.privacy_status(basis.project.id))
+            .transpose()?;
+        let repository_metadata = match subject {
+            ExplanationSubject::Repository(id) if inspection.is_some() => {
+                Some(self.repository_source_metadata(basis.project.id, id)?)
+            }
+            _ => None,
+        };
         let read_source = |source| match subject {
             ExplanationSubject::Work(work)
             | ExplanationSubject::WorkName(work)
-            | ExplanationSubject::WorkSummary(work) => self.explanation_source(basis, work, source),
-            ExplanationSubject::Repository(analysis) => {
-                self.read_repository_explanation_source(basis.project.id, analysis, source)
-            }
+            | ExplanationSubject::WorkSummary(work) => self.explanation_source_with_inspection(
+                basis,
+                work,
+                source,
+                inspection
+                    .as_ref()
+                    .ok_or_else(|| Error::new("Source inspection unavailable"))?,
+            ),
+            ExplanationSubject::Repository(_) => self
+                .read_repository_explanation_source_with_basis(
+                    basis,
+                    repository_metadata
+                        .as_ref()
+                        .ok_or_else(|| Error::new("repository Source metadata unavailable"))?,
+                    inspection
+                        .as_ref()
+                        .ok_or_else(|| Error::new("Source inspection unavailable"))?,
+                    source,
+                ),
             ExplanationSubject::Decision(_) => {
                 Err(Error::new("Decision cannot read scoped Source bodies"))
             }
@@ -310,12 +350,13 @@ impl LocalOperations {
                         // included hashes and a fresh repository comparison.
                         let (repository_source, repository_snapshot, entries) =
                             if matches!(subject, ExplanationSubject::Repository(_)) {
-                                let metadata =
-                                    self.repository_source_metadata(basis.project.id, analysis_id)?;
+                                let metadata = repository_metadata.as_ref().ok_or_else(|| {
+                                    Error::new("repository Source metadata unavailable")
+                                })?;
                                 (
-                                    metadata.repository_source,
+                                    metadata.repository_source.clone(),
                                     metadata.repository_snapshot,
-                                    metadata.inventory.entries,
+                                    metadata.inventory.entries.clone(),
                                 )
                             } else {
                                 let analysis =

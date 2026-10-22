@@ -3553,3 +3553,25 @@ against successful and failed attempts. Preserve the first partial/failed attemp
 when running a new successful retry. Existing complete-window, dynamic applicability
 time and disclosure assertions retain their meaning; these controls add no semantic,
 human, provider, aggregate-gate or authoritative qualification claim.
+
+### Complete publication read cost controls
+
+Use the focused [complete-read measurement procedure](../../validation/README.md#complete-publication-read-measurements)
+for equivalent currently permitted publications. Compare full pagination and
+subsequent exact citation journeys, not a helper alone. Preserve original recording
+receipts/realizations, source files, selectors, Runtime copy provenance, executable
+hashes, all attempts, numeric exits, and before/after conditions. Freeze latency,
+CPU/RSS and non-regression criteria before choosing an implementation. Cold-process
+and warm-process evidence does not establish a cold OS cache; paired contention
+samples do not establish independent tail percentiles.
+
+| Changed responsibility | Producer / owner | Consumers | Direct controls |
+| --- | --- | --- | --- |
+| Reuse current canonical/privacy/verified Analysis inputs only within Source validation | Operations exact repository/Work Source readers; no retained-format change | Complete publication pages, selected citations, shared CLI/Viewer/export answers | Operations `repository_explanation::publication_requests_recheck_sources_beyond_the_returned_page`; Host `work_explanation::complete_publication_pages_preserve_independent_units_bindings_and_lifetimes`; original-record MCP reconstruction and full Source-window reads |
+| Fresh authority and full repository observation on the next request | Existing canonical/privacy/repository owners and inspection lock | Same consumers, including warm/contending readers | Host same-size cited/uncited edits with restored mtimes, replacement/identical-text republication, foreign continuation and missing repository; Viewer `citation_reading` lifecycle/currentness controls; Operations `read_freshness` / `forgetting_recovery` |
+| Equivalent public representation and bounded transient lifetime | Existing compact projection and Source body owners | Actual MCP envelopes; live Viewer and offline export | Independent original unit/claim/Source/provenance comparison, repeated/contending CPU/RSS and no persistent read entries; existing complete-window/omission assertions |
+
+Request-owned inputs must be released on return/failure. Shared inputs do not
+replace each Source's exact association, lifecycle, format or content checks,
+become a freshness receipt, survive forgetting, or renew retention. Keep profiling
+in private diagnostics and validation artifacts, outside the ordinary reader UI.

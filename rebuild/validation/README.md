@@ -1334,3 +1334,41 @@ summary controls, then use the visible claim's Source action. Separate reads com
 all stable publication/applicability fields while validating, rather than equating,
 read-time comparison instants. Embedded complete-window bounds and live citation
 page bounds have separate assertions; the latter stays 4,096 bytes.
+
+## Complete publication read measurements
+
+`end-to-end/multi-repository/complete_read_measure.py` consumes every publication
+page and every distinct cited file window through the actual stdio MCP server.
+It expands compact bindings against independently preserved authoring realizations
+and recording receipts, checks original claim and file-range hashes, and compares
+the original public provenance. It performs no collection, recording, generation,
+retention renewal, external invocation or source edit. Use only currently permitted
+publications on stable explained repositories and disposable supported Runtime copies.
+
+Run through `validate focused` with `--binary /absolute/volicord-mcp`, `--cases
+/absolute/private-cases.json`, `--output /absolute/new-attempt`, `--mode
+cold|warm|contention` and `--repetitions 5`. Each case supplies `label`, `runtime`,
+`project`, `subject_kind`, `subject_id`, `language`, `repository`, `realization`,
+`recording_receipt` and `public` paths/selectors. The current corpus reader accepts
+an optional `publication_receipt` from an independent original complete read to
+pin the admitted managed publication identity as well as its provenance. It does
+not replace the original recording realization as the unit/citation oracle.
+The corpus reader accepts
+file citations with original repository bytes; it rejects command citations rather
+than inventing an original command oracle. Keep all inputs, exact before/after
+executables and failed attempts private and unchanged. Set comparison/resource
+criteria before selecting a candidate; run old/new measurements without concurrent
+builds or tests. Current scope is local Rust implementation and polyglot Source
+reading, not a new language or analyzer restriction.
+
+Cold uses a fresh server process with uncontrolled OS caches. Warm discards one
+complete warmup, then reads repeatedly in the same process. Contention starts two
+independent readers together on the same Runtime/inspection lock; paired samples
+are related. Each response preserves its complete serialized JSON-RPC envelope,
+including escaped chunk strings and structured content. Metrics separate content,
+evidence and response bytes, calls, publication/evidence elapsed time, client
+reconstruction, process CPU ticks and sampled Linux high-water RSS. Retain every
+server exit code; inspect the focused runner's result. Small samples report
+median/min/max, without a p95 claim. These are focused technical comparisons,
+separate from model quality, independent semantic assessment, human acceptance,
+Final or V11 qualification.
