@@ -36,6 +36,9 @@ async function fits(page){assert.ok(await page.evaluate(()=>document.documentEle
 async function capture(page,c,name,width){await fits(page);fs.writeFileSync(path.join(output,`${c.key}-${name}-${width}.png`),await page.screenshot(),{flag:'wx'});}
 async function sourceJourney(page,c,width,offline,selector,answers,destination){
  const article=page.locator(selector),tasks=sourceTasks(c,destination,answers),critical=[];
+ for(const fact of answers.facts||[]){
+  assert.equal(await article.locator(`[data-question="${fact.question}"]`).textContent(),fact.text,'deterministic facts must match the selected fixed locale');
+ }
  for(const task of tasks){
   const link=await criticalLink(article,task);
   critical.push(await inspectSource(page,c,width,offline,article,link,task,destination,answers));
@@ -102,7 +105,7 @@ async function inspectSource(page,c,width,offline,article,link,task,destination,
    originalEvents={creation:goal,latest:records.at(-1)};r.event_oracle='original portable canonical record/revision timestamps';
   }
   const args=[config.cli,'--runtime',c.runtime,'--project',c.project,'--json'];
-  const status=JSON.parse(command(c.key+'-status',[...args,'status','--language',c.language||'ko']));
+  const status=JSON.parse(command(c.key+'-status',[...args,'--locale',c.locale||'ko','status','--language',c.language||'ko']));
   r.publication=publication(c,status);
   fs.writeFileSync(path.join(output,c.key+'-public-status.json'),JSON.stringify(status,null,2));
   const offlinePath=path.join(output,c.key+'-offline.html');

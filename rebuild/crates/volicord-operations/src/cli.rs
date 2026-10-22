@@ -520,8 +520,9 @@ fn dispatch_repository(
             .subcommand()
             .ok_or_else(|| Error::new("explain action required"))?;
         if action == "read" {
+            let (language, locale) = reading_options(params);
             return Ok(
-                json!({"operation":"repository_explanation_read","answers":operations.read_repository_explanation(project,required(params,"language")?)?}),
+                json!({"operation":"repository_explanation_read","answers":operations.read_repository_explanation(project,language,locale)?}),
             );
         }
         if action == "evidence" {

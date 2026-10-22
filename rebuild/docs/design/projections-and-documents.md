@@ -198,7 +198,11 @@ Live pages add only a bundled presentation script for disclosure opening, origin
 scroll/focus restoration, Escape and narrow-panel keyboard containment. The exact
 script digest is the sole HTTP script grant. It performs no requests, persistence,
 generation, retention renewal or domain-state writes. Interpretation language and
-canonical/source authority are independent of UI locale. The current route/CLI/
+canonical/source authority are independent of UI locale. Repository explanation
+CLI reads pass the selected fixed locale to deterministic facts while selecting
+generated prose by its exact requested language. Locale changes neither
+publication identity nor Source lifetime, and cannot supply a missing language.
+The current route/CLI/
 snapshot contract is maintained in the [Viewer README](../../crates/volicord-viewer/README.md).
 
 Shared projection selection has three meanings: `LatestWork` resolves the actual

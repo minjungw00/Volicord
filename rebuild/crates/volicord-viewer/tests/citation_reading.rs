@@ -186,7 +186,11 @@ impl Fixture {
         })
     }
     fn answers(&self) -> Result<QuestionAnswers, Box<dyn Error>> {
-        Ok(self.ops.read_repository_explanation(self.project, "en")?)
+        Ok(self.ops.read_repository_explanation(
+            self.project,
+            "en",
+            volicord_projections::FixedLocale::English,
+        )?)
     }
     fn request(&self) -> ViewerRequest {
         ViewerRequest {

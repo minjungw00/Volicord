@@ -340,6 +340,7 @@ impl LocalOperations {
         &self,
         project: ProjectId,
         language: &str,
+        locale: FixedLocale,
     ) -> Result<volicord_projections::QuestionAnswers, Error> {
         let (projection, _) = self.project_projection_read_profiled(
             project,
@@ -353,7 +354,7 @@ impl LocalOperations {
         Ok(explanation_answers(
             &projection.repository_explanations,
             language,
-            FixedLocale::English,
+            locale,
         ))
     }
     /// Inspect one exact citation in the latest current permitted realization.

@@ -123,7 +123,9 @@ fn current_repository_budget_measures_distinct_claims_and_editorial_overhead(
         "en",
         r,
     )?;
-    let read = f.ops.read_repository_explanation(f.project, "en")?;
+    let read = f
+        .ops
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?;
     assert_eq!(read.prose.len(), 24);
     assert_eq!(
         read.prose.iter().map(|p| p.citations.len()).sum::<usize>(),
@@ -155,7 +157,9 @@ fn source_rich_repository_publication_preserves_content_above_32_kib_and_refuses
     assert!((32_769..=40_960).contains(&bytes), "control bytes: {bytes}");
     f.ops
         .record_explanation(f.project, subject, "en", realization.clone())?;
-    let read = f.ops.read_repository_explanation(f.project, "en")?;
+    let read = f
+        .ops
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?;
     assert_eq!(read.explanation_state, ExplanationState::Current);
     assert_eq!(
         read.prose
@@ -182,12 +186,16 @@ fn source_rich_repository_publication_preserves_content_above_32_kib_and_refuses
     assert!(error.message().contains("compact realization JSON"));
     assert_eq!(f.ops.privacy_status(f.project)?, before);
     assert_eq!(
-        f.ops.read_repository_explanation(f.project, "en")?.prose,
+        f.ops
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
+            .prose,
         read.prose
     );
     f.ops
         .delete_repository_source_observation(f.project, f.analysis, id)?;
-    let unavailable = f.ops.read_repository_explanation(f.project, "en")?;
+    let unavailable = f
+        .ops
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?;
     assert_ne!(unavailable.explanation_state, ExplanationState::Current);
     assert!(unavailable.provenance.is_none());
     assert!(unavailable.source_excerpts.is_empty());
@@ -357,7 +365,9 @@ fn repository_flow_steps_preserve_grounding_order_and_publication_lifetime(
     f.ops
         .record_explanation(f.project, subject, "en", flow.clone())?;
     let before = f.ops.privacy_status(f.project)?;
-    let read = f.ops.read_repository_explanation(f.project, "en")?;
+    let read = f
+        .ops
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?;
     assert_eq!(
         read.prose
             .iter()
@@ -417,7 +427,9 @@ fn repository_flow_steps_preserve_grounding_order_and_publication_lifetime(
         .ops
         .read_explanation_page(f.project, subject, "en", 0, None)
         .is_err());
-    let read = f.ops.read_repository_explanation(f.project, "en")?;
+    let read = f
+        .ops
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?;
     assert_ne!(read.explanation_state, ExplanationState::Current);
     assert!(read.prose.iter().all(|p| p.question != "FlowStep"));
     assert!(read.provenance.is_none());
@@ -580,7 +592,9 @@ fn confirmed_repository_changes_are_distinct_from_unavailable_comparison(
             }
             _ => fs::rename(&f.root, f.root.with_extension("unavailable"))?,
         }
-        let read = f.ops.read_repository_explanation(f.project, "en")?;
+        let read = f
+            .ops
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?;
         let unavailable = change == "missing";
         assert_eq!(
             read.explanation_state,
@@ -634,7 +648,9 @@ fn work_free_retention_reading_and_failed_write_atomicity() -> Result<(), Box<dy
         r.clone(),
     )?;
     let before = f.ops.canonical_basis(f.project)?;
-    let reading = f.ops.read_repository_explanation(f.project, "en")?;
+    let reading = f
+        .ops
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?;
     assert_eq!(reading.explanation_state, ExplanationState::Current);
     assert_eq!(reading.prose[0].text, r.paragraphs[0].text);
     assert_eq!(reading.source_excerpts[0].work_revision, None);
@@ -663,7 +679,7 @@ fn work_free_retention_reading_and_failed_write_atomicity() -> Result<(), Box<dy
             .is_err());
         assert_eq!(
             f.ops
-                .read_repository_explanation(f.project, "en")?
+                .read_repository_explanation(f.project, "en", FixedLocale::English)?
                 .provenance
                 .as_ref()
                 .map(|p| &p.fingerprint),
@@ -676,14 +692,16 @@ fn work_free_retention_reading_and_failed_write_atomicity() -> Result<(), Box<dy
     assert!(after.latest_checkpoint.is_none());
     assert_eq!(
         f.ops
-            .read_repository_explanation(f.project, "ko")?
+            .read_repository_explanation(f.project, "ko", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Missing
     );
     // Copy deletion immediately withholds every generated field including headings.
     f.ops
         .delete_repository_source_observation(f.project, f.analysis, id)?;
-    let unavailable = f.ops.read_repository_explanation(f.project, "en")?;
+    let unavailable = f
+        .ops
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?;
     assert_ne!(unavailable.explanation_state, ExplanationState::Current);
     assert!(!unavailable
         .prose
@@ -697,7 +715,7 @@ fn work_free_retention_reading_and_failed_write_atomicity() -> Result<(), Box<dy
         .delete_explanations(f.project, ExplanationSubject::Repository(f.analysis))?;
     assert_eq!(
         f.ops
-            .read_repository_explanation(f.project, "en")?
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Deleted
     );
@@ -839,7 +857,7 @@ fn bounded_ranges_full_file_changes_and_symlinks_are_enforced() -> Result<(), Bo
     )?;
     assert!(!f
         .ops
-        .read_repository_explanation(f.project, "en")?
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?
         .prose
         .iter()
         .any(|p| p.role == AnswerRole::GeneratedInterpretation));
@@ -911,7 +929,9 @@ fn expired_corrupt_and_unsupported_copies_and_outputs_never_supply_prose(
             rusqlite::params![record.to_string(), record_id],
         )?;
         drop(connection);
-        let reading = f.ops.read_repository_explanation(f.project, "en")?;
+        let reading = f
+            .ops
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?;
         assert_ne!(
             reading.explanation_state,
             ExplanationState::Current,
@@ -997,7 +1017,7 @@ fn original_project_purpose_and_source_forgetting_stay_work_free() -> Result<(),
         .is_err());
     assert_ne!(
         f.ops
-            .read_repository_explanation(f.project, "en")?
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Current
     );
@@ -1029,7 +1049,9 @@ fn missing_analysis_rebinding_and_storage_failure_have_bounded_recovery(
         .join(format!("{}.json", f.analysis));
     let hidden = path.with_extension("hidden");
     fs::rename(&path, &hidden)?;
-    let absent = f.ops.read_repository_explanation(f.project, "en")?;
+    let absent = f
+        .ops
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?;
     assert_eq!(absent.explanation_state, ExplanationState::Unavailable);
     assert!(f
         .ops
@@ -1038,7 +1060,7 @@ fn missing_analysis_rebinding_and_storage_failure_have_bounded_recovery(
     fs::rename(&hidden, &path)?;
     assert_eq!(
         f.ops
-            .read_repository_explanation(f.project, "en")?
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Current
     );
@@ -1059,7 +1081,7 @@ fn missing_analysis_rebinding_and_storage_failure_have_bounded_recovery(
         .is_err());
     assert_eq!(
         f.ops
-            .read_repository_explanation(f.project, "en")?
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Unavailable
     );
@@ -1069,7 +1091,7 @@ fn missing_analysis_rebinding_and_storage_failure_have_bounded_recovery(
     assert_eq!(before, f.ops.canonical_basis(f.project)?);
     assert_eq!(
         f.ops
-            .read_repository_explanation(f.project, "en")?
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Current
     );
@@ -1085,7 +1107,7 @@ fn missing_analysis_rebinding_and_storage_failure_have_bounded_recovery(
         .is_err());
     assert_ne!(
         f.ops
-            .read_repository_explanation(f.project, "en")?
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Current
     );
@@ -1261,7 +1283,9 @@ fn large_polyglot_inventory_keeps_exact_scope_outside_bounded_reader_plan(
         realization,
     )?;
     let before = f.ops.canonical_basis(f.project)?;
-    let answers = f.ops.read_repository_explanation(f.project, "en")?;
+    let answers = f
+        .ops
+        .read_repository_explanation(f.project, "en", FixedLocale::English)?;
     assert_eq!(answers.explanation_state, ExplanationState::Current);
     assert!(answers.facts.iter().any(|a| a.text.contains("802 files")));
     assert!(answers.facts.iter().any(|a| a
@@ -1271,7 +1295,7 @@ fn large_polyglot_inventory_keeps_exact_scope_outside_bounded_reader_plan(
     fs::write(f.root.join("main.py"), "def changed(): pass\n")?;
     assert_ne!(
         f.ops
-            .read_repository_explanation(f.project, "en")?
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Current
     );
@@ -1328,7 +1352,7 @@ fn repository_reading_uses_verified_inventory_without_claiming_graph_integrity(
     )?;
     assert_eq!(
         f.ops
-            .read_repository_explanation(f.project, "en")?
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Current
     );
@@ -1347,7 +1371,7 @@ fn repository_reading_uses_verified_inventory_without_claiming_graph_integrity(
         .is_err());
     assert_ne!(
         f.ops
-            .read_repository_explanation(f.project, "en")?
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
         ExplanationState::Current
     );
@@ -1535,7 +1559,9 @@ fn same_named_populated_and_workless_projects_keep_their_own_repository_articles
         (f.project, f.analysis, "greet builds"),
         (other, analysis, "returns seven"),
     ] {
-        let answers = f.ops.read_repository_explanation(project, "en")?;
+        let answers = f
+            .ops
+            .read_repository_explanation(project, "en", FixedLocale::English)?;
         assert_eq!(answers.explanation_state, ExplanationState::Current);
         let provenance = answers.provenance.ok_or("provenance")?;
         assert_eq!(provenance.project_id, project.to_string());
@@ -1622,6 +1648,120 @@ fn denied_file_permissions_do_not_publish_an_observation() -> Result<(), Box<dyn
         denied.is_err(),
         "the permission control requires a non-root test process"
     );
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    Ok(())
+}
+#[test]
+fn repository_cli_keeps_fixed_locale_independent_from_publication_language(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let realization = response(&f, id)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization,
+    )?;
+    let read = |language: &str, locale: &str| -> Result<Value, Box<dyn Error>> {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let exit = run_cli(
+            [
+                "--runtime",
+                f.ops.layout().root().to_str().ok_or("runtime path")?,
+                "--project",
+                &f.project.to_string(),
+                "--json",
+                "--locale",
+                locale,
+                "repository",
+                "explain",
+                "read",
+                "--language",
+                language,
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+        assert_eq!(
+            exit,
+            CliExit::SUCCESS,
+            "{}",
+            String::from_utf8_lossy(&stderr)
+        );
+        Ok(serde_json::from_slice::<Value>(&stdout)?["answers"].clone())
+    };
+    let before = f.ops.canonical_basis(f.project)?;
+    let english = read("en", "en")?;
+    let korean_facts = read("en", "ko")?;
+    assert_eq!(english["explanation_state"], "current");
+    assert_eq!(korean_facts["explanation_state"], "current");
+    assert_eq!(english["prose"], korean_facts["prose"]);
+    assert_eq!(english["provenance"], korean_facts["provenance"]);
+    assert_eq!(english["source_excerpts"], korean_facts["source_excerpts"]);
+    assert!(english["facts"][1]["text"]
+        .as_str()
+        .ok_or("English coverage")?
+        .starts_with("Within the selected Analysis Snapshot"));
+    assert!(korean_facts["facts"][1]["text"]
+        .as_str()
+        .ok_or("Korean coverage")?
+        .starts_with("선택한 Analysis Snapshot"));
+    let mut korean = response(&f, id)?;
+    let plan =
+        f.ops
+            .prepare_explanation(f.project, ExplanationSubject::Repository(f.analysis), "ko")?;
+    korean.language = "ko".into();
+    korean.plan_fingerprint = plan.fingerprint;
+    korean.paragraphs[0].text = "독립적으로 기록한 한국어 안내문입니다.".into();
+    korean.paragraphs[0].citations[0].claim_end_byte = korean.paragraphs[0].text.len();
+    korean.paragraphs[0].citations[0].claim_sha256 =
+        explanation_text_hash(&korean.paragraphs[0].text);
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "ko",
+        korean,
+    )?;
+    let korean_prose = read("ko", "en")?;
+    let korean_both = read("ko", "ko")?;
+    assert_eq!(korean_prose["prose"], korean_both["prose"]);
+    assert_ne!(english["prose"], korean_prose["prose"]);
+    assert_eq!(english["facts"], korean_prose["facts"]);
+    assert_eq!(korean_facts["facts"], korean_both["facts"]);
+    assert_eq!(korean_prose["provenance"], korean_both["provenance"]);
+    // UI locale cannot translate, substitute or create a missing publication.
+    for locale in ["en", "ko"] {
+        let missing = read("fr", locale)?;
+        assert_eq!(missing["explanation_state"], "missing");
+        assert!(missing["prose"]
+            .as_array()
+            .ok_or("missing prose")?
+            .iter()
+            .all(|unit| unit["role"] != "generated_interpretation"));
+        assert!(missing["provenance"].is_null());
+        assert!(missing["prose"][0]["text"]
+            .as_str()
+            .ok_or("availability notice")?
+            .starts_with(if locale == "ko" {
+                "이 언어의 해석"
+            } else {
+                "Interpretation has not"
+            }));
+    }
+    f.ops
+        .delete_repository_source_observation(f.project, f.analysis, id)?;
+    for locale in ["en", "ko"] {
+        let unavailable = read("en", locale)?;
+        assert_ne!(unavailable["explanation_state"], "current");
+        assert!(unavailable["prose"]
+            .as_array()
+            .ok_or("unavailable prose")?
+            .iter()
+            .all(|unit| unit["role"] != "generated_interpretation"));
+        assert!(unavailable["provenance"].is_null());
+    }
     assert_eq!(before, f.ops.canonical_basis(f.project)?);
     Ok(())
 }

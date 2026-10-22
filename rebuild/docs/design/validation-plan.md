@@ -3596,3 +3596,13 @@ limits or treat live continuation as offline availability. Original permitted
 publications whose complete windows already fit must retain identical excerpts,
 claim bindings and omission scopes. These checks establish technical access,
 not semantic entailment or a human answer to the reading question.
+
+### Repository reading locale independence
+
+`repository_explanation::repository_cli_keeps_fixed_locale_independent_from_publication_language`
+uses actual CLI dispatch with independently recorded English/Korean publications,
+crossed fixed locales, a missing language and deleted Source body. It requires
+localized deterministic scope facts, unchanged selected prose/provenance and
+read-only canonical state. `product_review.cjs` passes its configured locale to
+status and compares deterministic facts in actual live and offline articles.
+These are consumer/lifecycle controls, not translation quality or user acceptance.

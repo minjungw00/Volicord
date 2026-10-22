@@ -168,7 +168,11 @@ fn repository_scope_precedes_explanation_with_exact_boundaries_in_supporting_rec
         realization,
     )?;
     let before = operations.canonical_basis(project)?;
-    let answers = operations.read_repository_explanation(project, "en")?;
+    let answers = operations.read_repository_explanation(
+        project,
+        "en",
+        volicord_projections::FixedLocale::English,
+    )?;
     let fact = |key: &str| {
         answers
             .facts
@@ -244,9 +248,11 @@ fn repository_scope_precedes_explanation_with_exact_boundaries_in_supporting_rec
     viewer
         .operations()
         .delete_repository_source_observation(project, analysis, source)?;
-    let unavailable = viewer
-        .operations()
-        .read_repository_explanation(project, "en")?;
+    let unavailable = viewer.operations().read_repository_explanation(
+        project,
+        "en",
+        volicord_projections::FixedLocale::English,
+    )?;
     assert!(unavailable.provenance.is_none());
     assert!(!unavailable
         .facts
