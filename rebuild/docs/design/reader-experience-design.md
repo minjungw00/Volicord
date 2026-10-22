@@ -650,3 +650,17 @@ remain typed non-comparable. Earlier failures remain visible beside later passes
 Historical inputs remain unobserved rather than acquiring inferred identities.
 Artifact scope is bounded and operator assertion interpretation remains attributed;
 current whole-tree coverage, trusted-host capture and user acceptance are separate.
+
+### Critical claim review correspondence
+
+AC-12/30/32 require a selected important claim's own Source journey. The maintained
+Product and article browser drivers bind that task to exact public realization,
+unit, citation and claim/range hashes. Required code cannot pass on an unrelated last
+link or an absent control; live paging must finish and offline code must be complete
+for that declared critical scope. Explicit negative and record-only cases retain
+their own applicability. The validation owner's critical-task controls independently
+remove/replace the important Source in disposable DOM while preserving other links.
+This strengthens technical correspondence and preserves independent publication and
+scoped Decision controls; it does not establish semantic sufficiency, visual benefit,
+human acceptance or unseen-case generalization. Source context reports the actual
+shared excerpt budget using the producer-owned constant.

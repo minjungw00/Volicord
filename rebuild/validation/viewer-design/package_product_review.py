@@ -88,6 +88,13 @@ def copy_product_outputs(observed, output, cases):
         allowed.add(key + '-offline.html')
         for width in (1440, 1024, 768, 390, 320):
             allowed.update(f'{key}-{page}-{width}.png' for page in pages)
+            for task in case.get('source_tasks', {}).values():
+                selected = task.get('by_language', {}).get(case.get('language'), task)
+                for claim in selected.get('claims', []):
+                    unit, citation = claim['unit_index'], claim['citation_index']
+                    require(type(unit) is int and unit >= 0 and type(citation) is int and citation >= 0, 'invalid critical Source screenshot indices')
+                    allowed.update(f'{key}-{page}-u{unit}-c{citation}-{width}.png'
+                        for page in ('source', 'offline-source'))
     boundary.copy_bound(observed, output, allowed, bindings)
     boundary.write_new(output, 'result.json', json.dumps(boundary.sanitized_result(meta), ensure_ascii=False, indent=2).encode())
 

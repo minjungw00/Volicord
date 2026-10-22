@@ -5,7 +5,7 @@ const {spawn,spawnSync,execFileSync}=require('node:child_process');
 const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
 
 function reviewedFiles(directory){const files={};for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name);if(!fs.lstatSync(file).isFile()||!['.png','.html'].includes(path.extname(name)))continue;const bytes=fs.readFileSync(file);files[name]={sha256:require('node:crypto').createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};}return files;}
-const {createOutput,publication,documentMetrics,processCpuDelta}=require('./product_review_controls.cjs');
+const {createOutput,publication,documentMetrics,processCpuDelta,sourceTasks,criticalLink,criticalPoint,citationResponse,criticalBytes}=require('./product_review_controls.cjs');
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const {chromium}=require(config.playwright);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -34,37 +34,41 @@ async function serve(c){const p=spawn(config.viewer,['--runtime',c.runtime,'--pr
  return {base,async stop(){p.kill('SIGTERM');const termination=await exited;fs.writeFileSync(path.join(output,c.key+'-viewer.stdout'),stdout);fs.writeFileSync(path.join(output,c.key+'-viewer.stderr'),stderr);return termination;}};}
 async function fits(page){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),JSON.stringify(await page.evaluate(()=>({url:location.href,width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('main *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(n=>({tag:n.tagName,cls:n.className,width:n.getBoundingClientRect().width}))}))));}
 async function capture(page,c,name,width){await fits(page);await page.screenshot({path:path.join(output,`${c.key}-${name}-${width}.png`)});}
-async function sourceJourney(page,c,width,offline=false,selector='#repository-explanation .doc'){
- let verificationRead=null;
- const article=page.locator(selector);
- const links=article.locator('a.evidence-link:visible');if(!await links.count())return {state:'unavailable'};
- // A reading point selected by the real document, rather than any historical case.
- const link=links.last(),target=(await link.getAttribute('href')).slice(1);
- const origin=await link.getAttribute('data-origin');await link.focus();await link.press('Enter');
- const point=page.locator(`[id="${target}"]`);await point.waitFor({state:'visible'});
- if(!offline){await page.waitForFunction(({id,narrow})=>{const n=document.getElementById(id);return n&&document.activeElement===n&&n.getAttribute('role')===(narrow?'dialog':null);},{id:target,narrow:width<=900});
-  assert.equal(await page.evaluate(()=>document.activeElement.id),target);
-  assert.equal(await point.getAttribute('role'),width<=900?'dialog':null);
+async function sourceJourney(page,c,width,offline,selector,answers,destination){
+ const article=page.locator(selector),tasks=sourceTasks(c,destination,answers),critical=[];
+ for(const task of tasks){
+  const link=await criticalLink(article,task);
+  critical.push(await inspectSource(page,c,width,offline,article,link,task));
+ }
+ // Keep the separate last-link regression; it cannot discharge a critical task.
+ const links=article.locator('a.evidence-link:visible');
+ const last=await links.count()?await inspectSource(page,c,width,offline,article,links.last()):{state:'absent'};
+ return {state:tasks.length?'read':c.source_tasks[destination].state,critical,last};
+}
+async function inspectSource(page,c,width,offline,article,link,task){
+ const target=(await link.getAttribute('href')).slice(1),origin=await link.getAttribute('data-origin');
+ const point=page.locator(`[id="${target}"]`);
+ let pending=task&&!offline?citationResponse(page,task,0):null;
+ await link.focus();await link.press('Enter');await point.waitFor({state:'visible'});
+ if(task)await criticalPoint(point,task);
+ let bytes=0,pages=0;
+ if(!offline){
+  await page.waitForFunction(({id,narrow})=>{const n=document.getElementById(id);return n&&document.activeElement===n&&n.getAttribute('role')===(narrow?'dialog':null);},{id:target,narrow:width<=900});
   assert.equal(await article.evaluate(n=>n.inert),width<=900);
   assert.equal(await point.evaluate(n=>Boolean(n.closest('[inert]'))),false,'Source controls must remain outside the inert article');
-  await page.keyboard.press('Tab');
-  assert.equal(await point.evaluate(n=>n.contains(document.activeElement)),true,'Source keyboard controls remain interactive');
-  const status=point.locator('.citation-status');if(await status.count())await status.filter({hasText:/Displayed|표시 범위/}).waitFor();
-  const region=point.locator('.citation-inspection code');
-  if(c.source_root && await region.count()){
-   const control=point.locator('.citation-inspection'),url=new URL(await control.getAttribute('data-citation-url'),page.url());
-   const started=performance.now(),response=await page.request.get(url.href);assert.equal(response.status(),200);const bytes=await response.body();verificationRead={status:response.status(),bytes:bytes.length,duration_ms:performance.now()-started};const chunk=JSON.parse(bytes).chunk;
-   const source=fs.readFileSync(path.join(c.source_root,chunk.citation.locator));
-   assert.equal(await region.textContent(),source.subarray(chunk.displayed_start_byte,chunk.displayed_end_byte).toString('utf8'));
-  }
- }
+  await page.keyboard.press('Tab');assert.equal(await point.evaluate(n=>n.contains(document.activeElement)),true);
+  if(task){
+   ({bytes,pages}=await criticalBytes(page,point,task,false,pending));
+  }else{const status=point.locator('.citation-status');if(await status.count())await status.filter({hasText:/Displayed|표시 범위/}).waitFor();}
+ }else if(task)({bytes,pages}=await criticalBytes(page,point,task,true));
  assert.equal(await point.locator('.code-region').last().evaluate(n=>getComputedStyle(n).fontSize),width<=600?'12px':width<=900?'13px':'15px');
- await capture(page,c,offline?'offline-source':'source',width);
+ await capture(page,c,(offline?'offline-source':'source')+(task?`-u${task.unit_index}-c${task.citation_index}`:''),width);
  const returnId=(await point.locator('.return').getAttribute('href')).slice(1);assert.equal(returnId,origin);
  if(!offline){await page.reload();await point.waitFor({state:'visible'});await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),returnId);
   await page.goBack();await point.waitFor({state:'visible'});await page.goForward();assert.equal(new URL(page.url()).hash,'#'+returnId);
  }else await point.locator('.return').click();
- assert.equal(new URL(page.url()).hash,'#'+returnId);return {state:'read',target,returnId,verification_read:verificationRead};
+ assert.equal(new URL(page.url()).hash,'#'+returnId);
+ return {state:'read',target,returnId,unit_index:task?.unit_index,citation_index:task?.citation_index,source_id:task?.citation.source_id,realization_fingerprint:task?.realization_fingerprint,claim_sha256:task?.citation.claim_sha256,range_sha256:task?.citation.range_sha256,bytes,pages};
 }
 (async()=>{let browser;try{
  if(config.fontconfig)assert.ok(fs.existsSync(config.fontconfig),'fontconfig file must exist');
@@ -147,7 +151,7 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
    await page.locator('#repository-explanation').waitFor();
    row.repository_cost={navigation_ms:performance.now()-clickStarted,...processCpuDelta(cpuBefore,await processCpu()),...await page.evaluate(documentMetrics)};assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
    fs.writeFileSync(path.join(output,`${c.key}-repository-${width}.html`),await page.content());await capture(page,c,'repository',width);
-   row.source=await sourceJourney(page,c,width);
+   row.source=await sourceJourney(page,c,width,false,'#repository-explanation .doc',status.repository_explanation,'repository');
    await page.locator('.masthead a[href*="view=work"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');await capture(page,c,'works',width);
    if(c.work){const card=page.locator(`.work-card[data-work-id="${c.work}"]`);assert.equal(await card.locator('a').count(),1);
     await card.locator('.card-action').click();assert.equal(new URL(page.url()).searchParams.get('work'),c.work);
@@ -173,7 +177,7 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
     }
     for(const id of await sectionNav.locator('a').evaluateAll(a=>a.map(n=>n.hash.slice(1))))assert.equal(await page.locator(`[id="${id}"]`).count(),1);
     await capture(page,c,'work',width);
-    row.work_source=await sourceJourney(page,c,width,false,'.doc[data-work-id]');
+    row.work_source=await sourceJourney(page,c,width,false,'.doc[data-work-id]',status.work_history.find(w=>w.work_item_id===c.work).answers,'work');
     await page.reload();assert.equal(await page.locator('.doc[data-work-id]').getAttribute('data-work-id'),c.work);
     await page.locator('.doc[data-work-id] .breadcrumb a').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');
    }else assert.ok((await page.locator('#works').textContent()).match(/No Work|기록된 작업이 없/));
@@ -203,8 +207,8 @@ async function sourceJourney(page,c,width,offline=false,selector='#repository-ex
    await capture(p,c,'offline-overview',width);
    if(c.work){await p.locator('.masthead a[href="#works"]').click();await p.locator(`#works .work-card[data-work-id="${c.work}"] .card-action`).click();
     assert.equal(await p.locator(`article.doc[data-work-id="${c.work}"]:visible`).count(),1);
-    await capture(p,c,'offline-work',width);}
-   await p.locator('.masthead a[href="#repository-explanation"]').click();await capture(p,c,'offline-repository',width);await sourceJourney(p,c,width,true);
+    await capture(p,c,'offline-work',width);await sourceJourney(p,c,width,true,`article.doc[data-work-id="${c.work}"]`,status.work_history.find(w=>w.work_item_id===c.work).answers,'work');}
+   await p.locator('.masthead a[href="#repository-explanation"]').click();await capture(p,c,'offline-repository',width);await sourceJourney(p,c,width,true,'#repository-explanation .doc',status.repository_explanation,'repository');
    for(const id of ['analysis-tool','documents-tool','memory-tool','evidence-tool','code','decision-reading','repository-code'])assert.equal(await p.locator('#'+id).count(),0);
    assert.equal(await p.locator('.masthead nav a').count(),3);
   }

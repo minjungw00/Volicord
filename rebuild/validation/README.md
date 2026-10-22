@@ -25,8 +25,8 @@ claim relevance and scroll-then-open navigation without supplying case answers.
 <private-config.json>` checks exact current Work articles in live and script-free
 offline readers at five widths in en/ko. Configuration names local viewer/CLI,
 Playwright/Chromium, a fresh ignored output directory and `cases` with
-`key`, `runtime`, `project`, `work`, plus `source_reads` mapping exact Source IDs
-to preserved permitted-read JSON receipts. It invokes no generation or record
+`key`, `runtime`, `project`, `work`, plus the explicit `source_tasks.work` mapping
+described below. It invokes no generation or record
 operation. Keep setup, authoring, source-first semantic review and actual user
 acceptance separate from its navigation/byte/immutability results. Run through
 `rebuild/scripts/validate focused` and inspect complete logs and numeric outcomes.
@@ -1275,3 +1275,35 @@ binding comparison. Its ordinary test separately checks quiet dependency deletio
 Keep original failed attempts and classify retained historical user Decisions,
 real host publications and authored controls separately; no browser pass is human
 approval or proof of repository-wide semantic breadth.
+
+## Explicit critical Source review tasks
+
+Both `viewer-design/product_review.cjs` and `article_reading_browser.cjs` use
+`source_tasks` per `repository` / selected `work` destination. Declare
+`state: required`, `realization_fingerprint` and nonempty `claims`; each claim names
+zero-based `unit_index`, `citation_index`, `text_sha256` (`sha256:` of full unit UTF-8)
+and the complete frozen `citation` object from its independently inspected original
+publication. Select important claims before browser reading; copying every current
+DOM binding is no semantic or relevance oracle. Each critical Source must open from
+that exact unit, finish live paging, match the original range hash and return.
+Offline must contain the complete declared critical window. An unrelated last-link
+journey is retained separately.
+
+`state: absent` requires the exact non-current `explanation_state`; `state:
+record_only` is allowed only for current Work prose with no citations. Missing task
+configuration fails rather than becoming a successful unavailable journey. Keep
+normal positives and designated negatives separately identified. The Product driver
+also reads selected Work Sources offline, not only repository Sources.
+
+After a Product browser run, execute `node
+rebuild/validation/viewer-design/product_review_source_self_test.cjs <private-config>`
+through `validate focused`. It challenges the actual exports in disposable DOM with
+missing/wrong critical Source and truncated/omitted windows while another last link
+still works. `node product_review_controls_self_test.cjs` (in this directory's
+`viewer-design/`) checks publication/task applicability. Package verification retains
+bounded critical identities and measurements without raw local paths, receipts or
+expected answers. These controls add no Product state or generation. Semantic,
+presentation, independent-reader and actual-human judgments remain separate.
+
+For multilingual article review, `source_tasks.work.by_language` contains separate
+`en` / `ko` task declarations. A language never borrows another realization's identity.

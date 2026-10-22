@@ -80,19 +80,28 @@ class ReviewPackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); observed = root / 'observed'; observed.mkdir()
             (observed / 'recorded-offline.html').write_text('<!doctype html><p>Actual bounded Product export</p>')
+            (observed / 'recorded-source-u12-c0-390.png').write_bytes(png())
             seal(observed)
             (observed / 'source-first-expectations.json').write_text('private evaluator answer')
             (observed / 'runtime').mkdir()
             (observed / 'runtime' / 'private.sqlite3').write_text('not a review export')
-            package.copy_product_outputs(observed, root / 'package', [case()])
-            self.assertEqual(sorted(p.name for p in (root / 'package').iterdir()), ['recorded-offline.html', 'result.json'])
+            c = {**case(), 'language': 'en', 'source_tasks': {'work': {'by_language': {
+                'en': {'claims': [{'unit_index': 12, 'citation_index': 0}]}}}}}
+            package.copy_product_outputs(observed, root / 'package', [c])
+            self.assertEqual(sorted(p.name for p in (root / 'package').iterdir()),
+                ['recorded-offline.html', 'recorded-source-u12-c0-390.png', 'result.json'])
             self.assertEqual((root / 'package' / 'recorded-offline.html').read_bytes(),
                 (observed / 'recorded-offline.html').read_bytes())
 
     def test_public_numeric_costs_and_control_identity_survive_without_private_fields(self):
         data = {'controls_sha256': 'a' * 64, 'cases': [{'key': 'large',
             'publication': {'repository_state': 'current', 'work_count': 0},
-            'source': {'state': 'read', 'verification_read': {'status': 200, 'bytes': 1000, 'duration_ms': 2.5}},
+            'source': {'state': 'read', 'verification_read': {'status': 200, 'bytes': 1000, 'duration_ms': 2.5},
+                'critical': [{'unit_index': 12, 'citation_index': 0, 'source_id': '01' * 16,
+                    'realization_fingerprint': 'sha256:' + 'b' * 64,
+                    'claim_sha256': 'sha256:' + 'c' * 64,
+                    'range_sha256': 'sha256:' + 'd' * 64, 'bytes': 5000, 'pages': 2}],
+                'last': {'state': 'read'}},
             'source_reads': [{'status': 200, 'bytes': 1024}, {'status': 409, 'state': 'body_unavailable'}],
             'widths': [{'width': 390, 'repository_cost': {'dom_elements': 3000,
                 'code_elements': 20, 'token_spans': 200, 'code_utf8_bytes': 4096,

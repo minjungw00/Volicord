@@ -3423,3 +3423,36 @@ Operations `confirmed_repository_changes_are_distinct_from_unavailable_compariso
 existing Source/retention/Work tests and current public consumers. Preserve whole
 snapshot/noncited dependencies and grounded editorial headings unless another measured
 obligation establishes a safe necessary policy change; the report does not do so.
+
+### Critical explanation task correspondence
+
+The maintained `viewer-design/product_review.cjs` and `article_reading_browser.cjs`
+require explicit per-destination Source applicability. A required normal code journey
+names the exact realization, original unit/citation indices, full unit text hash and
+complete citation binding. The browser must find that claim's own action and Source,
+read every live citation page in order, verify the complete range hash, and return to
+its origin. Static export must embed that declared critical window completely.
+Unrelated last-link navigation remains a separate control; it cannot satisfy a missing
+critical Source. `absent` binds a particular non-current lifecycle state; `record_only`
+is restricted to a genuinely citation-free current Work. Neither replaces a required
+normal code journey. Independent name/summary/article, multi-Work/Decision and real
+function regressions keep their existing public-consumer ownership.
+
+`product_review_controls_self_test.cjs` challenges changed/missing critical bindings,
+replacement, scope and typed absence. `product_review_source_self_test.cjs` takes the
+same private config after actual Product export and changes only disposable browser
+DOM: remove the critical action while retaining a working unrelated last link, change
+its Source identity, truncate code, or omit the window. The actual driver must reject
+those counterexamples. Review packaging retains bounded critical identity/byte/page
+receipts and separately sealed screenshots; no original Source or feedback is edited.
+Run through `validate focused`, preserving full streams and numeric outcomes.
+These are correspondence/completeness checks, never an entailment or human oracle.
+
+Reader Source context displays the shared aggregate byte limit rather than a copied
+per-window number. The existing complete-mechanism public HTTP/offline control checks
+that caption alongside complete production-function windows and deletion refusal.
+No capture, admission, retained-format, publication, provider or resource limit changes.
+The integrated task's exact committed candidate still requires the authoritative gate;
+missing current external authorization blocks only its affected stages, not local
+repairs, independent assessment or a concrete review package. Earlier focused-only
+scope statements above describe their original deliveries, not a gate exemption.

@@ -2,6 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const {spawn, spawnSync, execFileSync} = require('node:child_process');
 const {pathToFileURL} = require('node:url'), crypto = require('node:crypto');
+const {sourceTasks,criticalLink,criticalPoint,citationResponse,criticalBytes}=require('../../viewer-design/product_review_controls.cjs');
 const config = JSON.parse(fs.readFileSync(process.argv[2]));
 const {chromium} = require(config.playwright);
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -63,20 +64,15 @@ async function inspect(page,c,qa,url,width,mode,language) {
   assert.equal(await doc.locator('.doc-head p.lead').count(),1,'one article lead');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no ordinary overflow');
   await page.goto(url);await page.screenshot({path:path.join(config.output,`${c.key}-${language}-${width}-${mode}.png`)});
-  const evidence=doc.locator('.article-section a.evidence-link').first();
-  if(await evidence.count()) {
+  const tasks=sourceTasks(c,'work',qa,language);
+  for(const task of tasks) {
+    const evidence=await criticalLink(doc,task);
     const origin=await evidence.getAttribute('data-origin'),fragment=await evidence.getAttribute('href');
+    const pending=mode==='live'?citationResponse(page,task,0):null;
     await evidence.focus();await page.keyboard.press('Enter');
     const point=page.locator(`[id="${fragment.slice(1)}"]`);await point.waitFor();
-    if(mode==='live')await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
-    const id=await point.getAttribute('data-source-id');
-    const original=JSON.parse(fs.readFileSync(c.source_reads[id]));
-    const detail=original.observation.detail;
-    const body=Buffer.from(detail.body);
-    const code=point.locator(mode==='live'?'.citation-inspection code':'pre.code-region code').first();
-    const shown=Buffer.from(await code.textContent());assert.ok(shown.length>0);
-    // The selected first material citation starts at the observation's first byte.
-    assert.ok(body.subarray(0,shown.length).equals(shown),'exact permitted Source prefix');
+    await criticalPoint(point,task);
+    await criticalBytes(page,point,task,mode==='offline',pending);
     await page.screenshot({path:path.join(config.output,`${c.key}-${language}-${width}-${mode}-code.png`)});
     if(mode==='live') {
       assert.equal(await doc.evaluate(n=>n.inert),width<=900);
