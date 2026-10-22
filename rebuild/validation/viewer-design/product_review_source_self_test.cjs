@@ -2,7 +2,7 @@
 // Run after product_review.cjs; mutations affect disposable browser DOM only.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {pathToFileURL}=require('node:url');
-const {sourceTasks,criticalLink,criticalPoint,criticalBytes}=require('./product_review_controls.cjs');
+const {sourceTasks,criticalLink,criticalPoint,criticalBytes,repositoryFacts}=require('./product_review_controls.cjs');
 const config=JSON.parse(fs.readFileSync(process.argv[2]));
 const {chromium}=require(config.playwright);
 (async()=>{
@@ -14,6 +14,16 @@ const {chromium}=require(config.playwright);
   try{for(const destination of ['repository',...(c.work?['work']:[])]){
    const answers=destination==='repository'?status.repository_explanation:status.work_history.find(w=>w.work_item_id===c.work).answers;
    const tasks=sourceTasks(c,destination,answers);
+   if(destination==='repository'&&answers.facts.length){
+    const url=pathToFileURL(path.join(config.output,c.key+'-offline.html')).href+'#repository-explanation';
+    const article=page.locator('#repository-explanation .doc');
+    await page.goto(url);await repositoryFacts(article,answers);checks++;
+    const field=article.locator(`[data-question="${answers.facts[0].question}"]`);
+    await field.evaluate(n=>n.remove());
+    await assert.rejects(()=>repositoryFacts(article,answers),/repository fact/);checks++;
+    await page.reload();await field.evaluate(n=>n.textContent='altered fixed text');
+    await assert.rejects(()=>repositoryFacts(article,answers),/repository fact/);checks++;
+   }
    for(const task of tasks){
     const url=pathToFileURL(path.join(config.output,c.key+'-offline.html')).href+'#'+(destination==='repository'?'repository-explanation':'work-'+c.work);
     const article=page.locator(destination==='repository'?'#repository-explanation .doc':`article.doc[data-work-id="${c.work}"]`);

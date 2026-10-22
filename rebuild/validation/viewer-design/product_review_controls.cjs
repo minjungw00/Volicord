@@ -154,3 +154,12 @@ async function criticalBytes(page,point,task,offline,pending) {
 }
 module.exports.citationResponse=citationResponse;
 module.exports.criticalBytes=criticalBytes;
+
+async function repositoryFacts(article,answers){
+ for(const fact of answers.facts||[]){
+  const field=article.locator(`[data-question="${fact.question}"]`);
+  assert.equal(await field.count(),1,'repository fact must have one visible field');
+  assert.equal(await field.textContent(),fact.text,'repository fact must match the selected fixed locale');
+ }
+}
+module.exports.repositoryFacts=repositoryFacts;

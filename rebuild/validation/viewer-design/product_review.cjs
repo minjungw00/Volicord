@@ -5,7 +5,7 @@ const {spawn,spawnSync,execFileSync}=require('node:child_process');
 const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
 
 function reviewedFiles(directory){const files={};for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name);if(!fs.lstatSync(file).isFile()||!['.png','.html'].includes(path.extname(name)))continue;const bytes=fs.readFileSync(file);files[name]={sha256:require('node:crypto').createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};}return files;}
-const {createOutput,publication,documentMetrics,processCpuDelta,sourceTasks,criticalLink,criticalPoint,citationResponse,criticalBytes,sourceCaptureName}=require('./product_review_controls.cjs');
+const {createOutput,publication,documentMetrics,processCpuDelta,sourceTasks,criticalLink,criticalPoint,citationResponse,criticalBytes,sourceCaptureName,repositoryFacts}=require('./product_review_controls.cjs');
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const {chromium}=require(config.playwright);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -36,9 +36,7 @@ async function fits(page){assert.ok(await page.evaluate(()=>document.documentEle
 async function capture(page,c,name,width){await fits(page);fs.writeFileSync(path.join(output,`${c.key}-${name}-${width}.png`),await page.screenshot(),{flag:'wx'});}
 async function sourceJourney(page,c,width,offline,selector,answers,destination){
  const article=page.locator(selector),tasks=sourceTasks(c,destination,answers),critical=[];
- for(const fact of answers.facts||[]){
-  assert.equal(await article.locator(`[data-question="${fact.question}"]`).textContent(),fact.text,'deterministic facts must match the selected fixed locale');
- }
+ if(destination==='repository')await repositoryFacts(article,answers);
  for(const task of tasks){
   const link=await criticalLink(article,task);
   critical.push(await inspectSource(page,c,width,offline,article,link,task,destination,answers));

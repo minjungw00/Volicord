@@ -3604,5 +3604,8 @@ uses actual CLI dispatch with independently recorded English/Korean publications
 crossed fixed locales, a missing language and deleted Source body. It requires
 localized deterministic scope facts, unchanged selected prose/provenance and
 read-only canonical state. `product_review.cjs` passes its configured locale to
-status and compares deterministic facts in actual live and offline articles.
+status and compares deterministic Repository facts in actual live and offline
+articles. `product_review_source_self_test.cjs` removes and alters those fields
+in an actual exported DOM, alongside its critical Source counterexamples. Work
+diagnostics retain their separately specified compact presentation.
 These are consumer/lifecycle controls, not translation quality or user acceptance.
