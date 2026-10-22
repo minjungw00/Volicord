@@ -1635,9 +1635,9 @@ fn render_source_excerpts(
                     "Offline: only the displayed bytes are included. Additional omitted evidence cannot be retrieved from this document.",
                     "오프라인: 표시된 바이트만 포함됩니다. 이 문서에서는 추가 생략 근거를 가져올 수 없습니다.")));
             }
-            html.push_str(&format!("<details class=\"source-context\"><summary>{}</summary>{context}<p class=\"source-note\">{}: {} / 16,384 UTF-8 bytes · {}</p></details>",
+            html.push_str(&format!("<details class=\"source-context\"><summary>{}</summary>{context}<p class=\"source-note\">{}: {} / {} UTF-8 bytes · {}</p></details>",
                 text(r.locale,"Observation scope and limits", "관측 범위와 한계"),text(r.locale,"Included unique cited text", "포함된 고유 인용 텍스트"),
-                answers.source_excerpts.iter().map(|e|e.text.len()).sum::<usize>(),if snapshot {text(r.locale,"Offline: embedded windows only", "오프라인: 포함된 범위만 제공")} else {text(r.locale,"Live citation pages: up to 4,096 bytes", "실시간 인용 페이지: 최대 4,096바이트")}));
+                answers.source_excerpts.iter().map(|e|e.text.len()).sum::<usize>(),volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT,if snapshot {text(r.locale,"Offline: embedded windows only", "오프라인: 포함된 범위만 제공")} else {text(r.locale,"Live citation pages: up to 4,096 bytes", "실시간 인용 페이지: 최대 4,096바이트")}));
             html.push_str("<nav class=\"point-others\">");
             for (other, other_c) in answer
                 .citations

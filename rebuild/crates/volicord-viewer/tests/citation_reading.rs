@@ -1066,6 +1066,14 @@ fn complete_reader_mechanisms_fit_together_without_dropping_source_dependencies(
         .export_snapshot(&f.request(), &destination)?;
     let offline = fs::read_to_string(destination)?;
     for html in [f.get("/?view=repository")?, offline] {
+        let included: usize = answers.source_excerpts.iter().map(|e| e.text.len()).sum();
+        assert!(
+            html.contains(&format!(
+                "Included unique cited text: {included} / {} UTF-8 bytes",
+                EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT
+            )),
+            "Source context must identify the actual aggregate budget"
+        );
         let shown = code_texts(&html);
         for original in &f.originals[7..] {
             assert!(
