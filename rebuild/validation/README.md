@@ -1307,3 +1307,9 @@ presentation, independent-reader and actual-human judgments remain separate.
 
 For multilingual article review, `source_tasks.work.by_language` contains separate
 `en` / `ko` task declarations. A language never borrows another realization's identity.
+
+Critical claims inside verification/supporting disclosures first open their actual
+summary controls, then use the visible claim's Source action. Separate reads compare
+all stable publication/applicability fields while validating, rather than equating,
+read-time comparison instants. Embedded complete-window bounds and live citation
+page bounds have separate assertions; the latter stays 4,096 bytes.

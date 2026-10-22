@@ -453,7 +453,7 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
             .prepare_explanation(f.project, ExplanationSubject::Work(work), "en")?;
     assert!(!changed.conflicts.is_empty());
     let page = get(&f, &format!("/?view=work&work={work}"));
-    assert!(page.contains("Explanation is stale"));
+    assert!(page.contains("The explanation basis changed; the article cannot be shown as current."));
     assert!(!page.contains("Fake unit-test paragraph"));
     f.operations
         .delete_explanations(f.project, ExplanationSubject::Work(work))?;
@@ -476,8 +476,8 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
         .source_basis[0];
     let grounding =
         volicord_repository_intelligence::CanonicalGrounding::from_read_basis(&canonical)?;
-    for (content,label) in [("broken JSON".to_owned(),"Explanation is corrupt"),
-        (serde_json::json!({"realization":{"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION+1}}).to_string(),"Explanation format is unsupported")] {
+    for (content,label) in [("broken JSON".to_owned(),"Retained content is corrupt."),
+        (serde_json::json!({"realization":{"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION+1}}).to_string(),"The retained format is unsupported.")] {
         let mut privacy=volicord_privacy::PrivacyStore::open_with(f.operations.layout().privacy_store(),
             DeterministicIdGenerator::new([if content=="broken JSON" {[0xff;16]} else {[0x01;16]}]),
             FixedClock::new(TimestampMicros::from_unix_micros(i64::MAX-1)))?;

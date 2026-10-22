@@ -566,7 +566,7 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         assert!(page.contains(
             "aria-label=\"Observed file in selected snapshot · Source 1 ↗ · main.py:1–2\""
         ));
-        assert!(page.contains(">Source 1 ↗</a>"));
+        assert!(page.contains("<bdi class=\"source-label\">main.py:1–2</bdi> ↗</a>"));
         assert!(page.contains("Observed file in selected snapshot"));
         assert_eq!(
             page.contains("Before: historical observation"),
@@ -617,9 +617,42 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         )?;
         let stale = get(&f)?;
         assert!(code_texts(&stale).is_empty());
-        assert!(stale.contains("Explanation is stale"));
+        assert!(stale
+            .contains("The explanation basis changed; the article cannot be shown as current."));
     }
     Ok(())
+}
+
+// Comparison instants belong to each read, outside retained publication identity.
+// Preserve every other field, including typed applicability and exact claim/Source
+// bindings; missing or invalid verified-read times remain assertion failures.
+fn assert_same_answer_basis(mut left: Value, mut right: Value) {
+    fn normalize(value: &mut Value) {
+        let applicability = &mut value["applicability"];
+        if applicability["repository_comparison"] == "verified_at_read" {
+            assert!(applicability["checked_at_unix_micros"]
+                .as_i64()
+                .is_some_and(|v| v > 0));
+        }
+        assert!(
+            applicability["checked_at_unix_micros"].is_null()
+                || applicability["checked_at_unix_micros"]
+                    .as_i64()
+                    .is_some_and(|v| v > 0)
+        );
+        applicability["checked_at_unix_micros"] = Value::Null;
+        for scope in ["work_name", "work_summary"] {
+            if value[scope].is_object() {
+                normalize(&mut value[scope]);
+            }
+        }
+    }
+    normalize(&mut left);
+    normalize(&mut right);
+    assert_eq!(
+        left, right,
+        "same public Work publication and applicability basis"
+    );
 }
 
 fn public_answers(f: &Value, host: &mut HostAdapter) -> Result<Value, Box<dyn Error>> {
@@ -658,7 +691,7 @@ fn public_answers(f: &Value, host: &mut HostAdapter) -> Result<Value, Box<dyn Er
             .clone())
     };
     let answers = select(&cli)?;
-    assert_eq!(answers, select(&mcp)?, "same public Work answer basis");
+    assert_same_answer_basis(answers.clone(), select(&mcp)?);
     Ok(answers)
 }
 
@@ -717,10 +750,14 @@ fn corrupt_and_unsupported_latest_outputs_never_fall_back_across_public_readers(
         .ok_or("excerpts")?
         .is_empty());
     for (state, label, content) in [
-        ("corrupt", "Explanation is corrupt", "not JSON".to_owned()),
+        (
+            "corrupt",
+            "Retained content is corrupt.",
+            "not JSON".to_owned(),
+        ),
         (
             "unsupported",
-            "Explanation format is unsupported",
+            "The retained format is unsupported.",
             json!({"realization": {
                 "format_kind": EXPLANATION_KIND, "format_version": EXPLANATION_VERSION + 1
             }})
@@ -813,11 +850,7 @@ fn unavailable_explanation_storage_preserves_canonical_reading_and_recovers_with
     );
     assert_eq!(canonical, operations.canonical_basis(project)?);
     assert_eq!(privacy, operations.privacy_status(project)?);
-    assert_eq!(
-        public_answers(&f, &mut host)?,
-        original,
-        "restored storage is readable without new generation"
-    );
+    assert_same_answer_basis(public_answers(&f, &mut host)?, original);
     Ok(())
 }
 
@@ -929,7 +962,7 @@ fn deleted_interpretation_is_distinct_from_never_generated_and_reads_stay_empty(
         "deleted"
     );
     let page = get(&f)?;
-    assert!(page.contains("Explanation was explicitly deleted"));
+    assert!(page.contains("The publication or a required Source was deleted."));
     assert!(!page.contains("return 5</code>"));
     assert!(!page.contains("Understand the constant return in value()."));
     Ok(())
@@ -1036,7 +1069,7 @@ fn forgetting_barrier(excerpt: bool) -> Result<(), Box<dyn Error>> {
         "withheld"
     );
     let page = get(&f)?;
-    assert!(page.contains("withheld by the canonical forgetting read barrier"));
+    assert!(page.contains("Content is withheld by the forgetting barrier."));
     assert!(code_texts(&page).is_empty());
     assert!(!page.contains("Understand the constant return in value()."));
     assert_eq!(privacy, ops(&f)?.privacy_status(project)?);
@@ -1048,7 +1081,7 @@ fn forgetting_barrier(excerpt: bool) -> Result<(), Box<dyn Error>> {
         volicord_operations::ForgettingState::Completed
     );
     let page = get(&f)?;
-    assert!(page.contains("Explanation was explicitly deleted"));
+    assert!(page.contains("The publication or a required Source was deleted."));
     Ok(())
 }
 
@@ -1359,10 +1392,12 @@ fn representative_production_code_preserves_grounding_across_public_readers(
         .zip(f["expected_sources"].as_array().ok_or("sources")?)
     {
         let original = expected["text"].as_str().ok_or("text")?;
-        assert!(!excerpt.text.is_empty() && excerpt.text.len() <= 4096);
         assert!(
-            original.starts_with(&excerpt.text),
-            "initial bytes must be an exact bounded prefix"
+            !excerpt.text.is_empty() && excerpt.text.len() <= EXPLANATION_SOURCE_WINDOW_BYTE_LIMIT
+        );
+        assert_eq!(
+            excerpt.text, original,
+            "complete production function window, not a prefix"
         );
         assert_eq!(
             excerpt.displayed_end_byte,
@@ -1391,9 +1426,9 @@ fn representative_production_code_preserves_grounding_across_public_readers(
         "repository_understanding",
         json!({"project_id":f["project"]}),
     )?;
-    assert_eq!(
-        mcp["selected_work"]["answers"],
-        serde_json::to_value(&answers)?
+    assert_same_answer_basis(
+        mcp["selected_work"]["answers"].clone(),
+        serde_json::to_value(&answers)?,
     );
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -1419,7 +1454,7 @@ fn representative_production_code_preserves_grounding_across_public_readers(
         .iter()
         .find(|item| item["work_item_id"] == f["work"])
         .ok_or("CLI Work")?;
-    assert_eq!(cli_work["answers"], serde_json::to_value(&answers)?);
+    assert_same_answer_basis(cli_work["answers"].clone(), serde_json::to_value(&answers)?);
     let page = get(&f)?;
     assert!(page.contains(identity));
     assert!(page.contains("selected repository snapshot"));
@@ -2196,10 +2231,7 @@ fn work_selected_citations_keep_observed_pairs_and_missing_before_distinct(
                 .as_object_mut()
                 .ok_or("object")?
                 .remove("highlight");
-            assert_eq!(
-                decorated, result,
-                "presentation preserves all scoped evidence fields"
-            );
+            assert_same_answer_basis(decorated, result.clone());
             assert_eq!(
                 result["chunk"]["text"],
                 if index == 1 && comparison == "changed" {

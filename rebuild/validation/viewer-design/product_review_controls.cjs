@@ -90,6 +90,12 @@ async function criticalLink(article,task) {
   const unit=article.locator(`.unit[id$="-p${task.unit_index+1}"]`);
   assert.equal(await unit.count(),1,'exact critical unit must be present');
   assert.equal(await unit.locator('.unit-text').textContent(),task.text);
+  // Verification and supporting evidence are deliberate reader disclosures.
+  // Use their actual controls so a task is never "opened" from a hidden link.
+  for(const disclosure of await unit.locator('xpath=ancestor::details').all()) {
+    if(!await disclosure.evaluate(n=>n.open))await disclosure.locator(':scope > summary').click();
+  }
+  await unit.scrollIntoViewIfNeeded();
   const link=unit.locator(`a.evidence-link[href$="-c${task.citation_index+1}"]`);
   assert.equal(await link.count(),1,'critical claim must own its exact Source control');
   return link;
@@ -102,7 +108,11 @@ module.exports.criticalLink=criticalLink;
 module.exports.criticalPoint=criticalPoint;
 
 function citationResponse(page,task,offset) {
- return page.waitForResponse(r=>{const u=new URL(r.url());return u.pathname==='/citation'&&u.searchParams.get('unit')===String(task.unit_index)&&u.searchParams.get('citation')===String(task.citation_index)&&u.searchParams.get('offset')===String(offset)&&u.searchParams.get('realization')===task.realization_fingerprint;});
+ const pending=page.waitForResponse(r=>{const u=new URL(r.url());return u.pathname==='/citation'&&u.searchParams.get('unit')===String(task.unit_index)&&u.searchParams.get('citation')===String(task.citation_index)&&u.searchParams.get('offset')===String(offset)&&u.searchParams.get('realization')===task.realization_fingerprint;});
+ // Awaiters still reject. Handle the promise immediately so a failed preceding
+ // UI action cannot crash Node before the driver preserves failure and teardown.
+ pending.catch(()=>{});
+ return pending;
 }
 async function criticalBytes(page,point,task,offline,pending) {
  const hash=bytes=>require('node:crypto').createHash('sha256').update(bytes).digest('hex');

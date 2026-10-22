@@ -62,3 +62,9 @@ test('multilingual article tasks retain exact language-specific publication iden
  assert.throws(()=>sourceTasks(c,'work',answers,'ko'),/publication replaced/);
  assert.throws(()=>sourceTasks(c,'work',answers,'fr'),/explicit Source task/);
 });
+const {citationResponse}=require('./product_review_controls.cjs');
+test('response failure stays awaitable after a UI failure without an unhandled crash',async()=>{
+ const pending=citationResponse({waitForResponse:()=>Promise.reject(Error('missing critical HTTP response'))},{},0);
+ await new Promise(resolve=>setImmediate(resolve));
+ await assert.rejects(pending,/missing critical HTTP response/);
+});

@@ -3456,3 +3456,14 @@ The integrated task's exact committed candidate still requires the authoritative
 missing current external authorization blocks only its affected stages, not local
 repairs, independent assessment or a concrete review package. Earlier focused-only
 scope statements above describe their original deliveries, not a gate exemption.
+
+Current public-consumer comparisons validate positive read-comparison instants but
+exclude only `applicability.checked_at_unix_micros` from cross-read equality. Exact
+publication, Source/claim bindings, explained snapshots and typed comparison/failure
+states remain equal; an independent fresh check is not an identity change. Grounded
+Reader controls use complete embedded windows and the shared per-window/aggregate
+bounds, separately from the 4,096-byte live citation page bound, and assert the typed
+lifecycle's current visible notices. Supporting verification Sources are opened via
+their actual disclosure controls before focus/reading; hidden links cannot satisfy a
+critical task. A pending response failure must reach the driver's normal failure
+record and process teardown rather than terminating Node before evidence is saved.
