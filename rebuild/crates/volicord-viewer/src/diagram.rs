@@ -206,7 +206,7 @@ pub(crate) fn svg(
                 i + 1,
                 match g.order {
                     DiagramOrder::Sequential => "seq",
-                    DiagramOrder::Parallel => "par",
+                    DiagramOrder::Parallel => "par · no relative order",
                 },
                 guard.map(|s| format!(" [if {s}]")).unwrap_or_default()
             );
@@ -231,6 +231,11 @@ pub(crate) fn svg(
             }
             y += 125;
             for (j, m) in g.messages.iter().enumerate() {
+                // Each independent message is its own UML par operand. Stacking
+                // messages in one undivided operand would imply local ordering.
+                if g.order == DiagramOrder::Parallel && j > 0 {
+                    out.push_str(&format!("<path class=\"relation-line parallel-operand\" d=\"M10 {}H{}\" stroke-dasharray=\"6 4\"/>",y-25,width-10));
+                }
                 let (x1, _) = positions[index(&m.from)?];
                 let (x2, _) = positions[index(&m.to)?];
                 open(&mut out, ns, &m.id, &m.label, label(&m.label)?, target);
@@ -353,7 +358,7 @@ mod tests {
             start_byte: 0,
             end_byte: text.len(),
         };
-        let d = GroundedDiagram {
+        let mut d = GroundedDiagram {
             id: "fixture".into(),
             title: label.clone(),
             caption_unit: 0,
@@ -377,7 +382,27 @@ mod tests {
                 }],
             },
         };
+        if let DiagramMeaning::Sequence { groups, .. } = &mut d.meaning {
+            let mut independent = groups[0].messages[0].clone();
+            independent.id = "arrow-two".into();
+            groups[0].messages.push(independent);
+        }
         let first = svg(&d, &[text], "publication-en", &|_, _| "claim".into())?;
+        assert_eq!(
+            first
+                .matches("class=\"relation-line parallel-operand\"")
+                .count(),
+            1
+        );
+        assert!(first.contains("par · no relative order"));
+        let mut sequential = d.clone();
+        if let DiagramMeaning::Sequence { groups, .. } = &mut sequential.meaning {
+            groups[0].order = DiagramOrder::Sequential;
+        }
+        assert!(
+            !svg(&sequential, &[text], "sequential", &|_, _| "claim".into())?
+                .contains("parallel-operand")
+        );
         assert!(first.contains("&lt;script&gt;"));
         assert!(!first.contains("<script>"));
         for id in [

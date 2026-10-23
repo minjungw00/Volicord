@@ -2564,6 +2564,8 @@ meaning through in-tree `volicord-static-svg/1` plus a faithful linear alternati
 Layout coordinates and SVG are presentation only. Concept edges use numbered keys
 matched to their text claims, avoiding long labels across shared-node lines. Sequence
 lifelines, self messages, guard frames and return dashes do not assert observation.
+Parallel messages occupy separate dashed UML `par` operands; their row labels are
+identifiers, not an ordering claim. Sequential groups have no operand separators.
 The local renderer has no dependency, markup interpreter, remote asset or process;
 all authored text is escaped. SVG is bounded to 256 KiB per figure. Failure is explicit,
 leaves the admitted text where available and never counts as visual completion.
