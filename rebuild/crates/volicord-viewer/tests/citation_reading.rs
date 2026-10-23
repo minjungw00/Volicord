@@ -1693,7 +1693,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(&destination)?;
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/2\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/3\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
@@ -1745,7 +1745,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/2\""));
+            .contains("data-renderer=\"volicord-static-svg/3\""));
     }
     Ok(())
 }
@@ -1904,7 +1904,7 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
-            assert!(text.contains("volicord-static-svg/2"));
+            assert!(text.contains("volicord-static-svg/3"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"
             } else {

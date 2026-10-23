@@ -3675,3 +3675,10 @@ scope grounding. Scope-only reading limits assert no implementation facts and us
 the existing permitted canonical basis; retain all technical evidence. The focused
 `shared_diagram_caption` control checks one visible caption, separate repeated elements
 and exact native targets. Fresh publications and real consumers recheck the candidate.
+
+Renderer routing controls apply an independent segment/rectangle intersection invariant
+to the actual queued/delivered/terminal topology, including a crossing counterexample;
+keys must not overlap. Long Korean controls preserve native type size and reserve label
+height. Full SVG inspection is diagnostic, distinct from unchanged live/offline viewport
+journeys; retain both and inspect actual original-code topology rather than rendered
+arrows as the expected answer. Optional/parallel text and graphical order must agree.

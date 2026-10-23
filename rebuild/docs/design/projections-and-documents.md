@@ -2560,7 +2560,7 @@ record and all original dependencies; ordinary reads generate nothing.
 Public CLI/MCP ordinary answers and complete publication pages include the exact
 semantics and seal. Human text includes endpoints, relation types, conditions and
 explicit parallel groups. Live and self-contained offline Viewer render the same
-meaning through in-tree `volicord-static-svg/2` plus a faithful linear alternative.
+meaning through in-tree `volicord-static-svg/3` plus a faithful linear alternative.
 Layout coordinates and SVG are presentation only. Concept edges use numbered keys
 matched to their text claims, avoiding long labels across shared-node lines. Sequence
 lifelines, self messages, guard frames and return dashes do not assert observation.
@@ -2575,7 +2575,7 @@ script; no browser zoom interception or whole-page scaling is introduced.
 The existing architecture SVG primitive describes analyzed topology, not authored
 publication claims, so it cannot provide this semantic path by itself. A general
 Mermaid/PlantUML interpreter would add grammar, packaging and execution dependencies
-for two bounded shapes. The in-tree renderer avoids that cost and introduces no
+for these bounded shapes. The in-tree renderer avoids that cost and introduces no
 third-party renderer license or bundled assets. It is purpose-built, not a general
 UML editor. This checkout declares no separate renderer package license; this is
 not a claim about wider project licensing. Rendering/first display and complete
@@ -2665,3 +2665,10 @@ its own title, semantic seal, elements, claims and return identity. Each faithfu
 alternative remains self-contained. Sharing a scope claim never merges independent
 relationship claims or discards Source bindings. This uses existing v8 references;
 it changes no retained shape, authority, byte budget or version boundary.
+
+Diagram routes enter their actual target through row gaps, never through an unrelated
+node. Incoming keys/guards reserve separate vertical slots; conservative wide-character
+wrapping increases node height instead of shrinking text. State ownership is visible
+at the top of the figure. Optional sequence groups use an `opt` frame and an inner
+`strict`/`par` frame, preserving the admitted condition and order. Renderer identity 3
+changes presentation only; retained semantics, versions and budgets are unchanged.

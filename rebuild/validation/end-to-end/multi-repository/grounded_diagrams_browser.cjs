@@ -65,7 +65,7 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
             assert(await figure.evaluate(n=>n===document.activeElement),'outline exact figure focus');
           }
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
-          assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/2');
+          assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/3');
           const size=await page.evaluate(()=>({body:document.documentElement.scrollWidth,viewport:innerWidth}));
           assert(size.body<=size.viewport+1,JSON.stringify(size));
           await figure.screenshot({path:path.join(output,`${c.key}-${width}-${mode}.png`)});
@@ -183,7 +183,7 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
             await page.goBack(); // native history also preserves script-free access
           }
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?['expired','deleted','changed','withheld','comparison_unavailable']:[],external_requests:external,renderer:'volicord-static-svg/2'});
+          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?['expired','deleted','changed','withheld','comparison_unavailable']:[],external_requests:external,renderer:'volicord-static-svg/3'});
           await context.close();
         }
       } catch(error) {
