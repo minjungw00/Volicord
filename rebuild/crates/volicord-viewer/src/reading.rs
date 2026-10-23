@@ -136,6 +136,7 @@ fn overview(
     }
     project_purpose(html, r, u);
     if p.work_count == 0 {
+        html.push_str(&format!("<p class=\"repository-reading-basis\">{}</p>", text(r.locale,"Repository reading is independent of Work and recorded Project purpose. Its article states the available snapshot and limits.","저장소 설명은 Work·기록된 Project Purpose와 독립적입니다. 설명 문서에서 이용 가능한 snapshot과 한계를 확인하세요.")));
         html.push_str(&format!(
             "<p><a class=\"button secondary repository-reading-link\" href=\"{}\">{}</a></p>",
             if snapshot {
@@ -429,6 +430,28 @@ fn reader_citation_actions(
         if unique && answers.prose[index].citations[..n].contains(c) {
             continue;
         }
+        let claim = answers.prose[index]
+            .text
+            .get(c.claim_start_byte..c.claim_end_byte)
+            .unwrap_or("");
+        let purpose = claim
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect::<String>();
+        let short = purpose.chars().take(72).collect::<String>();
+        let action = format!(
+            "{} {}{}",
+            text(r.locale, "Inspect", "확인:"),
+            short,
+            if purpose.chars().count() > 72 {
+                "…"
+            } else {
+                ""
+            }
+        );
         let label = format!(
             "{} · {} {} ↗ · {}:{}–{}",
             citation_use_label(r.locale, c.use_kind),
@@ -438,7 +461,7 @@ fn reader_citation_actions(
             c.start_line,
             c.end_line
         );
-        html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{}\" title=\"{}\">{} {} · <bdi class=\"source-label\">{}:{}–{}</bdi> ↗</a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&label),escape(&label),text(r.locale,"Source","근거"),n+1,escape(&c.locator),c.start_line,c.end_line));
+        html.push_str(&format!("<span class=\"evidence-choice\"><a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{} · {}\" title=\"{}\">{} ↗</a><small class=\"source-label\">{}:{}–{}</small></span>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&action),escape(&label),escape(&label),escape(&action),escape(&c.locator),c.start_line,c.end_line));
     }
     html.push_str("</div>");
 }
@@ -558,7 +581,7 @@ fn render_diagrams(
             let claim = format!("{origin}-claim");
             let selected = volicord_projections::diagram_label(label, &texts).unwrap_or("");
             let unit = &answers.prose[label.unit];
-            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p>{}</p><p class=\"diagram-selected-label\">{}</p><div class=\"evidence-actions\">",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts)),escape(&unit.text),escape(selected)));
+            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p class=\"diagram-selected-label\">{}</p><div class=\"diagram-claim-context\"><span class=\"source-note\">{}</span><p>{}</p></div><div class=\"evidence-actions\">",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts)),escape(selected),text(r.locale,"Claim and material qualification","주장과 중요한 조건"),escape(&unit.text)));
             for (n, c) in unit.citations.iter().enumerate().filter(|(_, c)| {
                 c.claim_start_byte <= label.start_byte && c.claim_end_byte >= label.end_byte
             }) {
@@ -567,7 +590,38 @@ fn render_diagrams(
             }
             html.push_str(&format!("</div><a class=\"button secondary diagram-return\" href=\"#{origin}\">← {}</a></section>",text(r.locale,"Return to element","요소로 돌아가기")));
         }
-        html.push_str("</div></figure>");
+        html.push_str("</div>");
+        if let volicord_projections::DiagramMeaning::Concept { relations, .. }
+        | volicord_projections::DiagramMeaning::Component { relations, .. }
+        | volicord_projections::DiagramMeaning::Flowchart { relations, .. }
+        | volicord_projections::DiagramMeaning::State { relations, .. } = &d.meaning
+        {
+            html.push_str(&format!(
+                "<details class=\"diagram-relations\" open><summary>{}</summary><ol>",
+                text(
+                    r.locale,
+                    "Relationships · select a claim to inspect evidence",
+                    "관계 · 주장을 선택해 근거 확인"
+                )
+            ));
+            for relation in relations {
+                let wording =
+                    volicord_projections::diagram_label(&relation.label, &texts).unwrap_or("");
+                html.push_str(&format!("<li><a class=\"diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\">{}: {}</a>",escape(&relation.id),escape(&relation.id),escape(&crate::diagram::element_caption(d,&relation.id,&texts)),escape(wording)));
+                if let Some(condition) = &relation.condition {
+                    html.push_str(&format!(
+                        " <span class=\"diagram-guard\">[{} {}]</span>",
+                        text(r.locale, "if", "조건:"),
+                        escape(
+                            volicord_projections::diagram_label(condition, &texts).unwrap_or("")
+                        )
+                    ));
+                }
+                html.push_str("</li>");
+            }
+            html.push_str("</ol></details>");
+        }
+        html.push_str("</figure>");
     }
 }
 
@@ -1504,13 +1558,13 @@ fn render_applicability(
     let label = match (snapshot, basis.repository_comparison) {
         (true, C::VerifiedAtRead) => text(
             r.locale,
-            "Repository matched when this export was created; this file performs no current check.",
-            "내보낼 때 저장소가 일치했습니다. 이 파일은 현재 상태를 검사하지 않습니다.",
+            "Local repository matched when this export was created; this file performs no current or remote check.",
+            "내보낼 때 로컬 저장소가 일치했습니다. 이 파일은 현재 상태나 원격 최신성을 검사하지 않습니다.",
         ),
         (false, C::VerifiedAtRead) => text(
             r.locale,
-            "Explained snapshot matched the repository at this read.",
-            "설명한 스냅샷이 이번 읽기에서 저장소와 일치했습니다.",
+            "Explained snapshot matched the local repository at this read. Remote freshness was not checked.",
+            "설명한 스냅샷이 이번 읽기에서 로컬 저장소와 일치했습니다. 원격 최신성은 확인하지 않았습니다.",
         ),
         (_, C::Changed) => text(
             r.locale,

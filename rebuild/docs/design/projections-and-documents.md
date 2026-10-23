@@ -2623,3 +2623,19 @@ ownership participates in labels, seal, Source lifecycle, public text and select
 Stored enum values preserve meaning; visible words, conditions and labels remain grounded
 reader content. This bounded vocabulary asserts no UML composition, inheritance or
 multiplicity. Conditions and unordered parallel operands remain explicit in SVG and text.
+
+### Claim-led evidence and local applicability
+
+Visible prose actions derive a bounded printable name from the exact admitted citation
+claim (72 characters, with an explicit ellipsis when longer); they retain full use/path/range
+in accessible detail and a separate wrapping range label. No new authored string bypasses
+grounding and no truncation changes the bound claim or Source. Diagram action names use
+validated printable grounded label selections. Purpose names are navigation, not new
+claims or inferred file authority. Authors split broad effects into qualified claim units.
+Concept/component/flow/state figures expose a visible numbered relationship key with
+endpoints, wording, type and guard; it reaches the same publication-scoped claim as SVG.
+A selection shows the selected wording and its complete material qualification; Source
+continues to carry the exact bound claim with full article context available by return.
+Workless Overview offers repository reading independently of canonical Purpose and Work.
+Applicability explicitly says local comparison and no remote freshness check; snapshots
+state that neither live nor remote checks occur in the distributed file.

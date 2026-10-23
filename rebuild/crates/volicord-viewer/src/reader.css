@@ -390,3 +390,12 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
  body[data-source-open=true] .claim-quote { max-height:17vh; font-size:.9rem; }
  body[data-source-open=true] .point-bar { position:sticky; top:-16px; background:var(--surface); z-index:2; padding-block:8px; }
 }
+
+/* Claim actions wrap independently from inspectable exact range labels. */
+.evidence-choice { display:inline-flex; flex-direction:column; min-width:0; max-width:100%; gap:.25rem; }
+.evidence-choice .evidence-link { white-space:normal; overflow-wrap:anywhere; }
+.evidence-choice .source-label { overflow-wrap:anywhere; font-size:.8rem; }
+.diagram-relations li { margin-block:.7rem; overflow-wrap:anywhere; }
+.diagram-relations a { display:inline; }
+.diagram-guard { font-weight:600; }
+.diagram-claim-context p { margin-top:.3rem; }
