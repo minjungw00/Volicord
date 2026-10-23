@@ -140,6 +140,7 @@ fn repository_scope_precedes_explanation_with_exact_boundaries_in_supporting_rec
         project,
         analysis,
         RepositoryExplanationDraft {
+            diagrams: Vec::new(),
             plan_fingerprint: plan.fingerprint,
             language: "en".into(),
             generator: ExplanationGenerator {

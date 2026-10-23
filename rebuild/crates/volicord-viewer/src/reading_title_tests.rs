@@ -55,6 +55,7 @@ fn reading(w: &UnderstandingWork, r: &ViewerRequest, claim: &str) -> Explanation
         state: ExplanationState::Current,
         content: Some(RetainedExplanation {
             realization: ExplanationRealization {
+                diagrams: Vec::new(),
                 format_kind: EXPLANATION_KIND.into(),
                 format_version: EXPLANATION_VERSION,
                 plan_fingerprint: "authored-plan".into(),

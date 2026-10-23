@@ -3416,7 +3416,7 @@ normal repository/Work outputs, semantic usefulness and human understanding.
 
 The [investigated publication report](../../validation/end-to-end/multi-repository/investigated-publication-report.md)
 owns the focused source-first/dependent coverage, original-publication A/B byte costs,
-diagram comparison and non-adoption, real Work identity/recovery limits and concrete
+historical diagram comparison and non-adoption (superseded by required diagrams), real Work identity/recovery limits and concrete
 live/offline observations. It supplies no independent or human acceptance. Relevant
 controls are Viewer `complete_reader_mechanisms_fit_together_without_dropping_source_dependencies`,
 Operations `confirmed_repository_changes_are_distinct_from_unavailable_comparison`,
@@ -3609,3 +3609,26 @@ articles. `product_review_source_self_test.cjs` removes and alters those fields
 in an actual exported DOM, alongside its critical Source counterexamples. Work
 diagnostics retain their separately specified compact presentation.
 These are consumer/lifecycle controls, not translation quality or user acceptance.
+
+### Grounded diagram focused support
+
+Use the maintained focused wrapper for `volicord-viewer --test citation_reading
+ diagram` and affected producer/host/independent-publication/citation tests. The
+controlled Source oracle is the fixture's admission → verification call; real
+Volicord and Music Deck outputs require their original records and implementations.
+The controlled cases exercise concept and sequence compose/record/public read,
+semantic seals, reversed/missing endpoints, removed nodes/guards, changed group order
+and parallelism, foreign language/preparation, nested unbound fields/claim spans,
+older/newer rejection, failed-record nonmutation, exact Source reading, offline SVG
+and text, and Source deletion withholding the complete figure. Shared paragraph
+traversal preserves existing correction/expiry/withholding checks.
+
+Preserve fresh real-output runtime, author inputs, receipts, complete CLI/MCP public
+bytes, renderer/executable/source hashes, exports and browser observations under a
+new protected ignored attempt. Existing originals and failed attempts stay immutable.
+Record supported prepare/compose/record/read/export separately from schema/helper
+success. Refresh affected publications after relevant source changes. Static Source
+interpretation, controlled fixture success, independent first reading, human
+comprehension and device execution remain distinct. Missing isolation is dependent
+assessment; missing human feedback stays pending. This task's authorization excludes
+aggregate gate/official V11/provider execution; focused support is no substitute pass.

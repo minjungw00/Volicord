@@ -159,11 +159,13 @@ def validate_response(plan, response):
     if size > capacity:
         raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; prepared response capacity {capacity}; preserve grounding and seek Product support for this evidence shape')
     if (not isinstance(response, dict) or set(response) != {'format_kind', 'format_version',
-            'plan_fingerprint', 'language', 'generator', 'paragraphs'}
-            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 6
+            'plan_fingerprint', 'language', 'generator', 'paragraphs', 'diagrams'}
+            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 7
             or response['plan_fingerprint'] != plan['fingerprint']
             or response['language'] != plan['requested_language']):
         raise api().CampaignError('explanation response format/plan/language mismatch')
+    if not isinstance(response["diagrams"], list) or len(response["diagrams"]) > 4:
+        raise api().CampaignError("invalid diagram collection")
     generator = response['generator']
     if (not isinstance(generator, dict) or set(generator) != {'host', 'session', 'agent', 'model'}
             or any(not isinstance(generator[k], str) or not generator[k].strip() for k in ('host', 'session'))
@@ -235,6 +237,8 @@ def validate_lifecycle(preparation, response, receipt, after):
         ('citations', [c for p in response['paragraphs'] for c in p['citations']]),
         ('generated_at_unix_micros', retained['generated_at_unix_micros'])))):
         raise api().CampaignError('explanation readback provenance differs from exact receipt')
+    if answers.get('diagrams') != response['diagrams']:
+        raise api().CampaignError('explanation readback changed admitted diagram meaning')
     prose = answers.get('prose')
     if not isinstance(prose, list) or len(prose) != len(response['paragraphs']):
         raise api().CampaignError('explanation returned claims omitted')
@@ -292,7 +296,7 @@ def reader_applicability(plan, response=None, *, source_reads=(), verification_r
     if response is not None:
         # Current format/bindings only. Historical bytes remain immutable and can
         # still supply record/presentation evidence without becoming a replay.
-        if response.get('format_kind') != 'volicord_explanation' or response.get('format_version') != 6:
+        if response.get('format_kind') != 'volicord_explanation' or response.get('format_version') != 7:
             claims['article'] = result('unsupported', 'non_current_explanation_format')
         else:
             validate_response(plan, response)

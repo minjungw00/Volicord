@@ -55,7 +55,14 @@ PROVENANCE = {'project_id': S, 'subject': SUBJECT, 'question': S, 'language': S,
 ACTION = {'work_item_id': S, 'checkpoint_id': S, 'revision': I, 'field': S,
     'recorded_text': S, 'source_ids': [S], 'source_status': [STATUS]}
 CLAIM = {'question': S, 'text': S, 'role': S, 'evidence_keys': [S], 'citations': optional([CITATION]), 'recorded_action': optional(ACTION)}
-ANSWERS = {'facts': [CLAIM], 'prose': [CLAIM], 'explanation_state': S,
+DIAGRAM_LABEL = {'unit': I, 'start_byte': I, 'end_byte': I}
+DIAGRAM_NODE = {'id': S, 'kind': S, 'label': DIAGRAM_LABEL}
+DIAGRAM_EDGE = {'id': S, 'kind': S, 'from': S, 'to': S, 'label': DIAGRAM_LABEL}
+DIAGRAM_MEANING = {'kind': S, 'nodes': optional([DIAGRAM_NODE]), 'participants': optional([DIAGRAM_NODE]),
+    'relations': optional([{**DIAGRAM_EDGE, 'condition': nullable(DIAGRAM_LABEL)}]),
+    'groups': optional([{'order': S, 'condition': nullable(DIAGRAM_LABEL), 'messages': [DIAGRAM_EDGE]}])}
+DIAGRAM = {'id': S, 'title': DIAGRAM_LABEL, 'caption_unit': I, 'semantic_fingerprint': S, 'meaning': DIAGRAM_MEANING}
+ANSWERS = {'diagrams': optional([DIAGRAM]), 'facts': [CLAIM], 'prose': [CLAIM], 'explanation_state': S,
     'diagnostic': nullable(S), 'provenance': nullable(PROVENANCE)}
 BASIS = {'record_kind': S, 'identity': S, 'revision': I, 'field': S,
     'source_ids': [S], 'source_status': [STATUS], 'available_revisions': [I],
@@ -102,7 +109,7 @@ DECISION['answers'] = ANSWERS
 PLAN = {'project_id': S, 'subject': SUBJECT, 'question': S, 'requested_language': S,
     'fingerprint': S, 'evidence': [EVIDENCE], 'source_status': [STATUS], 'conflicts': [CONFLICT],
     'retention_budget': {k: I for k in ('response_byte_limit', 'retained_byte_limit', 'metadata_byte_reserve', 'response_byte_capacity')}}
-RESPONSE = {'format_kind': S, 'format_version': I, 'plan_fingerprint': S,
+RESPONSE = {'diagrams': [DIAGRAM], 'format_kind': S, 'format_version': I, 'plan_fingerprint': S,
     'language': S, 'generator': GENERATOR,
     'paragraphs': [{'question': S, 'text': S, 'evidence_keys': [S], 'citations': [CITATION]}]}
 RECORD = {k: t for k, t in PROVENANCE.items() if k not in ('language', 'fingerprint', 'generator', 'uncited_evidence_count', 'citations')}

@@ -99,7 +99,7 @@ fn actual_work_and_decision_prepare_record_delete_readback(
                 .iter()
                 .map(|e| e["key"].clone())
                 .collect();
-            let response = json!({"format_kind":"volicord_explanation", "format_version":volicord_projections::EXPLANATION_VERSION,
+            let response = json!({"format_kind":"volicord_explanation", "format_version":volicord_projections::EXPLANATION_VERSION,"diagrams":[],
                 "plan_fingerprint":plan["fingerprint"], "language":language,
                 "generator":{"host":"cli-lifecycle-test","session":"synthetic","agent":null,"model":null},
                 "paragraphs":questions.iter().map(|q| json!({"question":q,"citations":[],
@@ -330,7 +330,10 @@ fn decision_compose_cli_binds_recorded_reason_without_json_hash_authoring(
             input.to_str().ok_or("path")?,
         ],
     )?;
-    assert_eq!(composed["realization"]["format_version"], 6);
+    assert_eq!(
+        composed["realization"]["format_version"],
+        volicord_projections::EXPLANATION_VERSION
+    );
     std::fs::write(&input, serde_json::to_vec(&composed["realization"])?)?;
     invoke(
         &f,

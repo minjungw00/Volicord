@@ -321,6 +321,7 @@ fn response(f: &Fixture, source: SourceId) -> Result<ExplanationRealization, Box
         f.project,
         f.analysis,
         RepositoryExplanationDraft {
+            diagrams: Vec::new(),
             plan_fingerprint: plan.fingerprint,
             language: "en".into(),
             generator: ExplanationGenerator {
@@ -456,6 +457,7 @@ fn publication_requests_recheck_sources_beyond_the_returned_page() -> Result<(),
             f.project,
             f.analysis,
             RepositoryExplanationDraft {
+                diagrams: Vec::new(),
                 plan_fingerprint: plan.fingerprint,
                 language: "en".into(),
                 generator: ExplanationGenerator {
@@ -1437,6 +1439,7 @@ fn same_named_populated_and_workless_projects_keep_their_own_repository_articles
         ExplanationSubject::Work(goal),
         "en",
         ExplanationRealization {
+            diagrams: Vec::new(),
             format_kind: EXPLANATION_KIND.into(),
             format_version: EXPLANATION_VERSION,
             plan_fingerprint: plan.fingerprint,
@@ -1491,6 +1494,7 @@ fn same_named_populated_and_workless_projects_keep_their_own_repository_articles
         f.ops
             .prepare_explanation(other, ExplanationSubject::Repository(analysis), "en")?;
     let draft = RepositoryExplanationDraft {
+        diagrams: Vec::new(),
         plan_fingerprint: other_plan.fingerprint,
         language: "en".into(),
         generator: ExplanationGenerator {

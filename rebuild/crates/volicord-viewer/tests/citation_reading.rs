@@ -164,6 +164,7 @@ impl Fixture {
                 .collect()
         };
         let realization = ops.compose_repository_explanation(project, analysis, RepositoryExplanationDraft {
+            diagrams: Vec::new(),
             plan_fingerprint:plan.fingerprint, language:"en".into(), generator:ExplanationGenerator {host:"authored-control".into(),session:"bounded-reader".into(),agent:None,model:None},
             paragraphs:vec![
                 RepositoryReaderUnit {question:ExplanationQuestion::Observation,text:"These inventory files are retained observations.".into(), evidence_keys:vec!["repository_basis".into()],sources:ranges(&(0..8).collect::<Vec<_>>())},
@@ -1528,5 +1529,311 @@ fn important_complete_window_survives_smaller_supporting_windows() -> Result<(),
         assert!(answers.omitted_source_excerpt_count > 0);
         println!("competition {role:?}: important={} support={support_size} included={included} omitted={}",f.originals[10].len(),answers.omitted_source_excerpt_count);
     }
+    Ok(())
+}
+
+fn diagram_control(f: &Fixture, sequence: bool) -> Result<ExplanationRealization, Box<dyn Error>> {
+    // Independent fixture source is admit(value) -> verify(value), plus a separate
+    // accepted-state consumer. This exercises structure, not tab-close semantics.
+    let label = |needle: &str| -> Result<DiagramLabel, Box<dyn Error>> {
+        let unit = 1;
+        let start_byte = f.realization.paragraphs[unit]
+            .text
+            .find(needle)
+            .ok_or("label")?;
+        Ok(DiagramLabel {
+            unit,
+            start_byte,
+            end_byte: start_byte + needle.len(),
+        })
+    };
+    let mut d = GroundedDiagram {
+        id: "mechanism".into(),
+        title: label("Admission calls verification")?,
+        caption_unit: 1,
+        semantic_fingerprint: String::new(),
+        meaning: DiagramMeaning::Concept {
+            nodes: vec![],
+            relations: vec![],
+        },
+    };
+    let nodes = vec![
+        DiagramNode {
+            id: "admit".into(),
+            kind: if sequence {
+                DiagramNodeKind::Participant
+            } else {
+                DiagramNodeKind::Component
+            },
+            label: label("Admission")?,
+        },
+        DiagramNode {
+            id: "verify".into(),
+            kind: if sequence {
+                DiagramNodeKind::Participant
+            } else {
+                DiagramNodeKind::Component
+            },
+            label: label("verification")?,
+        },
+    ];
+    d.meaning = if sequence {
+        DiagramMeaning::Sequence {
+            participants: nodes,
+            groups: vec![
+                DiagramGroup {
+                    order: DiagramOrder::Sequential,
+                    condition: None,
+                    messages: vec![DiagramMessage {
+                        id: "invoke".into(),
+                        from: "admit".into(),
+                        to: "verify".into(),
+                        kind: DiagramMessageKind::Call,
+                        label: label("calls verification")?,
+                    }],
+                },
+                DiagramGroup {
+                    order: DiagramOrder::Parallel,
+                    condition: Some(label("acceptance")?),
+                    messages: vec![DiagramMessage {
+                        id: "answer".into(),
+                        from: "verify".into(),
+                        to: "admit".into(),
+                        kind: DiagramMessageKind::Return,
+                        label: label("retained result is conditional on acceptance")?,
+                    }],
+                },
+            ],
+        }
+    } else {
+        DiagramMeaning::Concept {
+            nodes,
+            relations: vec![DiagramRelation {
+                id: "dependency".into(),
+                from: "admit".into(),
+                to: "verify".into(),
+                kind: DiagramRelationKind::DependsOn,
+                label: label("calls verification")?,
+                condition: Some(label("acceptance")?),
+            }],
+        }
+    };
+    let plan =
+        f.ops
+            .prepare_explanation(f.project, ExplanationSubject::Repository(f.analysis), "en")?;
+    let paragraphs = f
+        .realization
+        .paragraphs
+        .iter()
+        .map(|p| -> Result<_, Box<dyn Error>> {
+            Ok(RepositoryReaderUnit {
+                question: p.question,
+                text: p.text.clone(),
+                evidence_keys: p.evidence_keys.clone(),
+                sources: p
+                    .citations
+                    .iter()
+                    .map(|c| -> Result<_, Box<dyn Error>> {
+                        let bytes = (0..16)
+                            .map(|i| u8::from_str_radix(&c.source_id[i * 2..i * 2 + 2], 16))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        Ok(RepositoryClaimRange {
+                            source_id: volicord_context::SourceId::from_slice(&bytes)?,
+                            start_byte: c.start_byte,
+                            end_byte: c.end_byte,
+                            claim: Some(FileByteRange {
+                                start_byte: c.claim_start_byte,
+                                end_byte: c.claim_end_byte,
+                            }),
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(f.ops.compose_repository_explanation(
+        f.project,
+        f.analysis,
+        RepositoryExplanationDraft {
+            diagrams: vec![d],
+            plan_fingerprint: plan.fingerprint,
+            language: "en".into(),
+            generator: f.realization.generator.clone(),
+            paragraphs,
+        },
+    )?)
+}
+
+#[test]
+fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
+) -> Result<(), Box<dyn Error>> {
+    for sequence in [false, true] {
+        let f = Fixture::new()?;
+        let r = diagram_control(&f, sequence)?;
+        let subject = ExplanationSubject::Repository(f.analysis);
+        let receipt = f
+            .ops
+            .record_explanation(f.project, subject, "en", r.clone())?;
+        let a = f.answers()?;
+        assert_eq!(a.diagrams, r.diagrams);
+        let texts = a.prose.iter().map(|u| u.text.as_str()).collect::<Vec<_>>();
+        let alternative = diagram_text(&r.diagrams[0], &texts)?;
+        assert!(alternative.contains("Admission → verification"));
+        if sequence {
+            assert!(alternative.contains("parallel (no relative order asserted) [if acceptance]"));
+        } else {
+            assert!(alternative.contains("depends on: calls verification [if acceptance]"));
+        }
+        assert!(a.text().contains(&alternative));
+        let public = compact_publication(&receipt, "fixture-publication");
+        assert_eq!(public["diagrams"], serde_json::to_value(&r.diagrams)?);
+        let live = f.get("/?view=repository")?;
+        let destination = f.temp.path().join("diagrams.html");
+        ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+            .export_snapshot(&f.request(), &destination)?;
+        let offline = fs::read_to_string(&destination)?;
+        for html in [&live, &offline] {
+            assert!(html.contains("data-renderer=\"volicord-static-svg/1\""));
+            assert!(html.contains("data-semantic-fingerprint"));
+            assert!(html.contains("diagram-alternative"));
+            assert!(html.contains("calls verification"));
+            assert!(!html.contains("<foreignObject"));
+        }
+        assert!(!offline.contains("<script"));
+        let p = a.provenance.ok_or("provenance")?;
+        let selected = f.ops.read_explanation_citation(
+            f.project,
+            subject,
+            "en",
+            &ExplanationCitationSelection {
+                realization_fingerprint: p.realization_fingerprint,
+                unit_index: 1,
+                citation_index: 0,
+                offset: 0,
+            },
+        )?;
+        assert_eq!(selected["chunk"]["text"], f.originals[8]);
+        let id = &r.paragraphs[1].citations[0].source_id;
+        let bytes = (0..16)
+            .map(|i| u8::from_str_radix(&id[i * 2..i * 2 + 2], 16))
+            .collect::<Result<Vec<_>, _>>()?;
+        f.ops.delete_repository_source_observation(
+            f.project,
+            f.analysis,
+            volicord_context::SourceId::from_slice(&bytes)?,
+        )?;
+        assert!(f.answers()?.diagrams.is_empty());
+        assert!(!f
+            .get("/?view=repository")?
+            .contains("data-renderer=\"volicord-static-svg/1\""));
+    }
+    Ok(())
+}
+
+#[test]
+fn diagram_semantics_and_nested_bindings_cannot_bypass_admission() -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let subject = ExplanationSubject::Repository(f.analysis);
+    let plan = f.ops.prepare_explanation(f.project, subject, "en")?;
+    let r = diagram_control(&f, false)?;
+    let sequence = diagram_control(&f, true)?;
+    f.ops
+        .record_explanation(f.project, subject, "en", r.clone())?;
+    let before = f.ops.privacy_status(f.project)?;
+    for case in 0..14 {
+        let mut altered = if case >= 10 {
+            sequence.clone()
+        } else {
+            r.clone()
+        };
+        match case {
+            0 => {
+                if let DiagramMeaning::Concept { relations, .. } = &mut altered.diagrams[0].meaning
+                {
+                    relations[0].from = "verify".into();
+                    relations[0].to = "admit".into();
+                }
+            }
+            1 => {
+                if let DiagramMeaning::Concept { relations, .. } = &mut altered.diagrams[0].meaning
+                {
+                    relations[0].to = "missing".into();
+                }
+            }
+            2 => {
+                if let DiagramMeaning::Concept { nodes, .. } = &mut altered.diagrams[0].meaning {
+                    nodes.pop();
+                }
+            }
+            3 => {
+                if let DiagramMeaning::Concept { relations, .. } = &mut altered.diagrams[0].meaning
+                {
+                    relations[0].condition = None;
+                }
+            }
+            4 => altered.diagrams[0].title.unit = 31,
+            5 => altered.paragraphs[1].citations.clear(),
+            6 => altered.language = "ko".into(),
+            7 => altered.plan_fingerprint = "foreign".into(),
+            8 => altered.format_version = EXPLANATION_VERSION - 1,
+            9 => altered.format_version = EXPLANATION_VERSION + 1,
+            10 => {
+                if let DiagramMeaning::Sequence { groups, .. } = &mut altered.diagrams[0].meaning {
+                    groups.swap(0, 1);
+                }
+            }
+            11 => {
+                if let DiagramMeaning::Sequence { groups, .. } = &mut altered.diagrams[0].meaning {
+                    groups[1].order = DiagramOrder::Sequential;
+                }
+            }
+            12 => {
+                if let DiagramMeaning::Sequence { groups, .. } = &mut altered.diagrams[0].meaning {
+                    groups[1].condition.as_mut().ok_or("condition")?.end_byte = usize::MAX;
+                }
+            }
+            _ => {
+                if let DiagramMeaning::Sequence { groups, .. } = &mut altered.diagrams[0].meaning {
+                    groups[0].messages[0].to = "missing".into();
+                }
+            }
+        }
+        assert!(
+            validate_explanation(&plan, &altered).is_err(),
+            "case {case}"
+        );
+        assert!(
+            f.ops
+                .record_explanation(f.project, subject, "en", altered.clone())
+                .is_err(),
+            "case {case}"
+        );
+        assert_eq!(
+            f.ops.privacy_status(f.project)?,
+            before,
+            "failed publication mutated state {case}"
+        );
+        if ![4, 5, 8, 9, 12].contains(&case) {
+            assert_ne!(
+                altered.diagrams[0].fingerprint(&altered)?,
+                altered.diagrams[0].semantic_fingerprint,
+                "semantic fingerprint {case}"
+            );
+        }
+    }
+    let mut json = serde_json::to_value(&r)?;
+    json["diagrams"][0]["meaning"]["relations"][0]["unguarded_alt_text"] =
+        serde_json::json!("<script>unbound</script>");
+    assert!(serde_json::from_value::<ExplanationRealization>(json).is_err());
+    assert!(validate_diagrams(
+        ExplanationSubject::WorkName(volicord_context::ContextItemId::from_bytes([1; 16])),
+        &r
+    )
+    .is_err());
+    let mut ungrounded = r.clone();
+    ungrounded.paragraphs[1].citations[0].claim_end_byte = 9;
+    ungrounded.paragraphs[1].citations.truncate(1);
+    seal_diagrams(&mut ungrounded)?;
+    assert!(validate_diagrams(subject, &ungrounded).is_err());
     Ok(())
 }

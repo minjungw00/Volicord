@@ -651,12 +651,19 @@ fn decode_explanation(
             "unsupported explanation format; explicitly delete and regenerate".into(),
         ));
     }
-    serde_json::from_value(envelope).map_err(|_| {
+    let retained: RetainedExplanation = serde_json::from_value(envelope).map_err(|_| {
         (
             ExplanationState::Corrupt,
             "stored explanation schema is invalid; explicitly delete and regenerate".into(),
         )
-    })
+    })?;
+    validate_diagrams(retained.subject, &retained.realization).map_err(|_| {
+        (
+            ExplanationState::Corrupt,
+            "stored diagram meaning or binding is invalid; explicitly delete and regenerate".into(),
+        )
+    })?;
+    Ok(retained)
 }
 
 fn retained_matches(plan: &ExplanationPlan, retained: &RetainedExplanation) -> bool {
@@ -676,6 +683,7 @@ mod size_tests {
     fn retained_decoder_uses_the_content_bound_including_formatting() -> Result<(), String> {
         let retained = RetainedExplanation {
             realization: ExplanationRealization {
+                diagrams: Vec::new(),
                 format_kind: EXPLANATION_KIND.into(),
                 format_version: EXPLANATION_VERSION,
                 plan_fingerprint: "sha256:".to_owned() + &"a".repeat(64),
@@ -717,6 +725,43 @@ mod size_tests {
             .ok_or("invalid schema accepted")?;
         assert_eq!(error.0, ExplanationState::Corrupt);
         assert!(!error.1.contains("private-source-sentinel"));
+        for version in [EXPLANATION_VERSION - 1, EXPLANATION_VERSION + 1] {
+            let mut other = retained.clone();
+            other.realization.format_version = version;
+            assert_eq!(
+                decode_explanation(Some(
+                    &serde_json::to_string(&other).map_err(|e| e.to_string())?
+                ))
+                .err()
+                .ok_or("non-current accepted")?
+                .0,
+                ExplanationState::Unsupported
+            );
+        }
+        let mut corrupt = retained.clone();
+        corrupt.realization.diagrams.push(GroundedDiagram {
+            id: "invalid".into(),
+            title: DiagramLabel {
+                unit: 0,
+                start_byte: 0,
+                end_byte: 1,
+            },
+            caption_unit: 0,
+            semantic_fingerprint: String::new(),
+            meaning: DiagramMeaning::Concept {
+                nodes: vec![],
+                relations: vec![],
+            },
+        });
+        assert_eq!(
+            decode_explanation(Some(
+                &serde_json::to_string(&corrupt).map_err(|e| e.to_string())?
+            ))
+            .err()
+            .ok_or("invalid diagram accepted")?
+            .0,
+            ExplanationState::Corrupt
+        );
         // The writer measures complete compact JSON, including UTF-8 and escaping.
         for target in [147455, 147456, 147457] {
             let mut e = retained.clone();

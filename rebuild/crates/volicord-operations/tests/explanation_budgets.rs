@@ -126,6 +126,7 @@ fn response(
         ],
     };
     let mut r = ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint.clone(),

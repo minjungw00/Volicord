@@ -349,3 +349,19 @@ details.verification-report,details.evidence-index { margin-top:24px; padding-to
 details.verification-report > summary,details.evidence-index > summary { min-height:48px; font-size:1rem; font-weight:650; }
 .verification-digest { margin:16px 0; }
 .failure-check-links { display:flex; flex-wrap:wrap; gap:8px 16px; font-size:.9rem; }
+
+/* Figures retain readable type; native scrolling and text access work without JS. */
+.admitted-diagram { margin: 1.5rem 0; min-width: 0; }
+.admitted-diagram figcaption { font-weight: 650; margin-bottom: .7rem; }
+.diagram-viewport { overflow: auto; max-width: 100%; max-height: 70vh; border: 1px solid var(--line, #9caec4); border-radius: .5rem; }
+.diagram-viewport svg { display: block; max-width: none; font: 16px system-ui, sans-serif; color: var(--ink, #203044); background: var(--surface, #fff); }
+.diagram-viewport text { fill: currentColor; }
+.diagram-viewport .participant-box, .diagram-viewport .edge-key { fill: var(--surface, #fff); stroke: currentColor; }
+.diagram-viewport .relation-line { stroke: currentColor; stroke-width: 1.7; fill: none; }
+.diagram-viewport marker path { fill: currentColor; }
+.diagram-viewport .lifeline { stroke: currentColor; stroke-dasharray: 5 5; opacity: .5; }
+.diagram-viewport .sequence-frame { fill: none; stroke: currentColor; opacity: .6; }
+.diagram-element:focus { outline: 3px solid var(--accent, #225d9d); outline-offset: 3px; }
+.diagram-element:hover .participant-box { stroke-width: 3; }
+.diagram-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.admitted-diagram .diagram-alternative { margin-top: .75rem; }

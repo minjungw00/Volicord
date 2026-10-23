@@ -7,6 +7,8 @@ use volicord_projections::*;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkExplanationDraft {
+    #[serde(default)]
+    pub diagrams: Vec<volicord_projections::GroundedDiagram>,
     pub plan_fingerprint: String,
     pub language: String,
     pub generator: ExplanationGenerator,
@@ -184,14 +186,16 @@ impl LocalOperations {
                 citations,
             });
         }
-        let realization = ExplanationRealization {
+        let mut realization = ExplanationRealization {
             format_kind: EXPLANATION_KIND.into(),
             format_version: EXPLANATION_VERSION,
             plan_fingerprint: draft.plan_fingerprint,
             language: draft.language,
             generator: draft.generator,
             paragraphs,
+            diagrams: draft.diagrams,
         };
+        seal_diagrams(&mut realization).map_err(Error::new)?;
         validate_explanation(&plan, &realization).map_err(Error::new)?;
         self.validate_subject_sources(&canonical, subject, &realization)?;
         Ok(realization)

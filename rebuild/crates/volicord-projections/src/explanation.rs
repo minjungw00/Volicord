@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionId};
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
-pub const EXPLANATION_VERSION: u32 = 6;
+pub const EXPLANATION_VERSION: u32 = 7;
 /// Complete claim bindings and prose share this limit; retention stays independent.
 pub const EXPLANATION_BYTE_LIMIT: usize = 40_960;
 /// Preserve the response space guaranteed before citation metadata grew.
@@ -198,6 +198,7 @@ pub fn explanation_text_hash(text: &str) -> String {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExplanationRealization {
+    pub diagrams: Vec<crate::GroundedDiagram>,
     pub format_kind: String,
     pub format_version: u32,
     pub plan_fingerprint: String,
@@ -796,7 +797,7 @@ fn finish_plan(
     let question_grounding = question_grounding(subject, &evidence);
     let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
         question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
-        instructions:format!("{questions} Every unit needs exact evidence_keys satisfying question_grounding; citations supplement keys. Adjacent comparison_condition/result each need grounding. Observation/comparison/flow_step/reading_point require citations. All generated units share validation and lifecycle. Reports, state, execution, review and acceptance differ; earlier checks cannot cover later changes. Use requested language, current format {EXPLANATION_VERSION}, exact fingerprint and self-reported generator (unknown model null). Product compose derives Source/claim UTF-8 coordinates and hashes. Host authority is external: missing data is neither denial nor consent. Preserve uncertainty; admission is not semantic approval. Return paragraphs question/text/evidence_keys/citations."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
+        instructions:format!("{questions} Units need exact evidence_keys per question_grounding; citations supplement keys. Both comparison fragments need grounding. Observation/comparison/flow_step/reading_point need citations. All units share validation/lifecycle. Reports, state, execution, review and acceptance differ; prior checks cannot cover later changes. Use requested language, format {EXPLANATION_VERSION}, exact fingerprint and self-reported generator (unknown model null). Compose derives Source/claim UTF-8 coordinates/hashes. Host authority is external: missing data means neither denial nor consent. Preserve uncertainty; admission is not semantic approval. Return paragraphs question/text/evidence_keys/citations."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
             retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
     if matches!(subject, ExplanationSubject::Repository(_)) {
         plan.instructions = format!("{questions} Every unit needs exact prepared evidence_keys. All roles are optional; use heading/synopsis/section_heading/purpose/observation/narrative/reading_point/limits in reader order. Every non-limits unit, including editorial headings, needs retrieved current_code citations; scope-only limits may cite repository_basis. Quiet heading actions in the reader do not waive admission or lifecycle. Preserve uncertainty and distinguish recorded Project Purpose from inference. Use the requested language and self-reported host/session/agent/model; unknown model stays null. Return the current ExplanationRealization format version {EXPLANATION_VERSION}, exact plan fingerprint/language and paragraphs. Product compose derives Source/claim UTF-8 coordinates and hashes from selected ranges; valid bindings are not entailment or semantic approval. No background dispatch or consent is created. {REPOSITORY_AUTHORING}");
@@ -823,6 +824,12 @@ fn finish_plan(
     ) {
         plan.instructions.push(' ');
         plan.instructions.push_str(EFFECT_REVIEW);
+    }
+    if matches!(
+        subject,
+        ExplanationSubject::Work(_) | ExplanationSubject::Repository(_)
+    ) {
+        plan.instructions.push_str(" Diagrams: concept/sequence; labels/guards select cited unit UTF-8 spans. Compose seals meaning.");
     }
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage
@@ -969,6 +976,7 @@ pub fn validate_explanation(
         return Err("a reader document requires 1..32 grounded units".into());
     }
     crate::article_sections(response.generated_units().map(|p| p.question))?;
+    crate::validate_diagrams(plan.subject, response)?;
     if matches!(
         plan.subject,
         ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
@@ -1156,6 +1164,7 @@ fn explanation_retention_budget(
     plan: &ExplanationPlan,
 ) -> Result<ExplanationRetentionBudget, String> {
     let placeholder = ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: String::new(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: String::new(),

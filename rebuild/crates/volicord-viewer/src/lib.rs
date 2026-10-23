@@ -5,6 +5,7 @@
 //! snapshot export only. It has no database, canonical authority, Candidate
 //! lifecycle, or Guarded approval model of its own.
 
+mod diagram;
 mod http;
 mod interaction;
 mod render;

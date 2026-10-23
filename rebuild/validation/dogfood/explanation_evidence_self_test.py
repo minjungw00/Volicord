@@ -97,7 +97,7 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
     reserve = e.retention_metadata_bytes(plan)
     plan['retention_budget'] = {'response_byte_limit': e.RESPONSE_BYTE_LIMIT, 'retained_byte_limit': e.RETAINED_BYTE_LIMIT,
         'metadata_byte_reserve': reserve, 'response_byte_capacity': min(e.RESPONSE_BYTE_LIMIT, e.RETAINED_BYTE_LIMIT - reserve)}
-    response = {'format_kind': 'volicord_explanation', 'format_version': 6,
+    response = {'format_kind': 'volicord_explanation', 'format_version': 7, 'diagrams': [],
         'plan_fingerprint': plan['fingerprint'], 'language': language,
         'generator': {'host': 'authored fixture', 'session': 'fixture-only', 'agent': None, 'model': None},
         'paragraphs': [{'question': q, 'text': '구조 검사 예제입니다.' if language == 'ko' else 'Structural example only.',
@@ -107,7 +107,7 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
     retained = {'realization': response, 'project_id': project, 'subject': plan['subject'],
         'question': plan['question'], 'evidence': stripped, 'source_status': statuses, 'conflicts': [],
         'generated_at_unix_micros': 100, 'generator_identity_status': 'self_reported_not_independently_verified', 'semantic_approval_status': 'not_established'}
-    answers = {'diagnostic': None, 'explanation_state': 'current', 'facts': ([{'question':'NextStepAvailability', 'text':'No Checkpoint is recorded in this structural fixture.',
+    answers = {'diagrams': [], 'diagnostic': None, 'explanation_state': 'current', 'facts': ([{'question':'NextStepAvailability', 'text':'No Checkpoint is recorded in this structural fixture.',
         'role':'unavailable', 'evidence_keys':[]}] if kind == 'work' else []),
         'prose': [{'question': ''.join(word.title() for word in p['question'].split('_')),
             'text': p['text'], 'citations': p['citations'], 'role': 'generated_interpretation', 'evidence_keys': p['evidence_keys']} for p in response['paragraphs']],
@@ -353,7 +353,7 @@ class ReaderApplicabilityTests(unittest.TestCase):
         self.assertEqual(value['article']['state'], 'unsupported')
         self.assertEqual(value['record_reading']['state'], 'eligible_for_assessment')
         self.assertEqual(response['format_version'], 2)
-        self.assertEqual(original['format_version'], 6)
+        self.assertEqual(original['format_version'], 7)
 
     def test_campaign_inspection_consumes_applicability_without_rewriting_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:

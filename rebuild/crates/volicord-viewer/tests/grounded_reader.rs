@@ -188,6 +188,7 @@ fn record_in_language(
         citations.push(serde_json::from_value(c)?);
     }
     let realization = ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint,
@@ -1365,7 +1366,7 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             citation["claim_sha256"] = json!(explanation_text_hash(text));
             citation
         }).collect::<Vec<_>>()} else {vec![]}})).collect();
-    let realization = json!({"format_kind":"volicord_explanation","format_version":volicord_projections::EXPLANATION_VERSION,
+    let realization = json!({"format_kind":"volicord_explanation","format_version":volicord_projections::EXPLANATION_VERSION,"diagrams":[],
         "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
         "generator":{"host":"authored-structural-control","session":"representative-reader","agent":null,"model":null},
         "paragraphs":paragraphs});
@@ -1736,7 +1737,7 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
         json!({"question":"verification","text":"No executed verification was recorded.","evidence_keys":["goal"],"citations":[]}),
         json!({"question":"next_step","text":"No recorded next action is supplied.","evidence_keys":["next_step"],"citations":[]}),
     ]);
-    let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,
+    let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"diagrams":[],
         "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
         "generator":{"host":"independent-shared-range-control","session":"authored-source-claims",
             "agent":null,"model":null},"paragraphs":paragraphs});
@@ -1909,7 +1910,7 @@ fn seed_authored_reading_browser_runtime() -> Result<(), Box<dyn Error>> {
             ("next_step", if language == "ko" { "다음 행동은 기록되지 않았습니다." } else { "No next action is recorded." }),
             ("limits", if language == "ko" { "두 파일 구간만 관측했습니다. 주변 코드와 의미적 승인은 확인되지 않았습니다." } else { "Only two file regions were observed. Surrounding code and semantic approval remain unavailable." }),
         ].into_iter().map(|(question, text)| json!({"question":question,"text":text,"evidence_keys":[if question == "next_step" { "next_step" } else { "goal" }], "citations":if matches!(question,"heading"|"synopsis"|"reported_change"|"comparison") { citations.iter().cloned().map(|mut citation|{citation["claim_start_byte"]=json!(0);citation["claim_end_byte"]=json!(text.len());citation["claim_sha256"]=json!(explanation_text_hash(text));citation}).collect::<Vec<_>>() } else { vec![] }})).collect();
-        let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"plan_fingerprint":generation["plan"]["fingerprint"],"language":language,"generator":{"host":"authored-structural-control","session":"representative-browser","agent":null,"model":null},"paragraphs":paragraphs});
+        let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"diagrams":[],"plan_fingerprint":generation["plan"]["fingerprint"],"language":language,"generator":{"host":"authored-structural-control","session":"representative-browser","agent":null,"model":null},"paragraphs":paragraphs});
         call(
             &mut host,
             "work_explanation",
@@ -1988,7 +1989,7 @@ fn command_observation_is_independent_of_checkpoint_verification_on_public_reade
         object.extend(json!({"locator":"bounded observation","field":"stdout","start_byte":0,"end_byte":output.len(),
             "start_line":1,"end_line":1,"range_sha256":explanation_text_hash(output),"claim_start_byte":0,
             "claim_end_byte":text.len(),"claim_sha256":explanation_text_hash(text),"use_kind":"observed_execution"}).as_object().ok_or("fields")?.clone());
-        let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,
+        let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"diagrams":[],
             "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
             "generator":{"host":"authored-control","session":"scope-test","agent":null,"model":null},
             "paragraphs":[{"question":"observation","text":text,"evidence_keys":["goal"],"citations":[citation]}]});

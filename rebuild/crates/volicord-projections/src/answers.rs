@@ -128,6 +128,7 @@ pub struct QuestionAnswers {
     pub evidence_index: Vec<ReaderEvidenceEntry>,
     pub cautions: Vec<ReadingCaution>,
     pub prose: Vec<QuestionAnswer>,
+    pub diagrams: Vec<crate::GroundedDiagram>,
     /// Derived grouping only; indices refer to this exact admitted prose stream.
     pub sections: Vec<crate::ArticleSection>,
     pub facts: Vec<QuestionAnswer>,
@@ -186,7 +187,7 @@ impl QuestionAnswers {
             .and_then(|a| a.recorded_action.as_ref())
     }
     pub fn text(&self) -> String {
-        let article = self
+        let mut article = self
             .prose
             .iter()
             .chain(&self.facts)
@@ -209,6 +210,20 @@ impl QuestionAnswers {
             })
             .collect::<Vec<_>>()
             .join(" ");
+        let texts = self
+            .prose
+            .iter()
+            .map(|p| p.text.as_str())
+            .collect::<Vec<_>>();
+        for diagram in &self.diagrams {
+            match crate::diagram_text(diagram, &texts) {
+                Ok(text) => {
+                    article.push_str("\n\n");
+                    article.push_str(&text);
+                }
+                Err(_) => article.push_str("\nDiagram alternative unavailable."),
+            }
+        }
         if self.work_name.is_none() && self.work_summary.is_none() {
             return article;
         }
@@ -317,6 +332,9 @@ pub fn explanation_answers(
             .and_then(|e| {
                 crate::article_sections(e.realization.generated_units().map(|p| p.question)).ok()
             })
+            .unwrap_or_default(),
+        diagrams: current
+            .map(|e| e.realization.diagrams.clone())
             .unwrap_or_default(),
         prose,
         facts: Vec::new(),

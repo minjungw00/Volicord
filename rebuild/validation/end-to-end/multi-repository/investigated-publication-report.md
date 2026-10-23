@@ -125,7 +125,12 @@ neither unacceptable ordinary availability nor a safe narrower dependency policy
 Editorial headings retain their grounding; their cost did not block these normal
 publications. No role-only exemption or publication-boundary split was justified.
 
-## Diagram comparison and disposition
+## Historical diagram comparison and disposition
+
+Superseded on 2026-10-24: the user requires flowcharts/UML. The following observations
+remain evidence about those specific rejected candidates, not a current adoption
+decision or permission to omit diagrams. Current semantic support is owned by
+[Projection](../../../docs/design/projections-and-documents.md#grounded-concept-and-sequence-publications).
 
 Criteria preceded candidate rendering: improve tracing the actual authority or
 closure condition over equivalent prose/table, preserve every label/relation/caption

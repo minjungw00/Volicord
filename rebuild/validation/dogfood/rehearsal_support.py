@@ -10,7 +10,7 @@ def realization(plan):
     """Authored structural input; the Product alone supplies plan/receipt/readback."""
     import explanation_evidence as e
     questions = e.WORK_QUESTIONS if plan['subject']['kind'] == 'work' else e.DECISION_QUESTIONS
-    return {'format_kind': 'volicord_explanation', 'format_version': 6,
+    return {'format_kind': 'volicord_explanation', 'format_version': 7, 'diagrams': [],
         'plan_fingerprint': plan['fingerprint'], 'language': plan['requested_language'],
         'generator': {'host': 'self_authored_test_support', 'session': 'rehearsal-script',
             'agent': None, 'model': None},

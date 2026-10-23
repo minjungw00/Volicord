@@ -27,6 +27,7 @@ fn fixture() -> Result<reading_fixture::Fixture, Box<dyn Error>> {
 
 fn draft(plan: &ExplanationPlan, text: &str) -> WorkExplanationDraft {
     WorkExplanationDraft {
+        diagrams: Vec::new(),
         plan_fingerprint: plan.fingerprint.clone(),
         language: plan.requested_language.clone(),
         generator: ExplanationGenerator {
@@ -554,6 +555,7 @@ fn out_of_order_report_changes_article_plan_without_replacing_summary_result(
         .operations
         .prepare_explanation(f.project, ExplanationSubject::Work(id), "en")?;
     let response = ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint.clone(),

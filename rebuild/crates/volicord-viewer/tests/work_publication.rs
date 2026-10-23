@@ -366,6 +366,7 @@ fn cited_summary_has_its_own_exact_http_authority_and_cannot_borrow_article_iden
         f.operations
             .prepare_explanation(f.project, ExplanationSubject::WorkSummary(id), "en")?;
     let response=f.operations.compose_subject_explanation(f.project,plan.subject,WorkExplanationDraft {
+        diagrams: Vec::new(),
         plan_fingerprint:plan.fingerprint,language:"en".into(),generator:ExplanationGenerator {host:"authored-control".into(),session:"summary-citation".into(),agent:None,model:None},
         paragraphs:vec![WorkReaderUnit {question:ExplanationQuestion::Synopsis,text:"The report describes an unchanged input return; the observed implementation directly returns value.".into(),evidence_keys:plan.evidence.iter().map(|e|e.key.clone()).collect(),sources:vec![WorkClaimRange {source_id:source.to_string(),field:"body".into(),use_kind:ExplanationSourceUse::CurrentCode,start_byte:0,end_byte:57,claim:None}]}]})?;
     let retained = f.operations.record_explanation(
@@ -576,6 +577,7 @@ fn seed_reader_scope_review() -> Result<(), Box<dyn Error>> {
                 .operations
                 .prepare_explanation(project, subject, language)?;
             let realization=f.operations.compose_repository_explanation(project,analysis,RepositoryExplanationDraft {
+                diagrams: Vec::new(),
                 plan_fingerprint:plan.fingerprint,language:language.into(),generator:ExplanationGenerator {host:"authored-review-control".into(),session:"reader-scope".into(),agent:None,model:None},
                 paragraphs:vec![RepositoryReaderUnit {question:ExplanationQuestion::Observation,text:if language=="ko" {"쿼리 경계는 입력값을 그대로 반환합니다. 이 관측은 TypeScript 진입점의 반환 동작만 설명하며 native 실행이나 전체 저장소 검증을 입증하지 않습니다."}else{"The query boundary returns its input unchanged. This observation explains the TypeScript entry point; it does not establish native execution or whole-repository verification."}.into(),evidence_keys:vec!["repository_basis".into()],sources:vec![RepositoryClaimRange {source_id:source,start_byte:0,end_byte:57,claim:None}]}],
             })?;

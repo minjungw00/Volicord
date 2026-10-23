@@ -476,6 +476,53 @@ fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>
 }
 
 /// Consume the shared producer/read structure without renumbering any claim.
+fn render_diagrams(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    index: usize,
+) {
+    let texts = answers
+        .prose
+        .iter()
+        .map(|p| p.text.as_str())
+        .collect::<Vec<_>>();
+    for d in answers.diagrams.iter().filter(|d| d.caption_unit == index) {
+        let ns = format!("reader-{}-diagram-{}", answers.namespace, d.id);
+        let title = volicord_projections::diagram_label(&d.title, &texts).unwrap_or("");
+        html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"><figcaption>{}</figcaption>",escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),escape(title)));
+        match crate::diagram::svg(d,&texts,&ns,&|_,label|reader_claim_anchor(answers,label.unit)) {
+            Ok(svg)=>html.push_str(&format!("<div class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · scroll to explore","도식 · 스크롤하여 탐색"))),
+            Err(_)=>html.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Diagram rendering failed. Read the admitted text alternative below.","도식 렌더링에 실패했습니다. 아래 검증된 텍스트 표현을 읽으세요."))),
+        }
+        html.push_str(&format!(
+            "<p>{}</p><details class=\"diagram-alternative\"><summary>{}</summary>",
+            escape(texts.get(d.caption_unit).copied().unwrap_or("")),
+            text(
+                r.locale,
+                "Diagram meaning and element claims",
+                "도식 의미와 요소별 설명"
+            )
+        ));
+        match volicord_projections::diagram_text(d, &texts) {
+            Ok(value) => html.push_str(&format!(
+                "<pre class=\"diagram-text\">{}</pre>",
+                escape(&value)
+            )),
+            Err(_) => html.push_str("<p role=\"status\">Diagram meaning unavailable.</p>"),
+        }
+        html.push_str("<ul>");
+        for node in d.nodes() {
+            html.push_str(&format!(
+                "<li><a class=\"button secondary\" href=\"#{}\">{}</a></li>",
+                reader_claim_anchor(answers, node.label.unit),
+                escape(volicord_projections::diagram_label(&node.label, &texts).unwrap_or(""))
+            ));
+        }
+        html.push_str("</ul></details></figure>");
+    }
+}
+
 fn render_article_layer(
     html: &mut String,
     r: &ViewerRequest,
@@ -505,6 +552,7 @@ fn render_article_layer(
                 html.push_str("<div class=\"comparisons\"><div class=\"comparison-card\">");
             }
             reader_unit(html, r, answers, index);
+            render_diagrams(html, r, answers, index);
             if answer.question == "Comparison" {
                 html.push_str("</div></div>");
             }

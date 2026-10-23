@@ -2909,6 +2909,106 @@ fn file_byte_range_schema() -> Value {
     schema
 }
 
+fn grounded_diagrams_schema() -> Value {
+    let label = object_schema(
+        vec![
+            ("unit", unsigned_schema("Original grounded unit index", 0)),
+            (
+                "start_byte",
+                unsigned_schema("Inclusive UTF-8 label offset in that unit", 0),
+            ),
+            (
+                "end_byte",
+                unsigned_schema(
+                    "Exclusive UTF-8 label offset; up to 96 printable characters",
+                    1,
+                ),
+            ),
+        ],
+        &["unit", "start_byte", "end_byte"],
+    );
+    let condition = json!({"oneOf":[label.clone(), {"type":"null"}], "description":"Grounded condition, or unconditional"});
+    let id = || {
+        text_schema(
+            "Figure-local lowercase ASCII identifier, digits/hyphens; never a display label",
+            1,
+            48,
+        )
+    };
+    let node = object_schema(
+        vec![
+            ("id", id()),
+            (
+                "kind",
+                enum_schema(
+                    "Explanatory class, not inferred canonical storage",
+                    &[
+                        "record",
+                        "context_role",
+                        "reading_group",
+                        "component",
+                        "participant",
+                    ],
+                ),
+            ),
+            ("label", label.clone()),
+        ],
+        &["id", "kind", "label"],
+    );
+    let edge = |sequence: bool| {
+        let mut fields = vec![
+            ("id", id()),
+            ("from", id()),
+            ("to", id()),
+            ("label", label.clone()),
+            (
+                "kind",
+                if sequence {
+                    enum_schema(
+                        "Message meaning",
+                        &["call", "return", "await", "state_change"],
+                    )
+                } else {
+                    enum_schema(
+                        "Directed relation meaning",
+                        &["references", "groups", "role_of", "depends_on", "produces"],
+                    )
+                },
+            ),
+        ];
+        let mut required = vec!["id", "from", "to", "kind", "label"];
+        if !sequence {
+            fields.push(("condition", condition.clone()));
+            required.push("condition");
+        }
+        object_schema(fields, &required)
+    };
+    let group = object_schema(
+        vec![
+            (
+                "order",
+                enum_schema(
+                    "Groups occur in vector order; parallel messages assert no relative order",
+                    &["sequential", "parallel"],
+                ),
+            ),
+            ("condition", condition.clone()),
+            (
+                "messages",
+                json!({"type":"array","minItems":1,"maxItems":20,"items":edge(true)}),
+            ),
+        ],
+        &["order", "condition", "messages"],
+    );
+    let meaning = json!({"oneOf":[
+        object_schema(vec![("kind",enum_schema("Concept relationship figure", &["concept"])), ("nodes",json!({"type":"array","minItems":1,"maxItems":12,"items":node.clone()})), ("relations",json!({"type":"array","minItems":1,"maxItems":20,"items":edge(false)}))], &["kind","nodes","relations"]),
+        object_schema(vec![("kind",enum_schema("UML implementation sequence; execution requires separate evidence", &["sequence"])), ("participants",json!({"type":"array","minItems":1,"maxItems":12,"items":node})), ("groups",json!({"type":"array","minItems":1,"maxItems":12,"items":group}))], &["kind","participants","groups"])
+    ]});
+    json!({"type":"array","maxItems":4,"description":"Admitted diagram semantics, not markup. Whole-publication byte budget applies. All authored text selects grounded units. Compose seals semantic_fingerprint; omit/empty only in a draft.","items":object_schema(vec![
+        ("id",id()),("title",label),("caption_unit",unsigned_schema("Complete grounded scope/uncertainty unit",0)),("semantic_fingerprint",text_schema("Product-computed seal; empty in new drafts",0,71)),("meaning",meaning)
+    ], &["id","title","caption_unit","meaning"])})
+}
+
 fn explanation_realization_schema() -> Value {
     let integer =
         |description: &str| json!({"type":"integer","minimum":0,"description":description});
@@ -3045,6 +3145,7 @@ fn explanation_realization_schema() -> Value {
                     &["host", "session", "agent", "model"],
                 ),
             ),
+            ("diagrams", grounded_diagrams_schema()),
             (
                 "paragraphs",
                 json!({"type":"array","minItems":1,"maxItems":32,"description":"Grounded units in reader order; omit unsupported sections rather than inventing answers","items":paragraph}),
@@ -3057,6 +3158,7 @@ fn explanation_realization_schema() -> Value {
             "language",
             "generator",
             "paragraphs",
+            "diagrams",
         ],
     );
     schema["description"] = json!("Host-authored current explanation realization");

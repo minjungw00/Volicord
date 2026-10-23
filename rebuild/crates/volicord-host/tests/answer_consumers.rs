@@ -46,6 +46,7 @@ fn focused_repository_mcp_preserves_exact_article_scope_and_source_deletion(
         "en",
     )?;
     let realization = f.operations.compose_repository_explanation(f.project,analysis,RepositoryExplanationDraft {
+        diagrams: Vec::new(),
         plan_fingerprint:plan.fingerprint.clone(),language:"en".into(),
         generator:ExplanationGenerator {host:"authored-transport-control".into(),session:"synthetic".into(),agent:None,model:None},
         paragraphs:vec![RepositoryReaderUnit {question:ExplanationQuestion::Observation,text:"This authored control reads the query boundary; it establishes no runtime execution or whole repository understanding.".into(),evidence_keys:vec!["repository_basis".into()],sources:vec![RepositoryClaimRange {source_id:source,start_byte:0,end_byte:body.len(),claim:None}]}],
@@ -106,6 +107,7 @@ fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
     let subject = ExplanationSubject::Work(work);
     let plan = f.operations.prepare_explanation(f.project, subject, "ko")?;
     let response = ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint.clone(),
@@ -346,6 +348,7 @@ fn recorded_action_is_readable_without_generated_interpretation(
     };
     check("missing", expected, cp.id.to_string())?;
     let realize = |plan: &ExplanationPlan| ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint.clone(),
@@ -494,6 +497,7 @@ fn naturalistic_consumer_checks_product_recalls_across_correction(
         .find(|c| c.id == f.checkpoints["relay-change"])
         .ok_or("Checkpoint")?;
     let realize = |plan: &ExplanationPlan| ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint.clone(),
@@ -629,6 +633,7 @@ fn metadata_heavy_explanations_remain_bounded_without_replacing_recorded_action(
     let subject = ExplanationSubject::Work(work);
     let plan = f.operations.prepare_explanation(f.project, subject, "ko")?;
     let response = ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint.clone(),

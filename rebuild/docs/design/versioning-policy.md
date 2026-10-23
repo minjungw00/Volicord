@@ -565,3 +565,23 @@ fingerprint as `canonical_inspect`. This is an ephemeral public read/preparation
 change, not a retained representation or permission change. No durable version bump,
 legacy decoder or automatic regeneration is introduced; the progress plan change
 above separately requires explicit regeneration of affected summaries.
+
+### Grounded diagram current-only format
+
+The actual prior explanation format was 6; the single current writer/decoder is now
+**7**, including an explicit `diagrams` collection (empty for plain prose). This
+section supersedes earlier current-v6 statements, which describe prior changes.
+The added semantic meaning is durable even when labels reuse existing grounded units.
+Preparation, Work/repository compose, admission, retained decode, ordinary answers,
+complete public pages, CLI/MCP and Viewer/offline consumers advance together.
+
+Older **and** newer explanations are Unsupported before decoding; malformed current
+content is Corrupt. Fresh explicit preparation/composition/recording from permitted
+original evidence is recovery. No compatibility decoder, automatic rebind, extracted
+old prose or stale figure fallback exists. The global revision also affects unchanged
+Work name/summary examples: explicitly regenerate them with their own original Goal
+and progress records. Article failure still cannot invalidate an independently valid
+current-format short publication. Old attempts and originals remain unchanged.
+Canonical schema, portable bundle, Analysis Snapshot, Source-copy and generated-
+document metadata versions are unchanged. SVG renderer identity is presentation
+metadata, not an additional retained semantic format or a version-conversion path.

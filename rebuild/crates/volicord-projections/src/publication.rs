@@ -26,6 +26,6 @@ pub fn compact_publication(retained: &RetainedExplanation, publication_id: &str)
     // not a second authority or another copy of every binding in transport.
     provenance.as_object_mut().map(|p| p.remove("citations"));
     json!({"publication_id":publication_id,"provenance":provenance,"units":units,
-        "bindings":bindings,"sections":article_sections(retained.realization.generated_units().map(|p|p.question)).ok(),
+        "diagrams":retained.realization.diagrams,"bindings":bindings,"sections":article_sections(retained.realization.generated_units().map(|p|p.question)).ok(),
         "read_only":true,"semantic_approval":"not_established"})
 }

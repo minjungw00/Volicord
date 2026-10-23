@@ -864,7 +864,8 @@ storage는 Derived State다.
 ### Diagram grounding
 
 Component, dependency, request/data flow, Decision impact처럼 관계가 본질적인 설명은
-도식을 사용할 수 있다. Diagram topology의 각 node와 edge는 inspectable
+관계와 흐름을 이해하는 데 필요한 flowchart/UML 도식을 제공해야 한다. 모든 문서에
+같은 도식을 강제하지 않으며 채택 여부를 다시 묻지 않는다. Diagram topology의 각 node와 edge는 inspectable
 Repository/Analysis Snapshot의 Code Entity/Relation, manifest/config/document relation 또는
 canonical Decision/Context relation에 연결된다.
 
@@ -2522,3 +2523,58 @@ cooperation and representative flows, never one Work topic relabeled as the syst
 Existing per-unit current-code admission (including Repository headings/synopsis)
 remains in force. A later evidenced authoring/admission change owns any repair to
 that rule or budget/publication constraints; hiding a link removes no dependency.
+
+### Grounded concept and sequence publications
+
+The current explanation envelope is v7. It adds `diagrams` to the exact admitted
+publication, supporting only concept relationships and UML implementation sequences.
+The earlier flat `flow_step` admission and v6 no-diagram disposition are historical;
+ordered prose alone does not satisfy the required visual understanding outcome.
+
+A concept has shared typed nodes and directed typed relations; a sequence has typed
+participants and vector-ordered groups of messages with sequential or parallel
+meaning and optional conditions. Labels, title and conditions are exact UTF-8
+selections of ordinary Source-grounded units. The full caption unit identifies scope,
+static interpretation, uncertainty and non-effects. `record`, `context_role`,
+`reading_group`, `component` and `participant` are explanation classes; they do not
+create canonical entities. In particular Goal/Purpose are ContextItem roles, and
+Work groups the Goal identity and explicitly linked Checkpoints/Decisions.
+
+Compose seals each figure's complete meaning plus preparation, requested language
+and all referenced units/citations. Endpoints, relationship/message type, conditions,
+ordering/parallelism and captions affect that semantic fingerprint; valid hashes
+still establish identity rather than entailment. Exact Source assessment remains
+independent. Every authored string lives in `generated_units()`; `labels()` exhausts
+all semantic selections. Ordinary citation/dependency traversal therefore covers
+nested labels, guards and captions, without a second Source authority. Figure and
+element IDs are bounded tokens, never display strings or Source locators.
+
+Whole-publication limits remain unchanged: 32 units, four figures, 12 nodes and
+20 relations/messages per figure, 12 sequence groups and 96 printable characters per
+label. Empty/missing/duplicate elements, unknown shapes/fields, unbound selections,
+foreign preparation/language, edited seals and non-current envelopes fail admission.
+Name/summary and Decision publications cannot carry diagrams. There is no conversion
+or partial salvage. Retention/currentness/publication atomicity use the same managed
+record and all original dependencies; ordinary reads generate nothing.
+
+Public CLI/MCP ordinary answers and complete publication pages include the exact
+semantics and seal. Human text includes endpoints, relation types, conditions and
+explicit parallel groups. Live and self-contained offline Viewer render the same
+meaning through in-tree `volicord-static-svg/1` plus a faithful linear alternative.
+Layout coordinates and SVG are presentation only. Concept edges use numbered keys
+matched to their text claims, avoiding long labels across shared-node lines. Sequence
+lifelines, self messages, guard frames and return dashes do not assert observation.
+The local renderer has no dependency, markup interpreter, remote asset or process;
+all authored text is escaped. SVG is bounded to 256 KiB per figure. Failure is explicit,
+leaves the admitted text where available and never counts as visual completion.
+Native scroll/anchors and existing exact-citation/Source return remain usable without
+script; no browser zoom interception or whole-page scaling is introduced.
+
+The existing architecture SVG primitive describes analyzed topology, not authored
+publication claims, so it cannot provide this semantic path by itself. A general
+Mermaid/PlantUML interpreter would add grammar, packaging and execution dependencies
+for two bounded shapes. The in-tree renderer avoids that cost and introduces no
+third-party renderer license or bundled assets. It is purpose-built, not a general
+UML editor. This checkout declares no separate renderer package license; this is
+not a claim about wider project licensing. Rendering/first display and complete
+public reading costs must be measured separately; no budget is raised for diagrams.

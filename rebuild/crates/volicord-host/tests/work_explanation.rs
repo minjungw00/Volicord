@@ -191,6 +191,7 @@ fn response(generation: &Value, read: &Value) -> Result<ExplanationRealization, 
     })
     .collect();
     Ok(ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint,
@@ -838,6 +839,52 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
     });
     let citation = realized.paragraphs[1].citations[0].clone();
     realized.paragraphs[1].citations = vec![citation; 8];
+    let diagram_claim_hash = explanation_text_hash(&realized.paragraphs[1].text[..45]);
+    for c in &mut realized.paragraphs[1].citations {
+        c.claim_end_byte = 45;
+        c.claim_sha256 = diagram_claim_hash.clone();
+    }
+    let select = |needle: &str| -> Result<DiagramLabel, Box<dyn Error>> {
+        let start_byte = realized.paragraphs[1]
+            .text
+            .find(needle)
+            .ok_or("diagram claim")?;
+        Ok(DiagramLabel {
+            unit: 1,
+            start_byte,
+            end_byte: start_byte + needle.len(),
+        })
+    };
+    realized.diagrams = vec![GroundedDiagram {
+        id: "constant-result".into(),
+        title: select("function returns the constant 7")?,
+        caption_unit: 1,
+        semantic_fingerprint: String::new(),
+        meaning: DiagramMeaning::Concept {
+            nodes: vec![
+                DiagramNode {
+                    id: "function".into(),
+                    kind: DiagramNodeKind::Component,
+                    label: select("function")?,
+                },
+                DiagramNode {
+                    id: "result".into(),
+                    kind: DiagramNodeKind::Component,
+                    label: select("constant 7")?,
+                },
+            ],
+            relations: vec![DiagramRelation {
+                id: "returns".into(),
+                from: "function".into(),
+                to: "result".into(),
+                kind: DiagramRelationKind::Produces,
+                label: select("returns the constant 7")?,
+                condition: None,
+            }],
+        },
+    }];
+    seal_diagrams(&mut realized)?;
+
     let args = f.record_args(&generation, &realized)?;
     let receipt = success(&mut f.host, args)?;
     let original = receipt["explanation"].clone();
@@ -876,6 +923,7 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
     }
     assert!(pages >= 3);
     let doc: Value = serde_json::from_str(&encoded)?;
+    assert_eq!(doc["diagrams"], original["realization"]["diagrams"]);
     // Independent retained inspection, not compact_publication as the oracle.
     for (unit, expected) in doc["units"].as_array().ok_or("units")?.iter().zip(
         original["realization"]["paragraphs"]
@@ -1860,7 +1908,10 @@ fn compose_work_name_summary_and_unicode_citations_without_manual_bindings(
     f.read(&generation, f.source)?;
     let composed = success(&mut f.host, compose.clone())?;
     assert_eq!(composed["retained"], false);
-    assert_eq!(composed["realization"]["format_version"], 6);
+    assert_eq!(
+        composed["realization"]["format_version"],
+        volicord_projections::EXPLANATION_VERSION
+    );
     let response: ExplanationRealization = serde_json::from_value(composed["realization"].clone())?;
     let args = f.record_args(&generation, &response)?;
     success(&mut f.host, args)?;

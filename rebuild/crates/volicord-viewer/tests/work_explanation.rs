@@ -10,6 +10,7 @@ use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerServer, ViewerView};
 
 fn fake(plan: &ExplanationPlan) -> ExplanationRealization {
     ExplanationRealization {
+        diagrams: Vec::new(),
         format_kind: EXPLANATION_KIND.into(),
         format_version: EXPLANATION_VERSION,
         plan_fingerprint: plan.fingerprint.clone(),

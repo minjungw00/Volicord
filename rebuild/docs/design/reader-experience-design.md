@@ -354,6 +354,14 @@ Source identity·revision·Repository/Analysis Snapshot·관측 시각·retentio
 
 ### 11.4 서사·표·도식의 표현
 
+Latest user requirement (2026-10-24): flowcharts/UML are required for relational
+and sequence understanding. The first real milestones are Volicord concept roles
+and Music Deck tab-close synchronization, each with element → concise claim →
+exact implementing Source → publication-bound return. Earlier conditional diagram
+non-adoption is superseded. Static sequences are not execution traces. Diagram
+meaning and accessible text share admitted semantics; caption/conditions/order
+are grounded alongside labels. See the Projection owner for current supported shapes.
+
 자유로운 산문을 중심으로 필요한 비교 조건·관측 결과·흐름 단계·구성요소·읽기 지점을 typed 데이터로 제공할 수 있다. 이 의미를 현재 문단 배열이 충분히 제공하면 재사용할 수 있으나, 타입 이름을 늘리는 것만으로 성공이라고 판정하지 않는다.
 
 여러 실제 entity를 묶은 ‘저장 계층’ 등 설명용 개념은 Derived interpretation으로 표현할 수 있다. 해당 개념이나 추론 관계를 분석기가 확인한 새로운 canonical/structural node·edge로 승격하지 않는다. 설명용 도식은 실제 topology와 다른 근거·권위임을 구분하며 owner 계약을 함께 정리한다.

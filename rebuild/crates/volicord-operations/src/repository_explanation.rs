@@ -33,6 +33,8 @@ pub struct RepositoryFileObservationRequest {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RepositoryExplanationDraft {
+    #[serde(default)]
+    pub diagrams: Vec<volicord_projections::GroundedDiagram>,
     pub plan_fingerprint: String,
     pub language: String,
     pub generator: volicord_projections::ExplanationGenerator,
@@ -250,14 +252,16 @@ impl LocalOperations {
                 citations,
             });
         }
-        let response = ExplanationRealization {
+        let mut response = ExplanationRealization {
             format_kind: EXPLANATION_KIND.into(),
             format_version: EXPLANATION_VERSION,
             plan_fingerprint: draft.plan_fingerprint,
             language: draft.language,
             generator: draft.generator,
             paragraphs,
+            diagrams: draft.diagrams,
         };
+        seal_diagrams(&mut response).map_err(Error::new)?;
         validate_explanation(&plan, &response).map_err(Error::new)?;
         self.validate_subject_sources(
             &self.canonical_basis(project)?,
