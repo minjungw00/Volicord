@@ -1961,3 +1961,38 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
     }
     Ok(())
 }
+
+#[test]
+fn shared_diagram_caption_preserves_separate_elements_and_exact_origins(
+) -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let mut realization = diagram_control(&f, false)?;
+    let mut second = realization.diagrams[0].clone();
+    second.id = "independent-detail".into();
+    realization.diagrams.push(second);
+    seal_diagrams(&mut realization)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization,
+    )?;
+    let html = f.get("/?view=repository")?;
+    assert_eq!(html.matches("class=\"unit diagram-caption\"").count(), 1);
+    assert_eq!(html.matches("class=\"shared-diagram-basis\"").count(), 1);
+    assert_eq!(html.matches("class=\"admitted-diagram\"").count(), 2);
+    for href in html
+        .split("href=\"#")
+        .skip(1)
+        .map(|s| s.split('"').next().unwrap_or(""))
+    {
+        assert_eq!(
+            html.matches(&format!(" id=\"{href}\"")).count(),
+            1,
+            "exact shared-caption origin {href}"
+        );
+    }
+    assert!(html.contains("-diagram-mechanism-dependency-claim"));
+    assert!(html.contains("-diagram-independent-detail-dependency-claim"));
+    Ok(())
+}

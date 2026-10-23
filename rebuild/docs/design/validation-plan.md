@@ -3668,3 +3668,10 @@ already installed local fonts without network or Product asset changes. Missing 
 in earlier screenshots remain a failed visual prerequisite; later DOM success cannot
 repair those original pixels. The existing Korean font prerequisite self-test now
 challenges the actual diagram driver with an empty font inventory.
+
+Source-complete authoring must fit the unchanged compact realization limit. Shared
+qualified captions can keep overview/detail sequences separate without duplicating
+scope grounding. Scope-only reading limits assert no implementation facts and use
+the existing permitted canonical basis; retain all technical evidence. The focused
+`shared_diagram_caption` control checks one visible caption, separate repeated elements
+and exact native targets. Fresh publications and real consumers recheck the candidate.

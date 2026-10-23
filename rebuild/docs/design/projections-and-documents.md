@@ -2658,3 +2658,10 @@ Repeated apply/resize callbacks do not steal focus from current figure controls.
 Sources retain desktop article context and narrow focused code with explicit return.
 No-JS uses the same figures, relationship key, text and exact embedded bytes through
 native fragments; distributed exports promise neither live checks nor revocation.
+
+Several figures may deliberately select one qualified caption unit. Display its full
+basis once and link later figures to that exact caption, while each figure retains
+its own title, semantic seal, elements, claims and return identity. Each faithful text
+alternative remains self-contained. Sharing a scope claim never merges independent
+relationship claims or discards Source bindings. This uses existing v8 references;
+it changes no retained shape, authority, byte budget or version boundary.

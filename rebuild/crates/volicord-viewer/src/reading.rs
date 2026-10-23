@@ -555,9 +555,24 @@ fn render_diagrams(
         } else {
             "<div class=\"diagram-caption\"><p>".into()
         };
+        if ordinal == 0 {
+            html.push_str(&format!(
+                "{caption_open}{}</p></div>",
+                escape(texts.get(d.caption_unit).copied().unwrap_or(""))
+            ));
+        } else {
+            html.push_str(&format!(
+                "<p class=\"shared-diagram-basis\"><a href=\"#{}\">{}</a></p>",
+                reader_claim_anchor(answers, index),
+                text(
+                    r.locale,
+                    "Shared basis and limits for these figures",
+                    "이 도식들이 공유하는 근거와 한계"
+                )
+            ));
+        }
         html.push_str(&format!(
-            "{caption_open}{}</p></div><details class=\"diagram-alternative\"><summary>{}</summary>",
-            escape(texts.get(d.caption_unit).copied().unwrap_or("")),
+            "<details class=\"diagram-alternative\"><summary>{}</summary>",
             text(
                 r.locale,
                 "Diagram meaning and element claims",
