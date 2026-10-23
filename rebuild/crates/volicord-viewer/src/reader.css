@@ -365,3 +365,28 @@ details.verification-report > summary,details.evidence-index > summary { min-hei
 .diagram-element:hover .participant-box { stroke-width: 3; }
 .diagram-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .admitted-diagram .diagram-alternative { margin-top: .75rem; }
+
+.diagram-controls { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.6rem; }
+.diagram-controls[hidden] { display:none; }
+.diagram-expanded .diagram-viewport { max-height:90vh; }
+.diagram-scale { min-width:3.5rem; text-align:center; }
+.diagram-claim { display:none; margin-top:1rem; padding:1rem; border-left:3px solid var(--accent,#225d9d); background:var(--surface,#fff); }
+.diagram-claim:target,.diagram-claim[data-active=true] { display:block; }
+.diagram-claim h3 { margin-top:0; }
+.diagram-claim .diagram-selected-label { font-weight:600; }
+.diagram-code-range { overflow-wrap:anywhere; flex-basis:100%; }
+.diagram-return { margin-top:.75rem; }
+.diagram-return-index { margin:1rem 0; }
+.source-point[data-selected=true] { display:block; margin:0; }
+.appendix[data-open=true] { display:block; position:fixed; inset:76px 0 0 auto; width:52%; margin:0; padding:24px; background:var(--surface); overflow:auto; z-index:5; overscroll-behavior:contain; }
+body[data-source-open=true] main.shell { max-width:none; padding-inline:28px; }
+body[data-source-open=true] .doc { width:44%; max-width:none; margin:0; }
+body[data-source-open=true] .doc-head h1 { font-size:2.1rem; }
+body[data-source-open=true] .comparisons { grid-template-columns:1fr; }
+body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
+@media(max-width:900px) {
+ body[data-source-open=true] { overflow:hidden; }
+ .appendix[data-open=true] { inset:0; width:100%; padding:16px; z-index:20; }
+ body[data-source-open=true] .claim-quote { max-height:17vh; font-size:.9rem; }
+ body[data-source-open=true] .point-bar { position:sticky; top:-16px; background:var(--surface); z-index:2; padding-block:8px; }
+}

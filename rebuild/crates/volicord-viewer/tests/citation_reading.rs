@@ -1700,6 +1700,26 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             assert!(!html.contains("<foreignObject"));
         }
         assert!(!offline.contains("<script"));
+        for href in offline
+            .split("href=\"#")
+            .skip(1)
+            .map(|s| s.split('"').next().unwrap_or(""))
+        {
+            assert_eq!(
+                offline.matches(&format!(" id=\"{href}\"")).count(),
+                1,
+                "exact script-free return target {href}"
+            );
+        }
+        assert!(offline.contains("class=\"diagram-claim\""));
+        assert!(offline.contains("diagram-return-index"));
+        assert!(offline.contains("class=\"diagram-controls\" hidden"));
+        assert!(offline.contains("Inspect calls verification"));
+        assert!(offline.contains(if sequence {
+            "guard:2-claim"
+        } else {
+            "dependency:condition-claim"
+        }));
         let p = a.provenance.ok_or("provenance")?;
         let selected = f.ops.read_explanation_citation(
             f.project,

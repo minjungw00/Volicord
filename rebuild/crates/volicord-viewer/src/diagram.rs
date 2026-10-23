@@ -168,6 +168,18 @@ pub(crate) fn svg(
                 32,
             );
             out.push_str("</a>");
+            if let Some(condition) = &r.condition {
+                open(
+                    &mut out,
+                    ns,
+                    &format!("{}:condition", r.id),
+                    condition,
+                    label(condition)?,
+                    target,
+                );
+                text(&mut out, x, mid + 22, "if", 8);
+                out.push_str("</a>");
+            }
         }
     }
     for (i, node) in d.nodes().iter().enumerate() {
@@ -256,6 +268,77 @@ pub(crate) fn svg(
         return Err("local SVG render budget exceeded".into());
     }
     Ok(out)
+}
+
+/// Read-side identities for every selectable semantic element, including guards.
+/// ':' separates renderer-owned guard IDs from admitted ASCII element tokens.
+pub(crate) fn elements(d: &GroundedDiagram) -> Vec<(String, &DiagramLabel)> {
+    let mut result = d
+        .nodes()
+        .iter()
+        .map(|n| (n.id.clone(), &n.label))
+        .collect::<Vec<_>>();
+    match &d.meaning {
+        DiagramMeaning::Concept { relations, .. } => {
+            for r in relations {
+                result.push((r.id.clone(), &r.label));
+                if let Some(l) = &r.condition {
+                    result.push((format!("{}:condition", r.id), l));
+                }
+            }
+        }
+        DiagramMeaning::Sequence { groups, .. } => {
+            for (i, g) in groups.iter().enumerate() {
+                if let Some(l) = &g.condition {
+                    result.push((format!("guard:{}", i + 1), l));
+                }
+                result.extend(g.messages.iter().map(|m| (m.id.clone(), &m.label)));
+            }
+        }
+    }
+    result
+}
+pub(crate) fn element_caption(d: &GroundedDiagram, id: &str, texts: &[&str]) -> String {
+    let label = |l: &DiagramLabel| diagram_label(l, texts).unwrap_or("");
+    let node = |id: &str| {
+        d.nodes()
+            .iter()
+            .find(|n| n.id == id)
+            .map(|n| label(&n.label))
+            .unwrap_or("")
+    };
+    if let Some(n) = d.nodes().iter().find(|n| n.id == id) {
+        return format!("{} · {}", label(&n.label), n.kind.text());
+    }
+    match &d.meaning {
+        DiagramMeaning::Concept { relations, .. } => {
+            for r in relations {
+                if r.id == id {
+                    return format!("{} → {} · {}", node(&r.from), node(&r.to), r.kind.text());
+                }
+            }
+        }
+        DiagramMeaning::Sequence { groups, .. } => {
+            for (i, g) in groups.iter().enumerate() {
+                for m in &g.messages {
+                    if m.id == id {
+                        return format!(
+                            "{}. {} → {} · {}",
+                            i + 1,
+                            node(&m.from),
+                            node(&m.to),
+                            m.kind.text()
+                        );
+                    }
+                }
+            }
+        }
+    }
+    elements(d)
+        .into_iter()
+        .find(|(key, _)| key == id)
+        .map(|(_, l)| format!("if {}", label(l)))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

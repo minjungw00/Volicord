@@ -135,6 +135,18 @@ fn overview(
         "위에서 읽을 문서를 선택하세요. 저장한 문단 링크로 이곳에 왔다면 이 스냅샷에서 해당 문단을 사용할 수 없습니다.")));
     }
     project_purpose(html, r, u);
+    if p.work_count == 0 {
+        html.push_str(&format!(
+            "<p><a class=\"button secondary repository-reading-link\" href=\"{}\">{}</a></p>",
+            if snapshot {
+                "#repository-explanation".into()
+            } else {
+                escape(&url(r, &ViewerView::RepositoryExplanation))
+            },
+            text(r.locale, "Read repository explanation", "저장소 설명 읽기")
+        ));
+    }
+
     html.push_str(&format!("<div class=\"section-heading\"><div><h2>{}</h2></div><a class=\"button secondary\" href=\"{}\">{} →</a></div>",
         text(r.locale,"Recent Work","최근 작업"),
         if snapshot { "#works".into() } else { escape(&url(r,&ViewerView::Work {work:None})) },
@@ -475,7 +487,13 @@ fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>
     html.push_str(&format!("</{outer}>"));
 }
 
-/// Consume the shared producer/read structure without renumbering any claim.
+/// Diagram selections keep their own return identity while sharing exact unit/citation payloads.
+fn diagram_namespace(
+    answers: &ReaderAnswers<'_>,
+    d: &volicord_projections::GroundedDiagram,
+) -> String {
+    format!("reader-{}-diagram-{}", answers.namespace, d.id)
+}
 fn render_diagrams(
     html: &mut String,
     r: &ViewerRequest,
@@ -487,16 +505,35 @@ fn render_diagrams(
         .iter()
         .map(|p| p.text.as_str())
         .collect::<Vec<_>>();
-    for d in answers.diagrams.iter().filter(|d| d.caption_unit == index) {
-        let ns = format!("reader-{}-diagram-{}", answers.namespace, d.id);
+    for (ordinal, d) in answers
+        .diagrams
+        .iter()
+        .filter(|d| d.caption_unit == index)
+        .enumerate()
+    {
+        let ns = diagram_namespace(answers, d);
         let title = volicord_projections::diagram_label(&d.title, &texts).unwrap_or("");
-        html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"><figcaption>{}</figcaption>",escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),escape(title)));
-        match crate::diagram::svg(d,&texts,&ns,&|_,label|reader_claim_anchor(answers,label.unit)) {
-            Ok(svg)=>html.push_str(&format!("<div class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · scroll to explore","도식 · 스크롤하여 탐색"))),
-            Err(_)=>html.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Diagram rendering failed. Read the admitted text alternative below.","도식 렌더링에 실패했습니다. 아래 검증된 텍스트 표현을 읽으세요."))),
+        let realization = answers
+            .provenance
+            .as_ref()
+            .map(|p| p.realization_fingerprint.as_str())
+            .unwrap_or("");
+        html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" data-realization=\"{}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"><figcaption>{}</figcaption>",escape(realization),escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),escape(title)));
+        html.push_str(&format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"reset\">{}</button></div>",text(r.locale,"Expand reading area","읽기 영역 확장"),text(r.locale,"Zoom diagram out","도식 축소"),text(r.locale,"Zoom diagram in","도식 확대"),text(r.locale,"Reset","원래 크기")));
+        match crate::diagram::svg(d,&texts,&ns,&|id,_|format!("{ns}-{id}-claim")) {
+            Ok(svg)=>html.push_str(&format!("<div class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용"))),
+            Err(_)=>{
+                html.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Diagram rendering failed. Read the admitted text alternative below.","도식 렌더링에 실패했습니다. 아래 검증된 텍스트 표현을 읽으세요.")));
+                for (id,_) in crate::diagram::elements(d) {html.push_str(&format!("<span id=\"{ns}-{id}\" tabindex=\"-1\"></span>"));}
+            },
         }
+        let caption_open = if ordinal == 0 && answers.prose[index].question == "Narrative" {
+            format!("<div class=\"unit diagram-caption\" id=\"{}\" tabindex=\"-1\"><p class=\"unit-text\" data-question=\"Narrative\" lang=\"{}\" data-content-language=\"{}\">",reader_claim_anchor(answers,index),escape(&content_language_tag(&answers.language)),escape(&answers.language))
+        } else {
+            "<div class=\"diagram-caption\"><p>".into()
+        };
         html.push_str(&format!(
-            "<p>{}</p><details class=\"diagram-alternative\"><summary>{}</summary>",
+            "{caption_open}{}</p></div><details class=\"diagram-alternative\"><summary>{}</summary>",
             escape(texts.get(d.caption_unit).copied().unwrap_or("")),
             text(
                 r.locale,
@@ -512,14 +549,55 @@ fn render_diagrams(
             Err(_) => html.push_str("<p role=\"status\">Diagram meaning unavailable.</p>"),
         }
         html.push_str("<ul>");
-        for node in d.nodes() {
-            html.push_str(&format!(
-                "<li><a class=\"button secondary\" href=\"#{}\">{}</a></li>",
-                reader_claim_anchor(answers, node.label.unit),
-                escape(volicord_projections::diagram_label(&node.label, &texts).unwrap_or(""))
+        for (id, _) in crate::diagram::elements(d) {
+            html.push_str(&format!("<li><a class=\"button secondary diagram-text-link\" data-element=\"{ns}-{id}\" href=\"#{ns}-{id}-claim\">{}</a></li>",escape(&crate::diagram::element_caption(d,&id,&texts))));
+        }
+        html.push_str("</ul></details><div class=\"diagram-claims\">");
+        for (id, label) in crate::diagram::elements(d) {
+            let origin = format!("{ns}-{id}");
+            let claim = format!("{origin}-claim");
+            let selected = volicord_projections::diagram_label(label, &texts).unwrap_or("");
+            let unit = &answers.prose[label.unit];
+            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p>{}</p><p class=\"diagram-selected-label\">{}</p><div class=\"evidence-actions\">",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts)),escape(&unit.text),escape(selected)));
+            for (n, c) in unit.citations.iter().enumerate().filter(|(_, c)| {
+                c.claim_start_byte <= label.start_byte && c.claim_end_byte >= label.end_byte
+            }) {
+                let purpose = format!("{} {}", text(r.locale, "Inspect", "코드 확인:"), selected);
+                html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{claim}\" href=\"#{}\" aria-label=\"{} · {}:{}–{}\">{} ↗</a><small class=\"diagram-code-range\">{}:{}–{}</small>",source_point_anchor(answers,label.unit,n),escape(&purpose),escape(&c.locator),c.start_line,c.end_line,escape(&purpose),escape(&c.locator),c.start_line,c.end_line));
+            }
+            html.push_str(&format!("</div><a class=\"button secondary diagram-return\" href=\"#{origin}\">← {}</a></section>",text(r.locale,"Return to element","요소로 돌아가기")));
+        }
+        html.push_str("</div></figure>");
+    }
+}
+
+fn diagram_source_returns(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    unit: usize,
+    citation: usize,
+) {
+    let texts = answers
+        .prose
+        .iter()
+        .map(|p| p.text.as_str())
+        .collect::<Vec<_>>();
+    let c = &answers.prose[unit].citations[citation];
+    let mut links = String::new();
+    for d in &answers.diagrams {
+        let ns = diagram_namespace(answers, d);
+        for (id, _) in crate::diagram::elements(d).into_iter().filter(|(_, l)| {
+            l.unit == unit && c.claim_start_byte <= l.start_byte && c.claim_end_byte >= l.end_byte
+        }) {
+            links.push_str(&format!(
+                "<li><a class=\"button secondary\" href=\"#{ns}-{id}-claim\">{}</a></li>",
+                escape(&crate::diagram::element_caption(d, &id, &texts))
             ));
         }
-        html.push_str("</ul></details></figure>");
+    }
+    if !links.is_empty() {
+        html.push_str(&format!("<details class=\"diagram-return-index\"><summary>{}</summary><ul>{links}</ul></details>",text(r.locale,"Diagram return positions · browser Back also returns to the selected claim","도식 복귀 위치 · 브라우저 뒤로 가기로 선택한 설명에 돌아갈 수도 있습니다")));
     }
 }
 
@@ -551,7 +629,11 @@ fn render_article_layer(
             if answer.question == "Comparison" {
                 html.push_str("<div class=\"comparisons\"><div class=\"comparison-card\">");
             }
-            reader_unit(html, r, answers, index);
+            if answer.question != "Narrative"
+                || !answers.diagrams.iter().any(|d| d.caption_unit == index)
+            {
+                reader_unit(html, r, answers, index);
+            }
             render_diagrams(html, r, answers, index);
             if answer.question == "Comparison" {
                 html.push_str("</div></div>");
@@ -1568,6 +1650,7 @@ fn render_source_excerpts(
                 .get(c.claim_start_byte..c.claim_end_byte)
                 .unwrap_or("");
             html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" tabindex=\"-1\"><div class=\"point-bar\"><a class=\"return\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><blockquote class=\"claim-quote\" tabindex=\"0\" lang=\"{}\">{}</blockquote><h3 class=\"source-path\">{}:{}–{}</h3>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),text(r.locale,"Evidence for this explanation","이 설명을 확인하는 근거"),escape(&content_language_tag(&provenance.language)),escape(claim),escape(&c.locator),c.start_line,c.end_line));
+            diagram_source_returns(html, r, answers, index, n);
             html.push_str(&format!("<div data-statement-role=\"generated-interpretation\" data-question=\"{}\" data-paragraph=\"{}\" data-claim-start=\"{}\" data-claim-end=\"{}\"></div>",escape(&answer.question),index+1,c.claim_start_byte,c.claim_end_byte));
             let range = source_excerpt_anchor(answers, c);
             if seen.insert(range.clone()) {

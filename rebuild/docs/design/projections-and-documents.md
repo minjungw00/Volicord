@@ -2578,3 +2578,30 @@ third-party renderer license or bundled assets. It is purpose-built, not a gener
 UML editor. This checkout declares no separate renderer package license; this is
 not a claim about wider project licensing. Rendering/first display and complete
 public reading costs must be measured separately; no budget is raised for diagrams.
+
+### Diagram selection and exact return
+
+Each node, relation, condition and message has a publication/language-scoped SVG
+origin and its own concise claim panel; a faithful text list reaches the same panel.
+Claims keep original unit/citation indices and show purposeful implementation
+buttons with inspectable file/range labels. Several elements may share a unit and
+Source payload without sharing their return positions or inventing a new binding.
+The default caption appears once; quiet caption provenance stays in Evidence.
+
+Live Source fragments may carry `!<diagram-claim-id>` after the exact Source-point
+ID. The client accepts this only when the current DOM claim contains that exact
+Source action. Reload/history therefore restore a bound origin without granting
+another read selector or changing the HTTP citation protocol. Source return focuses
+the selected claim; element return restores original SVG/text trigger, page and
+figure scrolling. Foreign/stale origins produce an unavailable fragment notice.
+The native no-script href remains the exact Source anchor; browser Back and the
+Source's named diagram-return disclosure reach each original claim/element.
+
+Local controls expose 75–200% figure zoom, reset and bounded reading-area expansion.
+Native keyboard panning, page scrolling and browser zoom remain available. These
+controls change presentation only and are absent without script. SVG/text identity,
+claim selection, code bytes and native return anchors survive in offline HTML.
+A known changed/expired/deleted/withheld/comparison-unavailable live citation failure
+removes that realization's cached SVG, text alternative and claim panels, retaining
+only opaque focus/return IDs and a safe unavailable notice. A distributed static
+export cannot promise revocation or a new live comparison.

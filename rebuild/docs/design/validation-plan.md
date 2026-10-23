@@ -3632,3 +3632,14 @@ interpretation, controlled fixture success, independent first reading, human
 comprehension and device execution remain distinct. Missing isolation is dependent
 assessment; missing human feedback stays pending. This task's authorization excludes
 aggregate gate/official V11/provider execution; focused support is no substitute pass.
+
+The real-publication `grounded_diagrams_browser.cjs` driver accepts source-selected
+`diagram`, `element`, `unit`, `citation`, and `expected_code` plus actual public JSON,
+repository/runtime/export and executable/browser paths. It verifies original code
+bytes, semantic/publication identity and internal links in desktop/narrow live,
+offline and no-script consumption. Precise mode also checks keyboard panning/zoom,
+SVG and text-origin focus/scroll return, Source deep-link reload and delayed-read
+cancellation. Optional `faults` uses explicitly controlled HTTP failure responses to
+check cached-meaning removal; these UI controls are not actual expiry/deletion
+observations. Actual Source deletion/withholding/current-only behavior remains in
+Operations/Viewer production tests. Preserve every failure and new output path.

@@ -1,6 +1,7 @@
 // Presentation and exact same-origin retained citation reads only. No writes.
 (() => {
   const saved = new Map();
+  const diagramReturns = new Map();
   const originTriggers = new Map();
   const narrow = matchMedia('(max-width:900px)');
   let selected = null;
@@ -35,6 +36,39 @@
     fragment.append(document.createTextNode(source.slice(end)));
     code.replaceChildren(fragment); code.dataset.syntax = language;
     return syntaxNames[language] || (ko ? '일반 텍스트' : 'Plain text');
+  }
+  // A deep Source fragment carries its exact originating diagram claim. The
+  // native href remains script-free; only JS adds this bounded return selector.
+  function fragment() {
+    const [id, origin, extra] = location.hash.slice(1).split('!');
+    const target = document.getElementById(id);
+    if (extra !== undefined) return {target:null};
+    if (origin !== undefined) {
+      const claim = document.getElementById(origin);
+      if (!target?.matches('.source-point') || !claim?.matches('.diagram-claim') ||
+          ![...claim.querySelectorAll('a.evidence-link')].some(a=>a.getAttribute('href')==='#'+id)) return {target:null};
+    }
+    return {target, origin};
+  }
+  function withholdDiagrams(realization) {
+    // Known dependency failure must not leave a cached SVG or text alternative.
+    // Retain only opaque return IDs and a safe notice, never old generated text.
+    for (const figure of document.querySelectorAll('.admitted-diagram')) {
+      if (figure.dataset.realization !== realization) continue;
+      const ids=[...figure.querySelectorAll('[id]')].map(n=>n.id);
+      const notice=document.createElement('p'); notice.setAttribute('role','status');
+      notice.textContent=ko?'이 도식의 현재 근거를 사용할 수 없습니다. 현재 문서를 다시 여세요.':'This diagram’s current evidence is unavailable. Reopen the current document.';
+      const placeholders=ids.map(id=>{const n=document.createElement('span');n.id=id;n.tabIndex=-1;return n;});
+      figure.replaceChildren(notice,...placeholders);
+      figure.dataset.unavailable='true';
+    }
+  }
+  for (const figure of document.querySelectorAll('.admitted-diagram')) {
+    const svg=figure.querySelector('svg');
+    if (!svg) continue;
+    figure.dataset.baseWidth=svg.getAttribute('width');
+    figure.dataset.baseHeight=svg.getAttribute('height');
+    figure.dataset.scale='1';figure.querySelector('.diagram-controls').hidden=false;
   }
   async function readCitation(point, offset = 0) {
     const control = point.querySelector('.citation-inspection');
@@ -115,6 +149,7 @@
         withheld: ko ? '기록 삭제의 읽기 차단으로 보류되었습니다.' : 'Content is withheld by the forgetting barrier.',
         comparison_unavailable: ko ? '현재 저장소와 비교할 수 없습니다.' : 'A current repository comparison is unavailable.'
       };
+      if (Object.hasOwn(reasons,error.reason)) withholdDiagrams(control.dataset.realization);
       status.textContent = reasons[error.reason] || (ko ? '이 정확한 인용은 이용할 수 없거나 변경되었습니다. 설명으로 돌아가 현재 버전을 다시 여세요.'
         : 'This exact citation is unavailable or changed. Return to the explanation and reopen its current version.');
       button.dataset.nextOffset = 0;
@@ -146,7 +181,7 @@
     });
   }
   function apply() {
-    const target = document.getElementById(location.hash.slice(1));
+    const {target,origin:diagramOrigin} = fragment();
     fragmentNotice.hidden = !location.hash || !!target;
     if (target) {
       if (target.matches('details')) target.open = true;
@@ -155,6 +190,15 @@
       }
     }
     const point = target?.closest('.source-point');
+    document.body.dataset.sourceOpen=point?'true':'false';
+    document.querySelectorAll('.source-point[data-selected],.appendix[data-open],.diagram-claim[data-active]').forEach(n=>{delete n.dataset.selected;delete n.dataset.open;delete n.dataset.active;});
+    if (point) {
+      point.dataset.selected='true';point.closest('.appendix').dataset.open='true';
+      const returnId=diagramOrigin || point.dataset.origin;
+      point.querySelector('a.return').setAttribute('href','#'+returnId);
+      const claim=document.getElementById(returnId);
+      if (claim?.matches('.diagram-claim')) claim.dataset.active='true';
+    }
     updateCue();
     const articles = document.querySelectorAll('.doc');
     const header = document.querySelector('.masthead');
@@ -177,7 +221,7 @@
         point.removeAttribute('role');
         point.removeAttribute('aria-modal');
       }
-      const origin = document.getElementById(point.dataset.origin);
+      const origin = document.getElementById(diagramOrigin || point.dataset.origin);
       if (changed) readCitation(point);
       if (changed && !narrow.matches) origin?.scrollIntoView({block:'center'});
       if (!point.contains(document.activeElement)) point.focus({preventScroll:true});
@@ -193,8 +237,52 @@
         else target.scrollIntoView({block:'center'});
       }
     }
+    if (!point && target?.matches('.diagram-claim')) {
+      target.focus({preventScroll:true});target.scrollIntoView({block:'nearest'});
+    }
+    if (!point && target?.matches('.diagram-element')) {
+      const prior=diagramReturns.get(target.id);
+      (prior?.trigger?.isConnected?prior.trigger:target).focus({preventScroll:true});
+      if (prior) {
+        const viewport=target.closest('.diagram-viewport');
+        viewport.scrollLeft=prior.left;viewport.scrollTop=prior.top;
+        window.scrollTo(0,prior.y);
+      } else target.scrollIntoView({block:'center',inline:'center'});
+    }
   }
+  document.addEventListener('focusin',event=>{
+    const element=event.target.closest?.('a.diagram-element');
+    if(element && !diagramReturns.has(element.id)) element.scrollIntoView({block:'nearest',inline:'nearest'});
+  });
   document.addEventListener('click', event => {
+    const diagramControl=event.target.closest('button[data-diagram-action]');
+    if (diagramControl) {
+      const figure=diagramControl.closest('.admitted-diagram');const action=diagramControl.dataset.diagramAction;
+      const svg=figure.querySelector('svg');
+      if (action==='expand') {
+        const expanded=figure.classList.toggle('diagram-expanded');
+        diagramControl.setAttribute('aria-expanded',String(expanded));
+      } else {
+        const old=Number(figure.dataset.scale);const next=action==='reset'?1:Math.min(2,Math.max(.75,old+(action==='in'?.25:-.25)));
+        figure.dataset.scale=String(next);svg.style.width=(Number(figure.dataset.baseWidth)*next)+'px';svg.style.height=(Number(figure.dataset.baseHeight)*next)+'px';
+        figure.querySelector('.diagram-scale').textContent=Math.round(next*100)+'%';
+        figure.querySelector('[data-diagram-action=in]').disabled=next===2;
+        figure.querySelector('[data-diagram-action=out]').disabled=next===.75;
+      }
+    }
+    const diagramLink=event.target.closest('a.diagram-element,a.diagram-text-link');
+    if (diagramLink) {
+      const id=diagramLink.matches('.diagram-element')?diagramLink.id:diagramLink.dataset.element;
+      const element=document.getElementById(id);const viewport=element?.closest('.diagram-viewport');
+      if (viewport) diagramReturns.set(id,{trigger:diagramLink,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop});
+      requestAnimationFrame(apply);
+    }
+    const diagramReturn=event.target.closest('a.diagram-return');
+    if (diagramReturn) {
+      event.preventDefault();
+      history.pushState(null,'',diagramReturn.getAttribute('href'));
+      apply();requestAnimationFrame(apply);
+    }
     const button = event.target.closest('button.citation-read');
     if (button) readCitation(button.closest('.source-point'), Number(button.dataset.nextOffset || 0));
     const outlineTrigger = event.target.closest('.document-nav > summary');
@@ -218,14 +306,19 @@
       });
     }
     const link = event.target.closest('a.evidence-link');
-    if (link && !selected) {
-      saved.set(link.dataset.origin, scrollY);
+    if (link && (!selected || link.closest('.diagram-claim'))) {
+      if (!selected) saved.set(link.dataset.origin, scrollY);
       originTriggers.set(link.dataset.origin, link);
       document.querySelectorAll('.document-nav[open]').forEach(toc => toc.open = false);
+      if (link.closest('.diagram-claim')) {
+        event.preventDefault();
+        history.pushState(null,'',link.getAttribute('href')+'!'+link.dataset.origin);
+        apply();
+      }
     }
   });
   document.addEventListener('keydown', event => {
-    const point = document.getElementById(location.hash.slice(1))?.closest('.source-point');
+    const point = fragment().target?.closest('.source-point') || selected;
     if (!point) {
       const toc = event.target.closest('.document-nav[open]');
       if (event.key === 'Escape' && toc) {
@@ -251,6 +344,7 @@
     }
   });
   window.addEventListener('hashchange', apply);
+  window.addEventListener('popstate', () => {apply();requestAnimationFrame(()=>{if(fragment().target?.matches('.diagram-element')) apply();});});
   let scheduled = false;
   window.addEventListener('scroll', () => {
     if (!scheduled) { scheduled = true; requestAnimationFrame(() => { scheduled = false; updateCue(); }); }
