@@ -100,7 +100,20 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           const point=page.locator('[id="'+pointId+'"]');
           if(mode==='live') {
             await page.waitForFunction(id=>{const n=document.getElementById(id);return n?.querySelector('.citation-inspection pre.code-region code')?.textContent.length>0;},pointId);
-            assert.equal(await point.locator('.citation-inspection pre.code-region code').textContent(),expected);
+            let collected='';let offset=0;let pages=0;
+            while(true) {
+              const chunk=await point.locator('.citation-inspection pre.code-region code').textContent();
+              assert(Buffer.byteLength(chunk)<=4096,'bounded live citation page');
+              assert.equal(chunk,Buffer.from(expected).subarray(offset,offset+Buffer.byteLength(chunk)).toString('utf8'),'exact original page');
+              collected+=chunk;pages++;
+              const next=Number(await point.locator('.citation-read').getAttribute('data-next-offset'));
+              if(next===0)break;
+              assert.equal(next,Buffer.byteLength(collected),'contiguous UTF-8 page offsets');
+              offset=next;await point.locator('.citation-read').click();
+              await point.locator('.citation-status').filter({hasText:new RegExp('bytes '+(citation.start_byte+offset)+'–')}).waitFor();
+            }
+            assert.equal(collected,expected,'all critical implementing bytes across bounded pages');
+            assert(pages>0);
           } else {
             const code=await point.locator('pre.code-region code').allTextContents();
             assert(code.includes(expected),'offline/no-JS complete exact implementing bytes');

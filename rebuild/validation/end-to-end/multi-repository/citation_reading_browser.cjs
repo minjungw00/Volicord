@@ -272,6 +272,20 @@ async function syntaxContrast(page) {
    assert.equal(await shared.locator('.citation-inspection code').textContent(),fixture.originals[8]);
    result.code_paints.push(...await page.evaluate(()=>window.codePaints));
   }
+  // Desktop evidence remains nonmodal: switch without closing the first Source.
+  await page.setViewportSize({width:1440,height:900});await page.goto(base+'?view=repository');
+  await openSource(page,8);
+  await openSource(page,8); // Repeated activation must recheck live authority too.
+  const switched=await openSource(page,0);
+  await page.keyboard.press('Escape');
+  const switchedId=await switched.getAttribute('id');
+  await page.waitForFunction(id=>document.activeElement.matches('a.evidence-link') && document.activeElement.getAttribute('href')==='#'+id,switchedId);
+  assert.equal(await page.evaluate(()=>document.activeElement.getAttribute('href')),'#'+switchedId,'nonmodal Source switch records its own exact trigger');
+  // An unavailable activation token cannot reuse the latest button for a claim.
+  const retired=await openSource(page,8);
+  await page.evaluate(()=>{history.replaceState({...history.state,sourceReturn:'retired-activation'},'');dispatchEvent(new PopStateEvent('popstate'));});
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(id=>document.activeElement.id===id,await retired.getAttribute('data-origin'));
   // A permitted response delayed in transport cannot paint a closed or switched claim.
   await page.goto(base+'?view=repository');
   for(let index=0;index<11;index++) {

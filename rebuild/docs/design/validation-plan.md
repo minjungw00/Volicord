@@ -3693,3 +3693,9 @@ The existing multilingual citation browser journey also exercises repeated ordin
 paragraph Source buttons after code selection/contrast changes, Escape, reload and
 history. It must preserve the exact trigger before reload and the exact claim after
 reload; diagram-only return success cannot replace this control.
+
+The nonmodal citation journey switches directly between distinct Source points and
+challenges an unavailable activation token. Actual diagram journeys concatenate every
+contiguous 4,096-byte live citation page against original UTF-8 before asserting complete
+critical evidence. A first-page comparison cannot reject a correctly paginated range or
+establish complete Source coverage; no publication or excerpt limit is raised.

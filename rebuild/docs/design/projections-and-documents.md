@@ -2678,3 +2678,10 @@ Exact Source-button return is restored after native fragment focus as well as du
 the initiating event, guarded by the unchanged fragment and selected point. A later
 user-selected control keeps its focus; reload without an activating button returns
 to the exact claim.
+
+Every unmodified Source-button activation records its own return, including a desktop
+switch while another nonmodal Source is selected. An unavailable activation token
+falls back to the exact originating claim; a latest-button-per-claim map cannot
+substitute for the missing activation or restore another citation's scroll position.
+Reactivating the same live Source fragment rechecks the permitted bytes instead of
+treating the unchanged URL as a new authority check.

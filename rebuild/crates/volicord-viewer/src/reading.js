@@ -1,6 +1,5 @@
 // Presentation and exact same-origin retained citation reads only. No writes.
 (() => {
-  const saved = new Map();
   const diagramReturns = new Map();
   const sourceReturns = new Map();
   const expandedReturns = new WeakMap();
@@ -31,7 +30,6 @@
       control.focus({preventScroll:true}); window.scrollTo(0,prior.y);
     }
   }
-  const originTriggers = new Map();
   const narrow = matchMedia('(max-width:900px)');
   let selected = null;
   let selectedReturnToken = null;
@@ -272,9 +270,9 @@
       if (target) {
         const sourceReturn = sourceReturns.get(selectedReturnToken || state().sourceBack || state().sourceReturn);
         selectedReturnToken = null;
-        const trigger = sourceReturn?.claim === target.id ? sourceReturn.trigger : originTriggers.get(target.id);
+        const trigger = sourceReturn?.claim === target.id ? sourceReturn.trigger : null;
         const destination = trigger?.isConnected ? trigger : target;
-        const offset = sourceReturn?.claim === target.id ? sourceReturn.y : saved.get(target.id);
+        const offset = sourceReturn?.claim === target.id ? sourceReturn.y : undefined;
         const hash = location.hash;
         const restore = () => {
           if (selected || location.hash !== hash || !destination.isConnected) return;
@@ -386,15 +384,16 @@
       event.preventDefault();navigate(codeReturn.getAttribute('href'));
     }
     const link = event.target.closest('a.evidence-link');
-    if (link && (!selected || link.closest('.diagram-claim')) && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-      if (!selected) saved.set(link.dataset.origin, scrollY);
-      originTriggers.set(link.dataset.origin, link);
+    if (link && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
       document.querySelectorAll('.document-nav[open]').forEach(toc => toc.open = false);
       event.preventDefault();
       const token=remember(sourceReturns,{claim:link.dataset.origin,trigger:link,y:scrollY});
       const next={...state(),sourceReturn:token};
       history.replaceState({...state(),sourceBack:token},'');
-      navigate(link.getAttribute('href')+(link.closest('.diagram-claim')?'!'+link.dataset.origin:''),next);
+      const hash=link.getAttribute('href')+(link.closest('.diagram-claim')?'!'+link.dataset.origin:'');
+      const repeated=location.hash===hash;
+      navigate(hash,next);
+      if (repeated && selected) readCitation(selected);
     }
   });
   document.addEventListener('keydown', event => {
