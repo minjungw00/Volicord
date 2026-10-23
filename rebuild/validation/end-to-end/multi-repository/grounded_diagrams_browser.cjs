@@ -12,6 +12,7 @@ fs.mkdirSync(output, {recursive:false});
 const hash = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),chromium:hash(config.chromium)};
 const sleep = ms => new Promise(r => setTimeout(r,ms));
+const failureReasons=['expired','deleted','changed','withheld','comparison_unavailable','unavailable','missing','corrupt','unsupported'];
 (async () => {
   const browserEnv={...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})};
   const fontPaths=config.cases.some(c=>c.language?.startsWith('ko'))
@@ -162,7 +163,7 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
               assert.equal(await page.locator('.source-point[data-selected=true]').count(),0);
               await page.evaluate(id=>{location.hash=id;},elementId);
             }
-            if(config.faults && c.faults!==false) for(const reason of ['expired','deleted','changed','withheld','comparison_unavailable']) {
+            if(config.faults && c.faults!==false) for(const reason of failureReasons) {
               await page.goto(base+query,{waitUntil:'load'});
               await page.route(/\/citation\?/,route=>route.fulfill({status:410,contentType:'application/json',body:JSON.stringify({reason})}));
               await element.focus();await page.keyboard.press('Enter');await action.click();
@@ -183,7 +184,7 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
             await page.goBack(); // native history also preserves script-free access
           }
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?['expired','deleted','changed','withheld','comparison_unavailable']:[],external_requests:external,renderer:'volicord-static-svg/3'});
+          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:'volicord-static-svg/3'});
           await context.close();
         }
       } catch(error) {

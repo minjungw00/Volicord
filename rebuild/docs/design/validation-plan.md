@@ -3682,3 +3682,9 @@ keys must not overlap. Long Korean controls preserve native type size and reserv
 height. Full SVG inspection is diagnostic, distinct from unchanged live/offline viewport
 journeys; retain both and inspect actual original-code topology rather than rendered
 arrows as the expected answer. Optional/parallel text and graphical order must agree.
+
+Cached-figure withholding exercises all nine typed citation failures, including missing,
+unavailable, corrupt and unsupported content, with exact return IDs retained. Untyped
+network errors do not establish that Source authority changed. These controlled HTTP
+responses supplement actual retained-Source deletion, expiry, corruption, unsupported
+format and repository-comparison checks; they do not substitute for them.

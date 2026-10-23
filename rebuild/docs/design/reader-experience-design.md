@@ -507,7 +507,8 @@ Source-first에서는 원본을 먼저 조사하여 책임·메커니즘·중요
 
 Reading applicability is provided as typed shared data: explained snapshot,
 known generation time, read/export comparison basis and confirmed limitation.
-Changed/expired/deleted/withheld/comparison-unavailable states are distinct from
+Changed/expired/deleted/withheld/comparison-unavailable/unavailable/missing/corrupt/
+unsupported states are distinct from
 initial and offline Source-window omissions. Source actions visibly identify
 path/range while retaining quiet heading provenance, exact claim identities,
 desktop nonmodal inspection and narrow-screen focus. Closing returns to the exact

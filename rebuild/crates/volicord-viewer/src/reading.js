@@ -178,7 +178,11 @@
         deleted: ko ? '설명 또는 필수 Source가 삭제되었습니다.' : 'The publication or a required Source was deleted.',
         changed: ko ? '설명 또는 근거가 변경되었습니다.' : 'The publication or its evidence changed.',
         withheld: ko ? '기록 삭제의 읽기 차단으로 보류되었습니다.' : 'Content is withheld by the forgetting barrier.',
-        comparison_unavailable: ko ? '현재 저장소와 비교할 수 없습니다.' : 'A current repository comparison is unavailable.'
+        comparison_unavailable: ko ? '현재 저장소와 비교할 수 없습니다.' : 'A current repository comparison is unavailable.',
+        unavailable: ko ? '설명 또는 필수 근거를 이용할 수 없습니다.' : 'The publication or required evidence is unavailable.',
+        missing: ko ? '설명 또는 필수 근거가 없습니다.' : 'The publication or required evidence is missing.',
+        corrupt: ko ? '설명 또는 근거의 무결성을 확인할 수 없습니다.' : 'The publication or evidence failed its integrity check.',
+        unsupported: ko ? '설명 또는 근거의 형식이 지원되지 않습니다.' : 'The publication or evidence format is unsupported.'
       };
       if (Object.hasOwn(reasons,error.reason)) withholdDiagrams(control.dataset.realization);
       status.textContent = reasons[error.reason] || (ko ? '이 정확한 인용은 이용할 수 없거나 변경되었습니다. 설명으로 돌아가 현재 버전을 다시 여세요.'

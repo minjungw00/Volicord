@@ -2603,7 +2603,8 @@ Local controls expose 75–200% figure zoom, reset and bounded reading-area expa
 Native keyboard panning, page scrolling and browser zoom remain available. These
 controls change presentation only and are absent without script. SVG/text identity,
 claim selection, code bytes and native return anchors survive in offline HTML.
-A known changed/expired/deleted/withheld/comparison-unavailable live citation failure
+A known changed/expired/deleted/withheld/comparison-unavailable/unavailable/missing/
+corrupt/unsupported live citation failure
 removes that realization's cached SVG, text alternative and claim panels, retaining
 only opaque focus/return IDs and a safe unavailable notice. A distributed static
 export cannot promise revocation or a new live comparison.
