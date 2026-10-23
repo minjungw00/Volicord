@@ -2639,3 +2639,22 @@ continues to carry the exact bound claim with full article context available by 
 Workless Overview offers repository reading independently of canonical Purpose and Work.
 Applicability explicitly says local comparison and no remote freshness check; snapshots
 state that neither live nor remote checks occur in the distributed file.
+
+### Responsive figure and history restoration
+
+The persistent outline includes exact publication-scoped figure destinations, with
+focusable native anchors. Controls retain native keyboard panning and browser/page
+scrolling. Expansion exposes its pressed state and controlled viewport; Escape closes
+it and restores the activation control, page position and local pan without a focus
+trap. Caption, claim, path and controls wrap independently; only the figure scrolls
+in two dimensions. Native fragment navigation updates CSS targets as well as history.
+
+Each SVG/text activation and evidence activation owns a bounded ephemeral return
+record. History entries retain their original activation rather than a latest value
+keyed by label or element alone. These records carry presentation focus/offset only;
+publication, language, realization and exact citation remain authority. Reload without
+an ephemeral trigger falls back to the exact bound claim/element, never a similar name.
+Repeated apply/resize callbacks do not steal focus from current figure controls.
+Sources retain desktop article context and narrow focused code with explicit return.
+No-JS uses the same figures, relationship key, text and exact embedded bytes through
+native fragments; distributed exports promise neither live checks nor revocation.

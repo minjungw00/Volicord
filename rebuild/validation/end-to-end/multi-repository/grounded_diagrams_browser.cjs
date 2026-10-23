@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {spawn} = require('node:child_process');
+const {spawn,execFileSync} = require('node:child_process');
 const assert = require('node:assert/strict');
 const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const {chromium} = require(config.playwright);
@@ -13,7 +13,12 @@ const hash = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest(
 const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),chromium:hash(config.chromium)};
 const sleep = ms => new Promise(r => setTimeout(r,ms));
 (async () => {
-  const browser = await chromium.launch({executablePath:config.chromium,headless:true,args:['--no-sandbox']});
+  const browserEnv={...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})};
+  const fontPaths=config.cases.some(c=>c.language?.startsWith('ko'))
+    ? [...new Set(execFileSync('fc-list',['--format','%{file}\n',':lang=ko'],{encoding:'utf8',env:browserEnv}).trim().split('\n').filter(Boolean))] : [];
+  if(config.cases.some(c=>c.language?.startsWith('ko'))) assert(fontPaths.length,'Korean font prerequisite unavailable');
+  const koreanFonts=fontPaths.map(p=>({path:p,sha256:hash(p)}));
+  const browser = await chromium.launch({executablePath:config.chromium,headless:true,args:['--no-sandbox'],env:browserEnv});
   const results=[];
   try {
     for (const c of config.cases) {
@@ -25,7 +30,8 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
       const expected=fs.readFileSync(path.join(c.repository,citation.locator)).subarray(citation.start_byte,citation.end_byte).toString('utf8');
       assert(expected.includes(c.expected_code),'Source-derived implementing range');
       const log=fs.openSync(path.join(output,c.key+'.viewer.stderr'),'wx');
-      const child=spawn(config.viewer,['--runtime',c.runtime,'--project',c.project,'--language','en','--bind','127.0.0.1:0'],{stdio:['ignore','ignore',log]});
+      const child=spawn(config.viewer,['--runtime',c.runtime,'--project',c.project,'--language',c.language || 'en','--bind','127.0.0.1:0'],{stdio:['ignore','ignore',log]});
+      let activePage;
       try {
         let base;
         for(let i=0;i<300;i++) {
@@ -36,7 +42,7 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
         assert(base,'live address');
         for(const width of config.widths || [1440,390]) for(const mode of config.modes || ['live','offline','no-js']) {
           const context=await browser.newContext({viewport:{width,height:900},javaScriptEnabled:mode!=='no-js',serviceWorkers:'block'});
-          const page=await context.newPage();const external=[];const errors=[];
+          const page=await context.newPage();activePage=page;const external=[];const errors=[];
           page.on('pageerror',e=>errors.push(e.message));
           await context.route('**/*',route=> {
             const u=route.request().url();
@@ -46,12 +52,18 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
           const query=c.work?'?view=work&work='+c.work:'?view=repository';
           const started=Date.now();
           await page.goto(mode==='live'?base+query:'file://'+path.resolve(c.offline),{waitUntil:'load'});
+          await page.evaluate(()=>document.fonts.ready);
           const load_ms=Date.now()-started;
           const figure=page.locator('.admitted-diagram[data-semantic-fingerprint="'+d.semantic_fingerprint+'"]');
           await figure.waitFor({state:'attached'});
           // A saved snapshot has native top-level page fragments.
           if(mode!=='live') await page.evaluate(id=>{location.hash=id;},c.work?'work-'+c.work:'repository-explanation');
           await figure.scrollIntoViewIfNeeded();
+          if(config.outline && mode==='live') {
+            const toc=page.locator('.document-nav');await toc.locator(':scope > summary').click();
+            await toc.locator('a.toc-figure[href=\"#'+await figure.getAttribute('id')+'\"]').click();
+            assert(await figure.evaluate(n=>n===document.activeElement),'outline exact figure focus');
+          }
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
           assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/2');
           const size=await page.evaluate(()=>({body:document.documentElement.scrollWidth,viewport:innerWidth}));
@@ -92,6 +104,7 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
             const code=await point.locator('pre.code-region code').allTextContents();
             assert(code.includes(expected),'offline/no-JS complete exact implementing bytes');
           }
+          if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-source.png`)});
           if(config.precise_return && mode==='live') {
             await point.locator('a.return').click();
             await claim.locator('a.diagram-return').click();
@@ -107,7 +120,7 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
             await claim.locator('a.diagram-return').click();
             await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
             await figure.locator('.diagram-alternative > summary').click();
-            const textLink=figure.locator('a.diagram-text-link[data-element=\"'+elementId+'\"]');
+            const textLink=figure.locator('.diagram-alternative a.diagram-text-link[data-element=\"'+elementId+'\"]');
             await textLink.click();
             await claim.locator('a.diagram-return').click();
             await page.waitForFunction(id=>document.activeElement?.matches('a.diagram-text-link') && document.activeElement.dataset.element===id,elementId);
@@ -117,7 +130,39 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
             await element.focus();await page.keyboard.press('Enter');await action.click();await page.goBack();await sleep(300);
             assert.equal(await point.locator('.citation-inspection pre').count(),0);
             await page.unroute(/\/citation\?/);
-            if(config.faults) for(const reason of ['expired','deleted','changed','withheld','comparison_unavailable']) {
+            // Expansion Escape restores its exact control and reading location.
+            if(config.adverse_navigation) {
+              if(await figure.locator('[data-diagram-action=expand]').getAttribute('aria-expanded')==='true') await figure.locator('[data-diagram-action=expand]').click();
+              const control=figure.locator('[data-diagram-action=expand]');
+              await control.focus();const beforeExpand=await page.evaluate(()=>scrollY);
+              await page.keyboard.press('Enter');assert.equal(await control.getAttribute('aria-expanded'),'true');await figure.locator('.diagram-viewport').focus();
+              await page.keyboard.press('Escape');
+              assert.equal(await control.getAttribute('aria-expanded'),'false');
+              assert(await control.evaluate(n=>n===document.activeElement),'expansion control focus');
+              assert(Math.abs(await page.evaluate(()=>scrollY)-beforeExpand)<=5,'expansion scroll return');
+              // The same element can be reached from SVG and text. Back must
+              // retain the earlier activation, not the latest label-keyed entry.
+              await element.focus();await page.keyboard.press('Enter');
+              await claim.locator('a.diagram-return').click();
+              const svgReturnUrl=page.url();
+              await textLink.click();await claim.locator('a.diagram-return').click();
+              assert(await textLink.evaluate(n=>n===document.activeElement));
+              await page.goBack();await page.goBack();
+              assert.equal(page.url(),svgReturnUrl);
+              await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
+              // An unrelated current origin cannot be attached to a Source.
+              const foreign=await page.locator('.diagram-claim').evaluateAll((ns,{claimId,pointId})=>ns.find(n=>n.id!==claimId && ![...n.querySelectorAll('a.evidence-link')].some(a=>a.getAttribute('href')==='#'+pointId))?.id,{claimId,pointId});
+              if(foreign) {
+                await page.evaluate(({pointId,foreign})=>{location.hash=pointId+'!'+foreign;},{pointId,foreign});
+                await page.waitForFunction(()=>!document.querySelector('.fragment-unavailable').hidden);
+                assert.equal(await page.locator('.source-point[data-selected=true]').count(),0);
+              }
+              await page.evaluate(()=>{location.hash='reader-retired-publication-diagram-missing';});
+              await page.waitForFunction(()=>!document.querySelector('.fragment-unavailable').hidden);
+              assert.equal(await page.locator('.source-point[data-selected=true]').count(),0);
+              await page.evaluate(id=>{location.hash=id;},elementId);
+            }
+            if(config.faults && c.faults!==false) for(const reason of ['expired','deleted','changed','withheld','comparison_unavailable']) {
               await page.goto(base+query,{waitUntil:'load'});
               await page.route(/\/citation\?/,route=>route.fulfill({status:410,contentType:'application/json',body:JSON.stringify({reason})}));
               await element.focus();await page.keyboard.press('Enter');await action.click();
@@ -138,14 +183,21 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
             await page.goBack(); // native history also preserves script-free access
           }
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults?['expired','deleted','changed','withheld','comparison_unavailable']:[],external_requests:external,renderer:'volicord-static-svg/2'});
+          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?['expired','deleted','changed','withheld','comparison_unavailable']:[],external_requests:external,renderer:'volicord-static-svg/2'});
           await context.close();
         }
+      } catch(error) {
+        if(activePage && !activePage.isClosed()) {
+          const observed=await activePage.evaluate(()=>({url:location.href,focus:document.activeElement?.outerHTML.slice(0,1000),sourceOpen:document.body.dataset.sourceOpen,selected:[...document.querySelectorAll('.source-point[data-selected]')].map(n=>n.id),expanded:[...document.querySelectorAll('.diagram-expanded')].map(n=>n.id)})).catch(()=>null);
+          fs.writeFileSync(path.join(output,c.key+'-failure-state.json'),JSON.stringify(observed,null,2),{flag:'wx'});
+          await activePage.screenshot({path:path.join(output,c.key+'-failure.png')}).catch(()=>{});
+        }
+        throw error;
       } finally {child.kill('SIGTERM');fs.closeSync(log);}
     }
     assert.equal(hash(config.viewer),executionIdentities.viewer,'executable unchanged during browser checks');
     assert.equal(hash(__filename),executionIdentities.driver,'driver unchanged during browser checks');
-    fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({status:'passed',observations:results,identities:executionIdentities,human_acceptance:'unobserved'},null,2),{flag:'wx'});
+    fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({status:'passed',observations:results,identities:executionIdentities,korean_fonts:koreanFonts,human_acceptance:'unobserved'},null,2),{flag:'wx'});
     process.stdout.write(JSON.stringify({status:'passed',observations:results.length})+'\n');
   } finally {await browser.close();}
 })().catch(e=>{fs.writeFileSync(path.join(output,'failure.txt'),e.stack,{flag:'wx'});console.error(e);process.exitCode=1;});

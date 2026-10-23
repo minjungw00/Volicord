@@ -62,6 +62,20 @@ class KoreanFontPrerequisiteTests(unittest.TestCase):
         self.assertFalse(list(self.root.rglob('*.png')))
         self.assertFalse(list(self.root.rglob('observations.json')))
 
+    def test_grounded_diagrams_require_korean_fonts_before_browser_launch(self):
+        executable = self.root / 'dummy-executable'
+        executable.write_text('immutable prerequisite control, never executed')
+        config = self.root / 'diagram-config.json'
+        config.write_text(json.dumps({
+            'playwright': self.playwright, 'viewer': str(executable),
+            'chromium': str(executable), 'output': str(self.root / 'diagram-output'),
+            'cases': [{'language': 'ko'}], 'fontconfig': str(self.fontconfig),
+        }))
+        self.assert_prerequisite_rejection([
+            'node', str(REBUILD / 'validation/end-to-end/multi-repository/grounded_diagrams_browser.cjs'),
+            str(config),
+        ])
+
     def test_experimental_korean_reader_rejects_empty_font_inventory_before_launch(self):
         plan = self.root / 'plan.json'
         plan.write_text(json.dumps([{

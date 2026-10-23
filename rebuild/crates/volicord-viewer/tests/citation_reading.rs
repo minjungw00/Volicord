@@ -1933,6 +1933,20 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             }
             assert!(seal_diagrams(&mut bad).is_err());
         }
+        for invalid_node in [DiagramNodeKind::Initial, DiagramNodeKind::Branch] {
+            let mut bad = r.clone();
+            match &mut bad.diagrams[0].meaning {
+                DiagramMeaning::Component { nodes, .. }
+                | DiagramMeaning::Flowchart { nodes, .. }
+                | DiagramMeaning::State { nodes, .. } => nodes[1].kind = invalid_node,
+                _ => return Err("shape".into()),
+            }
+            seal_diagrams(&mut bad)?;
+            assert!(f
+                .ops
+                .record_explanation(f.project, subject, "en", bad)
+                .is_err());
+        }
         let mut changed = r.clone();
         match &mut changed.diagrams[0].meaning {
             DiagramMeaning::Component { relations, .. }

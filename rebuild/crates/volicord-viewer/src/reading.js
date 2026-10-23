@@ -2,10 +2,41 @@
 (() => {
   const saved = new Map();
   const diagramReturns = new Map();
+  const sourceReturns = new Map();
+  const expandedReturns = new WeakMap();
+  let navigationSequence = 0;
+  const remember = (map, value) => {
+    const token = String(++navigationSequence);
+    map.set(token, value);
+    if (map.size > 128) map.delete(map.keys().next().value);
+    return token;
+  };
+  const state = () => history.state && typeof history.state === 'object' ? history.state : {};
+  function navigate(hash, next = state()) {
+    // Native fragment navigation updates :target as well as URL/history.
+    // pushState alone leaves CSS targeting a previously selected element.
+    if (location.hash !== hash) location.hash = hash;
+    history.replaceState(next,'');
+    apply(); requestAnimationFrame(apply);
+  }
+  function closeExpansion(figure) {
+    const prior = expandedReturns.get(figure);
+    figure.classList.remove('diagram-expanded');
+    const control = figure.querySelector('[data-diagram-action=expand]');
+    control.setAttribute('aria-expanded','false');
+    control.textContent = ko ? '읽기 영역 확장' : 'Expand reading area';
+    if (prior) {
+      const viewport = figure.querySelector('.diagram-viewport');
+      viewport.scrollLeft = prior.left; viewport.scrollTop = prior.top;
+      control.focus({preventScroll:true}); window.scrollTo(0,prior.y);
+    }
+  }
   const originTriggers = new Map();
   const narrow = matchMedia('(max-width:900px)');
   let selected = null;
+  let selectedReturnToken = null;
   let focusedHash = null;
+  let lastAppliedHash = null;
   let pendingRead = null;
   const reads = new WeakMap();
   const outlineScroll = new WeakMap();
@@ -182,6 +213,9 @@
   }
   function apply() {
     const {target,origin:diagramOrigin} = fragment();
+    let restoredSource = false;
+    const navigationChanged = lastAppliedHash !== location.hash;
+    lastAppliedHash = location.hash;
     fragmentNotice.hidden = !location.hash || !!target;
     if (target) {
       if (target.matches('details')) target.open = true;
@@ -212,6 +246,7 @@
     if (point) {
       const changed = focusedHash !== location.hash;
       selected = point;
+      selectedReturnToken = state().sourceReturn || null;
       focusedHash = location.hash;
       if (narrow.matches) {
         point.setAttribute('role', 'dialog');
@@ -226,22 +261,27 @@
       if (changed && !narrow.matches) origin?.scrollIntoView({block:'center'});
       if (!point.contains(document.activeElement)) point.focus({preventScroll:true});
     } else if (selected) {
+      restoredSource = true;
       pendingRead?.abort();
       selected = null;
       focusedHash = null;
       if (target) {
-        const trigger = originTriggers.get(target.id);
+        const sourceReturn = sourceReturns.get(selectedReturnToken || state().sourceBack || state().sourceReturn);
+        selectedReturnToken = null;
+        const trigger = sourceReturn?.claim === target.id ? sourceReturn.trigger : originTriggers.get(target.id);
         (trigger?.isConnected ? trigger : target).focus({preventScroll:true});
-        const offset = saved.get(target.id);
+        const offset = sourceReturn?.claim === target.id ? sourceReturn.y : saved.get(target.id);
         if (offset !== undefined) window.scrollTo(0, offset);
         else target.scrollIntoView({block:'center'});
       }
     }
-    if (!point && target?.matches('.diagram-claim')) {
-      target.focus({preventScroll:true});target.scrollIntoView({block:'nearest'});
+    if (!point && !restoredSource && navigationChanged && target?.matches('.diagram-claim')) {
+      target.dataset.active='true';target.focus({preventScroll:true});target.scrollIntoView({block:'nearest'});
     }
     if (!point && target?.matches('.diagram-element')) {
-      const prior=diagramReturns.get(target.id);
+      const candidate=diagramReturns.get(state().diagramReturn);
+      const prior=candidate?.element===target.id?candidate:null;
+      if (!navigationChanged && document.activeElement !== target && document.activeElement !== prior?.trigger) return;
       (prior?.trigger?.isConnected?prior.trigger:target).focus({preventScroll:true});
       if (prior) {
         const viewport=target.closest('.diagram-viewport');
@@ -250,9 +290,15 @@
       } else target.scrollIntoView({block:'center',inline:'center'});
     }
   }
+  window.addEventListener('popstate',()=>{
+    if (!location.hash) {
+      const prior=diagramReturns.get(state().diagramBack);
+      if(prior?.trigger?.isConnected) {prior.trigger.focus({preventScroll:true});window.scrollTo(0,prior.y);}
+    }
+  });
   document.addEventListener('focusin',event=>{
     const element=event.target.closest?.('a.diagram-element');
-    if(element && !diagramReturns.has(element.id)) element.scrollIntoView({block:'nearest',inline:'nearest'});
+    if(element && diagramReturns.get(state().diagramReturn)?.element !== element.id) element.scrollIntoView({block:'nearest',inline:'nearest'});
   });
   document.addEventListener('click', event => {
     const diagramControl=event.target.closest('button[data-diagram-action]');
@@ -260,8 +306,14 @@
       const figure=diagramControl.closest('.admitted-diagram');const action=diagramControl.dataset.diagramAction;
       const svg=figure.querySelector('svg');
       if (action==='expand') {
-        const expanded=figure.classList.toggle('diagram-expanded');
-        diagramControl.setAttribute('aria-expanded',String(expanded));
+        if (figure.classList.contains('diagram-expanded')) closeExpansion(figure);
+        else {
+          const viewport=figure.querySelector('.diagram-viewport');
+          expandedReturns.set(figure,{y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop});
+          figure.classList.add('diagram-expanded');
+          diagramControl.setAttribute('aria-expanded','true');
+          diagramControl.textContent=ko?'읽기 영역 접기 (Esc)':'Close expanded area (Esc)';
+        }
       } else {
         const old=Number(figure.dataset.scale);const next=action==='reset'?1:Math.min(2,Math.max(.75,old+(action==='in'?.25:-.25)));
         figure.dataset.scale=String(next);svg.style.width=(Number(figure.dataset.baseWidth)*next)+'px';svg.style.height=(Number(figure.dataset.baseHeight)*next)+'px';
@@ -274,14 +326,20 @@
     if (diagramLink) {
       const id=diagramLink.matches('.diagram-element')?diagramLink.id:diagramLink.dataset.element;
       const element=document.getElementById(id);const viewport=element?.closest('.diagram-viewport');
-      if (viewport) diagramReturns.set(id,{trigger:diagramLink,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop});
-      requestAnimationFrame(apply);
+      if (viewport && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+        event.preventDefault();
+        const token=remember(diagramReturns,{element:id,trigger:diagramLink,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop});
+        const next={...state(),diagramReturn:token};
+        // Both the native Back destination and the new selected claim retain
+        // this activation, even if a later activation uses the same element.
+        history.replaceState({...state(),diagramBack:token},'');
+        navigate(diagramLink.getAttribute('href'),next);
+      }
     }
     const diagramReturn=event.target.closest('a.diagram-return');
     if (diagramReturn) {
       event.preventDefault();
-      history.pushState(null,'',diagramReturn.getAttribute('href'));
-      apply();requestAnimationFrame(apply);
+      navigate(diagramReturn.getAttribute('href'));
     }
     const button = event.target.closest('button.citation-read');
     if (button) readCitation(button.closest('.source-point'), Number(button.dataset.nextOffset || 0));
@@ -305,21 +363,27 @@
         if (target) { target.focus({preventScroll:true}); target.scrollIntoView({block:'start'}); }
       });
     }
+    const codeReturn=event.target.closest('.source-point a.return');
+    if (codeReturn && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+      event.preventDefault();navigate(codeReturn.getAttribute('href'));
+    }
     const link = event.target.closest('a.evidence-link');
-    if (link && (!selected || link.closest('.diagram-claim'))) {
+    if (link && (!selected || link.closest('.diagram-claim')) && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
       if (!selected) saved.set(link.dataset.origin, scrollY);
       originTriggers.set(link.dataset.origin, link);
       document.querySelectorAll('.document-nav[open]').forEach(toc => toc.open = false);
-      if (link.closest('.diagram-claim')) {
-        event.preventDefault();
-        history.pushState(null,'',link.getAttribute('href')+'!'+link.dataset.origin);
-        apply();
-      }
+      event.preventDefault();
+      const token=remember(sourceReturns,{claim:link.dataset.origin,trigger:link,y:scrollY});
+      const next={...state(),sourceReturn:token};
+      history.replaceState({...state(),sourceBack:token},'');
+      navigate(link.getAttribute('href')+(link.closest('.diagram-claim')?'!'+link.dataset.origin:''),next);
     }
   });
   document.addEventListener('keydown', event => {
     const point = fragment().target?.closest('.source-point') || selected;
     if (!point) {
+      const figure=event.target.closest('.diagram-expanded');
+      if (event.key==='Escape' && figure) {event.preventDefault();closeExpansion(figure);return;}
       const toc = event.target.closest('.document-nav[open]');
       if (event.key === 'Escape' && toc) {
         event.preventDefault(); toc.open = false; toc.querySelector('summary').focus({preventScroll:true});

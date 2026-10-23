@@ -138,7 +138,14 @@ pub(crate) fn svg(
             let b = index(&r.to)?;
             let (x1, y1) = positions[a];
             let (x2, y2) = positions[b];
-            open(&mut out, ns, &r.id, &r.label, label(&r.label)?, target);
+            open(
+                &mut out,
+                ns,
+                &r.id,
+                &r.label,
+                &format!("{}: {}", element_caption(d, &r.id, texts), label(&r.label)?),
+                target,
+            );
             // Long edges use an outside lane, never pass through an unrelated
             // node. Adjacent edges place keys above their distinct endpoints.
             let (x, mid, key_width) = if a == b {
@@ -261,7 +268,14 @@ pub(crate) fn svg(
                 }
                 let (x1, _) = positions[index(&m.from)?];
                 let (x2, _) = positions[index(&m.to)?];
-                open(&mut out, ns, &m.id, &m.label, label(&m.label)?, target);
+                open(
+                    &mut out,
+                    ns,
+                    &m.id,
+                    &m.label,
+                    &format!("{}: {}", element_caption(d, &m.id, texts), label(&m.label)?),
+                    target,
+                );
                 let dash = if m.kind == DiagramMessageKind::Return {
                     "stroke-dasharray=\"6 4\""
                 } else {
@@ -469,6 +483,46 @@ mod tests {
             participants.clear();
         }
         assert!(svg(&missing, &[text], "publication-en", &|_, _| "claim".into()).is_err());
+        Ok(())
+    }
+    #[test]
+    fn long_korean_state_labels_keep_native_size_and_selectable_owner() -> Result<(), String> {
+        // Layout/resource control only; no semantic admission or human observation.
+        let name = "가나다라마바사아".repeat(12); // Exactly 96 Unicode scalars.
+        let label = DiagramLabel {
+            unit: 0,
+            start_byte: 0,
+            end_byte: name.len(),
+        };
+        let d = GroundedDiagram {
+            id: "long-label".into(),
+            title: label.clone(),
+            caption_unit: 0,
+            semantic_fingerprint: String::new(),
+            meaning: DiagramMeaning::State {
+                owner: label.clone(),
+                nodes: vec![DiagramNode {
+                    id: "state".into(),
+                    kind: DiagramNodeKind::State,
+                    label: label.clone(),
+                }],
+                relations: vec![DiagramRelation {
+                    id: "repeat".into(),
+                    from: "state".into(),
+                    to: "state".into(),
+                    kind: DiagramRelationKind::Transition,
+                    label: label.clone(),
+                    condition: Some(label),
+                }],
+            },
+        };
+        let output = svg(&d, &[&name], "ko-publication", &|id, _| {
+            format!("{id}-claim")
+        })?;
+        assert!(output.contains("id=\"ko-publication-state:owner\""));
+        assert!(output.contains(&format!("aria-label=\"{name}\"")));
+        assert!(output.contains("width=\"720\""));
+        assert!(output.len() < 262144);
         Ok(())
     }
 }

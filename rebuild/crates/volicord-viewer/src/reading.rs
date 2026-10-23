@@ -541,10 +541,10 @@ fn render_diagrams(
             .as_ref()
             .map(|p| p.realization_fingerprint.as_str())
             .unwrap_or("");
-        html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" data-realization=\"{}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"><figcaption>{}</figcaption>",escape(realization),escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),escape(title)));
-        html.push_str(&format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"reset\">{}</button></div>",text(r.locale,"Expand reading area","읽기 영역 확장"),text(r.locale,"Zoom diagram out","도식 축소"),text(r.locale,"Zoom diagram in","도식 확대"),text(r.locale,"Reset","원래 크기")));
+        html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" tabindex=\"-1\" data-realization=\"{}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"><figcaption>{}</figcaption>",escape(realization),escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),escape(title)));
+        html.push_str(&format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{ns}-viewport\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"reset\">{}</button></div>",text(r.locale,"Expand reading area","읽기 영역 확장"),text(r.locale,"Zoom diagram out","도식 축소"),text(r.locale,"Zoom diagram in","도식 확대"),text(r.locale,"Reset","원래 크기")));
         match crate::diagram::svg(d,&texts,&ns,&|id,_|format!("{ns}-{id}-claim")) {
-            Ok(svg)=>html.push_str(&format!("<div class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용"))),
+            Ok(svg)=>html.push_str(&format!("<div id=\"{ns}-viewport\" class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용"))),
             Err(_)=>{
                 html.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Diagram rendering failed. Read the admitted text alternative below.","도식 렌더링에 실패했습니다. 아래 검증된 텍스트 표현을 읽으세요.")));
                 for (id,_) in crate::diagram::elements(d) {html.push_str(&format!("<span id=\"{ns}-{id}\" tabindex=\"-1\"></span>"));}
@@ -604,10 +604,10 @@ fn render_diagrams(
                     "관계 · 주장을 선택해 근거 확인"
                 )
             ));
-            for relation in relations {
+            for (number, relation) in relations.iter().enumerate() {
                 let wording =
                     volicord_projections::diagram_label(&relation.label, &texts).unwrap_or("");
-                html.push_str(&format!("<li><a class=\"diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\">{}: {}</a>",escape(&relation.id),escape(&relation.id),escape(&crate::diagram::element_caption(d,&relation.id,&texts)),escape(wording)));
+                html.push_str(&format!("<li><a class=\"diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\">E{} · {}: {}</a>",escape(&relation.id),escape(&relation.id),number+1,escape(&crate::diagram::element_caption(d,&relation.id,&texts)),escape(wording)));
                 if let Some(condition) = &relation.condition {
                     html.push_str(&format!(
                         " <span class=\"diagram-guard\">[{} {}]</span>",
@@ -891,6 +891,19 @@ fn render_document_body(
     explanation_diagnostic(html, r, answers);
     html.push_str(&format!("<details class=\"document-nav\"><summary>{}<span class=\"toc-cue\">{}</span></summary><nav aria-label=\"{}\"><ul class=\"toc-primary\">",
         text(r.locale,"TOC","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Document sections","문서 목차")));
+    let texts = answers
+        .prose
+        .iter()
+        .map(|u| u.text.as_str())
+        .collect::<Vec<_>>();
+    for diagram in &answers.diagrams {
+        html.push_str(&format!(
+            "<li><a class=\"toc-figure\" href=\"#{}\" lang=\"{}\">{}</a></li>",
+            diagram_namespace(answers, diagram),
+            escape(&content_language_tag(&answers.language)),
+            escape(volicord_projections::diagram_label(&diagram.title, &texts).unwrap_or(""))
+        ));
+    }
     for section in answers.sections.iter().filter(|s| {
         s.layer == volicord_projections::ArticleLayer::Article
             && s.unit_indices

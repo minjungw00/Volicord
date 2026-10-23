@@ -399,3 +399,13 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
 .diagram-relations a { display:inline; }
 .diagram-guard { font-weight:600; }
 .diagram-claim-context p { margin-top:.3rem; }
+
+.diagram-controls button { min-height:44px; min-width:44px; max-width:100%; white-space:normal; font:inherit; line-height:1.5; }
+.diagram-expanded .diagram-controls { position:sticky; top:76px; z-index:3; background:var(--surface); padding-block:.4rem; }
+.admitted-diagram figcaption,.diagram-caption,.diagram-controls,.diagram-claim { overflow-wrap:anywhere; }
+@media(max-width:900px) { .diagram-expanded .diagram-controls { top:0; } }
+@media(max-width:420px) {
+ .diagram-controls { gap:.35rem; }
+ .diagram-controls [data-diagram-action=expand] { flex-basis:100%; }
+ .diagram-claim { padding:.7rem; }
+}

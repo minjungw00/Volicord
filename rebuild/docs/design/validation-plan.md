@@ -3650,3 +3650,21 @@ A newly sealed wrong edge class still fails admission; missing owners and change
 conditions fail. Original Music Deck state/command implementations independently own
 expected delivery versus completion behavior. Fixture labels are structural controls,
 not semantic evidence for that repository. No gate/Final/V11/provider is authorized here.
+
+Responsive focused browser support uses real recorded English/Korean publications at
+wide/narrow widths, live/offline/no-JS. The diagram driver verifies exact original bytes,
+SVG/text activation, native pan, zoom/reset, expansion Escape, activation-specific
+history, deep-link reload, delayed response cancellation and explicit stale/foreign
+fragments. Controlled lifecycle HTTP failures remain separate from real Source lifecycle
+tests. Every failed attempt has a new output identity; per-case failure URL/focus/selection
+and screenshot support diagnosis. State assertions check actual preconditions after reload
+rather than assuming that expansion persisted. Long 96-scalar Korean state-label layout
+and invalid typed nodes have separate maintained Rust controls. These are technical and
+dependent visual observations, not screen-reader, isolated-reader or human acceptance.
+
+Korean actual-output checks require a nonempty Korean-capable font inventory before
+Chromium launch and retain exact font file hashes. A private fontconfig may use
+already installed local fonts without network or Product asset changes. Missing glyphs
+in earlier screenshots remain a failed visual prerequisite; later DOM success cannot
+repair those original pixels. The existing Korean font prerequisite self-test now
+challenges the actual diagram driver with an empty font inventory.
