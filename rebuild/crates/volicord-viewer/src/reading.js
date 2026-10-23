@@ -273,10 +273,24 @@
         const sourceReturn = sourceReturns.get(selectedReturnToken || state().sourceBack || state().sourceReturn);
         selectedReturnToken = null;
         const trigger = sourceReturn?.claim === target.id ? sourceReturn.trigger : originTriggers.get(target.id);
-        (trigger?.isConnected ? trigger : target).focus({preventScroll:true});
+        const destination = trigger?.isConnected ? trigger : target;
         const offset = sourceReturn?.claim === target.id ? sourceReturn.y : saved.get(target.id);
+        const hash = location.hash;
+        const restore = () => {
+          if (selected || location.hash !== hash || !destination.isConnected) return;
+          const active = document.activeElement;
+          // Native fragment navigation may focus the paragraph after this
+          // event. Restore the activating Source button once more after that
+          // navigation, without taking focus from another user-selected control.
+          if (active !== target && active !== destination && active !== document.body) return;
+          destination.focus({preventScroll:true});
+          if (offset !== undefined) window.scrollTo(0, offset);
+          else target.scrollIntoView({block:'center'});
+        };
+        destination.focus({preventScroll:true});
         if (offset !== undefined) window.scrollTo(0, offset);
         else target.scrollIntoView({block:'center'});
+        requestAnimationFrame(restore);
       }
     }
     if (!point && !restoredSource && navigationChanged && target?.matches('.diagram-claim')) {

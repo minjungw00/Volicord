@@ -254,12 +254,16 @@ async function syntaxContrast(page) {
     await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:path.join(config.output,`rust-${width}-dark.png`)});await page.emulateMedia({colorScheme:'light'});
    }
    await page.keyboard.press('Escape');
+   await page.waitForFunction(({origin,href})=>document.activeElement?.dataset.origin===origin && document.activeElement.getAttribute('href')===href,
+     {origin:await point.getAttribute('data-origin'),href:'#'+exactPoint});
    assert.equal(await page.evaluate(()=>document.activeElement.dataset.origin),await point.getAttribute('data-origin'));
    assert.equal(await page.evaluate(()=>document.activeElement.getAttribute('href')),'#'+exactPoint,'return restores the exact Source trigger');
    await openSource(page,8);
    await page.reload();await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
    assert.equal(await point.locator('.citation-inspection code').textContent(),fixture.originals[8]);
-   await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),await point.getAttribute('data-origin'),'reload has no activating control; restore exact claim');
+   await page.keyboard.press('Escape');
+   await page.waitForFunction(id=>document.activeElement.id===id,await point.getAttribute('data-origin'));
+   assert.equal(await page.evaluate(()=>document.activeElement.id),await point.getAttribute('data-origin'),'reload has no activating control; restore exact claim');
    await page.goBack();await point.locator('.citation-status').filter({hasText:/Displayed|표시 범위/}).waitFor();
    await point.locator('.return').click();
    // A second claim sharing the same Source must keep its own quote/return target.
@@ -312,6 +316,7 @@ async function syntaxContrast(page) {
   await context.route('**/citation?*',delayed);
   await page.locator('.doc a.evidence-link').nth(8).click();await arrived;
   await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>document.activeElement.matches('a.evidence-link'));
   const originFocus=await page.evaluate(()=>document.activeElement.dataset.origin);
   release();await context.unroute('**/citation?*',delayed);
   await page.locator('.doc a.evidence-link').nth(11).click();

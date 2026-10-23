@@ -3688,3 +3688,8 @@ unavailable, corrupt and unsupported content, with exact return IDs retained. Un
 network errors do not establish that Source authority changed. These controlled HTTP
 responses supplement actual retained-Source deletion, expiry, corruption, unsupported
 format and repository-comparison checks; they do not substitute for them.
+
+The existing multilingual citation browser journey also exercises repeated ordinary
+paragraph Source buttons after code selection/contrast changes, Escape, reload and
+history. It must preserve the exact trigger before reload and the exact claim after
+reload; diagram-only return success cannot replace this control.

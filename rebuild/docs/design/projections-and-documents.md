@@ -2673,3 +2673,8 @@ wrapping increases node height instead of shrinking text. State ownership is vis
 at the top of the figure. Optional sequence groups use an `opt` frame and an inner
 `strict`/`par` frame, preserving the admitted condition and order. Renderer identity 3
 changes presentation only; retained semantics, versions and budgets are unchanged.
+
+Exact Source-button return is restored after native fragment focus as well as during
+the initiating event, guarded by the unchanged fragment and selected point. A later
+user-selected control keeps its focus; reload without an activating button returns
+to the exact claim.
