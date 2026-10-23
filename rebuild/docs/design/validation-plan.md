@@ -3643,3 +3643,10 @@ cancellation. Optional `faults` uses explicitly controlled HTTP failure response
 check cached-meaning removal; these UI controls are not actual expiry/deletion
 observations. Actual Source deletion/withholding/current-only behavior remains in
 Operations/Viewer production tests. Preserve every failure and new output path.
+
+Current v8 focused shape controls extend `citation_reading` through actual record,
+public answers, live HTTP and offline SVG/text for components, flows and owned states.
+A newly sealed wrong edge class still fails admission; missing owners and changed
+conditions fail. Original Music Deck state/command implementations independently own
+expected delivery versus completion behavior. Fixture labels are structural controls,
+not semantic evidence for that repository. No gate/Final/V11/provider is authorized here.

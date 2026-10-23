@@ -1,7 +1,7 @@
 //! Bounded, dependency-free local SVG. No generated markup, fonts, assets or I/O.
 use volicord_projections::*;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/1";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/2";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -63,7 +63,10 @@ pub(crate) fn svg(
             .ok_or_else(|| "diagram endpoint unavailable".to_owned())
     };
     let (width, height) = match &d.meaning {
-        DiagramMeaning::Concept { relations, .. } => {
+        DiagramMeaning::Concept { relations, .. }
+        | DiagramMeaning::Component { relations, .. }
+        | DiagramMeaning::Flowchart { relations, .. }
+        | DiagramMeaning::State { relations, .. } => {
             // Bounded layered DAG layout. Cyclic explanatory relationships use
             // a stable grid; neither layout asserts a semantic rank.
             let mut changed = false;
@@ -125,7 +128,11 @@ pub(crate) fn svg(
             ));
         }
     }
-    if let DiagramMeaning::Concept { relations, .. } = &d.meaning {
+    if let DiagramMeaning::Concept { relations, .. }
+    | DiagramMeaning::Component { relations, .. }
+    | DiagramMeaning::Flowchart { relations, .. }
+    | DiagramMeaning::State { relations, .. } = &d.meaning
+    {
         for (i, r) in relations.iter().enumerate() {
             let a = index(&r.from)?;
             let b = index(&r.to)?;
@@ -134,7 +141,10 @@ pub(crate) fn svg(
             open(&mut out, ns, &r.id, &r.label, label(&r.label)?, target);
             // Long edges use an outside lane, never pass through an unrelated
             // node. Adjacent edges place keys above their distinct endpoints.
-            let (x, mid, key_width) = if rank[b] != rank[a] + 1 {
+            let (x, mid, key_width) = if a == b {
+                out.push_str(&format!("<path class=\"relation-line\" d=\"M{} {}h55v70h-55\" marker-end=\"url(#{marker})\"/>", x1+110,y1+25));
+                (x1 + 150, y1 + 130, 180)
+            } else if rank[b] != rank[a] + 1 {
                 let left = x1 <= x2;
                 let lane = if left {
                     20 + (i % 3) * 12
@@ -177,7 +187,13 @@ pub(crate) fn svg(
                     label(condition)?,
                     target,
                 );
-                text(&mut out, x, mid + 22, "if", 8);
+                text(
+                    &mut out,
+                    x,
+                    mid + 22,
+                    &format!("if {}", label(condition)?),
+                    30,
+                );
                 out.push_str("</a>");
             }
         }
@@ -192,7 +208,14 @@ pub(crate) fn svg(
             label(&node.label)?,
             target,
         );
-        out.push_str(&format!("<rect class=\"participant-box\" x=\"{}\" y=\"{y}\" width=\"220\" height=\"120\" rx=\"6\"/>",x.saturating_sub(110)));
+        match node.kind {
+            DiagramNodeKind::Branch => out.push_str(&format!("<path class=\"participant-box\" d=\"M{x} {y}l110 60l-110 60l-110 -60Z\"/>")),
+            DiagramNodeKind::Initial | DiagramNodeKind::Final => {
+                out.push_str(&format!("<ellipse class=\"participant-box\" cx=\"{x}\" cy=\"{}\" rx=\"110\" ry=\"60\"/>",y+60));
+                if node.kind == DiagramNodeKind::Final {out.push_str(&format!("<ellipse class=\"participant-box\" cx=\"{x}\" cy=\"{}\" rx=\"105\" ry=\"55\"/>",y+60));}
+            }
+            _ => out.push_str(&format!("<rect class=\"participant-box\" x=\"{}\" y=\"{y}\" width=\"220\" height=\"120\" rx=\"{}\"/>",x.saturating_sub(110),if node.kind == DiagramNodeKind::State {20} else {6})),
+        }
         text(&mut out, x, y + 20, node.kind.text(), 28);
         text(&mut out, x, y + 42, label(&node.label)?, 26);
         out.push_str("</a>");
@@ -268,6 +291,17 @@ pub(crate) fn svg(
             }
         }
     }
+    if let DiagramMeaning::State { owner, .. } = &d.meaning {
+        open(&mut out, ns, "state:owner", owner, label(owner)?, target);
+        text(
+            &mut out,
+            width / 2,
+            height - 12,
+            &format!("State owner: {}", label(owner)?),
+            80,
+        );
+        out.push_str("</a>");
+    }
     out.push_str("</svg>");
     if out.len() > 262144 {
         return Err("local SVG render budget exceeded".into());
@@ -283,8 +317,14 @@ pub(crate) fn elements(d: &GroundedDiagram) -> Vec<(String, &DiagramLabel)> {
         .iter()
         .map(|n| (n.id.clone(), &n.label))
         .collect::<Vec<_>>();
+    if let DiagramMeaning::State { owner, .. } = &d.meaning {
+        result.push(("state:owner".into(), owner));
+    }
     match &d.meaning {
-        DiagramMeaning::Concept { relations, .. } => {
+        DiagramMeaning::Concept { relations, .. }
+        | DiagramMeaning::Component { relations, .. }
+        | DiagramMeaning::Flowchart { relations, .. }
+        | DiagramMeaning::State { relations, .. } => {
             for r in relations {
                 result.push((r.id.clone(), &r.label));
                 if let Some(l) = &r.condition {
@@ -312,11 +352,19 @@ pub(crate) fn element_caption(d: &GroundedDiagram, id: &str, texts: &[&str]) -> 
             .map(|n| label(&n.label))
             .unwrap_or("")
     };
+    if id == "state:owner" {
+        if let DiagramMeaning::State { owner, .. } = &d.meaning {
+            return format!("State owner: {}", label(owner));
+        }
+    }
     if let Some(n) = d.nodes().iter().find(|n| n.id == id) {
         return format!("{} · {}", label(&n.label), n.kind.text());
     }
     match &d.meaning {
-        DiagramMeaning::Concept { relations, .. } => {
+        DiagramMeaning::Concept { relations, .. }
+        | DiagramMeaning::Component { relations, .. }
+        | DiagramMeaning::Flowchart { relations, .. }
+        | DiagramMeaning::State { relations, .. } => {
             for r in relations {
                 if r.id == id {
                     return format!("{} → {} · {}", node(&r.from), node(&r.to), r.kind.text());

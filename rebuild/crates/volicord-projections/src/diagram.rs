@@ -19,6 +19,11 @@ pub enum DiagramNodeKind {
     ReadingGroup,
     Component,
     Participant,
+    Process,
+    Branch,
+    Initial,
+    Final,
+    State,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -35,6 +40,9 @@ pub enum DiagramRelationKind {
     RoleOf,
     DependsOn,
     Produces,
+    DataFlow,
+    ControlFlow,
+    Transition,
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -72,6 +80,9 @@ impl DiagramRelationKind {
             Self::RoleOf => "role of",
             Self::DependsOn => "depends on",
             Self::Produces => "produces",
+            Self::DataFlow => "data flow",
+            Self::ControlFlow => "control flow",
+            Self::Transition => "transition",
         }
     }
 }
@@ -83,6 +94,11 @@ impl DiagramNodeKind {
             Self::ReadingGroup => "read grouping",
             Self::Component => "component",
             Self::Participant => "participant",
+            Self::Process => "process",
+            Self::Branch => "branch",
+            Self::Initial => "initial",
+            Self::Final => "final",
+            Self::State => "state",
         }
     }
 }
@@ -115,6 +131,19 @@ pub enum DiagramMeaning {
         nodes: Vec<DiagramNode>,
         relations: Vec<DiagramRelation>,
     },
+    Component {
+        nodes: Vec<DiagramNode>,
+        relations: Vec<DiagramRelation>,
+    },
+    Flowchart {
+        nodes: Vec<DiagramNode>,
+        relations: Vec<DiagramRelation>,
+    },
+    State {
+        owner: DiagramLabel,
+        nodes: Vec<DiagramNode>,
+        relations: Vec<DiagramRelation>,
+    },
     Sequence {
         participants: Vec<DiagramNode>,
         groups: Vec<DiagramGroup>,
@@ -135,7 +164,10 @@ pub struct GroundedDiagram {
 impl GroundedDiagram {
     pub fn nodes(&self) -> &[DiagramNode] {
         match &self.meaning {
-            DiagramMeaning::Concept { nodes, .. } => nodes,
+            DiagramMeaning::Concept { nodes, .. }
+            | DiagramMeaning::Component { nodes, .. }
+            | DiagramMeaning::Flowchart { nodes, .. }
+            | DiagramMeaning::State { nodes, .. } => nodes,
             DiagramMeaning::Sequence { participants, .. } => participants,
         }
     }
@@ -144,7 +176,13 @@ impl GroundedDiagram {
         let mut labels = vec![&self.title];
         labels.extend(self.nodes().iter().map(|n| &n.label));
         match &self.meaning {
-            DiagramMeaning::Concept { relations, .. } => {
+            DiagramMeaning::Concept { relations, .. }
+            | DiagramMeaning::Component { relations, .. }
+            | DiagramMeaning::Flowchart { relations, .. }
+            | DiagramMeaning::State { relations, .. } => {
+                if let DiagramMeaning::State { owner, .. } = &self.meaning {
+                    labels.push(owner);
+                }
                 for r in relations {
                     labels.push(&r.label);
                     labels.extend(r.condition.as_ref());
@@ -227,7 +265,13 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
         lines.push(format!("{} [{}]", label(&n.label)?, n.kind.text()));
     }
     match &d.meaning {
-        DiagramMeaning::Concept { relations, .. } => {
+        DiagramMeaning::Concept { relations, .. }
+        | DiagramMeaning::Component { relations, .. }
+        | DiagramMeaning::Flowchart { relations, .. }
+        | DiagramMeaning::State { relations, .. } => {
+            if let DiagramMeaning::State { owner, .. } = &d.meaning {
+                lines.push(format!("State owner: {}", label(owner)?));
+            }
             for r in relations {
                 let guard = r
                     .condition
@@ -325,20 +369,79 @@ pub fn validate_diagrams(
             Ok(())
         };
         match &d.meaning {
-            DiagramMeaning::Concept { relations, .. } => {
+            DiagramMeaning::Concept { relations, .. }
+            | DiagramMeaning::Component { relations, .. }
+            | DiagramMeaning::Flowchart { relations, .. }
+            | DiagramMeaning::State { relations, .. } => {
                 if relations.is_empty() || relations.len() > 20 {
-                    return Err("concept needs 1..20 relations".into());
+                    return Err("relationship figure needs 1..20 relations".into());
                 }
-                if d.nodes()
-                    .iter()
-                    .any(|n| n.kind == DiagramNodeKind::Participant)
-                {
-                    return Err("concept nodes cannot be sequence participants".into());
+                let allowed = |n: &DiagramNode| match &d.meaning {
+                    DiagramMeaning::Concept { .. } => matches!(
+                        n.kind,
+                        DiagramNodeKind::Record
+                            | DiagramNodeKind::ContextRole
+                            | DiagramNodeKind::ReadingGroup
+                            | DiagramNodeKind::Component
+                    ),
+                    DiagramMeaning::Component { .. } => n.kind == DiagramNodeKind::Component,
+                    DiagramMeaning::Flowchart { .. } => matches!(
+                        n.kind,
+                        DiagramNodeKind::Process
+                            | DiagramNodeKind::Branch
+                            | DiagramNodeKind::Initial
+                            | DiagramNodeKind::Final
+                    ),
+                    DiagramMeaning::State { .. } => matches!(
+                        n.kind,
+                        DiagramNodeKind::State | DiagramNodeKind::Initial | DiagramNodeKind::Final
+                    ),
+                    _ => false,
+                };
+                if d.nodes().iter().any(|n| !allowed(n)) {
+                    return Err("node kind does not belong to this figure".into());
                 }
                 for r in relations {
                     edge(&r.id, &r.from, &r.to)?;
-                    if r.from == r.to {
-                        return Err("concept self relation is unsupported".into());
+                    let allowed = match &d.meaning {
+                        DiagramMeaning::Concept { .. } => {
+                            matches!(
+                                r.kind,
+                                DiagramRelationKind::References
+                                    | DiagramRelationKind::Groups
+                                    | DiagramRelationKind::RoleOf
+                                    | DiagramRelationKind::DependsOn
+                                    | DiagramRelationKind::Produces
+                            ) && r.from != r.to
+                        }
+                        DiagramMeaning::Component { .. } => {
+                            matches!(
+                                r.kind,
+                                DiagramRelationKind::DependsOn
+                                    | DiagramRelationKind::Produces
+                                    | DiagramRelationKind::DataFlow
+                                    | DiagramRelationKind::ControlFlow
+                            ) && r.from != r.to
+                        }
+                        DiagramMeaning::Flowchart { .. } => {
+                            r.kind == DiagramRelationKind::ControlFlow
+                        }
+                        DiagramMeaning::State { .. } => r.kind == DiagramRelationKind::Transition,
+                        _ => false,
+                    };
+                    if !allowed {
+                        return Err(
+                            "unsupported relationship kind/endpoints for this figure".into()
+                        );
+                    }
+                    if d.nodes().iter().any(|n| {
+                        (n.id == r.to && n.kind == DiagramNodeKind::Initial)
+                            || (n.id == r.from && n.kind == DiagramNodeKind::Final)
+                    }) {
+                        return Err(
+                            "initial nodes cannot receive and final nodes cannot emit transitions"
+                                .into(),
+                        );
                     }
                     if r.kind == DiagramRelationKind::RoleOf
                         && !d
@@ -347,6 +450,22 @@ pub fn validate_diagrams(
                             .any(|n| n.id == r.from && n.kind == DiagramNodeKind::ContextRole)
                     {
                         return Err("role_of must originate at a context role".into());
+                    }
+                }
+                for n in d.nodes() {
+                    if !relations.iter().any(|r| r.from == n.id || r.to == n.id) {
+                        return Err("unconnected diagram node".into());
+                    }
+                    if n.kind == DiagramNodeKind::Branch {
+                        let outgoing = relations
+                            .iter()
+                            .filter(|r| r.from == n.id)
+                            .collect::<Vec<_>>();
+                        if outgoing.len() < 2 || outgoing.iter().any(|r| r.condition.is_none()) {
+                            return Err(
+                                "branch needs at least two explicitly guarded outcomes".into()
+                            );
+                        }
                     }
                 }
             }

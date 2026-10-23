@@ -568,8 +568,8 @@ above separately requires explicit regeneration of affected summaries.
 
 ### Grounded diagram current-only format
 
-The actual prior explanation format was 6; the single current writer/decoder is now
-**7**, including an explicit `diagrams` collection (empty for plain prose). This
+The prior explanation formats were 6 (prose) and 7 (concept/sequence); the single current writer/decoder is now
+**8**, including an explicit `diagrams` collection (empty for plain prose). This
 section supersedes earlier current-v6 statements, which describe prior changes.
 The added semantic meaning is durable even when labels reuse existing grounded units.
 Preparation, Work/repository compose, admission, retained decode, ordinary answers,
@@ -585,3 +585,5 @@ current-format short publication. Old attempts and originals remain unchanged.
 Canonical schema, portable bundle, Analysis Snapshot, Source-copy and generated-
 document metadata versions are unchanged. SVG renderer identity is presentation
 metadata, not an additional retained semantic format or a version-conversion path.
+
+Version 8 adds complete component, guarded flowchart and explicitly owned state-transition figures. Node/edge class, owner, conditions and event labels share exhaustive grounding, semantic seals and current-only rejection. Existing v7 figures must be explicitly regenerated, never relabelled. No other format advances.

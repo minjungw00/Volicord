@@ -2526,8 +2526,8 @@ that rule or budget/publication constraints; hiding a link removes no dependency
 
 ### Grounded concept and sequence publications
 
-The current explanation envelope is v7. It adds `diagrams` to the exact admitted
-publication, supporting only concept relationships and UML implementation sequences.
+The current explanation envelope is v8. It adds `diagrams` to the exact admitted
+publication, supporting concept relationships, components, guarded flowcharts, owned states and UML implementation sequences.
 The earlier flat `flow_step` admission and v6 no-diagram disposition are historical;
 ordered prose alone does not satisfy the required visual understanding outcome.
 
@@ -2560,7 +2560,7 @@ record and all original dependencies; ordinary reads generate nothing.
 Public CLI/MCP ordinary answers and complete publication pages include the exact
 semantics and seal. Human text includes endpoints, relation types, conditions and
 explicit parallel groups. Live and self-contained offline Viewer render the same
-meaning through in-tree `volicord-static-svg/1` plus a faithful linear alternative.
+meaning through in-tree `volicord-static-svg/2` plus a faithful linear alternative.
 Layout coordinates and SVG are presentation only. Concept edges use numbered keys
 matched to their text claims, avoiding long labels across shared-node lines. Sequence
 lifelines, self messages, guard frames and return dashes do not assert observation.
@@ -2607,3 +2607,19 @@ A known changed/expired/deleted/withheld/comparison-unavailable live citation fa
 removes that realization's cached SVG, text alternative and claim panels, retaining
 only opaque focus/return IDs and a safe unavailable notice. A distributed static
 export cannot promise revocation or a new live comparison.
+
+### Complete flow and state vocabulary
+
+Version 8 shares nodes/relations for concept, component, flowchart and state figures.
+Components distinguish dependency, production, data flow and control flow; arrow direction
+is the authored relationship, never a dependency inferred from event direction. Flowcharts
+use process, guarded branch, initial and final nodes and control-flow edges. Each branch
+requires at least two guarded outcomes. State figures require a separately grounded owner,
+state/initial/final nodes and event-labelled transitions with optional guards. Initial nodes
+have no incoming and final nodes no outgoing edges. Every node participates in a relation.
+Self transitions are supported; concept/component self relations are refused. Unsupported
+node/edge classes fail the complete figure rather than degrade to generic boxes. State
+ownership participates in labels, seal, Source lifecycle, public text and selectable origins.
+Stored enum values preserve meaning; visible words, conditions and labels remain grounded
+reader content. This bounded vocabulary asserts no UML composition, inheritance or
+multiplicity. Conditions and unordered parallel operands remain explicit in SVG and text.

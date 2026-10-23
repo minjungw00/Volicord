@@ -53,7 +53,7 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
           if(mode!=='live') await page.evaluate(id=>{location.hash=id;},c.work?'work-'+c.work:'repository-explanation');
           await figure.scrollIntoViewIfNeeded();
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
-          assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/1');
+          assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/2');
           const size=await page.evaluate(()=>({body:document.documentElement.scrollWidth,viewport:innerWidth}));
           assert(size.body<=size.viewport+1,JSON.stringify(size));
           await figure.screenshot({path:path.join(output,`${c.key}-${width}-${mode}.png`)});
@@ -138,7 +138,7 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
             await page.goBack(); // native history also preserves script-free access
           }
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults?['expired','deleted','changed','withheld','comparison_unavailable']:[],external_requests:external,renderer:'volicord-static-svg/1'});
+          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults?['expired','deleted','changed','withheld','comparison_unavailable']:[],external_requests:external,renderer:'volicord-static-svg/2'});
           await context.close();
         }
       } finally {child.kill('SIGTERM');fs.closeSync(log);}

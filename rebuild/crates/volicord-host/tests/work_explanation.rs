@@ -840,10 +840,15 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
     let citation = realized.paragraphs[1].citations[0].clone();
     realized.paragraphs[1].citations = vec![citation; 8];
     let diagram_claim_hash = explanation_text_hash(&realized.paragraphs[1].text[..45]);
-    for c in &mut realized.paragraphs[1].citations {
+    // The first binding grounds the complete caption; the remaining bindings
+    // independently exercise narrower subclaim reconstruction.
+    for c in realized.paragraphs[1].citations.iter_mut().skip(1) {
         c.claim_end_byte = 45;
         c.claim_sha256 = diagram_claim_hash.clone();
     }
+    realized.paragraphs[1].citations[0].claim_end_byte = realized.paragraphs[1].text.len();
+    realized.paragraphs[1].citations[0].claim_sha256 =
+        explanation_text_hash(&realized.paragraphs[1].text);
     let select = |needle: &str| -> Result<DiagramLabel, Box<dyn Error>> {
         let start_byte = realized.paragraphs[1]
             .text

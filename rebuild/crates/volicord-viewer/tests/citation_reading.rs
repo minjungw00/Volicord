@@ -1693,7 +1693,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(&destination)?;
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/1\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/2\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
@@ -1745,7 +1745,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/1\""));
+            .contains("data-renderer=\"volicord-static-svg/2\""));
     }
     Ok(())
 }
@@ -1855,5 +1855,95 @@ fn diagram_semantics_and_nested_bindings_cannot_bypass_admission() -> Result<(),
     ungrounded.paragraphs[1].citations.truncate(1);
     seal_diagrams(&mut ungrounded)?;
     assert!(validate_diagrams(subject, &ungrounded).is_err());
+    Ok(())
+}
+
+#[test]
+fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let subject = ExplanationSubject::Repository(f.analysis);
+    for shape in ["component", "flowchart", "state"] {
+        let mut r = diagram_control(&f, false)?;
+        let DiagramMeaning::Concept {
+            mut nodes,
+            mut relations,
+        } = r.diagrams[0].meaning.clone()
+        else {
+            return Err("fixture concept".into());
+        };
+        let owner = nodes[0].label.clone();
+        for n in &mut nodes {
+            n.kind = match shape {
+                "component" => DiagramNodeKind::Component,
+                "flowchart" => DiagramNodeKind::Process,
+                _ => DiagramNodeKind::State,
+            };
+        }
+        relations[0].kind = match shape {
+            "component" => DiagramRelationKind::ControlFlow,
+            "flowchart" => DiagramRelationKind::ControlFlow,
+            _ => DiagramRelationKind::Transition,
+        };
+        r.diagrams[0].meaning = match shape {
+            "component" => DiagramMeaning::Component { nodes, relations },
+            "flowchart" => DiagramMeaning::Flowchart { nodes, relations },
+            _ => DiagramMeaning::State {
+                owner,
+                nodes,
+                relations,
+            },
+        };
+        seal_diagrams(&mut r)?;
+        f.ops
+            .record_explanation(f.project, subject, "en", r.clone())?;
+        let a = f.answers()?;
+        assert_eq!(a.diagrams, r.diagrams);
+        let html = f.get("/?view=repository")?;
+        let destination = f.temp.path().join(format!("{shape}.html"));
+        ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+            .export_snapshot(&f.request(), &destination)?;
+        let offline = fs::read_to_string(destination)?;
+        for text in [&html, &offline] {
+            assert!(text.contains("volicord-static-svg/2"));
+            assert!(text.contains(if shape == "state" {
+                "State owner: Admission"
+            } else {
+                "control flow"
+            }));
+            assert!(text.contains("calls verification"));
+        }
+        let mut bad = r.clone();
+        match &mut bad.diagrams[0].meaning {
+            DiagramMeaning::Component { relations, .. }
+            | DiagramMeaning::Flowchart { relations, .. }
+            | DiagramMeaning::State { relations, .. } => {
+                relations[0].kind = DiagramRelationKind::RoleOf
+            }
+            _ => return Err("shape".into()),
+        }
+        seal_diagrams(&mut bad)?; // A valid seal cannot authorize the wrong meaning.
+        assert!(f
+            .ops
+            .record_explanation(f.project, subject, "en", bad)
+            .is_err());
+        if shape == "state" {
+            let mut bad = r.clone();
+            if let DiagramMeaning::State { owner, .. } = &mut bad.diagrams[0].meaning {
+                owner.unit = 31;
+            }
+            assert!(seal_diagrams(&mut bad).is_err());
+        }
+        let mut changed = r.clone();
+        match &mut changed.diagrams[0].meaning {
+            DiagramMeaning::Component { relations, .. }
+            | DiagramMeaning::Flowchart { relations, .. }
+            | DiagramMeaning::State { relations, .. } => relations[0].condition = None,
+            _ => return Err("shape".into()),
+        }
+        assert!(f
+            .ops
+            .record_explanation(f.project, subject, "en", changed)
+            .is_err());
+    }
     Ok(())
 }

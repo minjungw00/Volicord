@@ -160,7 +160,7 @@ def validate_response(plan, response):
         raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; prepared response capacity {capacity}; preserve grounding and seek Product support for this evidence shape')
     if (not isinstance(response, dict) or set(response) != {'format_kind', 'format_version',
             'plan_fingerprint', 'language', 'generator', 'paragraphs', 'diagrams'}
-            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 7
+            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 8
             or response['plan_fingerprint'] != plan['fingerprint']
             or response['language'] != plan['requested_language']):
         raise api().CampaignError('explanation response format/plan/language mismatch')
@@ -296,7 +296,7 @@ def reader_applicability(plan, response=None, *, source_reads=(), verification_r
     if response is not None:
         # Current format/bindings only. Historical bytes remain immutable and can
         # still supply record/presentation evidence without becoming a replay.
-        if response.get('format_kind') != 'volicord_explanation' or response.get('format_version') != 7:
+        if response.get('format_kind') != 'volicord_explanation' or response.get('format_version') != 8:
             claims['article'] = result('unsupported', 'non_current_explanation_format')
         else:
             validate_response(plan, response)

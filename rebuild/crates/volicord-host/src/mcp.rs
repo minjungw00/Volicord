@@ -2948,6 +2948,11 @@ fn grounded_diagrams_schema() -> Value {
                         "reading_group",
                         "component",
                         "participant",
+                        "process",
+                        "branch",
+                        "initial",
+                        "final",
+                        "state",
                     ],
                 ),
             ),
@@ -2971,7 +2976,16 @@ fn grounded_diagrams_schema() -> Value {
                 } else {
                     enum_schema(
                         "Directed relation meaning",
-                        &["references", "groups", "role_of", "depends_on", "produces"],
+                        &[
+                            "references",
+                            "groups",
+                            "role_of",
+                            "depends_on",
+                            "produces",
+                            "data_flow",
+                            "control_flow",
+                            "transition",
+                        ],
                     )
                 },
             ),
@@ -3001,6 +3015,9 @@ fn grounded_diagrams_schema() -> Value {
         &["order", "condition", "messages"],
     );
     let meaning = json!({"oneOf":[
+        object_schema(vec![("kind",enum_schema("component figure; typed endpoints/edges validated at admission", &["component"])), ("nodes",json!({"type":"array","minItems":1,"maxItems":12,"items":node.clone()})), ("relations",json!({"type":"array","minItems":1,"maxItems":20,"items":edge(false)}))], &["kind","nodes","relations"]),
+        object_schema(vec![("kind",enum_schema("flowchart figure; typed endpoints/edges validated at admission", &["flowchart"])), ("nodes",json!({"type":"array","minItems":1,"maxItems":12,"items":node.clone()})), ("relations",json!({"type":"array","minItems":1,"maxItems":20,"items":edge(false)}))], &["kind","nodes","relations"]),
+        object_schema(vec![("kind",enum_schema("state figure; typed endpoints/edges validated at admission", &["state"])), ("nodes",json!({"type":"array","minItems":1,"maxItems":12,"items":node.clone()})), ("relations",json!({"type":"array","minItems":1,"maxItems":20,"items":edge(false)})), ("owner",label.clone())], &["kind","nodes","relations","owner"]),
         object_schema(vec![("kind",enum_schema("Concept relationship figure", &["concept"])), ("nodes",json!({"type":"array","minItems":1,"maxItems":12,"items":node.clone()})), ("relations",json!({"type":"array","minItems":1,"maxItems":20,"items":edge(false)}))], &["kind","nodes","relations"]),
         object_schema(vec![("kind",enum_schema("UML implementation sequence; execution requires separate evidence", &["sequence"])), ("participants",json!({"type":"array","minItems":1,"maxItems":12,"items":node})), ("groups",json!({"type":"array","minItems":1,"maxItems":12,"items":group}))], &["kind","participants","groups"])
     ]});
