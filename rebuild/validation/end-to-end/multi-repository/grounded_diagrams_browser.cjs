@@ -67,6 +67,15 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           }
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
           assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/3');
+          if(mode!=='no-js') await page.waitForFunction(id=>{
+            const viewport=document.getElementById(id)?.querySelector('.diagram-viewport');
+            if(!viewport)return false;
+            const r=viewport.getBoundingClientRect();
+            return [...viewport.querySelectorAll('.participant-box')].some(n=>{
+              const b=n.getBoundingClientRect();
+              return b.width>0 && b.left>=r.left-1 && b.right<=r.right+1 && b.top>=r.top-1 && b.bottom<=r.bottom+1;
+            });
+          },await figure.getAttribute('id'));
           const size=await page.evaluate(()=>({body:document.documentElement.scrollWidth,viewport:innerWidth}));
           assert(size.body<=size.viewport+1,JSON.stringify(size));
           await figure.screenshot({path:path.join(output,`${c.key}-${width}-${mode}.png`)});

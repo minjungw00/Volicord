@@ -513,6 +513,9 @@ initial and offline Source-window omissions. Source actions visibly identify
 path/range while retaining quiet heading provenance, exact claim identities,
 desktop nonmodal inspection and narrow-screen focus. Closing returns to the exact
 Source trigger if available; deep links fall back to the originating claim.
+Scripted figures initially frame a first-row node at native size; subsequent local
+pan and exact navigation returns retain the reader's position. No-script readers
+retain native scrolling and the same complete relationship navigation.
 These technical contracts do not establish human readability or acceptance.
 
 D/AC wording above defines outcomes, not an API or crate taxonomy. The direct

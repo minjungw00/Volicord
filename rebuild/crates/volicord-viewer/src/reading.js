@@ -39,6 +39,23 @@
   const reads = new WeakMap();
   const outlineScroll = new WeakMap();
   const ko = document.documentElement.lang === 'ko';
+  function initializeVisibleFigures() {
+    for (const figure of document.querySelectorAll('.admitted-diagram')) {
+      if (figure.dataset.initialPan) continue;
+      const viewport=figure.querySelector('.diagram-viewport');
+      const svg=figure.querySelector('svg');
+      if (!viewport?.clientWidth || !svg) continue;
+      const boxes=[...svg.querySelectorAll('.participant-box')].map(n=>n.getBBox())
+        .filter(b=>b.width>0 && b.height>0).sort((a,b)=>a.y-b.y || a.x-b.x);
+      const first=boxes[0];
+      if (!first) continue;
+      // Start with an actual first-row node, rather than the outer routing
+      // lanes. This changes local presentation only, once on first display.
+      const scale=Number(figure.dataset.scale) || 1;
+      viewport.scrollLeft=Math.max(0,(first.x+first.width/2)*scale-viewport.clientWidth/2);
+      figure.dataset.initialPan='true';
+    }
+  }
   const syntaxNames = {javascript:'JavaScript', typescript:'TypeScript', rust:'Rust', python:'Python', shell:'Shell', json:'JSON'};
   const tokenKinds = new Set(['keyword','comment','string','type','function','number','variable']);
   function paintCode(code, source, highlight) {
@@ -225,6 +242,7 @@
         if (parent.matches('details')) parent.open = true;
       }
     }
+    initializeVisibleFigures();
     const point = target?.closest('.source-point');
     document.body.dataset.sourceOpen=point?'true':'false';
     document.querySelectorAll('.source-point[data-selected],.appendix[data-open],.diagram-claim[data-active]').forEach(n=>{delete n.dataset.selected;delete n.dataset.open;delete n.dataset.active;});

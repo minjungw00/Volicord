@@ -3699,3 +3699,8 @@ challenges an unavailable activation token. Actual diagram journeys concatenate 
 contiguous 4,096-byte live citation page against original UTF-8 before asserting complete
 critical evidence. A first-page comparison cannot reject a correctly paginated range or
 establish complete Source coverage; no publication or excerpt limit is raised.
+
+Actual scripted figure checks require a complete node box inside the initial local
+viewport at each tested width, before expansion or element focus can pan it. This
+complements page-overflow, native-size, exact-return and no-script relationship controls;
+an otherwise empty routing margin is not meaningful initial visual framing.

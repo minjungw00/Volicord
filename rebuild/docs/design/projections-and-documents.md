@@ -2685,3 +2685,9 @@ falls back to the exact originating claim; a latest-button-per-claim map cannot
 substitute for the missing activation or restore another citation's scroll position.
 Reactivating the same live Source fragment rechecks the permitted bytes instead of
 treating the unchanged URL as a new authority check.
+
+On first scripted display, horizontally center a first-row node in its local
+viewport. Outer routing lanes must not be the only initial narrow-screen content.
+Initialize once per figure without changing type size, semantic identity, page scroll
+or later pan/return positions. Native no-script scrolling and the complete relationship
+list remain available; initial framing is presentation only.
