@@ -67,7 +67,8 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           }
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
           assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/3');
-          if(mode!=='no-js') await page.waitForFunction(id=>{
+          assert.equal(await page.locator('script').count()>0,mode==='live','live scripting versus script-free static export');
+          if(mode==='live') await page.waitForFunction(id=>{
             const viewport=document.getElementById(id)?.querySelector('.diagram-viewport');
             if(!viewport)return false;
             const r=viewport.getBoundingClientRect();

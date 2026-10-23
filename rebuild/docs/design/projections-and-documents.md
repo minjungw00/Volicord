@@ -2691,3 +2691,6 @@ viewport. Outer routing lanes must not be the only initial narrow-screen content
 Initialize once per figure without changing type size, semantic identity, page scroll
 or later pan/return positions. Native no-script scrolling and the complete relationship
 list remain available; initial framing is presentation only.
+Self-contained offline exports remain script-free. Figure expansion, scale controls
+and automatic initial framing are live enhancements; static figures retain native
+scrolling and complete relationship, claim, citation and return links.

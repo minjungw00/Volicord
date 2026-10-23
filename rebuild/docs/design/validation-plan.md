@@ -3704,3 +3704,6 @@ Actual scripted figure checks require a complete node box inside the initial loc
 viewport at each tested width, before expansion or element focus can pan it. This
 complements page-overflow, native-size, exact-return and no-script relationship controls;
 an otherwise empty routing margin is not meaningful initial visual framing.
+The driver asserts that live pages contain scripting and static exports do not.
+Enabling JavaScript in the browser does not turn a script-free artifact into a
+scripted consumer; initial-framing assertions apply to the live path only.
