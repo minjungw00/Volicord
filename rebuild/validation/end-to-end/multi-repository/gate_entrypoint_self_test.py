@@ -25,6 +25,7 @@ RESOURCE_ESTIMATE = HERE / "resource-estimate.json"
 HARNESS = HERE / "harness.py"
 AUTHORIZATION_ASSERTION = "v11-openai-codex-project-health-three-targets"
 PROVIDER_AUTHORIZATION_ASSERTION = "openai-codex-background-semantic-bounded-rust-v1"
+ENTRYPOINT_INVOCATIONS: list[str] = []
 
 
 def write_executable(path: Path, content: str) -> None:
@@ -214,6 +215,7 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
 
 
 def invoke(candidate: Path, env: dict[str, str], *arguments: str) -> subprocess.CompletedProcess[str]:
+    ENTRYPOINT_INVOCATIONS.append(arguments[0])
     return run((str(candidate / "rebuild/scripts/validate"), *arguments), cwd=candidate, env=env)
 
 
@@ -462,18 +464,22 @@ def main() -> int:
 
         assert_maintained_preflight(root)
 
+    base_invocations = list(ENTRYPOINT_INVOCATIONS)
     import build_boundary_self_test
     boundary_parent = ROOT / 'rebuild/.local/validation'
     boundary_parent.mkdir(parents=True, exist_ok=True)
     controls_root = Path(tempfile.mkdtemp(prefix='build-isolation-controls-', dir=boundary_parent))
     build_controls = build_boundary_self_test.controls(controls_root)
 
+    counts = {name: base_invocations.count(name) + build_controls["entrypoint_invocations_by_command"].get(name, 0)
+              for name in {"admission", "gate", "focused"}}
     print(json.dumps({
+        "entrypoint_invocations_by_command": counts,
         "build_isolation_controls": build_controls,
         "status": "passed",
-        "scenarios": 5,
+        "base_scenarios": 5,
         "maintained_v11_preflight_mutation_controls": "passed",
-        "real_admission_entrypoint_invocations": 5,
+        "real_admission_entrypoint_invocations": counts["admission"] + counts["gate"],
         "real_final_invocations": 0,
         "official_v11_invocations": 0,
     }, indent=2, sort_keys=True))

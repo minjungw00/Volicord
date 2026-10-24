@@ -21,6 +21,7 @@ def run_checked(argv, cwd, env):
 
 
 def controls(parent):
+    invocation_start = len(entry.ENTRYPOINT_INVOCATIONS)
     candidate, env, final_marker, v11_marker = entry.make_candidate(parent)
     shutil.copy2(ROOT / 'rebuild/install.sh', candidate / 'rebuild/install.sh')
     (parent / 'bin/cargo').unlink()  # These controls use the real installed toolchain.
@@ -166,7 +167,9 @@ path="src/viewer.rs"
                           '--prefix', str(parent/'direct-install'), '--runtime-dir', str(parent/'direct-runtime'))
     assert direct.returncode == 0, (direct.stdout, direct.stderr)
     assert (external_target/'release/volicord').read_bytes() == (parent/'direct-install/bin/volicord').read_bytes()
-    summary = {'controls': outcomes, 'isolated_gate_exit': result.returncode,
+    calls = entry.ENTRYPOINT_INVOCATIONS[invocation_start:]
+    summary = {'entrypoint_invocations_by_command': {name: calls.count(name) for name in set(calls)},
+               'controls': outcomes, 'isolated_gate_exit': result.returncode,
                'intentional_support_exit': 37, 'gate_directory': str(path),
                'custom_target_install_exit': direct.returncode, 'execution_receipts': len(executions),
                'old_target_preserved': True, 'compiler_controls': json.loads((parent/'compiler-controls.json').read_text()),
