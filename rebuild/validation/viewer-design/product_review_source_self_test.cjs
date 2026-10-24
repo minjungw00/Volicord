@@ -12,6 +12,7 @@ const {chromium}=require(config.playwright);
  try{for(const c of config.cases){
   const status=JSON.parse(fs.readFileSync(path.join(config.output,c.key+'-public-status.json')));
   const context=await browser.newContext({javaScriptEnabled:false}),page=await context.newPage();
+  await context.setOffline(true);
   try{for(const destination of ['repository',...(c.work?['work']:[])]){
    const answers=destination==='repository'?status.repository_explanation:status.work_history.find(w=>w.work_item_id===c.work).answers;
    const tasks=sourceTasks(c,destination,answers);
@@ -31,19 +32,24 @@ const {chromium}=require(config.playwright);
     await page.goto(url);await page.reload();
     let link=await criticalLink(article,task),target=await link.getAttribute('href');
     const point=page.locator(`[id="${target.slice(1)}"]`);
+    await link.focus();await link.press('Enter');await point.waitFor({state:'visible'});
     await criticalPoint(point,task);await criticalBytes(page,point,task,true);checks++;
-    const other=article.locator('a.evidence-link:visible').last();
-    assert.notEqual(await other.getAttribute('href'),target,'counterexample keeps an unrelated last link');
+    await point.locator('a.return').click();
+    const otherTargets=await article.locator('a.evidence-link:visible').evaluateAll((ns,own)=>ns.map(n=>n.getAttribute('href')).filter(h=>h!==own),target);
+    assert(otherTargets.length,'counterexample needs another independently bound Source link');
+    const otherTarget=otherTargets.at(-1);
+    const other=article.locator('a.evidence-link[href="'+otherTarget+'"]:visible').last();
     await link.evaluate(n=>n.remove());
     await assert.rejects(()=>criticalLink(article,task),/critical claim must own/);checks++;
-    await other.click();assert.equal(new URL(page.url()).hash,await other.getAttribute('href'),'unrelated last link still works');
+    await other.click();assert.equal(new URL(page.url()).hash,otherTarget,'unrelated last link still works');
     await page.goto(url);await page.reload();link=await criticalLink(article,task);target=await link.getAttribute('href');
     const fresh=page.locator(`[id="${target.slice(1)}"]`);
+    await link.focus();await link.press('Enter');await fresh.waitFor({state:'visible'});
     await fresh.evaluate(n=>n.dataset.sourceId='foreign-source');
     await assert.rejects(()=>criticalPoint(fresh,task),/critical Source identity/);checks++;
-    await page.goto(url);await page.reload();await (await embeddedCode(fresh)).evaluate(n=>n.textContent=n.textContent.slice(0,-1));
+    await page.goto(url);await page.reload();link=await criticalLink(article,task);await link.focus();await link.press('Enter');await fresh.waitFor({state:'visible'});await (await embeddedCode(fresh)).evaluate(n=>n.textContent=n.textContent.slice(0,-1));
     await assert.rejects(()=>criticalBytes(page,fresh,task,true),/offline complete critical window/);checks++;
-    await page.goto(url);await page.reload();await (await embeddedCode(fresh)).evaluate(n=>n.parentElement.remove());
+    await page.goto(url);await page.reload();link=await criticalLink(article,task);await link.focus();await link.press('Enter');await fresh.waitFor({state:'visible'});await (await embeddedCode(fresh)).evaluate(n=>n.parentElement.remove());
     await assert.rejects(()=>criticalBytes(page,fresh,task,true),/offline critical window cannot be omitted/);checks++;
    }
   }}finally{await context.close();}

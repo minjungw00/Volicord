@@ -3736,6 +3736,12 @@ claim-specific return, and compares the complete original payload once per range
 An early inner `</section>` or a duplicate-code assumption is not a faithful
 consumer oracle. Actual browser alias traversal remains a separate control.
 
+Export DOM counterexamples activate the exact critical Source through its actual
+keyboard link before following a shared payload, then return to the article for
+the independent last-link control. Truncated/missing payload and foreign-identity
+checks still reject the same original claim/range. File-only offline browser
+contexts prevent network access; a hidden pane timeout is not a negative-case pass.
+
 Renderer-focused `volicord-viewer --lib` controls reject excess messages and markup
 namespaces before invoking any layout target callback. The negative pre-fix attempt
 is preserved separately. `citation_reading` additionally admits hostile UTF-8/XML/
