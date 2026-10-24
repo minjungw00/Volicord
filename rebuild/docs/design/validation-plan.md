@@ -3717,7 +3717,7 @@ Complete MCP measurements compare `diagrams` with the original recording in addi
 to expanded units, citations and provenance. Preserve failed admission/authoring
 attempts and measure Source, plan, realization, retained metadata, render, export
 and transport separately. The 49,152-byte read-only inclusion policy is justified
-by 44,536 bytes of current implementing windows; it changes no authoritative gate.
+by the initial 44,536-byte corpus and the complete 46,260-byte, 17-window scope; it changes no authoritative gate.
 Technical byte equality is neither entailment, independent assessment nor human
 comprehension. Focused scoped validation is separate from Final/V11 qualification.
 

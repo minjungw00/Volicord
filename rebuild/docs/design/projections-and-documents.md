@@ -2701,9 +2701,11 @@ Critical reading includes permission and lifecycle implementing windows, not onl
 successful compose/record paths. Reinspection of the original five omitted Volicord
 windows requires included-path/root/full-file-hash capture checks, separate canonical
 identity/body retention failure, current-file validation, and complete repository
-Source identity/lifetime validation. Their current combined concept/component/flow
-publication needs 44,536 distinct UTF-8 Source bytes in 16 windows (largest 7,162),
-versus the prior 32,768-byte aggregate. Shared claim references cannot remove those
+Source identity/lifetime validation. The initial combined concept/component/flow
+publication needed 44,536 distinct UTF-8 Source bytes in 16 windows. Completing the
+repository-comparison helper adds the missing fifth historical permission/lifecycle
+window: 46,260 bytes across 17 windows (largest 7,162), versus the prior 32,768-byte
+aggregate. These are distinct payloads, not duplicate claim references. Shared claim references cannot remove those
 distinct bytes. The read-only embedded aggregate is therefore 49,152 bytes; each
 Source capture/window remains 16,384, citation pages 4,096, response 40,960 and retained
 content 147,456. No preparation, source authority, gate or transport ceiling changes.
