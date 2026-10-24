@@ -514,6 +514,32 @@ fn human_cli_diagram_case(controls: bool) -> Result<(), Box<dyn std::error::Erro
     } else {
         assert!(stdout.contains(&code));
     }
+    let korean = Command::new(env!("CARGO_BIN_EXE_volicord"))
+        .args([
+            "--runtime",
+            ops.layout().root().to_str().ok_or("runtime")?,
+            "--project",
+            &project.to_string(),
+            "--locale",
+            "ko",
+            "repository",
+            "explain",
+            "read",
+            "--language",
+            "en",
+        ])
+        .output()?;
+    assert!(korean.status.success());
+    let korean = String::from_utf8(korean.stdout)?;
+    assert!(korean.contains("병렬 (상대 순서 없음) [조건: enabled]"));
+    assert!(korean.contains("Scheduler → Worker · 호출: starts Worker calls"));
+    assert!(korean.contains("[message=first-call; from=scheduler; to=first]"));
+    assert!(korean.contains(
+        retained
+            .publication_id
+            .as_deref()
+            .ok_or("publication identity")?
+    ));
     let raw = Command::new(env!("CARGO_BIN_EXE_volicord"))
         .args([
             "--runtime",

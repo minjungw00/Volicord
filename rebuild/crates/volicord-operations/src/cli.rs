@@ -2122,8 +2122,15 @@ fn render_field(
                 serde_json::from_value(raw.clone()).map_err(|error| {
                     Error::with_source("unsupported diagram meaning in explanation", error)
                 })?;
-            let meaning =
-                volicord_projections::diagram_text(&diagram, &texts).map_err(Error::new)?;
+            let meaning = volicord_projections::diagram_text_localized(
+                &diagram,
+                &texts,
+                match locale {
+                    CliLocale::English => FixedLocale::English,
+                    CliLocale::Korean => FixedLocale::Korean,
+                },
+            )
+            .map_err(Error::new)?;
             write_line(stdout, terminal_explanation_text(&meaning))?;
         }
         for (unit_index, unit) in answers["prose"]
