@@ -2102,3 +2102,72 @@ fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<d
     assert!(claim.contains("unavailable offline"));
     Ok(())
 }
+
+#[test]
+fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result<(), Box<dyn Error>>
+{
+    let f = Fixture::new()?;
+    let mut realization = diagram_control(&f, false)?;
+    let hostile = "</text><image href='https://invalid.example/x' onload='alert(1)'/>한&";
+    let unit = &mut realization.paragraphs[1];
+    unit.text = hostile.into();
+    for citation in &mut unit.citations {
+        citation.claim_start_byte = 0;
+        citation.claim_end_byte = hostile.len();
+        citation.claim_sha256 = explanation_text_hash(hostile);
+    }
+    let label = DiagramLabel {
+        unit: 1,
+        start_byte: 0,
+        end_byte: hostile.len(),
+    };
+    let d = &mut realization.diagrams[0];
+    d.title = label.clone();
+    if let DiagramMeaning::Concept { nodes, relations } = &mut d.meaning {
+        for n in nodes {
+            n.label = label.clone();
+        }
+        for r in relations {
+            r.label = label.clone();
+            r.condition = Some(label.clone());
+        }
+    }
+    seal_diagrams(&mut realization)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization.clone(),
+    )?;
+    let output = f.temp.path().join("hostile.html");
+    ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .export_snapshot(&f.request(), &output)?;
+    let html = fs::read_to_string(output)?;
+    assert!(html.contains("data-renderer=\"volicord-static-svg/3\""));
+    assert!(html.contains("&lt;image"));
+    assert!(!html.contains("<image"));
+    assert!(!html.contains("<script"));
+    assert!(!html.contains("<foreignObject"));
+    let mut malformed = realization;
+    malformed.diagrams[0].title.end_byte += 1;
+    assert!(seal_diagrams(&mut malformed).is_ok());
+    assert!(f
+        .ops
+        .record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            malformed
+        )
+        .is_err());
+    assert_eq!(
+        f.answers()?.diagrams.len(),
+        1,
+        "failed input preserves the original publication"
+    );
+    if let Some(root) = std::env::var_os("VOLICORD_RENDERER_SAFETY_CAPTURE") {
+        fs::create_dir(&root)?;
+        fs::write(std::path::Path::new(&root).join("hostile.html"), html)?;
+    }
+    Ok(())
+}

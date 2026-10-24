@@ -3720,3 +3720,12 @@ and transport separately. The 49,152-byte read-only inclusion policy is justifie
 by 44,536 bytes of current implementing windows; it changes no authoritative gate.
 Technical byte equality is neither entailment, independent assessment nor human
 comprehension. Focused scoped validation is separate from Final/V11 qualification.
+
+Renderer-focused `volicord-viewer --lib` controls reject excess messages and markup
+namespaces before invoking any layout target callback. The negative pre-fix attempt
+is preserved separately. `citation_reading` additionally admits hostile UTF-8/XML/
+URL labels through real compose/record/export, rejects malformed replacements and
+preserves the prior publication. Optional `VOLICORD_RENDERER_SAFETY_CAPTURE` writes
+a new script-free export for actual browser network/markup controls. Those browser
+checks, not escaping assertions alone, establish observed resource requests. No
+claim of OS-level renderer isolation, assistive observation or human approval follows.

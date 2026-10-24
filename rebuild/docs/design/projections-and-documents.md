@@ -2719,3 +2719,15 @@ relations, ordering or return identities. Complete MCP reconstruction compares a
 figure semantics with the original recorded realization, not the compact helper.
 Read-only presentation changes do not convert older explanation formats or alter
 v8 preparation, seals, recording identity, dependency expiry or canonical authority.
+
+The local SVG boundary independently checks node, relationship/message, group,
+label and identifier budgets before layout/allocation, including the renderer-owned
+namespace used in marker references. Oversized labels/IDs fail before formatting
+or scanning unbounded strings. The existing 256 KiB final figure ceiling still
+applies; all work is bounded by 12 nodes, 20 edges/messages and 12 groups. No
+recursive grammar, child process, plugin, remote asset or rendering service exists.
+The upstream semantic admission/seal remains separate: passing a renderer check
+provides no Source authority. Failed rendering returns no partial SVG, while the
+admitted alternative and explicit visual-failure notice remain available only
+when current publication dependencies permit them. Renderer ID 3's normal output
+is unchanged; no render cache, new dependency, asset or license is introduced.

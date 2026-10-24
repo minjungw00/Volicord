@@ -64,6 +64,10 @@ pub(crate) fn svg(
     ns: &str,
     target: &dyn Fn(&str, &DiagramLabel) -> String,
 ) -> Result<String, String> {
+    // The renderer is a separate allocation/markup boundary. Admission normally
+    // supplies these bounds; do not rely on it to constrain layout or a future
+    // caller before the final output-size check can run.
+    bounded_input(d, texts, ns)?;
     let label = |l: &DiagramLabel| diagram_label(l, texts);
     let n = d.nodes().len();
     if n == 0 || n > 12 {
@@ -469,6 +473,88 @@ pub(crate) fn svg(
     Ok(out)
 }
 
+fn bounded_input(d: &GroundedDiagram, texts: &[&str], ns: &str) -> Result<(), String> {
+    if ns.is_empty()
+        || ns.len() > 256
+        || !ns
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_:".contains(&b))
+    {
+        return Err("unsupported local SVG namespace".into());
+    }
+    if d.nodes().is_empty() || d.nodes().len() > 12 || texts.len() > 32 {
+        return Err("unsupported local SVG input budget".into());
+    }
+    match &d.meaning {
+        DiagramMeaning::Sequence { groups, .. } => {
+            if groups.is_empty()
+                || groups.len() > 12
+                || groups
+                    .iter()
+                    .any(|g| g.messages.is_empty() || g.messages.len() > 20)
+                || groups.iter().map(|g| g.messages.len()).sum::<usize>() > 20
+            {
+                return Err("unsupported local SVG sequence budget".into());
+            }
+        }
+        DiagramMeaning::Concept { relations, .. }
+        | DiagramMeaning::Component { relations, .. }
+        | DiagramMeaning::Flowchart { relations, .. }
+        | DiagramMeaning::State { relations, .. } => {
+            if relations.is_empty() || relations.len() > 20 {
+                return Err("unsupported local SVG relationship budget".into());
+            }
+        }
+    }
+    for label in d.labels() {
+        let text = diagram_label(label, texts)?;
+        if text.len() > 384
+            || text.trim().is_empty()
+            || text.chars().count() > 96
+            || text.chars().any(char::is_control)
+        {
+            return Err("unsupported local SVG label".into());
+        }
+    }
+    // Validate borrowed tokens before elements() can clone/format identities.
+    let token = |id: &str| {
+        if id.is_empty()
+            || id.len() > 48
+            || !id
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        {
+            Err("unsupported local SVG element identity".to_owned())
+        } else {
+            Ok(())
+        }
+    };
+    token(&d.id)?;
+    for n in d.nodes() {
+        token(&n.id)?;
+    }
+    match &d.meaning {
+        DiagramMeaning::Sequence { groups, .. } => {
+            for m in groups.iter().flat_map(|g| &g.messages) {
+                token(&m.id)?;
+                token(&m.from)?;
+                token(&m.to)?;
+            }
+        }
+        DiagramMeaning::Concept { relations, .. }
+        | DiagramMeaning::Component { relations, .. }
+        | DiagramMeaning::Flowchart { relations, .. }
+        | DiagramMeaning::State { relations, .. } => {
+            for edge in relations {
+                token(&edge.id)?;
+                token(&edge.from)?;
+                token(&edge.to)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Read-side identities for every selectable semantic element, including guards.
 /// ':' separates renderer-owned guard IDs from admitted ASCII element tokens.
 pub(crate) fn elements(d: &GroundedDiagram) -> Vec<(String, &DiagramLabel)> {
@@ -557,6 +643,79 @@ pub(crate) fn element_caption(d: &GroundedDiagram, id: &str, texts: &[&str]) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn renderer_refuses_excess_work_and_markup_namespaces_before_layout() {
+        let label = DiagramLabel {
+            unit: 0,
+            start_byte: 0,
+            end_byte: 5,
+        };
+        let mut d = GroundedDiagram {
+            id: "bounded".into(),
+            title: label.clone(),
+            caption_unit: 0,
+            semantic_fingerprint: String::new(),
+            meaning: DiagramMeaning::Sequence {
+                participants: vec![DiagramNode {
+                    id: "actor".into(),
+                    kind: DiagramNodeKind::Participant,
+                    label: label.clone(),
+                }],
+                groups: vec![DiagramGroup {
+                    order: DiagramOrder::Sequential,
+                    condition: None,
+                    messages: vec![DiagramMessage {
+                        id: "call".into(),
+                        from: "actor".into(),
+                        to: "actor".into(),
+                        kind: DiagramMessageKind::Call,
+                        label,
+                    }],
+                }],
+            },
+        };
+        if let DiagramMeaning::Sequence { groups, .. } = &mut d.meaning {
+            groups[0].messages = (0..21)
+                .map(|i| {
+                    let mut m = groups[0].messages[0].clone();
+                    m.id = format!("call-{i}");
+                    m
+                })
+                .collect();
+        }
+        let calls = std::cell::Cell::new(0);
+        let target = |_: &str, _: &DiagramLabel| {
+            calls.set(calls.get() + 1);
+            "claim".to_owned()
+        };
+        assert!(svg(&d, &["value"], "bounded", &target).is_err());
+        assert_eq!(
+            calls.get(),
+            0,
+            "over-budget work must not start layout/output"
+        );
+        if let DiagramMeaning::Sequence { groups, .. } = &mut d.meaning {
+            groups[0].messages.truncate(1);
+        }
+        assert!(svg(
+            &d,
+            &["value"],
+            "x\"><image href=\"https://invalid.example/",
+            &target
+        )
+        .is_err());
+        assert_eq!(calls.get(), 0);
+        let enormous = "한".repeat(100_000);
+        d.title.end_byte = enormous.len();
+        assert!(svg(&d, &[&enormous], "bounded", &target).is_err());
+        assert_eq!(calls.get(), 0);
+        d.title.end_byte = 5;
+        if let DiagramMeaning::Sequence { participants, .. } = &mut d.meaning {
+            participants[0].id = "a".repeat(100_000);
+        }
+        assert!(svg(&d, &["value"], "bounded", &target).is_err());
+        assert_eq!(calls.get(), 0);
+    }
     #[test]
     fn svg_escapes_text_and_scopes_internal_marker_guard_and_element_ids() -> Result<(), String> {
         // Renderer-only hostile-text control, not an admitted semantic publication.
