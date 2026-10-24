@@ -1420,3 +1420,14 @@ failure removes every cached representation in that managed publication, includi
 other Source windows and closed evidence previews. Its Work case preserves independent
 short-publication regions byte for byte. This is a controlled HTTP/DOM regression;
 actual expiry/deletion/forgetting tests and human observation remain separate.
+
+The focused diagram driver supports `visual_geometry: true` to require every exact
+admitted relation/message/guard as displayed SVG text and inspect actual glyph/path
+geometry after fonts load. Use `geometry_report_only: true` only for preserved
+baseline observations; it is not a readability pass. `capture_canvas: true` stores
+separate full-canvas diagnostic HTML/PNG alongside actual viewport screenshots.
+`ui_locale` selects fixed vocabulary independently of `language`.
+`diagram_geometry_browser.cjs CONFIG` consumes fresh `VOLICORD_LAYOUT_REVIEW_ROOT`
+fixtures with `fixtures`, `css`, `output`, `playwright`, `chromium` and `fontconfig`
+paths; it requires Korean-capable fonts and preserves per-case geometry and images.
+Run these scoped controls through `validate focused`; do not run Final/V11 here.

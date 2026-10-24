@@ -1718,7 +1718,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             .and_then(|p| p.publication_id.as_deref())
             .ok_or("managed publication")?;
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/3\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/4\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
@@ -1790,7 +1790,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/3\""));
+            .contains("data-renderer=\"volicord-static-svg/4\""));
     }
     Ok(())
 }
@@ -1949,7 +1949,7 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
-            assert!(text.contains("volicord-static-svg/3"));
+            assert!(text.contains("volicord-static-svg/4"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"
             } else {
@@ -2179,7 +2179,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
         .export_snapshot(&f.request(), &output)?;
     let html = fs::read_to_string(output)?;
-    assert!(html.contains("data-renderer=\"volicord-static-svg/3\""));
+    assert!(html.contains("data-renderer=\"volicord-static-svg/4\""));
     assert!(html.contains("&lt;image"));
     assert!(!html.contains("<image"));
     assert!(!html.contains("<script"));
@@ -2279,5 +2279,57 @@ fn repeated_code_payload_keeps_distinct_claims_and_native_returns() -> Result<()
     }
     assert!(html.contains(&f.realization.paragraphs[2].text));
     assert!(!html.contains("<script"));
+    Ok(())
+}
+
+#[test]
+fn diagram_ui_locale_preserves_authored_english_claims_and_publication_identity(
+) -> Result<(), Box<dyn Error>> {
+    for sequence in [false, true] {
+        let f = Fixture::new()?;
+        let realized = diagram_control(&f, sequence)?;
+        f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            realized.clone(),
+        )?;
+        let before = f.answers()?;
+        let adapter = ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()));
+        for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+            let mut request = f.request();
+            request.locale = locale;
+            for page in [
+                adapter.render(&request, "fixture")?,
+                adapter.render_snapshot(
+                    &request,
+                    volicord_context::TimestampMicros::from_unix_micros(123),
+                )?,
+            ] {
+                let figure = page
+                    .html
+                    .split("<svg ")
+                    .nth(1)
+                    .ok_or("actual SVG")?
+                    .split("</svg>")
+                    .next()
+                    .ok_or("SVG close")?;
+                assert!(
+                    figure.contains("calls verification"),
+                    "authored English relation is visibly retained"
+                );
+                assert!(figure.contains("Admission"));
+                if locale == ViewerLocale::Korean {
+                    assert!(figure.contains(if sequence { "호출" } else { "의존" }));
+                    assert!(!figure.contains(if sequence { ">call<" } else { ">depends on<" }));
+                    assert!(figure.contains("조건:"));
+                }
+            }
+        }
+        let after = f.answers()?;
+        assert_eq!(after.provenance, before.provenance);
+        assert_eq!(after.diagrams, realized.diagrams);
+        assert_eq!(after.prose, before.prose);
+    }
     Ok(())
 }

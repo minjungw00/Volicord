@@ -3813,3 +3813,32 @@ parallelism, condition, claim/range and publication identity, and verifies compl
 original code. A hostile OSC/ANSI comment is visibly escaped in the terminal while
 JSON preserves exact bytes. Source-copy deletion removes the diagram/code. The
 pre-fix negative is retained; passing QuestionAnswers.text alone was insufficient.
+
+### Visible diagram relationship and glyph geometry controls
+
+The focused real-publication `grounded_diagrams_browser.cjs` accepts
+`visual_geometry`, `capture_canvas` and an explicit fixed `ui_locale` independent of
+publication `language`. Its `diagram_geometry.cjs` companion derives expected label
+bytes and endpoints from the independently selected original public record, then
+checks actual browser text after `document.fonts.ready`, exact element anchors,
+arrow endpoint direction, glyph bounds, text/text intersections and path samples at
+subpixel spacing against text. It records every relationship task's endpoint/label
+span, required viewport travel, complete canvas, font and renderer identities.
+`geometry_report_only` preserves baseline defects without claiming readability.
+Full-canvas diagnostic images supplement unchanged desktop/narrow live viewport
+screenshots; neither replaces code, lifecycle, focus/history or publication controls.
+
+`diagram_geometry_browser.cjs` separately consumes renderer stress fixtures emitted
+by `volicord-viewer --lib` with `VOLICORD_LAYOUT_REVIEW_ROOT` set to a fresh ignored
+directory. These are authored layout controls, not admitted repository facts: 96-scalar
+Korean/English labels and guards, first/last self calls and returns, parallel/sequential
+groups and repeated participant names in both UI locales. Existing cycle, state-path,
+hostile-label, markup/namespace and allocation-bound controls remain required.
+The publication test also renders English content in both UI locales through live and
+snapshot consumers and compares unchanged prose, semantic seals and provenance.
+
+Run only through `validate focused`, preserving all failed attempts and numeric exits.
+Separate render/export/interaction measurements from repository analysis and complete
+MCP read costs. These geometric checks and dependent visual inspection establish no
+unseen-content generalization, assistive observation, human acceptance or qualification
+pass. No aggregate, gate, Final, official V11 or provider run is authorized here.

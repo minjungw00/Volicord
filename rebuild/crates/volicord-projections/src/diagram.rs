@@ -102,6 +102,60 @@ impl DiagramNodeKind {
         }
     }
 }
+/// Fixed reader vocabulary follows UI locale; authored spans and wire enums do not.
+pub fn diagram_ui(
+    locale: crate::FixedLocale,
+    english: &'static str,
+    korean: &'static str,
+) -> &'static str {
+    match locale {
+        crate::FixedLocale::English => english,
+        crate::FixedLocale::Korean => korean,
+    }
+}
+impl DiagramNodeKind {
+    pub fn localized_text(self, locale: crate::FixedLocale) -> &'static str {
+        let korean = match self {
+            Self::Record => "기록",
+            Self::ContextRole => "맥락 역할",
+            Self::ReadingGroup => "읽기 묶음",
+            Self::Component => "구성요소",
+            Self::Participant => "참여자",
+            Self::Process => "처리",
+            Self::Branch => "분기",
+            Self::Initial => "시작",
+            Self::Final => "종료",
+            Self::State => "상태",
+        };
+        diagram_ui(locale, self.text(), korean)
+    }
+}
+impl DiagramRelationKind {
+    pub fn localized_text(self, locale: crate::FixedLocale) -> &'static str {
+        let korean = match self {
+            Self::References => "참조",
+            Self::Groups => "묶음",
+            Self::RoleOf => "역할",
+            Self::DependsOn => "의존",
+            Self::Produces => "생성",
+            Self::DataFlow => "데이터 흐름",
+            Self::ControlFlow => "제어 흐름",
+            Self::Transition => "전이",
+        };
+        diagram_ui(locale, self.text(), korean)
+    }
+}
+impl DiagramMessageKind {
+    pub fn localized_text(self, locale: crate::FixedLocale) -> &'static str {
+        let korean = match self {
+            Self::Call => "호출",
+            Self::Return => "반환",
+            Self::Await => "대기",
+            Self::StateChange => "상태 변경",
+        };
+        diagram_ui(locale, self.text(), korean)
+    }
+}
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DiagramMessage {
@@ -246,6 +300,14 @@ pub fn diagram_label<'a>(label: &DiagramLabel, texts: &[&'a str]) -> Result<&'a 
 /// Faithful linear alternative, including endpoints, kind, guard and concurrency.
 /// CLI text and Viewer derive it from exactly the same admitted meaning as SVG.
 pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, String> {
+    diagram_text_localized(d, texts, crate::FixedLocale::English)
+}
+/// Same admitted meaning with localized explanatory vocabulary for Reader UI.
+pub fn diagram_text_localized(
+    d: &GroundedDiagram,
+    texts: &[&str],
+    locale: crate::FixedLocale,
+) -> Result<String, String> {
     let label = |l: &DiagramLabel| diagram_label(l, texts);
     let node = |id: &str| {
         d.nodes()
@@ -265,7 +327,7 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
         lines.push(format!(
             "{} [{}; node={}]",
             label(&n.label)?,
-            n.kind.text(),
+            n.kind.localized_text(locale),
             n.id
         ));
     }
@@ -275,7 +337,11 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
         | DiagramMeaning::Flowchart { relations, .. }
         | DiagramMeaning::State { relations, .. } => {
             if let DiagramMeaning::State { owner, .. } = &d.meaning {
-                lines.push(format!("State owner: {}", label(owner)?));
+                lines.push(format!(
+                    "{} {}",
+                    diagram_ui(locale, "State owner:", "상태 소유자:"),
+                    label(owner)?
+                ));
             }
             for r in relations {
                 let guard = r
@@ -283,13 +349,13 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
                     .as_ref()
                     .map(label)
                     .transpose()?
-                    .map(|s| format!(" [if {s}]"))
+                    .map(|s| format!(" [{} {s}]", diagram_ui(locale, "if", "조건:")))
                     .unwrap_or_default();
                 lines.push(format!(
                     "{} → {} · {}: {}{guard} [edge={}; from={}; to={}]",
                     node(&r.from)?,
                     node(&r.to)?,
-                    r.kind.text(),
+                    r.kind.localized_text(locale),
                     label(&r.label)?,
                     r.id,
                     r.from,
@@ -304,14 +370,18 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
                     .as_ref()
                     .map(label)
                     .transpose()?
-                    .map(|s| format!(" [if {s}]"))
+                    .map(|s| format!(" [{} {s}]", diagram_ui(locale, "if", "조건:")))
                     .unwrap_or_default();
                 lines.push(format!(
                     "{}. {}{guard}",
                     i + 1,
                     match g.order {
-                        DiagramOrder::Sequential => "sequential",
-                        DiagramOrder::Parallel => "parallel (no relative order asserted)",
+                        DiagramOrder::Sequential => diagram_ui(locale, "sequential", "순차"),
+                        DiagramOrder::Parallel => diagram_ui(
+                            locale,
+                            "parallel (no relative order asserted)",
+                            "병렬 (상대 순서 없음)"
+                        ),
                     }
                 ));
                 for (j, m) in g.messages.iter().enumerate() {
@@ -321,7 +391,7 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
                         j + 1,
                         node(&m.from)?,
                         node(&m.to)?,
-                        m.kind.text(),
+                        m.kind.localized_text(locale),
                         label(&m.label)?,
                         m.id,
                         m.from,

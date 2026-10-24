@@ -33,7 +33,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
       const expected=fs.readFileSync(path.join(c.repository,citation.locator)).subarray(citation.start_byte,citation.end_byte).toString('utf8');
       assert(expected.includes(c.expected_code),'Source-derived implementing range');
       const log=fs.openSync(path.join(output,c.key+'.viewer.stderr'),'wx');
-      const child=spawn(config.viewer,['--runtime',c.runtime,'--project',c.project,'--language',c.language || 'en','--bind','127.0.0.1:0'],{stdio:['ignore','ignore',log]});
+      const child=spawn(config.viewer,['--runtime',c.runtime,'--project',c.project,'--language',c.language || 'en','--locale',c.ui_locale || c.language || 'en','--bind','127.0.0.1:0'],{stdio:['ignore','ignore',log]});
       let activePage;
       try {
         let base;
@@ -68,7 +68,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             assert(await figure.evaluate(n=>n===document.activeElement),'outline exact figure focus');
           }
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
-          assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/3');
+          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/4'));
           assert.equal(await page.locator('script').count()>0,mode==='live','live scripting versus script-free static export');
           if(mode==='live') await page.waitForFunction(id=>{
             const viewport=document.getElementById(id)?.querySelector('.diagram-viewport');
@@ -82,6 +82,19 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           const size=await page.evaluate(()=>({body:document.documentElement.scrollWidth,viewport:innerWidth}));
           assert(size.body<=size.viewport+1,JSON.stringify(size));
           await figure.screenshot({path:path.join(output,`${c.key}-${width}-${mode}.png`)});
+          if(config.capture_canvas && width===(config.widths || [1440,390])[0] && mode==='live') {
+            const canvas=await svg.evaluate(n=>({svg:n.outerHTML,width:n.width.baseVal.value,height:n.height.baseVal.value,styles:[...document.querySelectorAll('style')].map(s=>s.textContent).join('\n')}));
+            const html='<meta charset="utf-8"><style>'+canvas.styles+'</style><style>body{margin:0;padding:0}.diagram-viewport{max-height:none;overflow:visible;border:0}</style><div class="diagram-viewport">'+canvas.svg+'</div>';
+            fs.writeFileSync(path.join(output,c.key+'-canvas.html'),html,{flag:'wx'});
+            const review=await context.newPage();await review.setViewportSize({width:Math.ceil(canvas.width),height:Math.min(1000,Math.ceil(canvas.height))});
+            await review.setContent(html);await review.evaluate(()=>document.fonts.ready);await review.screenshot({path:path.join(output,c.key+'-canvas.png'),fullPage:true});await review.close();
+          }
+          let visual_geometry=null;
+          if(config.visual_geometry) {
+            visual_geometry=await require('./diagram_geometry.cjs').inspectDiagram(svg,d,pub.prose);
+            fs.writeFileSync(path.join(output,`${c.key}-${width}-${mode}-geometry.json`),JSON.stringify(visual_geometry,null,2),{flag:'wx'});
+            if(!config.geometry_report_only) assert.deepEqual(visual_geometry.errors,[],'actual displayed-label and glyph/path geometry');
+          }
           const svg_bytes=await svg.evaluate(n=>new TextEncoder().encode(n.outerHTML).length);
           if(config.precise_return && mode==='live') {
             await figure.locator('[data-diagram-action=in]').click();
@@ -220,7 +233,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:'volicord-static-svg/3'});
+          results.push({visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/4')});
           await context.close();
         }
       } catch(error) {

@@ -579,7 +579,7 @@ fn render_diagrams(
             .unwrap_or("");
         html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" tabindex=\"-1\" data-realization=\"{}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"{}><figcaption>{}</figcaption>",escape(realization),escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),publication_scope(answers),escape(title)));
         html.push_str(&format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{ns}-viewport\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"reset\">{}</button></div>",text(r.locale,"Expand reading area","읽기 영역 확장"),text(r.locale,"Zoom diagram out","도식 축소"),text(r.locale,"Zoom diagram in","도식 확대"),text(r.locale,"Reset","원래 크기")));
-        match crate::diagram::svg(d,&texts,&ns,&|id,_|format!("{ns}-{id}-claim")) {
+        match crate::diagram::svg(d,&texts,&ns,&|id,_|format!("{ns}-{id}-claim"),r.locale.fixed()) {
             Ok(svg)=>html.push_str(&format!("<div id=\"{ns}-viewport\" class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용"))),
             Err(_)=>{
                 html.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Diagram rendering failed. Read the admitted text alternative below.","도식 렌더링에 실패했습니다. 아래 검증된 텍스트 표현을 읽으세요.")));
@@ -615,16 +615,23 @@ fn render_diagrams(
                 "도식 의미와 요소별 설명"
             )
         ));
-        match volicord_projections::diagram_text(d, &texts) {
+        match volicord_projections::diagram_text_localized(d, &texts, r.locale.fixed()) {
             Ok(value) => html.push_str(&format!(
                 "<pre class=\"diagram-text\">{}</pre>",
                 escape(&value)
             )),
-            Err(_) => html.push_str("<p role=\"status\">Diagram meaning unavailable.</p>"),
+            Err(_) => html.push_str(&format!(
+                "<p role=\"status\">{}</p>",
+                text(
+                    r.locale,
+                    "Diagram meaning unavailable.",
+                    "도식 의미를 사용할 수 없습니다."
+                )
+            )),
         }
         html.push_str("<ul>");
         for (id, _) in crate::diagram::elements(d) {
-            html.push_str(&format!("<li><a class=\"button secondary diagram-text-link\" data-element=\"{ns}-{id}\" href=\"#{ns}-{id}-claim\">{}</a></li>",escape(&crate::diagram::element_caption(d,&id,&texts))));
+            html.push_str(&format!("<li><a class=\"button secondary diagram-text-link\" data-element=\"{ns}-{id}\" href=\"#{ns}-{id}-claim\">{}</a></li>",escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed()))));
         }
         html.push_str("</ul></details><div class=\"diagram-claims\">");
         for (id, label) in crate::diagram::elements(d) {
@@ -632,7 +639,7 @@ fn render_diagrams(
             let claim = format!("{origin}-claim");
             let selected = volicord_projections::diagram_label(label, &texts).unwrap_or("");
             let unit = &answers.prose[label.unit];
-            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p class=\"diagram-selected-label\">{}</p><div class=\"diagram-claim-context\"><span class=\"source-note\">{}</span><p>{}</p></div><div class=\"evidence-actions\">",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts)),escape(selected),text(r.locale,"Claim and material qualification","주장과 중요한 조건"),escape(&unit.text)));
+            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p class=\"diagram-selected-label\">{}</p><div class=\"diagram-claim-context\"><span class=\"source-note\">{}</span><p>{}</p></div><div class=\"evidence-actions\">",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed())),escape(selected),text(r.locale,"Claim and material qualification","주장과 중요한 조건"),escape(&unit.text)));
             for (n, c) in unit.citations.iter().enumerate().filter(|(_, c)| {
                 c.claim_start_byte <= label.start_byte && c.claim_end_byte >= label.end_byte
             }) {
@@ -659,7 +666,7 @@ fn render_diagrams(
             for (number, relation) in relations.iter().enumerate() {
                 let wording =
                     volicord_projections::diagram_label(&relation.label, &texts).unwrap_or("");
-                html.push_str(&format!("<li><a class=\"diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\">E{} · {}: {}</a>",escape(&relation.id),escape(&relation.id),number+1,escape(&crate::diagram::element_caption(d,&relation.id,&texts)),escape(wording)));
+                html.push_str(&format!("<li><a class=\"diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\">E{} · {}: {}</a>",escape(&relation.id),escape(&relation.id),number+1,escape(&crate::diagram::element_caption(d,&relation.id,&texts,r.locale.fixed())),escape(wording)));
                 if let Some(condition) = &relation.condition {
                     html.push_str(&format!(
                         " <span class=\"diagram-guard\">[{} {}]</span>",
@@ -698,7 +705,12 @@ fn diagram_source_returns(
         }) {
             links.push_str(&format!(
                 "<li><a class=\"button secondary\" href=\"#{ns}-{id}-claim\">{}</a></li>",
-                escape(&crate::diagram::element_caption(d, &id, &texts))
+                escape(&crate::diagram::element_caption(
+                    d,
+                    &id,
+                    &texts,
+                    r.locale.fixed()
+                ))
             ));
         }
     }

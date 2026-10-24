@@ -2566,10 +2566,16 @@ record and all original dependencies; ordinary reads generate nothing.
 Public CLI/MCP ordinary answers and complete publication pages include the exact
 semantics and seal. Human text includes endpoints, relation types, conditions and
 explicit parallel groups. Live and self-contained offline Viewer render the same
-meaning through in-tree `volicord-static-svg/3` plus a faithful linear alternative.
-Layout coordinates and SVG are presentation only. Concept edges use numbered keys
-matched to their text claims, avoiding long labels across shared-node lines. Sequence
-lifelines, self messages, guard frames and return dashes do not assert observation.
+meaning through in-tree `volicord-static-svg/4` plus a faithful linear alternative.
+Layout coordinates and SVG are presentation only. Relations show their exact admitted
+wording first; numbered keys and localized relationship kinds remain secondary.
+The visible label, accessible name, text representation and selected claim retain the
+same endpoints, conditions and wording. Fixed node/relation/message vocabulary,
+state-owner and conditional/ordering explanations follow UI locale; authored labels,
+code/protocol/state identifiers and wire enum values remain exact. The default CLI
+text representation retains its English fixed vocabulary; the Viewer requests the
+localized representation without changing retained content or semantic fingerprints.
+Sequence lifelines, self messages, guard frames and return dashes do not assert observation.
 Parallel messages occupy separate dashed UML `par` operands; their row labels are
 identifiers, not an ordering claim. Sequential groups have no operand separators.
 The local renderer has no dependency, markup interpreter, remote asset or process;
@@ -2673,12 +2679,21 @@ alternative remains self-contained. Sharing a scope claim never merges independe
 relationship claims or discards Source bindings. This uses existing v8 references;
 it changes no retained shape, authority, byte budget or version boundary.
 
-Diagram routes enter their actual target through row gaps, never through an unrelated
-node. Incoming keys/guards reserve separate vertical slots; conservative wide-character
-wrapping increases node height instead of shrinking text. State ownership is visible
-at the top of the figure. Optional sequence groups use an `opt` frame and an inner
-`strict`/`par` frame, preserving the admitted condition and order. Renderer identity 3
-changes presentation only; retained semantics, versions and budgets are unchanged.
+Concept/component relationships use stable layers of the directed condensation graph;
+cyclic nodes share a layer without reversing edges. Independent columns share label
+bands, while multiple incoming labels and self transitions reserve their full text
+height. Flowcharts retain guarded branches and initial/final shapes; states retain
+selectable ownership and event/guard transitions. A bounded rectilinear visibility
+grid routes around all padded node and label rectangles, choosing short paths and
+penalizing bends. Each edge retains its own boundary port and exact target.
+Conservative wide-character wrapping increases space instead of shrinking text.
+Sequence participant order is unchanged; each message reserves its own label height,
+and both self-call legs stay outside the complete text block. Optional groups use an
+`opt` frame and inner `strict`/`par` frame with localized explanations. Parallel operands
+remain separate. Renderer identity 4 changes presentation only; retained semantics,
+versions, Source bindings and budgets are unchanged. Existing expansion, scale, native
+pan, exact figure/claim/Source returns and script-free alternatives remain the detail
+navigation; no renderer-only semantic scenes or inferred groups are introduced.
 
 Exact Source-button return is restored after native fragment focus as well as during
 the initiating event, guarded by the unchanged fragment and selected point. A later

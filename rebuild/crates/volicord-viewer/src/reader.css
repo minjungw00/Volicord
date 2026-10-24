@@ -415,3 +415,7 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
 .shared-source-target:target { display:block; }
 .source-point:has(> .shared-source-target:target) > :is(.point-bar,.point-title,.claim-quote,.diagram-return-index,.point-others,details:not(.source-context)) { display:none; }
 .source-code-reference { overflow-wrap:anywhere; }
+
+.diagram-viewport .message-label { fill: var(--surface, #fff); stroke: none; }
+/* Authored relationship wording leads; IDs/kinds keep native readable size. */
+.diagram-viewport a:has(> .edge-key, > .message-label) > text + text { opacity: .72; }
