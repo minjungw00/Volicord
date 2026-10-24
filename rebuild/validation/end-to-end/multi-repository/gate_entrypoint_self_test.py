@@ -69,6 +69,9 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     resource_estimate = candidate / "rebuild/validation/end-to-end/multi-repository/resource-estimate.json"
     runner.parent.mkdir(parents=True)
     gate.parent.mkdir(parents=True)
+    shared_boundary = candidate / "rebuild/validation/shared/build_boundary.py"
+    shared_boundary.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / "rebuild/validation/shared/build_boundary.py", shared_boundary)
     shutil.copy2(RUNNER, runner)
     shutil.copy2(EVIDENCE_ARCHIVE, evidence_archive)
     shutil.copy2(EVIDENCE_ARCHIVE_VERIFIER, evidence_archive_verifier)
@@ -175,7 +178,7 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     write_executable(
         bin_directory / "cargo",
         "#!/bin/sh\n"
-        "if [ \"${1:-}\" = --version ]; then printf 'cargo 1.90.0 (fixture)\\n'; exit 0; fi\n"
+        "if [ \"${1:-}\" = --version ] || [ \"${1:-}\" = -vV ]; then printf 'cargo 1.90.0 (fixture)\\n'; exit 0; fi\n"
         f": > '{final_marker}'\nexit 98\n",
     )
     write_executable(
@@ -200,7 +203,10 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     )
     assert committed.returncode == 0, committed.stderr
 
-    env = os.environ.copy()
+    import sys
+    sys.path.insert(0, str(ROOT / 'rebuild/validation/shared'))
+    import build_boundary
+    env = build_boundary.inherited_environment(os.environ)
     env["PATH"] = f"{bin_directory}{os.pathsep}{env['PATH']}"
     env["CODEX_HOME"] = str(auth.parent)
     env.pop("VALIDATION_DIRTY_PROBE", None)
@@ -225,6 +231,9 @@ def assert_maintained_preflight(parent: Path) -> None:
     shutil.copy2(ROOT / 'rebuild/validation/shared/recorded_action_evidence.py', shared)
     runner = candidate / "rebuild/scripts/validate"
     runner.parent.mkdir(parents=True)
+    shared_boundary = candidate / "rebuild/validation/shared/build_boundary.py"
+    shared_boundary.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / "rebuild/validation/shared/build_boundary.py", shared_boundary)
     shutil.copy2(RUNNER, runner)
     (candidate / ".gitignore").write_text("/rebuild/.local/\n")
     assert git(candidate, "init", "-q").returncode == 0
@@ -453,7 +462,14 @@ def main() -> int:
 
         assert_maintained_preflight(root)
 
+    import build_boundary_self_test
+    boundary_parent = ROOT / 'rebuild/.local/validation'
+    boundary_parent.mkdir(parents=True, exist_ok=True)
+    controls_root = Path(tempfile.mkdtemp(prefix='build-isolation-controls-', dir=boundary_parent))
+    build_controls = build_boundary_self_test.controls(controls_root)
+
     print(json.dumps({
+        "build_isolation_controls": build_controls,
         "status": "passed",
         "scenarios": 5,
         "maintained_v11_preflight_mutation_controls": "passed",

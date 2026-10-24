@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import shutil
 import importlib.util
 import json
 import os
@@ -27,6 +28,8 @@ os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 REBUILD_ROOT = REPOSITORY_ROOT / "rebuild"
 ARTIFACT_ROOT = REBUILD_ROOT / ".local" / "validation"
+sys.path.insert(0, str(REBUILD_ROOT / "validation/shared"))
+import build_boundary
 GATE_MODULE_PATH = REBUILD_ROOT / "validation/end-to-end/multi-repository/gate.py"
 GATE_SELF_TEST = REBUILD_ROOT / "validation/end-to-end/multi-repository/gate_self_test.py"
 GATE_ENTRYPOINT_SELF_TEST = (
@@ -115,7 +118,18 @@ def run_in_directory(
     stderr_path = run_directory / "stderr.log"
     started_at = utc_now()
     started = time.monotonic_ns()
+    effective_env = os.environ if env is None else env
+    boundary_error = None
+    if build_boundary.CONTEXT in effective_env:
+        try:
+            build_boundary.check(effective_env)
+        except (OSError, ValueError, KeyError) as error:
+            boundary_error = str(error)
+    selected = shutil.which(argv[0], path=effective_env.get("PATH"))
     metadata = {
+        "build_context": effective_env.get(build_boundary.CONTEXT),
+        "build_context_sha256": effective_env.get(build_boundary.CONTEXT_HASH),
+        "selected_executable": build_boundary.identity(selected) if selected else None,
         "schema_version": 1,
         "argv": list(argv),
         "command": shlex.join(argv),
@@ -128,6 +142,8 @@ def run_in_directory(
     spawn_error: str | None = None
     with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
         try:
+            if boundary_error:
+                raise ValueError(boundary_error)
             completed = subprocess.run(
                 list(argv),
                 cwd=REPOSITORY_ROOT,
@@ -139,10 +155,15 @@ def run_in_directory(
                 env=env,
             )
             return_code = completed.returncode
-        except OSError as error:
+        except (OSError, ValueError) as error:
             spawn_error = f"{type(error).__name__}: {error}"
             stderr_file.write((spawn_error + "\n").encode("utf-8", errors="replace"))
 
+    if build_boundary.CONTEXT in effective_env and boundary_error is None:
+        try:
+            build_boundary.check(effective_env)
+        except (OSError, ValueError, KeyError) as error:
+            boundary_error = str(error)
     ended = time.monotonic_ns()
     signal_number = -return_code if return_code is not None and return_code < 0 else None
     signal_name = None
@@ -170,6 +191,7 @@ def run_in_directory(
     )
     result: dict[str, object] = {
         **metadata,
+        "build_boundary_error": boundary_error,
         "ended_at": utc_now(),
         "duration_ms": round((ended - started) / 1_000_000, 3),
         "outcome": outcome,
@@ -184,6 +206,9 @@ def run_in_directory(
         "stdout": str(stdout_path),
         "stderr": str(stderr_path),
     }
+    if boundary_error:
+        result["wrapper_exit_code"] = 2
+        result["outcome"] = "build_boundary_refused"
     write_json(run_directory / "result.json", result)
     return result
 
@@ -402,10 +427,27 @@ def run_admission(arguments: Sequence[str]) -> int:
 
 
 def run_gate(arguments: Sequence[str]) -> int:
+    run_directory = new_run_directory("v11-gate")
+    original_env = os.environ.copy()
+    try:
+        environment = build_boundary.prepare(REPOSITORY_ROOT, run_directory, original_env)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        write_json(run_directory / "build-refusal.json", {"exit_code": 2, "reason": str(error)})
+        print(f"qualification build refused: {error}; artifacts: {run_directory}", file=sys.stderr)
+        return 2
+    try:
+        os.environ.clear()
+        os.environ.update(environment)
+        return run_isolated_gate(arguments, run_directory)
+    finally:
+        os.environ.clear()
+        os.environ.update(original_env)
+
+
+def run_isolated_gate(arguments: Sequence[str], run_directory: Path) -> int:
     gate = load_gate_module()
     evidence_archive = load_evidence_archive_module()
     external_network, authorization, provider_authorization, provider_model = lifecycle_options(arguments)
-    run_directory = new_run_directory("v11-gate")
     admission = gate.evaluate_admission(
         authorization_assertion=authorization,
         provider_authorization_assertion=provider_authorization,

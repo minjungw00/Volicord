@@ -140,6 +140,19 @@ Support failure는 `validation_failed`이며 Final을 시작하지 않는다.
 | provider qualification `--self-test` | provider evidence/degradation and source-boundary controls |
 | fixture checker | actual maintained fixture hashes/integrity |
 
+Qualification build inputs and outputs are owned by the maintained gate before
+admission. Each invocation receives a new target and compiler/test identity
+receipts; inherited diagnostic compiler/cache/output settings and ambient Cargo
+configuration are refused. Runner children check the recorded source/configuration
+and tool basis before and after execution. Installation and the actual-product
+realization check select this Cargo invocation's JSON artifacts, never a hard-coded
+prior target. Focused checks remain independently scoped and may reuse their own
+targets. Producer/consumer links, contamination controls, original failed evidence
+locations and the bounded unresolved scoped-check investigation are maintained in
+[build-isolation.md](../../validation/end-to-end/multi-repository/build-isolation.md).
+The original invariant rejection and the separately established diagnostic target
+contamination are distinct findings; non-reproduction establishes no causal fix.
+
 Reconstruction CI also runs the runner/gate/entrypoint/archive/report self-tests;
 CI is an additional execution environment, not the local gate's execution owner.
 The gate does not reuse a different HEAD's CI or diagnostic result.

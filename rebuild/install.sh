@@ -25,11 +25,8 @@ if [ "$uninstall" -eq 1 ]; then
 fi
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-cargo build --release --manifest-path "$script_dir/Cargo.toml" -p volicord-operations -p volicord-viewer -p volicord-host
-mkdir -p "$bin_dir" "$runtime_dir"
-install -m 755 "$script_dir/target/release/volicord" "$bin_dir/volicord"
-install -m 755 "$script_dir/target/release/volicord-viewer" "$bin_dir/volicord-viewer"
-install -m 755 "$script_dir/target/release/volicord-mcp" "$bin_dir/volicord-mcp"
+python3 "$script_dir/validation/shared/build_boundary.py" install "$prefix"
+mkdir -p "$runtime_dir"
 VOLICORD_RUNTIME_DIR="$runtime_dir" "$bin_dir/volicord" doctor check >/dev/null
 
 echo "Installed Volicord executables in $bin_dir"

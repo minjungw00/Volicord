@@ -24,7 +24,7 @@ PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_suppo
     "evaluation.json", "evaluation_runs.py", "machine_findings.py", "machine-policy.json",
     "answer_projection.py", "support_evidence.py", "authority_obligations.py", "cli_observations.py",
     "qualitative_review.py", "workload_intents.py", "identity_provenance.py", "repository_state.py",
-    "interaction_diagnostics.py", "../shared/recorded_action_evidence.py", "../../install.sh", "../../scripts/dogfood-campaign",
+    "interaction_diagnostics.py", "../shared/recorded_action_evidence.py", "../shared/build_boundary.py", "../../install.sh", "../../scripts/dogfood-campaign",
     "collection_support.py", "collection_runs_self_test.py", "campaign_self_test.py", "resume_self_test.py", "capture_self_test.py",
     "answer_observations_self_test.py", "latest_work_self_test.py", "review_operations_self_test.py", "qualification_self_test.py",
     "review_meaning_self_test.py", "fixtures/typed-host-page.json")

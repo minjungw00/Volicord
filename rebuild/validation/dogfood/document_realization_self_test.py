@@ -383,9 +383,11 @@ class DocumentRealizationTests(unittest.TestCase):
         self.assertEqual(snapshot(root), before)
 
     def test_actual_product_contract_and_canonical_purity(self):
-        binary = c.ROOT / "rebuild/target/debug/volicord"
-        subprocess.run(["cargo", "build", "--manifest-path", str(c.ROOT / "rebuild/Cargo.toml"),
-            "--bin", "volicord", "--bin", "volicord-mcp"], check=True)
+        import sys
+        sys.path.insert(0, str(c.ROOT / "rebuild/validation/shared"))
+        import build_boundary
+        artifacts = build_boundary.build_binaries(c.ROOT, ("volicord", "volicord-mcp"))
+        binary = Path(artifacts["volicord"]["path"])
         runtime, repository = self.parent / "product-runtime", self.parent / "repository"
         repository.mkdir()
         (repository / "example.py").write_text("def example():\n    return 1\n")

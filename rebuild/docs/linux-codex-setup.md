@@ -7,6 +7,11 @@ cutover. From the repository root:
 rebuild/install.sh
 ```
 
+The local installer requires Cargo/Rust and Python 3.11 or newer. It preserves
+Cargo build streams and artifact identities under ignored `rebuild/.local/builds/`
+and installs the executable paths returned by that build, including custom Cargo
+targets.
+
 The installer builds and installs `volicord`, `volicord-viewer`, and
 `volicord-mcp` under `$HOME/.local/bin` by default. It initializes only the
 current runtime at `$XDG_DATA_HOME/volicord` or

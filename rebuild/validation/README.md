@@ -24,6 +24,13 @@ and the first attributed comparison. Missing implementation/callback ranges and
 contradicted effects fail separately from byte-valid citations. Follow the assessment
 procedure for commands and isolation limits; this is no automatic semantic oracle.
 
+The gate's [build isolation boundary](end-to-end/multi-repository/build-isolation.md)
+binds source/configuration, compiler outputs, Cargo-selected installation artifacts
+and executed test binaries to one fresh target and attempt. Its real-entrypoint
+contamination controls run inside `gate-entrypoint-self-test`, stopping before
+Final and external stages. The same record locates the original scoped-check
+failure and its bounded, unresolved investigation.
+
 ## Commands
 
 `node rebuild/validation/end-to-end/multi-repository/article_reading_browser.cjs
