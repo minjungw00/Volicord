@@ -182,6 +182,9 @@ def journey(server, case, expected, output):
         k: v for k, v in c.items() if k != "binding"
     }) for c in u["citations"]]) for u in doc["units"]]
     assert units == realization["paragraphs"]
+    # The independently preserved recording is the semantic oracle, including
+    # equal-worded endpoints, guarded groups and parallel message vector order.
+    assert doc["diagrams"] == realization["diagrams"]
     assert doc["provenance"] == {k: v for k, v in public["provenance"].items() if k != "citations"}
     reconstruction = time.perf_counter() - reconstruction_start
     write(output / "expanded-publication.json", dict(doc, units=units))

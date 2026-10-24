@@ -255,14 +255,19 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
             .and_then(|n| label(&n.label))
     };
     let mut lines = vec![
-        label(&d.title)?.to_owned(),
+        format!("{} [diagram={}]", label(&d.title)?, d.id),
         texts
             .get(d.caption_unit)
             .ok_or("caption unavailable")?
             .to_string(),
     ];
     for n in d.nodes() {
-        lines.push(format!("{} [{}]", label(&n.label)?, n.kind.text()));
+        lines.push(format!(
+            "{} [{}; node={}]",
+            label(&n.label)?,
+            n.kind.text(),
+            n.id
+        ));
     }
     match &d.meaning {
         DiagramMeaning::Concept { relations, .. }
@@ -281,11 +286,14 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
                     .map(|s| format!(" [if {s}]"))
                     .unwrap_or_default();
                 lines.push(format!(
-                    "{} → {} · {}: {}{guard}",
+                    "{} → {} · {}: {}{guard} [edge={}; from={}; to={}]",
                     node(&r.from)?,
                     node(&r.to)?,
                     r.kind.text(),
-                    label(&r.label)?
+                    label(&r.label)?,
+                    r.id,
+                    r.from,
+                    r.to
                 ));
             }
         }
@@ -308,13 +316,16 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
                 ));
                 for (j, m) in g.messages.iter().enumerate() {
                     lines.push(format!(
-                        "  {}.{} {} → {} · {}: {}",
+                        "  {}.{} {} → {} · {}: {} [message={}; from={}; to={}]",
                         i + 1,
                         j + 1,
                         node(&m.from)?,
                         node(&m.to)?,
                         m.kind.text(),
-                        label(&m.label)?
+                        label(&m.label)?,
+                        m.id,
+                        m.from,
+                        m.to
                     ));
                 }
             }

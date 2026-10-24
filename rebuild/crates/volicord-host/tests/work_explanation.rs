@@ -1591,8 +1591,8 @@ fn cited_code_bounds(excerpt: bool) -> Result<(), Box<dyn Error>> {
     );
     assert_eq!(
         answers.source_excerpts.len(),
-        2,
-        "two complete overlapping ranges fit; no seven unusable prefixes"
+        EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT / body.len(),
+        "only complete overlapping ranges fit; no unusable prefixes"
     );
     let mut keys = std::collections::BTreeSet::new();
     for e in &answers.source_excerpts {

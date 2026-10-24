@@ -461,9 +461,33 @@ fn reader_citation_actions(
             c.start_line,
             c.end_line
         );
-        html.push_str(&format!("<span class=\"evidence-choice\"><a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{} · {}\" title=\"{}\">{} ↗</a><small class=\"source-label\">{}:{}–{}</small></span>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&action),escape(&label),escape(&label),escape(&action),escape(&c.locator),c.start_line,c.end_line));
+        html.push_str(&format!("<span class=\"evidence-choice\"><a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{} · {}\" title=\"{}\">{} ↗</a><small class=\"source-label\">{}:{}–{}</small>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&action),escape(&label),escape(&label),escape(&action),escape(&c.locator),c.start_line,c.end_line));
+        source_window_omission(html, r, answers, c);
+        html.push_str("</span>");
     }
     html.push_str("</div>");
+}
+
+fn source_window_omission(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    citation: &volicord_projections::ExplanationCitation,
+) {
+    if !answers.source_excerpts.iter().any(|e| {
+        e.citation.same_source_range(citation)
+            && e.omitted_utf8_bytes == 0
+            && e.text.len() == citation.end_byte - citation.start_byte
+    }) {
+        html.push_str(&format!(
+            "<small class=\"source-window-omission\">{}</small>",
+            text(
+                r.locale,
+                "Complete code window is not embedded; unavailable offline.",
+                "전체 코드 범위가 포함되지 않아 오프라인에서 읽을 수 없습니다."
+            )
+        ));
+    }
 }
 
 /// Visibility is a reading hierarchy, never a change to admitted dependencies.
@@ -602,6 +626,7 @@ fn render_diagrams(
             }) {
                 let purpose = format!("{} {}", text(r.locale, "Inspect", "코드 확인:"), selected);
                 html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{claim}\" href=\"#{}\" aria-label=\"{} · {}:{}–{}\">{} ↗</a><small class=\"diagram-code-range\">{}:{}–{}</small>",source_point_anchor(answers,label.unit,n),escape(&purpose),escape(&c.locator),c.start_line,c.end_line,escape(&purpose),escape(&c.locator),c.start_line,c.end_line));
+                source_window_omission(html, r, answers, c);
             }
             html.push_str(&format!("</div><a class=\"button secondary diagram-return\" href=\"#{origin}\">← {}</a></section>",text(r.locale,"Return to element","요소로 돌아가기")));
         }

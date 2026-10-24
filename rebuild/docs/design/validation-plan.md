@@ -3707,3 +3707,16 @@ an otherwise empty routing margin is not meaningful initial visual framing.
 The driver asserts that live pages contain scripting and static exports do not.
 Enabling JavaScript in the browser does not turn a script-free artifact into a
 scripted consumer; initial-framing assertions apply to the live path only.
+
+### Critical visual evidence consumers
+
+Focused Viewer `citation_reading` covers eleven complete permission windows exceeding
+the historical aggregate, exact script-free export bytes, same-named sequence
+participants with distinct public text identities, and supporting-window competition.
+Complete MCP measurements compare `diagrams` with the original recording in addition
+to expanded units, citations and provenance. Preserve failed admission/authoring
+attempts and measure Source, plan, realization, retained metadata, render, export
+and transport separately. The 49,152-byte read-only inclusion policy is justified
+by 44,536 bytes of current implementing windows; it changes no authoritative gate.
+Technical byte equality is neither entailment, independent assessment nor human
+comprehension. Focused scoped validation is separate from Final/V11 qualification.

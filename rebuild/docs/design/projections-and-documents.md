@@ -2694,3 +2694,28 @@ list remain available; initial framing is presentation only.
 Self-contained offline exports remain script-free. Figure expansion, scale controls
 and automatic initial framing are live enhancements; static figures retain native
 scrolling and complete relationship, claim, citation and return links.
+
+### Complete critical visual evidence consumption
+
+Critical reading includes permission and lifecycle implementing windows, not only
+successful compose/record paths. Reinspection of the original five omitted Volicord
+windows requires included-path/root/full-file-hash capture checks, separate canonical
+identity/body retention failure, current-file validation, and complete repository
+Source identity/lifetime validation. Their current combined concept/component/flow
+publication needs 44,536 distinct UTF-8 Source bytes in 16 windows (largest 7,162),
+versus the prior 32,768-byte aggregate. Shared claim references cannot remove those
+distinct bytes. The read-only embedded aggregate is therefore 49,152 bytes; each
+Source capture/window remains 16,384, citation pages 4,096, response 40,960 and retained
+content 147,456. No preparation, source authority, gate or transport ceiling changes.
+This policy supersedes earlier 32 KiB aggregate descriptions. Complete-window
+allocation first preserves the established 32 KiB authored bundle selection, then
+uses the added capacity for whole supporting windows. A newly fitting early
+inventory bundle cannot evict an already complete later mechanism. Exact
+affected-claim/element omissions remain mandatory beyond the aggregate bound.
+
+Diagram text identifies its figure, nodes and edge/message endpoints with admitted
+IDs as well as labels. Equal display names cannot collapse separate participants,
+relations, ordering or return identities. Complete MCP reconstruction compares all
+figure semantics with the original recorded realization, not the compact helper.
+Read-only presentation changes do not convert older explanation formats or alter
+v8 preparation, seals, recording identity, dependency expiry or canonical authority.

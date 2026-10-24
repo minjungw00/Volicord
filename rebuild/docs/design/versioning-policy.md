@@ -587,3 +587,9 @@ document metadata versions are unchanged. SVG renderer identity is presentation
 metadata, not an additional retained semantic format or a version-conversion path.
 
 Version 8 adds complete component, guarded flowchart and explicitly owned state-transition figures. Node/edge class, owner, conditions and event labels share exhaustive grounding, semantic seals and current-only rejection. Existing v7 figures must be explicitly regenerated, never relabelled. No other format advances.
+
+The embedded critical-code aggregate is now 49,152 UTF-8 bytes under Projection's
+measured critical-evidence policy. This changes read-only inclusion, not retained
+v8 shape, preparation, Source capture, citation pages or document metadata formats.
+Nonvisual diagram IDs are presentation of already admitted identity; no migration
+or compatibility decoder is introduced.

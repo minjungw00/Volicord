@@ -604,7 +604,13 @@ fn bound_excerpts(
         })
         .collect();
     let mut selected = std::collections::BTreeSet::new();
-    let mut remaining = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
+    // Preserve complete bundles admitted by the established 32 KiB selection.
+    // Additional capacity fills complete supporting windows afterwards: admitting
+    // a newly fitting early inventory bundle must not displace a later mechanism
+    // which was already complete. This is allocation stability, not importance.
+    const BUNDLE_CAPACITY: usize = 32_768;
+    let capacity = volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT;
+    let mut remaining = capacity.min(BUNDLE_CAPACITY);
     for (_, keys) in bundles {
         let added: usize = keys
             .iter()
@@ -616,6 +622,7 @@ fn bound_excerpts(
             selected.extend(keys);
         }
     }
+    remaining += capacity.saturating_sub(BUNDLE_CAPACITY);
     let mut supporting: Vec<_> = sizes.iter().collect();
     supporting.sort_by_key(|(k, size)| (**size, (*k).clone()));
     for (k, size) in supporting {

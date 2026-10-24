@@ -1347,6 +1347,15 @@ fn important_complete_window_survives_smaller_supporting_windows() -> Result<(),
     ] {
         sources.push((name.into(), window(full, first, next)?));
     }
+    // Supporting fixture context grows with the aggregate policy. Keep the
+    // original implementation bytes intact, followed by explicitly authored
+    // comments, so this still exercises competition rather than an old ceiling.
+    let target = (EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT / 10 + 512).min(sources[10].1.len() - 1);
+    for (_, source) in &mut sources[..10] {
+        while source.len() + 32 <= target {
+            source.push_str("// Authored supporting context.\n");
+        }
+    }
     let important = &sources[10].1;
     let support_size: usize = sources[..10].iter().map(|(_, text)| text.len()).sum();
     assert!(important.len() <= EXPLANATION_SOURCE_WINDOW_BYTE_LIMIT);
@@ -1994,5 +2003,102 @@ fn shared_diagram_caption_preserves_separate_elements_and_exact_origins(
     }
     assert!(html.contains("-diagram-mechanism-dependency-claim"));
     assert!(html.contains("-diagram-independent-detail-dependency-claim"));
+    Ok(())
+}
+
+#[test]
+fn complete_permission_windows_fit_without_changing_source_or_transport_bounds(
+) -> Result<(), Box<dyn Error>> {
+    // Eleven independent 4 KiB windows: too large for the prior 32 KiB total.
+    // Literal fixture inputs are the oracle for every byte in the real export.
+    let sources = (0..11).map(|i| {
+        let mut body = format!("def permission_{i}(allowed):\n    if not allowed:\n        return None\n    return allowed\n");
+        while body.len() < 4_000 { body.push_str("# retained permission context\n"); }
+        (format!("permission_{i}.py"), body)
+    }).collect();
+    let f = Fixture::new_sources(None, false, Some(sources))?;
+    let answers = f.answers()?;
+    let bytes: usize = f.originals.iter().map(String::len).sum();
+    assert!(bytes > 32_768 && bytes < 49_152);
+    assert_eq!(answers.omitted_source_excerpt_count, 0);
+    assert!(answers
+        .source_reading_scope(true)
+        .iter()
+        .all(|s| s.state == SourceWindowState::Complete));
+    let output = f.temp.path().join("permission.html");
+    ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .export_snapshot(&f.request(), &output)?;
+    let html = fs::read_to_string(output)?;
+    let code = code_texts(&html);
+    assert!(!html.contains("<script"));
+    for original in &f.originals {
+        assert!(code.contains(original), "complete implementing window");
+    }
+    Ok(())
+}
+
+#[test]
+fn same_named_nodes_retain_distinct_nonvisual_endpoints_in_actual_publication(
+) -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let mut realization = diagram_control(&f, true)?;
+    if let DiagramMeaning::Sequence { participants, .. } = &mut realization.diagrams[0].meaning {
+        participants[1].label = participants[0].label.clone();
+    }
+    seal_diagrams(&mut realization)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization,
+    )?;
+    let text = f.answers()?.text();
+    assert!(text.contains("Admission [participant; node=admit]"));
+    assert!(text.contains("Admission [participant; node=verify]"));
+    assert!(text.contains("[message=invoke; from=admit; to=verify]"));
+    assert!(text.contains("[message=answer; from=verify; to=admit]"));
+    assert!(text.contains("parallel (no relative order asserted) [if acceptance]"));
+    Ok(())
+}
+
+#[test]
+fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let mut realization = diagram_control(&f, false)?;
+    // The first unit has eight large, genuinely retained inventory Sources.
+    // Only some fit. Selecting its grounded wording must disclose that locally.
+    let label = DiagramLabel {
+        unit: 0,
+        start_byte: 0,
+        end_byte: 14,
+    };
+    let d = &mut realization.diagrams[0];
+    d.caption_unit = 0;
+    d.title = label.clone();
+    if let DiagramMeaning::Concept { nodes, relations } = &mut d.meaning {
+        for n in nodes {
+            n.label = label.clone();
+        }
+        relations[0].label = label;
+        relations[0].condition = None;
+    }
+    seal_diagrams(&mut realization)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization,
+    )?;
+    assert!(f.answers()?.omitted_source_excerpt_count > 0);
+    let html = f.get("/?view=repository")?;
+    let claim = html
+        .split("-diagram-mechanism-dependency-claim\" tabindex")
+        .nth(1)
+        .ok_or("exact claim")?
+        .split("</section>")
+        .next()
+        .ok_or("claim close")?;
+    assert!(claim.contains("class=\"source-window-omission\""));
+    assert!(claim.contains("unavailable offline"));
     Ok(())
 }
