@@ -648,3 +648,11 @@ complete fixed-width identity payload. Impossible/truncated counts are corrupt
 state, not an empty list, a retry or an allocation request. This is current-format
 read validation; it introduces no schema version, repair write or compatibility
 path. Local inspection preserves its bounded dependency-failure HTTP response.
+
+A repository explanation may reuse its complete freshly verified comparison only
+within one read/render/publication operation. The internal basis is not serialized
+or retained, and cannot survive an error, later request, expiry or forgetting.
+Shared code payload aliases retain distinct claim/return identities; unavailable
+live Source reads remove shared and fetched code, never restore it from an alias.
+Atomic export recomputes its own read basis under publication validation rather
+than treating render-time success as current authority.

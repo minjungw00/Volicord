@@ -1761,7 +1761,8 @@ fn render_source_excerpts(
             diagram_source_returns(html, r, answers, index, n);
             html.push_str(&format!("<div data-statement-role=\"generated-interpretation\" data-question=\"{}\" data-paragraph=\"{}\" data-claim-start=\"{}\" data-claim-end=\"{}\"></div>",escape(&answer.question),index+1,c.claim_start_byte,c.claim_end_byte));
             let range = source_excerpt_anchor(answers, c);
-            if seen.insert(range.clone()) {
+            let first_payload = seen.insert(range.clone());
+            if first_payload {
                 html.push_str(&format!("<span id=\"{}\"></span>", escape(&range)));
             }
             html.push_str(&format!(
@@ -1798,28 +1799,48 @@ fn render_source_excerpts(
                 if e.source_representation.as_deref() == Some("bounded_excerpt") {
                     context.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.","제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
                 }
-                let syntax = crate::source_highlight::language(
-                    c,
-                    e.source_representation.as_deref(),
-                    e.execution.is_some(),
-                );
-                if e.text.contains('\0') {
-                    html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"This excerpt contains NUL characters. HTML parsing displays replacement characters for NUL; exact NUL text is available only in the permitted live citation response.","이 발췌에는 NUL 문자가 있습니다. HTML 파서는 NUL을 대체 문자로 표시합니다. 정확한 NUL 텍스트는 허용된 실시간 인용 응답에서만 읽을 수 있습니다.")));
+                if first_payload {
+                    // Native aliases retain each citation's own return while
+                    // sharing only the exact validated Source/range payload.
+                    for (u, prose) in answers.prose.iter().enumerate() {
+                        for (j, other) in prose
+                            .citations
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, other)| other.same_source_range(c))
+                        {
+                            if u == index && j == n {
+                                continue;
+                            }
+                            let point = source_point_anchor(answers, u, j);
+                            html.push_str(&format!("<section class=\"shared-source-target\" id=\"{point}-shared-code\" data-source-id=\"{}\" data-range-sha256=\"{}\" tabindex=\"-1\"><p>{} <a class=\"shared-source-return\" href=\"#{point}\">← {}</a></p></section>",escape(&other.source_id),escape(&other.range_sha256),text(r.locale,"Shared complete code. The selected claim and provenance stay at its original reading point.","공유하는 전체 코드입니다. 선택한 주장과 provenance는 원래 읽기 위치에 남습니다."),text(r.locale,"Return to selected Source claim","선택한 Source 주장으로 돌아가기")));
+                        }
+                    }
+                    let syntax = crate::source_highlight::language(
+                        c,
+                        e.source_representation.as_deref(),
+                        e.execution.is_some(),
+                    );
+                    if e.text.contains('\0') {
+                        html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"This excerpt contains NUL characters. HTML parsing displays replacement characters for NUL; exact NUL text is available only in the permitted live citation response.","이 발췌에는 NUL 문자가 있습니다. HTML 파서는 NUL을 대체 문자로 표시합니다. 정확한 NUL 텍스트는 허용된 실시간 인용 응답에서만 읽을 수 있습니다.")));
+                    }
+                    html.push_str(&format!(
+                        "<p class=\"code-caption\">{} · {}</p>",
+                        syntax.map(|s| s.label()).unwrap_or(text(
+                            r.locale,
+                            "Plain text",
+                            "일반 텍스트"
+                        )),
+                        text(
+                            r.locale,
+                            "Observed cited range · syntax colors are a reading aid",
+                            "관측된 인용 범위 · 구문 색상은 읽기 보조 표시"
+                        )
+                    ));
+                    html.push_str(&format!("<pre class=\"code-region\" tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\" data-syntax=\"{}\">{}</code></pre>",text(r.locale,"Original Source","Source 원문"),escape(&c.locator),c.start_line,e.displayed_end_line,e.text.split_inclusive('\n').enumerate().map(|(line,_)|format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(),syntax.map(|s|s.key()).unwrap_or("plain"),crate::source_highlight::html(&e.text,syntax)));
+                } else {
+                    html.push_str(&format!("<p class=\"source-code-reference\"><a href=\"#{anchor}-shared-code\" data-range-sha256=\"{}\">{} ↗</a></p>",escape(&c.range_sha256),text(r.locale,"Read shared complete code for this exact Source range","이 정확한 Source 범위의 공유 전체 코드 읽기")));
                 }
-                html.push_str(&format!(
-                    "<p class=\"code-caption\">{} · {}</p>",
-                    syntax.map(|s| s.label()).unwrap_or(text(
-                        r.locale,
-                        "Plain text",
-                        "일반 텍스트"
-                    )),
-                    text(
-                        r.locale,
-                        "Observed cited range · syntax colors are a reading aid",
-                        "관측된 인용 범위 · 구문 색상은 읽기 보조 표시"
-                    )
-                ));
-                html.push_str(&format!("<pre class=\"code-region\" tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\" data-syntax=\"{}\">{}</code></pre>",text(r.locale,"Original Source","Source 원문"),escape(&c.locator),c.start_line,e.displayed_end_line,e.text.split_inclusive('\n').enumerate().map(|(line,_)|format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(),syntax.map(|s|s.key()).unwrap_or("plain"),crate::source_highlight::html(&e.text,syntax)));
                 if e.omitted_utf8_bytes > 0 {
                     html.push_str(&format!(
                         "<p class=\"source-note initial-range-omission\">{}: {} · {}–{} · bytes {}–{}</p>",

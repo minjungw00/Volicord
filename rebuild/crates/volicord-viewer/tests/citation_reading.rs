@@ -973,7 +973,7 @@ fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
     );
     assert!(reader
         .text
-        .contains("self.validate_subject_sources_selected("));
+        .contains("self.validate_subject_sources_in_read("));
     assert!(reader.text.contains("bytes.len() > 32_768"));
     assert!(answers.source_excerpts.len() >= 3);
     assert_eq!(
@@ -1017,7 +1017,7 @@ fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
     let html = fs::read_to_string(destination)?;
     assert!(code_texts(&html)
         .iter()
-        .any(|s| s.contains("self.validate_subject_sources_selected(")));
+        .any(|s| s.contains("self.validate_subject_sources_in_read(")));
     assert!(code_texts(&html)
         .iter()
         .any(|s| s.contains("bytes.len() > 32_768")));
@@ -2212,5 +2212,48 @@ fn identical_wording_republication_cannot_rebind_a_selected_citation() -> Result
             .is_err(),
         "a selected older publication must not silently bind to its replacement"
     );
+    Ok(())
+}
+
+#[test]
+fn repeated_code_payload_keeps_distinct_claims_and_native_returns() -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let output = f.temp.path().join("shared-code.html");
+    ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .export_snapshot(&f.request(), &output)?;
+    let html = fs::read_to_string(output)?;
+    let codes = code_texts(&html);
+    assert_eq!(
+        codes.iter().filter(|c| *c == &f.originals[8]).count(),
+        1,
+        "one physical complete Source payload"
+    );
+    assert!(html.contains("class=\"source-code-reference\""));
+    assert!(html.contains("class=\"shared-source-return\""));
+    for section in html
+        .split("<section class=\"shared-source-target\"")
+        .skip(1)
+    {
+        let id = section
+            .split_once("id=\"")
+            .ok_or("alias ID")?
+            .1
+            .split('"')
+            .next()
+            .ok_or("alias")?;
+        let point = id.strip_suffix("-shared-code").ok_or("native alias")?;
+        assert!(section
+            .split("</section>")
+            .next()
+            .ok_or("alias close")?
+            .contains(&format!("href=\"#{point}\"")));
+        assert_eq!(
+            html.matches(&format!(" id=\"{point}\"")).count(),
+            1,
+            "original claim identity survives sharing"
+        );
+    }
+    assert!(html.contains(&f.realization.paragraphs[2].text));
+    assert!(!html.contains("<script"));
     Ok(())
 }

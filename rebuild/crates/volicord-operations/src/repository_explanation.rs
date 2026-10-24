@@ -152,6 +152,13 @@ fn area_summary(areas: &[volicord_repository_intelligence::AreaId]) -> Value {
         "common_file_area":if common.is_empty() {"."} else {&common},
         "sha256":explanation_text_hash(&json!(areas).to_string())})
 }
+/// Fresh request-owned comparison, never persisted or accepted from a host.
+/// Constructed only after complete included/uncited repository comparison.
+pub(crate) struct RepositoryExplanationReadBasis {
+    pub(crate) analysis: AnalysisMetadata,
+    pub(crate) repository: volicord_repository_intelligence::RepositorySnapshot,
+}
+
 impl LocalOperations {
     pub fn compose_repository_explanation(
         &self,
@@ -290,9 +297,35 @@ impl LocalOperations {
         id: AnalysisSnapshotId,
         language: &str,
     ) -> Result<ExplanationPlan, Error> {
+        let basis = self.repository_explanation_read_basis(canonical, id)?;
+        self.repository_explanation_plan_from_read(canonical, &basis, language)
+    }
+    pub(crate) fn repository_explanation_read_basis(
+        &self,
+        canonical: &CanonicalReadBasis,
+        id: AnalysisSnapshotId,
+    ) -> Result<RepositoryExplanationReadBasis, Error> {
         let analysis = self.repository_source_metadata(canonical.project.id, id)?;
         let repository = self.current_explanation_repository(canonical, &analysis)?;
-        let mut repository = serde_json::to_value(repository)
+        Ok(RepositoryExplanationReadBasis {
+            analysis,
+            repository,
+        })
+    }
+    pub(crate) fn repository_explanation_plan_from_read(
+        &self,
+        canonical: &CanonicalReadBasis,
+        basis: &RepositoryExplanationReadBasis,
+        language: &str,
+    ) -> Result<ExplanationPlan, Error> {
+        let analysis = &basis.analysis;
+        let id = analysis.identity;
+        if analysis.project.identity() != canonical.project.id
+            || basis.repository.identity != analysis.repository_snapshot
+        {
+            return Err(Error::new("foreign repository explanation read basis"));
+        }
+        let mut repository = serde_json::to_value(&basis.repository)
             .map_err(|e| Error::with_source("cannot encode repository basis", e))?;
         // Read-time observation time is not historical evidence and must not
         // change the retained basis on every GET.

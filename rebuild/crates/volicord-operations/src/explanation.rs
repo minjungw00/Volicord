@@ -40,9 +40,15 @@ impl LocalOperations {
         const CHUNK: usize = 8_192;
         const CONTENT: usize = 1_048_576;
         let _inspection = self.layout().acquire_health_lock()?;
-        let (canonical, retained, publication_id) =
+        let (canonical, retained, publication_id, repository) =
             self.permitted_read_publication(project, subject, language)?;
-        self.validate_subject_sources(&canonical, subject, &retained.realization)?;
+        self.validate_subject_sources_in_read(
+            &canonical,
+            subject,
+            &retained.realization,
+            None,
+            repository.as_ref(),
+        )?;
         let document = compact_publication(&retained, &publication_id);
         let encoded = serde_json::to_string(&document)
             .map_err(|e| Error::with_source("publication encoding failed", e))?;
@@ -81,7 +87,15 @@ impl LocalOperations {
         project: ProjectId,
         subject: ExplanationSubject,
         language: &str,
-    ) -> Result<(CanonicalReadBasis, RetainedExplanation, String), Error> {
+    ) -> Result<
+        (
+            CanonicalReadBasis,
+            RetainedExplanation,
+            String,
+            Option<crate::repository_explanation::RepositoryExplanationReadBasis>,
+        ),
+        Error,
+    > {
         let canonical = self.canonical_basis(project)?;
         let records = self.privacy_status(project)?;
         let target = purpose(subject, language);
@@ -124,8 +138,8 @@ impl LocalOperations {
                 )
             })?;
         retained.publication_id = Some(record.id.to_string());
-        let plan = self
-            .prepare_subject_explanation(&canonical, subject, language)
+        let (plan, repository) = self
+            .prepare_subject_explanation_for_read(&canonical, subject, language)
             .map_err(|e| {
                 if e.reading_failure().is_some() {
                     e
@@ -145,7 +159,7 @@ impl LocalOperations {
                     .with_reading_failure(ExplanationFailureReason::Changed),
             );
         }
-        Ok((canonical, retained, record.id.to_string()))
+        Ok((canonical, retained, record.id.to_string(), repository))
     }
 
     pub(crate) fn validate_read_publication(
@@ -177,7 +191,7 @@ impl LocalOperations {
                 Error::new("explanation unavailable; render again before publication")
             })?;
             retained.publication_id = Some(record.id.to_string());
-            let plan = self.prepare_subject_explanation(
+            let (plan, repository) = self.prepare_subject_explanation_for_read(
                 &canonical,
                 provenance.subject,
                 &provenance.language,
@@ -191,10 +205,12 @@ impl LocalOperations {
                 ));
             }
             if !matches!(provenance.subject, ExplanationSubject::Decision(_)) {
-                self.validate_subject_sources(
+                self.validate_subject_sources_in_read(
                     &canonical,
                     provenance.subject,
                     &retained.realization,
+                    None,
+                    repository.as_ref(),
                 )?;
             }
         }
@@ -209,6 +225,30 @@ impl LocalOperations {
     ) -> Result<ExplanationPlan, Error> {
         let canonical = self.canonical_basis(project)?;
         self.prepare_subject_explanation(&canonical, subject, language)
+    }
+    fn prepare_subject_explanation_for_read(
+        &self,
+        canonical: &CanonicalReadBasis,
+        subject: ExplanationSubject,
+        language: &str,
+    ) -> Result<
+        (
+            ExplanationPlan,
+            Option<crate::repository_explanation::RepositoryExplanationReadBasis>,
+        ),
+        Error,
+    > {
+        if let ExplanationSubject::Repository(id) = subject {
+            let repository = self.repository_explanation_read_basis(canonical, id)?;
+            let plan =
+                self.repository_explanation_plan_from_read(canonical, &repository, language)?;
+            Ok((plan, Some(repository)))
+        } else {
+            Ok((
+                self.prepare_subject_explanation(canonical, subject, language)?,
+                None,
+            ))
+        }
     }
     pub(crate) fn prepare_subject_explanation(
         &self,
@@ -372,7 +412,7 @@ impl LocalOperations {
         selection: &ExplanationCitationSelection,
     ) -> Result<serde_json::Value, Error> {
         let _inspection = self.layout().acquire_health_lock()?;
-        let (canonical, retained, publication_id) =
+        let (canonical, retained, publication_id, repository) =
             self.permitted_read_publication(project, subject, language)?;
         if selection.publication_id != publication_id {
             return Err(Error::new(
@@ -396,11 +436,12 @@ impl LocalOperations {
             .citations
             .get(selection.citation_index)
             .ok_or_else(|| Error::new("selected citation unavailable"))?;
-        let validated = self.validate_subject_sources_selected(
+        let validated = self.validate_subject_sources_in_read(
             &canonical,
             subject,
             &retained.realization,
             Some((citation, selection.offset)),
+            repository.as_ref(),
         )?;
         let chunk = validated
             .selected
@@ -484,7 +525,7 @@ impl LocalOperations {
                                 retained.publication_id = Some(record.id.to_string());
                                 applicability = ExplanationApplicability::from_retained(&retained);
                                 preparations += 1;
-                                match self.prepare_subject_explanation(canonical, subject, &language) {
+                                match self.prepare_subject_explanation_for_read(canonical, subject, &language) {
                             Err(e) => {
                                 let reason = e.reading_failure().unwrap_or(
                                     if matches!(subject, ExplanationSubject::Repository(_)) { ExplanationFailureReason::ComparisonUnavailable } else { ExplanationFailureReason::Unavailable });
@@ -496,12 +537,12 @@ impl LocalOperations {
                                 };
                                 (if reason == ExplanationFailureReason::Changed { ExplanationState::Stale } else { ExplanationState::Unavailable }, None, Some(e.to_string()))
                             },
-                            Ok(plan)
+                            Ok((plan, repository))
                                 if record.state == ManagedDerivedState::Current
                                     && retained_matches(&plan, &retained) =>
                             {
                                 let validation = match subject {
-                                    ExplanationSubject::Work(_) | ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_) | ExplanationSubject::Repository(_) => self.validate_subject_sources(canonical,subject,&retained.realization).map(|validated| {
+                                    ExplanationSubject::Work(_) | ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_) | ExplanationSubject::Repository(_) => self.validate_subject_sources_in_read(canonical,subject,&retained.realization,None,repository.as_ref()).map(|validated| {
                                         source_excerpts = validated.excerpts;
                                         omitted_source_excerpt_count = validated.omitted_excerpt_count;
                                     }),

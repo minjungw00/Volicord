@@ -2750,3 +2750,24 @@ new figure/claim origins. Known loss still withholds cached code and diagram mea
 Generated-document metadata advances independently to 11 because embedded publication
 provenance now preserves this managed output identity; canonical, Source-copy, bundle,
 Analysis Snapshot and explanation versions do not change.
+
+### Request-owned comparison and shared code payloads
+
+Repository explanation preparation returns an internal request-owned verified
+metadata/snapshot basis. Source validation can consume that exact Project/Analysis
+basis in the same operation rather than reload metadata and repeat its complete
+repository comparison. Every Source still passes current association, canonical
+availability, format, immutable body, binding, expiry, claim/range and current-file
+checks. The next page/citation/render/export revalidation constructs a new basis,
+including uncited files. There is no persisted comparison, TTL, render cache or
+cross-request freshness receipt. Work reads retain their own snapshot checks.
+
+Live and offline HTML embed a complete payload once per exact Source/range binding.
+Every claim/citation keeps its own point and provenance. Repeated points link to a
+native alias beside the shared code with an exact return to that original point;
+the shared view hides the first claim's unrelated quote and points to the selected
+claim's provenance. SVG/text element origins remain separate. Native keyboard
+anchors work without script; live citation reads still fetch fresh permitted bytes.
+Known Source loss removes the physical shared payload as well as fetched panels and
+figure alternatives. Exported static bytes record their export basis and cannot
+promise future revocation. This changes no retained format or Source authority.

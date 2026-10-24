@@ -126,6 +126,7 @@
     const status = control.querySelector('.citation-status');
     const button = control.querySelector('button');
     button.disabled = true;
+    point.querySelectorAll('.source-code-reference').forEach(n => n.hidden = true);
     point.querySelectorAll('pre.code-region,.code-caption').forEach(n => n.hidden = true);
     status.textContent = ko ? '현재 허용된 인용 바이트 확인 중…' : 'Checking current permitted cited bytes…';
     try {

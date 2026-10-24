@@ -12,6 +12,8 @@ fs.mkdirSync(output, {recursive:false});
 const hash = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),chromium:hash(config.chromium)};
 const sleep = ms => new Promise(r => setTimeout(r,ms));
+const {openEmbeddedCode,returnFromEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
+executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/product_review_controls.cjs'));
 const failureReasons=['expired','deleted','changed','withheld','comparison_unavailable','unavailable','missing','corrupt','unsupported'];
 (async () => {
   const browserEnv={...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})};
@@ -105,6 +107,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           const actions=claim.locator('a.evidence-link');
           const action=actions.nth(c.citation);
           assert.equal(await action.count(),1,'critical purpose has exact code action');
+          const selectedStarted=Date.now();
           await action.click();
           const pointId=(await action.getAttribute('href')).slice(1);
           const point=page.locator('[id="'+pointId+'"]');
@@ -125,9 +128,12 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             assert.equal(collected,expected,'all critical implementing bytes across bounded pages');
             assert(pages>0);
           } else {
-            const code=await point.locator('pre.code-region code').allTextContents();
+            const code=await (await openEmbeddedCode(point)).allTextContents();
             assert(code.includes(expected),'offline/no-JS complete exact implementing bytes');
+            await returnFromEmbeddedCode(point);
           }
+          const selected_evidence_ms=Date.now()-selectedStarted;
+          const returnStarted=Date.now();let return_ms=null;
           if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-source.png`)});
           if(config.precise_return && mode==='live') {
             await point.locator('a.return').click();
@@ -135,6 +141,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
             const restored=await figure.locator('.diagram-viewport').evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,y:scrollY}));
             for(const coordinate of ['left','top','y']) assert(Math.abs(restored[coordinate]-prior[coordinate])<=5,'exact figure/reading return '+coordinate+' '+JSON.stringify({prior,restored}));
+            return_ms=Date.now()-returnStarted;
             await page.keyboard.press('Enter');await action.click();
             assert((await page.url()).endsWith('!'+claimId),'publication-bound Source deep link');
             await page.reload({waitUntil:'load'});
@@ -206,8 +213,9 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             await point.locator('a.return').click();
             await page.goBack(); // native history also preserves script-free access
           }
+          if(return_ms===null)return_ms=Date.now()-returnStarted;
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:'volicord-static-svg/3'});
+          results.push({case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:'volicord-static-svg/3'});
           await context.close();
         }
       } catch(error) {

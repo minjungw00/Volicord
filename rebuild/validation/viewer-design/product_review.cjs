@@ -1,3 +1,4 @@
+const {embeddedCode}=require('./product_review_controls.cjs');
 // Actual Product journeys and review packaging. No case prose or expected claims
 // are authored here; all pages are served/exported by the selected executable.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
@@ -76,7 +77,7 @@ async function inspectSource(page,c,width,offline,article,link,task,destination,
    assert.equal(await point.locator('.citation-inspection').count(),0,'offline omission grants no live retrieval');
   }
  }
- if(!omitted)assert.equal(await point.locator('.code-region').last().evaluate(n=>getComputedStyle(n).fontSize),width<=600?'12px':width<=900?'13px':'15px');
+ if(!omitted)assert.equal(await (await embeddedCode(point)).evaluate(n=>getComputedStyle(n.parentElement).fontSize),width<=600?'12px':width<=900?'13px':'15px');
  await capture(page,c,sourceCaptureName(destination,offline,task),width);
  const returnId=(await point.locator('.return').getAttribute('href')).slice(1);assert.equal(returnId,origin);
  if(!offline){await page.reload();await point.waitFor({state:'visible'});await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),returnId);

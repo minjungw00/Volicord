@@ -1,3 +1,4 @@
+const {embeddedCode}=require('./product_review_controls.cjs');
 // Challenge critical-task assertions against unchanged actual Product exports.
 // Run after product_review.cjs; mutations affect disposable browser DOM only.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
@@ -40,9 +41,9 @@ const {chromium}=require(config.playwright);
     const fresh=page.locator(`[id="${target.slice(1)}"]`);
     await fresh.evaluate(n=>n.dataset.sourceId='foreign-source');
     await assert.rejects(()=>criticalPoint(fresh,task),/critical Source identity/);checks++;
-    await page.goto(url);await page.reload();await fresh.locator('pre.code-region code').evaluate(n=>n.textContent=n.textContent.slice(0,-1));
+    await page.goto(url);await page.reload();await (await embeddedCode(fresh)).evaluate(n=>n.textContent=n.textContent.slice(0,-1));
     await assert.rejects(()=>criticalBytes(page,fresh,task,true),/offline complete critical window/);checks++;
-    await page.goto(url);await page.reload();await fresh.locator('pre.code-region').evaluate(n=>n.remove());
+    await page.goto(url);await page.reload();await (await embeddedCode(fresh)).evaluate(n=>n.parentElement.remove());
     await assert.rejects(()=>criticalBytes(page,fresh,task,true),/offline critical window cannot be omitted/);checks++;
    }
   }}finally{await context.close();}

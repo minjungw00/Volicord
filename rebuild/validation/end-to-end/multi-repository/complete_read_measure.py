@@ -112,6 +112,9 @@ def original(case):
     public = json.loads(Path(case["public"]).read_bytes())
     receipt = json.loads(Path(case["recording_receipt"]).read_bytes())
     retained = receipt["explanation"]
+    if receipt.get("publication_id"):
+        assert public["provenance"]["publication_id"] == receipt["publication_id"]
+        case["expected_publication_id"] = receipt["publication_id"]
     assert retained["realization"] == realization
     for key in ("project_id", "subject", "question", "generated_at_unix_micros",
                 "generator_identity_status", "semantic_approval_status"):
@@ -204,6 +207,7 @@ def journey(server, case, expected, output):
         while True:
             selected = server.call("explanation_read", args, "evidence")
             chunk = selected["chunk"]
+            assert selected["publication_id"] == doc["publication_id"]
             assert chunk["citation"] == citation
             assert selected["claim"] == realization["paragraphs"][i]["text"].encode()[
                 citation["claim_start_byte"]:citation["claim_end_byte"]].decode()

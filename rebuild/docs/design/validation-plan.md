@@ -3737,3 +3737,23 @@ remain independent. The original recording response and public receipt pin expec
 managed IDs; old measurement inputs need that original receipt rather than a helper
 or equal wording as their identity oracle. Generated-document metadata 11 retains
 published provenance; previous document metadata is unsupported, not converted.
+
+### Measured comparison and payload sharing
+
+Request-owned repository comparison reuse retains full cited/uncited checks on
+all subsequent requests. Focused Host complete-publication and Operations
+`repository_explanation`/`read_freshness` controls challenge same-size edits,
+foreign/replaced publications, source-copy lifecycle and unavailable comparison.
+Viewer `citation_reading` checks one complete physical payload with distinct native
+claim returns. Actual browser controls follow shared aliases by keyboard and verify
+Source identity, complete original bytes and the exact native return. Missing or
+truncated shared payloads cannot pass a critical task. These controls preserve
+complete inclusion and never equate sharing with semantic approval.
+
+Comparable MCP measurements keep original recording/public receipts and executable
+identities, five cold/warm repetitions and five pairs of contending readers on the
+same immutable repository/runtime inputs. Run no builds/tests concurrently with
+controlled comparisons. Preserve source/preparation/realization/retained metadata,
+render, export, first-display and selected-evidence/return costs separately. Report
+all repetitions and median/min/max, without p95 or a new latency SLA. Differences
+from added publication identity metadata are fidelity costs, not compression claims.

@@ -147,6 +147,25 @@ impl LocalOperations {
         response: &ExplanationRealization,
         selection: Option<(&volicord_projections::ExplanationCitation, usize)>,
     ) -> Result<ValidatedExplanationSources, Error> {
+        self.validate_subject_sources_in_read(basis, subject, response, selection, None)
+    }
+
+    pub(crate) fn validate_subject_sources_in_read(
+        &self,
+        basis: &CanonicalReadBasis,
+        subject: ExplanationSubject,
+        response: &ExplanationRealization,
+        selection: Option<(&volicord_projections::ExplanationCitation, usize)>,
+        repository: Option<&crate::repository_explanation::RepositoryExplanationReadBasis>,
+    ) -> Result<ValidatedExplanationSources, Error> {
+        if let Some(repository) = repository {
+            if subject != ExplanationSubject::Repository(repository.analysis.identity)
+                || repository.analysis.project.identity() != basis.project.id
+                || repository.repository.identity != repository.analysis.repository_snapshot
+            {
+                return Err(Error::new("foreign repository Source validation basis"));
+            }
+        }
         let mut selected = None;
         // All entries belong to this validation call. Nothing survives a page,
         // citation request, failure, deletion or forgetting operation. In
@@ -157,11 +176,14 @@ impl LocalOperations {
             .map(|_| self.privacy_status(basis.project.id))
             .transpose()?;
         let repository_metadata = match subject {
-            ExplanationSubject::Repository(id) if inspection.is_some() => {
+            ExplanationSubject::Repository(id) if inspection.is_some() && repository.is_none() => {
                 Some(self.repository_source_metadata(basis.project.id, id)?)
             }
             _ => None,
         };
+        let repository_metadata = repository
+            .map(|r| &r.analysis)
+            .or(repository_metadata.as_ref());
         let read_source = |source| match subject {
             ExplanationSubject::Work(work)
             | ExplanationSubject::WorkName(work)
@@ -177,7 +199,6 @@ impl LocalOperations {
                 .read_repository_explanation_source_with_basis(
                     basis,
                     repository_metadata
-                        .as_ref()
                         .ok_or_else(|| Error::new("repository Source metadata unavailable"))?,
                     inspection
                         .as_ref()
@@ -192,6 +213,15 @@ impl LocalOperations {
         let mut dependencies = std::collections::BTreeSet::new();
         let mut expiry = None;
         let mut current_snapshots = std::collections::BTreeMap::new();
+        if let Some(repository) = repository {
+            current_snapshots.insert(
+                repository.analysis.identity,
+                (
+                    repository.repository.identity.to_string(),
+                    repository.analysis.repository_source.identity().to_string(),
+                ),
+            );
+        }
         let mut excerpts = Vec::new();
         let mut excerpt_keys = std::collections::BTreeSet::new();
         for citation in response.citations() {
@@ -350,7 +380,7 @@ impl LocalOperations {
                         // included hashes and a fresh repository comparison.
                         let (repository_source, repository_snapshot, entries) =
                             if matches!(subject, ExplanationSubject::Repository(_)) {
-                                let metadata = repository_metadata.as_ref().ok_or_else(|| {
+                                let metadata = repository_metadata.ok_or_else(|| {
                                     Error::new("repository Source metadata unavailable")
                                 })?;
                                 (

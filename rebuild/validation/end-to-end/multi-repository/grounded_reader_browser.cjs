@@ -1,3 +1,4 @@
+const {embeddedCode}=require('../../viewer-design/product_review_controls.cjs');
 // Actual retained Product outputs; reference structure, independent Source/prose oracles.
 const fs=require('node:fs'),crypto=require('node:crypto'),assert=require('node:assert/strict');
 const {pathToFileURL}=require('node:url');
@@ -20,7 +21,7 @@ async function checkDocument(page,item,language,expected){
  for(const source of sourceBytes(item)){
   const points=page.locator(`.source-point[data-source-id="${source.source_id}"]`);
   assert.ok(await points.count()>0,'exact current Source identity');
-  for(const point of await points.all()){assert.equal(await point.locator('code').textContent(),source.text,'actual current code bytes');assert.equal(await point.locator('code').evaluate(n=>getComputedStyle(n).whiteSpace),'pre');assert.equal(await point.locator('code').evaluate(n=>getComputedStyle(n).overflowWrap),'normal');}
+  for(const point of await points.all()){const code=await embeddedCode(point);assert.equal(await code.textContent(),source.text,'actual current code bytes');assert.equal(await code.evaluate(n=>getComputedStyle(n).whiteSpace),'pre');assert.equal(await code.evaluate(n=>getComputedStyle(n).overflowWrap),'normal');}
  }
  const links=doc.locator('a.evidence-link');
  assert.equal(await links.count(),expected.prose.reduce((n,p)=>n+p.citations.length,0),'every authored citation remains reachable');

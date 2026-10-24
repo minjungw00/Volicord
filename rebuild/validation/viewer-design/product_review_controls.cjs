@@ -121,14 +121,51 @@ function citationResponse(page,task,offset) {
  pending.catch(()=>{});
  return pending;
 }
+// Resolve only an exact native payload alias; expected text/hashes still come
+// from the independently recorded Source, never from the compact/render helper.
+async function embeddedCode(point) {
+ const own=point.locator(':scope > pre.code-region code');
+ if(await own.count())return own;
+ const ref=point.locator(':scope > .source-code-reference a');
+ if(!await ref.count())return own;
+ assert.equal(await ref.count(),1,'one exact shared code reference');
+ const href=await ref.getAttribute('href');assert(href?.startsWith('#'),'native shared payload');
+ const target=point.page().locator('[id="'+href.slice(1)+'"]');
+ assert.equal(await target.count(),1,'shared payload target must exist');
+ assert.equal(await target.getAttribute('data-source-id'),await point.getAttribute('data-source-id'),'shared Source identity');
+ assert.equal(await target.getAttribute('data-range-sha256'),await ref.getAttribute('data-range-sha256'),'shared range identity');
+ assert.equal(await target.locator('a.shared-source-return').getAttribute('href'),'#'+await point.getAttribute('id'),'exact shared claim return');
+ return target.locator('xpath=..').locator(':scope > pre.code-region code');
+}
+async function openEmbeddedCode(point) {
+ const code=await embeddedCode(point),ref=point.locator(':scope > .source-code-reference a');
+ if(await ref.count() && await code.count()) {
+  await ref.focus();await ref.press('Enter');await code.waitFor({state:'visible'});
+ }
+ return code;
+}
+async function returnFromEmbeddedCode(point) {
+ const ref=point.locator(':scope > .source-code-reference a');
+ if(await ref.count()) {
+  const href=await ref.getAttribute('href');
+  const back=point.page().locator('[id="'+href.slice(1)+'"] a.shared-source-return');
+  await back.focus();await back.press('Enter');
+  await point.waitFor({state:'visible'});
+ }
+}
+module.exports.embeddedCode=embeddedCode;
+module.exports.openEmbeddedCode=openEmbeddedCode;
+module.exports.returnFromEmbeddedCode=returnFromEmbeddedCode;
+
 async function criticalBytes(page,point,task,offline,pending) {
  const hash=bytes=>require('node:crypto').createHash('sha256').update(bytes).digest('hex');
  let bytes=0,pages=0;
  if(offline) {
-  const code=point.locator('pre.code-region code');assert.equal(await code.count(),1,'offline critical window cannot be omitted');
+  const code=await openEmbeddedCode(point);assert.equal(await code.count(),1,'offline critical window cannot be omitted');
   const text=await code.textContent();bytes=Buffer.byteLength(text);
   assert.equal(bytes,task.citation.end_byte-task.citation.start_byte,'offline complete critical window');
   assert.equal('sha256:'+hash(Buffer.from(text)),task.citation.range_sha256,'offline exact critical bytes');
+  await returnFromEmbeddedCode(point);
  }else{
    const inspection=point.locator('.citation-inspection');
    assert.equal(await inspection.getAttribute('data-realization'),task.realization_fingerprint);
