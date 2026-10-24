@@ -126,6 +126,21 @@ first failed state and compiler/executable basis before any changed comparison.
   distinct `rebuild/.local/build-isolation-normal-target`; this is scoped support,
   not Final/V11 or provider qualification.
 
+The first post-commit actual-Product compiler smoke at `b6f2f154` failed:
+`rebuild/.local/validation/20261024T221222.008117Z-observed-product-clippy-_yxlmquz/`
+preserves Cargo exit 101; the following scoped tests were not run in that smoke.
+Cargo carries its Clippy workspace-wrapper environment into dependency invocations
+that use rustc directly. The initial observer rejected this legitimate combination.
+The follow-up fix permits only the already recorded compiler/driver identities and
+adds an excluded local dependency with a build-script compiler probe to the
+real-entrypoint regression fixture. Build-script-injected `RUSTC`/`RUSTDOC` are
+also accepted only when they select the recorded toolchain binaries. A subsequent
+actual integration-target compile exposed Cargo's injected `CARGO_TARGET_TMPDIR`;
+it is permitted only at this attempt's owned `target/tmp`, with an integration
+target added to the same real-entrypoint regression. This
+is a build-boundary defect discovered by the new direct check, separate from the
+historical invariant. Existing failed evidence and the first commit remain intact.
+
 No real authoritative aggregate, official V11 or provider qualification is run by
 this task. Synthetic gate controls deliberately end at support exit 37, preserving
 Final and external stages as not run. Technical isolation, the unresolved invariant

@@ -47,7 +47,7 @@ def tool(name):
                                      text=True, check=True).stdout.strip()).resolve()
         value['sysroot'] = str(sysroot)
         value['toolchain_binaries'] = {name: identity(sysroot / 'bin' / name)
-            for name in ('rustc', 'clippy-driver') if (sysroot / 'bin' / name).is_file()}
+            for name in ('rustc', 'rustdoc', 'clippy-driver') if (sysroot / 'bin' / name).is_file()}
     return value
 
 
@@ -198,11 +198,23 @@ def observe_compiler(argv):
         expected['RUSTUP_TOOLCHAIN'] = os.environ['RUSTUP_TOOLCHAIN']
     driver = selected['toolchain_binaries'].get('clippy-driver')
     if driver and observed.get('RUSTC_WORKSPACE_WRAPPER') == driver['path']:
-        if compiler != driver or len(argv) < 2 or identity(argv[1]) != selected['toolchain_binaries']['rustc']:
-            raise ValueError('Clippy invocation differs from the recorded toolchain')
+        # Cargo carries this setting into dependencies that it invokes directly
+        # through rustc; only workspace crates have the driver prepended.
+        if compiler == driver:
+            if len(argv) < 2 or identity(argv[1]) != selected['toolchain_binaries']['rustc']:
+                raise ValueError('Clippy invocation differs from the recorded toolchain')
+        elif compiler != selected['toolchain_binaries']['rustc']:
+            raise ValueError('dependency compiler differs from the recorded toolchain')
         expected['RUSTC_WORKSPACE_WRAPPER'] = driver['path']
     elif compiler != selected['toolchain_binaries']['rustc']:
         raise ValueError('compiler invocation differs from the recorded toolchain')
+    for variable, name in (('RUSTC', 'rustc'), ('RUSTDOC', 'rustdoc')):
+        selected_tool = selected['toolchain_binaries'].get(name)
+        if selected_tool and observed.get(variable) == selected_tool['path']:
+            expected[variable] = selected_tool['path']
+    temporary = str(Path(value['owned_environment']['CARGO_TARGET_DIR']) / 'tmp')
+    if observed.get('CARGO_TARGET_TMPDIR') == temporary:
+        expected['CARGO_TARGET_TMPDIR'] = temporary
     # Cargo adds its toolchain loader search path and an empty encoded-flags
     # variable. Neither may hide nonempty caller-supplied compilation settings.
     normalize = lambda env: {k: v for k, v in env.items() if v and k != 'LD_LIBRARY_PATH'}

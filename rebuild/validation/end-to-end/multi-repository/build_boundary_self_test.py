@@ -25,7 +25,7 @@ def controls(parent):
     shutil.copy2(ROOT / 'rebuild/install.sh', candidate / 'rebuild/install.sh')
     (parent / 'bin/cargo').unlink()  # These controls use the real installed toolchain.
     workspace = candidate / 'rebuild'
-    (workspace / 'Cargo.toml').write_text('[workspace]\nmembers=["crates/control"]\nresolver="2"\n')
+    (workspace / 'Cargo.toml').write_text('[workspace]\nmembers=["crates/control"]\nexclude=["crates/dependency"]\nresolver="2"\n')
     (workspace / 'Cargo.lock').unlink()
     crate = workspace / 'crates/control'
     (crate / 'src').mkdir(parents=True)
@@ -33,6 +33,8 @@ def controls(parent):
 name="build-control"
 version="0.1.0"
 edition="2021"
+[dependencies]
+control-dependency={path="../dependency"}
 [[bin]]
 name="volicord"
 path="src/main.rs"
@@ -43,6 +45,13 @@ path="src/mcp.rs"
 name="volicord-viewer"
 path="src/viewer.rs"
 ''')
+    dependency = workspace/'crates/dependency'
+    (dependency/'src').mkdir(parents=True)
+    (dependency/'Cargo.toml').write_text('[package]\nname="control-dependency"\nversion="0.1.0"\nedition="2021"\n')
+    (dependency/'src/lib.rs').write_text('pub fn number() -> u8 { 7 }\n')
+    (dependency/'build.rs').write_text('use std::{env, process::Command};\nfn main() -> Result<(), Box<dyn std::error::Error>> {\nlet rustc = env::var("RUSTC")?;\nlet mut command = if let Ok(wrapper) = env::var("RUSTC_WRAPPER") { let mut c = Command::new(wrapper); c.arg(&rustc); c } else { Command::new(&rustc) };\nif !command.arg("--version").status()?.success() { return Err("compiler probe failed".into()); }\nOk(())\n}\n')
+    (crate/'tests').mkdir()
+    (crate/'tests/identity.rs').write_text('#[test]\nfn integration_target() { assert!(std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).is_absolute()); }\n')
     foreign = parent/'foreign'
     (foreign/'src').mkdir(parents=True)
     (foreign/'Cargo.toml').write_text('[package]\nname="foreign-diagnostic"\nversion="0.1.0"\nedition="2021"\n[workspace]\n')
