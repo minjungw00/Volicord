@@ -1787,11 +1787,28 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
         ViewerAdapter::new(ops(&f)?).export_snapshot(&req, &destination)?;
         let snapshot = fs::read_to_string(destination)?;
         for page in [&live, &snapshot] {
-            let points: Vec<_> = page
-                .split("<section class=\"source-point\"")
-                .skip(1)
-                .map(|s| s.split("</section>").next().ok_or("point end"))
-                .collect::<Result<_, _>>()?;
+            // Shared-code return targets are nested sections. Inspect whole
+            // reading points, then follow their exact native alias to the one
+            // physical payload; a closing inner section is not the point end.
+            let mut points = Vec::new();
+            let mut remaining = page.as_str();
+            while let Some(start) = remaining.find("<section class=\"source-point\"") {
+                let point = &remaining[start..];
+                let mut cursor = "<section".len();
+                let mut depth = 1;
+                while depth > 0 {
+                    let close = cursor + point[cursor..].find("</section>").ok_or("point end")?;
+                    if let Some(open) = point[cursor..close].find("<section") {
+                        depth += 1;
+                        cursor += open + "<section".len();
+                    } else {
+                        depth -= 1;
+                        cursor = close + "</section>".len();
+                    }
+                }
+                points.push(&point[..cursor]);
+                remaining = &point[cursor..];
+            }
             assert_eq!(points.len(), 4, "one Source point per exact claim binding");
             for (_, question, ordinal, paragraph, claim, _, end) in cases {
                 let offset = paragraph.find(claim).ok_or("claim")?;
@@ -1824,11 +1841,60 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
                 } else {
                     "def value():"
                 };
+                let payload = if let Some(reference) =
+                    point.split("class=\"source-code-reference\"").nth(1)
+                {
+                    let alias = reference
+                        .split_once("href=\"#")
+                        .ok_or("code alias")?
+                        .1
+                        .split('"')
+                        .next()
+                        .ok_or("alias target")?;
+                    let owner = points
+                        .iter()
+                        .find(|p| p.contains(&format!("id=\"{alias}\"")))
+                        .ok_or("shared payload owner")?;
+                    let target = owner
+                        .split_once(&format!("id=\"{alias}\""))
+                        .ok_or("native target")?
+                        .1
+                        .split('>')
+                        .next()
+                        .ok_or("target attributes")?;
+                    assert!(target.contains(&format!("data-source-id=\"{}\"", citation.source_id)));
+                    assert!(target
+                        .contains(&format!("data-range-sha256=\"{}\"", citation.range_sha256)));
+                    let point_id = point
+                        .split_once("id=\"")
+                        .ok_or("claim point ID")?
+                        .1
+                        .split('"')
+                        .next()
+                        .ok_or("claim point ID end")?;
+                    assert!(
+                        owner.contains(&format!(
+                            "class=\"shared-source-return\" href=\"#{point_id}\""
+                        )),
+                        "shared bytes keep this exact claim's return"
+                    );
+                    *owner
+                } else {
+                    point
+                };
                 assert!(
-                    code_texts(point).iter().any(|s| s == code),
-                    "claim keeps its exact range"
+                    code_texts(payload).iter().any(|s| s == code),
+                    "claim reaches its complete original range"
                 );
             }
+            assert_eq!(
+                code_texts(page)
+                    .iter()
+                    .filter(|s| *s == "def value():\n    return 5\n")
+                    .count(),
+                1,
+                "repeated claims share one complete physical payload"
+            );
         }
     }
     assert_eq!(canonical, operations.canonical_basis(project(&f)?)?);

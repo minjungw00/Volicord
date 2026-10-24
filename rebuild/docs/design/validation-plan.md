@@ -3729,6 +3729,13 @@ publications remain byte-identical. Preserve the negative case with remaining
 other-Source code, and distinguish controlled HTTP failures from actual retained
 Source lifecycle tests. Opaque return positions and keyboard exit remain usable.
 
+The grounded-reader shared-claim control inspects complete nested Source points
+and follows each exact native shared-code target. It preserves separate claim
+hashes and full citation metadata, checks the alias's Source/range identity and
+claim-specific return, and compares the complete original payload once per range.
+An early inner `</section>` or a duplicate-code assumption is not a faithful
+consumer oracle. Actual browser alias traversal remains a separate control.
+
 Renderer-focused `volicord-viewer --lib` controls reject excess messages and markup
 namespaces before invoking any layout target callback. The negative pre-fix attempt
 is preserved separately. `citation_reading` additionally admits hostile UTF-8/XML/
