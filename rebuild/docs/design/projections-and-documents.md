@@ -2550,6 +2550,11 @@ all semantic selections. Ordinary citation/dependency traversal therefore covers
 nested labels, guards and captions, without a second Source authority. Figure and
 element IDs are bounded tokens, never display strings or Source locators.
 
+MCP tool discovery describes every nested diagram field, including label spans,
+the meaning union, node/participant identity, directed relations and ordered
+message groups. These descriptions expose the same admitted semantics to the
+authoring host; they add no format, authority or independent text channel.
+
 Whole-publication limits remain unchanged: 32 units, four figures, 12 nodes and
 20 relations/messages per figure, 12 sequence groups and 96 printable characters per
 label. Empty/missing/duplicate elements, unknown shapes/fields, unbound selections,

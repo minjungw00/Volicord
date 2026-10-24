@@ -3748,6 +3748,14 @@ current version in an isolated fixture, rather than changing a historical v6
 paragraph that cannot challenge the current v8 agreement. This introduces no
 explanation-format change or compatibility path.
 
+The existing Host `initializes_and_discovers_only_high_level_product_capabilities`
+test recursively checks every published tool-schema property through objects,
+arrays and union variants. Diagram authoring must satisfy this same closed,
+described discovery contract, including nested meaning, labels and message groups;
+successful complete-publication reads alone do not verify producer discovery.
+Its fixed citation-shape oracle also requires the managed `publication_id`, matching
+the exact-publication owner and handler rather than the older realization-only selector.
+
 Renderer-focused `volicord-viewer --lib` controls reject excess messages and markup
 namespaces before invoking any layout target callback. The negative pre-fix attempt
 is preserved separately. `citation_reading` additionally admits hostile UTF-8/XML/
