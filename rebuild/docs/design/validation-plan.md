@@ -3721,6 +3721,14 @@ by the initial 44,536-byte corpus and the complete 46,260-byte, 17-window scope;
 Technical byte equality is neither entailment, independent assessment nor human
 comprehension. Focused scoped validation is separate from Final/V11 qualification.
 
+The real-publication diagram browser's typed-failure controls also challenge
+publication-wide cached content: other Source windows, shared payloads, closed
+evidence previews and ordinary prose must disappear with the figure. The actual
+managed publication ID scopes invalidation; independently admitted Work short
+publications remain byte-identical. Preserve the negative case with remaining
+other-Source code, and distinguish controlled HTTP failures from actual retained
+Source lifecycle tests. Opaque return positions and keyboard exit remain usable.
+
 Renderer-focused `volicord-viewer --lib` controls reject excess messages and markup
 namespaces before invoking any layout target callback. The negative pre-fix attempt
 is preserved separately. `citation_reading` additionally admits hostile UTF-8/XML/

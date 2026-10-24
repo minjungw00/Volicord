@@ -2774,6 +2774,15 @@ Known Source loss removes the physical shared payload as well as fetched panels 
 figure alternatives. Exported static bytes record their export basis and cannot
 promise future revocation. This changes no retained format or Source authority.
 
+A typed live citation failure applies to its entire managed publication. Remove
+all its cached Source windows, shared aliases, generated prose, headings, captions,
+figure alternatives and evidence-index previews, including closed disclosures.
+Keep opaque native return positions and a safe unavailable notice. Scope this by
+managed publication ID, not Source ID or equal realization text: independently
+admitted Work name/summary content retains its own authority. An untyped network
+failure establishes no publication-wide authority change. These are local DOM
+invalidation rules, not revocation of previously distributed static exports.
+
 ### Actual human CLI explanation consumption
 
 Repository and Work human output share the same explanation renderer. In addition

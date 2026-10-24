@@ -96,17 +96,19 @@
     }
     return {target, origin};
   }
-  function withholdDiagrams(realization) {
-    // Known dependency failure must not leave a cached SVG or text alternative.
-    // Retain only opaque return IDs and a safe notice, never old generated text.
-    for (const figure of document.querySelectorAll('.admitted-diagram')) {
-      if (figure.dataset.realization !== realization) continue;
-      const ids=[...figure.querySelectorAll('[id]')].map(n=>n.id);
+  function withholdPublication(publication) {
+    // A citation failure invalidates all dependent meaning, not just its file.
+    // Retain opaque return positions, but no hidden code, prose or alternatives.
+    for (const region of document.querySelectorAll('[data-reader-publication]')) {
+      if (region.dataset.readerPublication !== publication || !region.isConnected) continue;
+      region.classList.remove('diagram-expanded');
+      const ids=[...region.querySelectorAll('[id]')].map(n=>n.id);
+      const back=region.matches('.source-point') ? region.querySelector('a.return')?.cloneNode(true) : null;
       const notice=document.createElement('p'); notice.setAttribute('role','status');
-      notice.textContent=ko?'이 도식의 현재 근거를 사용할 수 없습니다. 현재 문서를 다시 여세요.':'This diagram’s current evidence is unavailable. Reopen the current document.';
+      notice.textContent=ko?'이 발행물의 현재 근거를 사용할 수 없습니다. 현재 문서를 다시 여세요.':'This publication’s current evidence is unavailable. Reopen the current document.';
       const placeholders=ids.map(id=>{const n=document.createElement('span');n.id=id;n.tabIndex=-1;return n;});
-      figure.replaceChildren(notice,...placeholders);
-      figure.dataset.unavailable='true';
+      region.replaceChildren(...(back?[back]:[]),notice,...placeholders);
+      region.dataset.unavailable='true';
     }
   }
   for (const figure of document.querySelectorAll('.admitted-diagram')) {
@@ -117,6 +119,7 @@
     figure.dataset.scale='1';figure.querySelector('.diagram-controls').hidden=false;
   }
   async function readCitation(point, offset = 0) {
+    if (point.dataset.unavailable === 'true') return;
     const control = point.querySelector('.citation-inspection');
     if (!control) return;
     pendingRead?.abort();
@@ -186,7 +189,8 @@
       // Remove previously displayed bytes from this failed reading point.
       // A deleted shared Source must not leave an earlier claim's cached code.
       document.querySelectorAll('.source-point').forEach(other => {
-        if (other.dataset.sourceId === point.dataset.sourceId)
+        if (other.dataset.readerPublication === control.dataset.publicationId &&
+            other.dataset.sourceId === point.dataset.sourceId)
           other.querySelectorAll('pre.code-region,.code-caption').forEach(n => n.remove());
       });
       point.querySelectorAll('.initial-range-omission').forEach(n => n.hidden = true);
@@ -201,7 +205,7 @@
         corrupt: ko ? '설명 또는 근거의 무결성을 확인할 수 없습니다.' : 'The publication or evidence failed its integrity check.',
         unsupported: ko ? '설명 또는 근거의 형식이 지원되지 않습니다.' : 'The publication or evidence format is unsupported.'
       };
-      if (Object.hasOwn(reasons,error.reason)) withholdDiagrams(control.dataset.realization);
+      if (Object.hasOwn(reasons,error.reason)) withholdPublication(control.dataset.publicationId);
       status.textContent = reasons[error.reason] || (ko ? '이 정확한 인용은 이용할 수 없거나 변경되었습니다. 설명으로 돌아가 현재 버전을 다시 여세요.'
         : 'This exact citation is unavailable or changed. Return to the explanation and reopen its current version.');
       button.dataset.nextOffset = 0;
@@ -229,7 +233,8 @@
         if (link === current) link.setAttribute('aria-current', 'location');
         else link.removeAttribute('aria-current');
       }
-      toc.querySelector('.toc-cue').textContent = current?.textContent || (ko ? '이 문서의 내용' : 'On this page');
+      const cue=toc.querySelector('.toc-cue');
+      if (cue) cue.textContent = current?.textContent || (ko ? '이 문서의 내용' : 'On this page');
     });
   }
   function apply() {
@@ -273,7 +278,8 @@
       if (narrow.matches) {
         point.setAttribute('role', 'dialog');
         point.setAttribute('aria-modal', 'true');
-        point.setAttribute('aria-label', point.querySelector('.source-path').textContent);
+        point.setAttribute('aria-label', point.querySelector('.source-path')?.textContent ||
+          (ko ? '근거를 사용할 수 없습니다' : 'Evidence unavailable'));
       } else {
         point.removeAttribute('role');
         point.removeAttribute('aria-modal');

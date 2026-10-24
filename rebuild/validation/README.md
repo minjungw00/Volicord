@@ -1407,3 +1407,9 @@ and return navigation still reaches that claim. Run
 `product_review_source_self_test.cjs CONFIG` against the captured exports to retain
 missing/wrong/truncated critical-Source counterexamples; a working omitted
 supporting link never substitutes for critical evidence.
+
+The actual-publication diagram browser additionally verifies that a typed citation
+failure removes every cached representation in that managed publication, including
+other Source windows and closed evidence previews. Its Work case preserves independent
+short-publication regions byte for byte. This is a controlled HTTP/DOM regression;
+actual expiry/deletion/forgetting tests and human observation remain separate.

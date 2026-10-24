@@ -195,11 +195,16 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             }
             if(config.faults && c.faults!==false) for(const reason of failureReasons) {
               await page.goto(base+query,{waitUntil:'load'});
+              const failedPublication=await point.locator('.citation-inspection').getAttribute('data-publication-id');
+              const independent=await page.locator('[data-reader-publication]').evaluateAll((ns,id)=>ns.filter(n=>n.dataset.readerPublication!==id).map(n=>({id:n.id,publication:n.dataset.readerPublication,html:n.outerHTML})),failedPublication);
+              assert(await page.locator('.source-point pre.code-region').count()>1,'multiple original cached Source payloads challenge publication-wide withholding');
               await page.route(/\/citation\?/,route=>route.fulfill({status:410,contentType:'application/json',body:JSON.stringify({reason})}));
               await element.focus();await page.keyboard.press('Enter');await action.click();
               await page.waitForFunction(id=>document.getElementById(id)?.dataset.unavailable==='true',await figure.getAttribute('id'));
               assert.equal(await figure.locator('svg,.diagram-alternative,.diagram-claim').count(),0,'known failure removes all cached diagram meanings');
               assert.equal(await point.locator('pre.code-region').count(),0);
+              assert.equal(await page.locator('[data-reader-publication]').evaluateAll((ns,id)=>ns.filter(n=>n.dataset.readerPublication===id).reduce((count,n)=>count+n.querySelectorAll('pre.code-region,.claim-quote,.unit-text,svg,.diagram-text,a.evidence-link').length,0),failedPublication),0,'no hidden code, prose, caption or evidence alias survives known publication loss');
+              assert.deepEqual(await page.locator('[data-reader-publication]').evaluateAll((ns,id)=>ns.filter(n=>n.dataset.readerPublication!==id).map(n=>({id:n.id,publication:n.dataset.readerPublication,html:n.outerHTML})),failedPublication),independent,'independently published name/summary content is unchanged');
               await page.keyboard.press('Escape');
               assert(await page.locator('[id=\"'+claimId+'\"]').count(),'opaque exact return survives withholding');
               await page.unroute(/\/citation\?/);

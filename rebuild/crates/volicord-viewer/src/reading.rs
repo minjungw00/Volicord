@@ -511,6 +511,17 @@ fn reader_inline_citations(
 fn document_anchor(answers: &ReaderAnswers<'_>, section: &str) -> String {
     format!("{}-{section}", reader_claim_anchor(answers, 0))
 }
+// The browser may learn that an entire publication lost authority while reading
+// one citation. Mark all copies of its generated meaning, including closed
+// disclosures, independently of sibling Work name/summary publications.
+fn publication_scope(answers: &ReaderAnswers<'_>) -> String {
+    answers
+        .provenance
+        .as_ref()
+        .and_then(|p| p.publication_id.as_deref())
+        .map(|id| format!(" data-reader-publication=\"{}\"", escape(id)))
+        .unwrap_or_default()
+}
 fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>, index: usize) {
     let answer = &answers.prose[index];
     let outer = match answer.question.as_str() {
@@ -530,7 +541,7 @@ fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>
     } else {
         "p"
     };
-    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
+    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"{}><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),publication_scope(answers),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
     reader_inline_citations(html, r, answers, index);
     html.push_str(&format!("</{outer}>"));
 }
@@ -566,7 +577,7 @@ fn render_diagrams(
             .as_ref()
             .map(|p| p.realization_fingerprint.as_str())
             .unwrap_or("");
-        html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" tabindex=\"-1\" data-realization=\"{}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"><figcaption>{}</figcaption>",escape(realization),escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),escape(title)));
+        html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" tabindex=\"-1\" data-realization=\"{}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"{}><figcaption>{}</figcaption>",escape(realization),escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),publication_scope(answers),escape(title)));
         html.push_str(&format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{ns}-viewport\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"reset\">{}</button></div>",text(r.locale,"Expand reading area","읽기 영역 확장"),text(r.locale,"Zoom diagram out","도식 축소"),text(r.locale,"Zoom diagram in","도식 확대"),text(r.locale,"Reset","원래 크기")));
         match crate::diagram::svg(d,&texts,&ns,&|id,_|format!("{ns}-{id}-claim")) {
             Ok(svg)=>html.push_str(&format!("<div id=\"{ns}-viewport\" class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용"))),
@@ -876,7 +887,7 @@ fn render_document_body(
         .enumerate()
         .find(|(_, a)| a.question == "Heading")
     {
-        html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><h1 data-title-basis=\"generated-interpretation\" data-question=\"Heading\" lang=\"{}\" data-content-language=\"{}\">{}</h1></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&title.text)));
+        html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"{}><h1 data-title-basis=\"generated-interpretation\" data-question=\"Heading\" lang=\"{}\" data-content-language=\"{}\">{}</h1></div>",reader_claim_anchor(answers,index),publication_scope(answers),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&title.text)));
         reader_inline_citations(html, r, answers, index);
     } else if let Some(name) = answers
         .work_name
@@ -905,7 +916,7 @@ fn render_document_body(
         .enumerate()
         .filter(|(_, a)| a.question == "Synopsis")
     {
-        html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"><p class=\"lead\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p></div>",reader_claim_anchor(answers,index),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&lead.text)));
+        html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"{}><p class=\"lead\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p></div>",reader_claim_anchor(answers,index),publication_scope(answers),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&lead.text)));
         reader_inline_citations(html, r, answers, index);
     }
     // The independent summary remains useful when detail is unavailable. In a
@@ -930,8 +941,8 @@ fn render_document_body(
     html.push_str("</header>");
     opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
-    html.push_str(&format!("<details class=\"document-nav\"><summary>{}<span class=\"toc-cue\">{}</span></summary><nav aria-label=\"{}\"><ul class=\"toc-primary\">",
-        text(r.locale,"TOC","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Document sections","문서 목차")));
+    html.push_str(&format!("<details class=\"document-nav\"{}><summary>{}<span class=\"toc-cue\">{}</span></summary><nav aria-label=\"{}\"><ul class=\"toc-primary\">",
+        publication_scope(answers),text(r.locale,"TOC","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Document sections","문서 목차")));
     let texts = answers
         .prose
         .iter()
@@ -1155,8 +1166,8 @@ fn render_document_body(
 }
 
 fn render_evidence_index(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>) {
-    html.push_str(&format!("<details class=\"reading-section evidence-index\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary><p class=\"source-note\">{}</p>",
-        document_anchor(answers,"evidence-index"),text(r.locale,"Evidence index", "근거 색인"),
+    html.push_str(&format!("<details class=\"reading-section evidence-index\" id=\"{}\" tabindex=\"-1\"{}><summary>{}</summary><p class=\"source-note\">{}</p>",
+        document_anchor(answers,"evidence-index"),publication_scope(answers),text(r.locale,"Evidence index", "근거 색인"),
         text(r.locale,"Start with the statement you want to check. Source ranges show observed bytes; original records show what was reported or chosen. Neither alone verifies every interpretation.",
             "확인할 문장에서 시작하세요. Source 범위는 관측된 바이트를, 원래 기록은 보고되거나 선택된 내용을 보여 줍니다. 어느 쪽도 그 자체로 모든 해석을 검증하지는 않습니다.")));
     if answers.evidence_index.is_empty() {
@@ -1757,7 +1768,7 @@ fn render_source_excerpts(
                 .text
                 .get(c.claim_start_byte..c.claim_end_byte)
                 .unwrap_or("");
-            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" tabindex=\"-1\"><div class=\"point-bar\"><a class=\"return\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><blockquote class=\"claim-quote\" tabindex=\"0\" lang=\"{}\">{}</blockquote><h3 class=\"source-path\">{}:{}–{}</h3>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),text(r.locale,"Evidence for this explanation","이 설명을 확인하는 근거"),escape(&content_language_tag(&provenance.language)),escape(claim),escape(&c.locator),c.start_line,c.end_line));
+            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" tabindex=\"-1\"{}><div class=\"point-bar\"><a class=\"return\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><blockquote class=\"claim-quote\" tabindex=\"0\" lang=\"{}\">{}</blockquote><h3 class=\"source-path\">{}:{}–{}</h3>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),publication_scope(answers),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),text(r.locale,"Evidence for this explanation","이 설명을 확인하는 근거"),escape(&content_language_tag(&provenance.language)),escape(claim),escape(&c.locator),c.start_line,c.end_line));
             diagram_source_returns(html, r, answers, index, n);
             html.push_str(&format!("<div data-statement-role=\"generated-interpretation\" data-question=\"{}\" data-paragraph=\"{}\" data-claim-start=\"{}\" data-claim-end=\"{}\"></div>",escape(&answer.question),index+1,c.claim_start_byte,c.claim_end_byte));
             let range = source_excerpt_anchor(answers, c);

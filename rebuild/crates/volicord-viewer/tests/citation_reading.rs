@@ -1712,12 +1712,36 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(&destination)?;
+        let publication = a
+            .provenance
+            .as_ref()
+            .and_then(|p| p.publication_id.as_deref())
+            .ok_or("managed publication")?;
         for html in [&live, &offline] {
             assert!(html.contains("data-renderer=\"volicord-static-svg/3\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
             assert!(!html.contains("<foreignObject"));
+            // One failed citation invalidates every dependent region, including
+            // closed evidence and other Source windows. The browser must have
+            // exact managed identity for all these independently rendered copies.
+            for marker in [
+                "<figure class=\"admitted-diagram\"",
+                "<section class=\"source-point\"",
+                "<details class=\"reading-section evidence-index\"",
+                "<details class=\"document-nav\"",
+            ] {
+                let regions = html.split(marker).skip(1).collect::<Vec<_>>();
+                assert!(!regions.is_empty(), "rendered consumer region {marker}");
+                for region in regions {
+                    assert!(region
+                        .split('>')
+                        .next()
+                        .ok_or("opening tag")?
+                        .contains(&format!("data-reader-publication=\"{publication}\"")));
+                }
+            }
         }
         assert!(!offline.contains("<script"));
         for href in offline
