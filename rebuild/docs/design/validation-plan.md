@@ -3729,3 +3729,11 @@ preserves the prior publication. Optional `VOLICORD_RENDERER_SAFETY_CAPTURE` wri
 a new script-free export for actual browser network/markup controls. Those browser
 checks, not escaping assertions alone, establish observed resource requests. No
 claim of OS-level renderer isolation, assistive observation or human approval follows.
+
+Exact-publication controls preserve a negative identical-wording citation read,
+then exercise supported MCP/HTTP publication IDs after recording, replacement,
+foreign IDs and Source deletion. Citation identity and full dependency validation
+remain independent. The original recording response and public receipt pin expected
+managed IDs; old measurement inputs need that original receipt rather than a helper
+or equal wording as their identity oracle. Generated-document metadata 11 retains
+published provenance; previous document metadata is unsupported, not converted.

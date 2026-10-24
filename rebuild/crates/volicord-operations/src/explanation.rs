@@ -15,6 +15,7 @@ use volicord_projections::*;
 /// range, never an arbitrary file interval. Each read returns at most 4096 bytes.
 #[derive(Clone, Debug)]
 pub struct ExplanationCitationSelection {
+    pub publication_id: String,
     pub realization_fingerprint: String,
     pub unit_index: usize,
     pub citation_index: usize,
@@ -114,7 +115,7 @@ impl LocalOperations {
                 Error::new("publication is not current or permitted").with_reading_failure(failure)
             );
         }
-        let retained =
+        let mut retained =
             decode_explanation(record.content.as_deref()).map_err(|(state, reason)| {
                 Error::new(reason).with_reading_failure(
                     ExplanationApplicability::unavailable(state)
@@ -122,6 +123,7 @@ impl LocalOperations {
                         .unwrap_or(ExplanationFailureReason::Unavailable),
                 )
             })?;
+        retained.publication_id = Some(record.id.to_string());
         let plan = self
             .prepare_subject_explanation(&canonical, subject, language)
             .map_err(|e| {
@@ -171,9 +173,10 @@ impl LocalOperations {
                 .ok_or_else(|| {
                     Error::new("explanation deleted; render again before publication")
                 })?;
-            let retained = decode_explanation(record.content.as_deref()).map_err(|_| {
+            let mut retained = decode_explanation(record.content.as_deref()).map_err(|_| {
                 Error::new("explanation unavailable; render again before publication")
             })?;
+            retained.publication_id = Some(record.id.to_string());
             let plan = self.prepare_subject_explanation(
                 &canonical,
                 provenance.subject,
@@ -287,12 +290,12 @@ impl LocalOperations {
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
-        let retained = retain_explanation(&plan, realization, now_micros()?.as_unix_micros());
+        let mut retained = retain_explanation(&plan, realization, now_micros()?.as_unix_micros());
         // Revalidate actual serialized bytes before opening or writing the store.
         let content = encode_retained_explanation(&retained).map_err(Error::new)?;
         let mut privacy = PrivacyStore::open(self.layout().privacy_store())
             .map_err(|e| Error::with_source("cannot open explanation storage", e))?;
-        privacy.record_managed_derived(ManagedDerivedDraft { project_id:project, kind:ManagedDerivedKind::CachedSummary,
+        let record = privacy.record_managed_derived(ManagedDerivedDraft { project_id:project, kind:ManagedDerivedKind::CachedSummary,
             provider:None, model:retained.realization.generator.model.clone(), purpose:purpose(subject, language), analysis_snapshot:match subject { ExplanationSubject::Repository(id) => Some(id), _ => None },
             included_sources, canonical_links, content,
             uncertainty:None, retained_until,
@@ -304,6 +307,7 @@ impl LocalOperations {
                     Error::with_source("explanation storage unavailable; inspect local storage and retry recording; no success receipt was issued",e)
                 }
             })?;
+        retained.publication_id = Some(record.id.to_string());
         Ok(retained)
     }
     pub fn delete_explanations(
@@ -368,8 +372,14 @@ impl LocalOperations {
         selection: &ExplanationCitationSelection,
     ) -> Result<serde_json::Value, Error> {
         let _inspection = self.layout().acquire_health_lock()?;
-        let (canonical, retained, _) =
+        let (canonical, retained, publication_id) =
             self.permitted_read_publication(project, subject, language)?;
+        if selection.publication_id != publication_id {
+            return Err(Error::new(
+                "selected publication was replaced; reopen the current explanation",
+            )
+            .with_reading_failure(ExplanationFailureReason::Changed));
+        }
         let provenance = ExplanationProvenance::from(&retained);
         if provenance.realization_fingerprint != selection.realization_fingerprint {
             return Err(Error::new(
@@ -399,7 +409,7 @@ impl LocalOperations {
             .text
             .get(citation.claim_start_byte..citation.claim_end_byte)
             .ok_or_else(|| Error::new("selected citation claim unavailable"))?;
-        let result = serde_json::json!({"project_id":project.to_string(),"subject":subject,
+        let result = serde_json::json!({"publication_id":publication_id,"project_id":project.to_string(),"subject":subject,
             "language":language,"realization_fingerprint":selection.realization_fingerprint,
             "unit_index":selection.unit_index,"citation_index":selection.citation_index,
             "claim":claim,"chunk":chunk,"applicability":validated_applicability(&retained),"read_only":true,"semantic_approval":"not_established",
@@ -470,7 +480,8 @@ impl LocalOperations {
                     } else {
                         match decode_explanation(record.content.as_deref()) {
                             Err((state, diagnostic)) => (state, None, Some(diagnostic)),
-                            Ok(retained) => {
+                            Ok(mut retained) => {
+                                retained.publication_id = Some(record.id.to_string());
                                 applicability = ExplanationApplicability::from_retained(&retained);
                                 preparations += 1;
                                 match self.prepare_subject_explanation(canonical, subject, &language) {
@@ -667,13 +678,15 @@ fn decode_explanation(
 }
 
 fn retained_matches(plan: &ExplanationPlan, retained: &RetainedExplanation) -> bool {
-    *retained
-        == retain_explanation(
-            plan,
-            retained.realization.clone(),
-            retained.generated_at_unix_micros,
-        )
-        && validate_explanation(plan, &retained.realization).is_ok()
+    let mut expected = retain_explanation(
+        plan,
+        retained.realization.clone(),
+        retained.generated_at_unix_micros,
+    );
+    // Store identity is assigned separately after decode/record, never retained
+    // content or part of preparation equality. Citation selection checks it.
+    expected.publication_id = retained.publication_id.clone();
+    *retained == expected && validate_explanation(plan, &retained.realization).is_ok()
 }
 
 #[cfg(test)]
@@ -682,6 +695,7 @@ mod size_tests {
     #[test]
     fn retained_decoder_uses_the_content_bound_including_formatting() -> Result<(), String> {
         let retained = RetainedExplanation {
+            publication_id: None,
             realization: ExplanationRealization {
                 diagrams: Vec::new(),
                 format_kind: EXPLANATION_KIND.into(),

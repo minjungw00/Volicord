@@ -354,6 +354,7 @@ fn repository_analysis_failures_stay_visible_above_optional_coverage(
         let mut answers = explanation_answers(&[], "en", FixedLocale::English);
         answers.explanation_state = ExplanationState::Current;
         answers.provenance = Some(ExplanationProvenance {
+            publication_id: None,
             project_id: "authored-project".into(),
             subject: ExplanationSubject::Repository(
                 volicord_repository_intelligence::AnalysisSnapshotId::from_hex(&"44".repeat(32))?,

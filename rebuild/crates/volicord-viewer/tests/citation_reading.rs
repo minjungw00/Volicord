@@ -332,6 +332,12 @@ fn selection(
     offset: usize,
 ) -> Result<ExplanationCitationSelection, Box<dyn Error>> {
     Ok(ExplanationCitationSelection {
+        publication_id: f
+            .answers()?
+            .provenance
+            .ok_or("provenance")?
+            .publication_id
+            .ok_or("publication identity")?,
         realization_fingerprint: f
             .answers()?
             .provenance
@@ -344,8 +350,8 @@ fn selection(
 }
 fn citation_target(f: &Fixture, s: &ExplanationCitationSelection) -> String {
     format!(
-        "/citation?subject=repository:{}&language=en&realization={}&unit={}&citation={}&offset={}",
-        f.analysis, s.realization_fingerprint, s.unit_index, s.citation_index, s.offset
+        "/citation?subject=repository:{}&language=en&publication={}&realization={}&unit={}&citation={}&offset={}",
+        f.analysis, s.publication_id, s.realization_fingerprint, s.unit_index, s.citation_index, s.offset
     )
 }
 fn body(response: &str) -> Result<Value, Box<dyn Error>> {
@@ -1189,6 +1195,11 @@ fn quiet_heading_provenance_preserves_exact_claims_and_duplicate_bindings(
         .get(&citation_target(
             &f,
             &ExplanationCitationSelection {
+                publication_id: before
+                    .provenance
+                    .as_ref()
+                    .and_then(|p| p.publication_id.clone())
+                    .ok_or("publication identity")?,
                 realization_fingerprint: before
                     .provenance
                     .ok_or("provenance")?
@@ -1735,6 +1746,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             subject,
             "en",
             &ExplanationCitationSelection {
+                publication_id: p.publication_id.ok_or("publication identity")?,
                 realization_fingerprint: p.realization_fingerprint,
                 unit_index: 1,
                 citation_index: 0,
@@ -2169,5 +2181,36 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
         fs::create_dir(&root)?;
         fs::write(std::path::Path::new(&root).join("hostile.html"), html)?;
     }
+    Ok(())
+}
+
+#[test]
+fn identical_wording_republication_cannot_rebind_a_selected_citation() -> Result<(), Box<dyn Error>>
+{
+    let f = Fixture::new()?;
+    let selected = selection(&f, 1, 0, 0)?;
+    let previous = f.answers()?.provenance.ok_or("original provenance")?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        f.realization.clone(),
+    )?;
+    let current = f.answers()?.provenance.ok_or("current provenance")?;
+    assert_eq!(
+        previous.realization_fingerprint, current.realization_fingerprint,
+        "wording and bindings are deliberately identical"
+    );
+    assert!(
+        f.ops
+            .read_explanation_citation(
+                f.project,
+                ExplanationSubject::Repository(f.analysis),
+                "en",
+                &selected
+            )
+            .is_err(),
+        "a selected older publication must not silently bind to its replacement"
+    );
     Ok(())
 }

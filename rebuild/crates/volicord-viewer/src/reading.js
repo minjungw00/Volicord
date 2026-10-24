@@ -142,7 +142,8 @@
       const subjectIdentity = Array.isArray(result.subject?.identity)
         ? result.subject.identity.map(b => Number.isInteger(b) && b >= 0 && b <= 255 ? b.toString(16).padStart(2,'0') : '?').join('')
         : result.subject?.identity;
-      if (result.realization_fingerprint !== control.dataset.realization ||
+      if (result.publication_id !== control.dataset.publicationId ||
+          result.realization_fingerprint !== control.dataset.realization ||
           String(result.unit_index) !== control.dataset.unit || String(result.citation_index) !== control.dataset.citation ||
           `${result.subject?.kind}:${subjectIdentity}` !== url.searchParams.get('subject') ||
           result.language !== url.searchParams.get('language') || chunk.citation?.source_id !== point.dataset.sourceId ||

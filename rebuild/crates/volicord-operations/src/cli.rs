@@ -1147,9 +1147,15 @@ fn dispatch_explanation_action(
             }
             let response = serde_json::from_value(header)
                 .map_err(|e| Error::with_source("invalid explanation realization", e))?;
-            Ok(
-                json!({"operation":"explanation_record","explanation":operations.record_explanation(project,subject,required(args,"language")?,response)?}),
-            )
+            Ok({
+                let retained = operations.record_explanation(
+                    project,
+                    subject,
+                    required(args, "language")?,
+                    response,
+                )?;
+                json!({"operation":"explanation_record","publication_id":retained.publication_id,"explanation":retained})
+            })
         }
         "delete" => Ok(
             json!({"operation":"explanation_delete", "deleted":operations.delete_explanations(project,subject)?}),

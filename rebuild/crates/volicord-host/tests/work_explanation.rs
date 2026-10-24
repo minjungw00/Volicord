@@ -928,6 +928,21 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
     }
     assert!(pages >= 3);
     let doc: Value = serde_json::from_str(&encoded)?;
+    assert_eq!(doc["publication_id"], receipt["publication_id"]);
+    let citation_read = json!({"action":"citation","project_id":f.project.to_string(),
+        "subject_kind":"work","subject_id":f.work.to_string(),"language":"en",
+        "publication_id":doc["publication_id"],
+        "realization_fingerprint":doc["provenance"]["realization_fingerprint"],
+        "unit_index":1,"citation_index":0,"offset":0});
+    let selected = page(&mut f.host, citation_read.clone());
+    assert_eq!(selected["result"]["isError"], false, "{selected}");
+    assert_eq!(
+        selected["result"]["structuredContent"]["publication_id"],
+        doc["publication_id"]
+    );
+    let mut foreign = citation_read.clone();
+    foreign["publication_id"] = json!("00".repeat(16));
+    assert_eq!(page(&mut f.host, foreign)["result"]["isError"], true);
     assert_eq!(doc["diagrams"], original["realization"]["diagrams"]);
     // Independent retained inspection, not compact_publication as the oracle.
     for (unit, expected) in doc["units"].as_array().ok_or("units")?.iter().zip(
@@ -1034,6 +1049,15 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
         "en",
         realized,
     )?;
+    let rejected = page(&mut f.host, citation_read.clone());
+    assert_eq!(
+        rejected["result"]["isError"], true,
+        "old exact wording is a different publication"
+    );
+    assert_eq!(
+        rejected["result"]["structuredContent"]["details"]["reason"],
+        "changed"
+    );
     assert_eq!(
         page(&mut f.host, continuation.clone())["result"]["isError"],
         true
@@ -1041,6 +1065,12 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
     let fresh = page(&mut f.host, base.clone());
     assert_eq!(fresh["result"]["isError"], false);
     let fresh = &fresh["result"]["structuredContent"];
+    let mut current_citation = citation_read;
+    current_citation["publication_id"] = fresh["publication_id"].clone();
+    assert_eq!(
+        page(&mut f.host, current_citation)["result"]["isError"],
+        false
+    );
     assert_eq!(
         fresh["applicability"]["repository_comparison"],
         "verified_at_read"

@@ -1125,6 +1125,10 @@ fn large_excerpt_reaches_cli_mcp_live_and_snapshot_without_surrounding_bytes(
         ExplanationSubject::Work(work(&f)?),
         "en",
         &volicord_operations::ExplanationCitationSelection {
+            publication_id: public["provenance"]["publication_id"]
+                .as_str()
+                .ok_or("publication identity")?
+                .into(),
             realization_fingerprint: public["provenance"]["realization_fingerprint"]
                 .as_str()
                 .ok_or("output")?
@@ -1489,6 +1493,10 @@ fn representative_production_code_preserves_grounding_across_public_readers(
     {
         let source = expected["text"].as_str().ok_or("text")?;
         let mut selected = volicord_operations::ExplanationCitationSelection {
+            publication_id: public_answers(&f, &mut host)?["provenance"]["publication_id"]
+                .as_str()
+                .ok_or("publication identity")?
+                .into(),
             realization_fingerprint: identity.clone(),
             unit_index: 1,
             citation_index,
@@ -2005,6 +2013,10 @@ fn command_observation_is_independent_of_checkpoint_verification_on_public_reade
             ExplanationSubject::Work(work(&f)?),
             "en",
             &volicord_operations::ExplanationCitationSelection {
+                publication_id: answers["provenance"]["publication_id"]
+                    .as_str()
+                    .ok_or("publication identity")?
+                    .into(),
                 realization_fingerprint: answers["provenance"]["realization_fingerprint"]
                     .as_str()
                     .ok_or("output")?
@@ -2191,6 +2203,10 @@ fn work_selected_citations_keep_observed_pairs_and_missing_before_distinct(
         };
         for index in 0..count {
             let selected = volicord_operations::ExplanationCitationSelection {
+                publication_id: answers["provenance"]["publication_id"]
+                    .as_str()
+                    .ok_or("publication identity")?
+                    .into(),
                 realization_fingerprint: answers["provenance"]["realization_fingerprint"]
                     .as_str()
                     .ok_or("output")?
@@ -2213,7 +2229,7 @@ fn work_selected_citations_keep_observed_pairs_and_missing_before_distinct(
                 "en".into(),
                 "127.0.0.1:3219".parse()?,
             )?;
-            let target=format!("/citation?subject=work:{}&language=en&realization={}&unit={unit}&citation={index}&offset=0",work(&f)?,selected.realization_fingerprint);
+            let target=format!("/citation?subject=work:{}&language=en&publication={}&realization={}&unit={unit}&citation={index}&offset=0",work(&f)?,selected.publication_id,selected.realization_fingerprint);
             let mut response = Vec::new();
             server.serve_connection(
                 &mut format!("GET {target} HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n").as_bytes(),

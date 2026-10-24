@@ -385,7 +385,7 @@ fn cited_summary_has_its_own_exact_http_authority_and_cannot_borrow_article_iden
         "127.0.0.1:3219".parse()?,
     )?;
     let request = |subject: &str| {
-        format!("GET /citation?subject={subject}%3A{id}&language=en&realization={}&unit=0&citation=0&offset=0 HTTP/1.1\r\nHost: 127.0.0.1:3219\r\nOrigin: http://127.0.0.1:3219\r\nSec-Fetch-Site: same-origin\r\n\r\n",provenance.realization_fingerprint)
+        format!("GET /citation?subject={subject}%3A{id}&language=en&publication={}&realization={}&unit=0&citation=0&offset=0 HTTP/1.1\r\nHost: 127.0.0.1:3219\r\nOrigin: http://127.0.0.1:3219\r\nSec-Fetch-Site: same-origin\r\n\r\n",provenance.publication_id.as_deref().unwrap_or(""),provenance.realization_fingerprint)
     };
     let read = |subject: &str| -> Result<String, Box<dyn Error>> {
         let mut output = Vec::new();

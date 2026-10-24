@@ -5,6 +5,7 @@ use serde::Serialize;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ExplanationProvenance {
+    pub publication_id: Option<String>,
     pub project_id: String,
     pub subject: ExplanationSubject,
     pub question: String,
@@ -39,6 +40,7 @@ impl From<&RetainedExplanation> for ExplanationProvenance {
             .collect();
         let uncited_evidence_count = e.evidence.len() - evidence.len();
         Self {
+            publication_id: e.publication_id.clone(),
             project_id: e.project_id.clone(),
             subject: e.subject,
             question: e.question.clone(),

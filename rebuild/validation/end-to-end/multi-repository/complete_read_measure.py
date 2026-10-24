@@ -185,13 +185,19 @@ def journey(server, case, expected, output):
     # The independently preserved recording is the semantic oracle, including
     # equal-worded endpoints, guarded groups and parallel message vector order.
     assert doc["diagrams"] == realization["diagrams"]
-    assert doc["provenance"] == {k: v for k, v in public["provenance"].items() if k != "citations"}
+    expected_provenance = {k: v for k, v in public["provenance"].items() if k != "citations"}
+    if "publication_id" not in expected_provenance:
+        # Historical measurement oracle: pin the actual original public receipt,
+        # never infer a managed identity from wording or the helper under test.
+        assert case.get("expected_publication_id"), "An original public receipt must pin the publication"
+        expected_provenance["publication_id"] = case["expected_publication_id"]
+    assert doc["provenance"] == expected_provenance
     reconstruction = time.perf_counter() - reconstruction_start
     write(output / "expanded-publication.json", dict(doc, units=units))
     source_bytes = 0
     for i, j, citation, original_bytes in windows:
         args = dict(action="citation", project_id=case["project"], subject_kind=case["subject_kind"],
-                    subject_id=case["subject_id"], language=case["language"],
+                    subject_id=case["subject_id"], language=case["language"], publication_id=doc["publication_id"],
                     realization_fingerprint=public["provenance"]["realization_fingerprint"],
                     unit_index=i, citation_index=j, offset=0)
         parts = []

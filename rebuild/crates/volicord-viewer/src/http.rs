@@ -188,6 +188,7 @@ impl ViewerServer {
         q.require_only(&[
             "subject",
             "language",
+            "publication",
             "realization",
             "unit",
             "citation",
@@ -215,6 +216,7 @@ impl ViewerServer {
                 .map_err(|_| HttpFailure::bad_request("citation selector is too large"))
         };
         let selection = volicord_operations::ExplanationCitationSelection {
+            publication_id: q.required("publication")?.into(),
             realization_fingerprint: q.required("realization")?.into(),
             unit_index: integer("unit")?,
             citation_index: integer("citation")?,

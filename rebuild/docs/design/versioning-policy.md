@@ -160,7 +160,7 @@ Decision, Source, coverage, omission, uncertainty, generator와 adoption basis�
   meaning이 분리되거나 rendered-field omission contract가 추가되면 current writer
   metadata shape/version에서만 함께 기록한다. 이전 shape decoder, dual metadata
   representation 또는 compatibility write를 추가하지 않는다.
-- Current writer version `10`은 active-host realization의 exact requested-language attestation,
+- Writer version `10`은 active-host realization의 exact requested-language attestation,
   all-generated-prose attestation과 realized-body fingerprint를 plan fingerprint와 함께 기록한다.
   Version 8 introduced typed Reading/Evidence section roles, exact explanation provenance and
   current-build canonical read equality binding for publication. Version 9 includes
@@ -593,3 +593,12 @@ measured critical-evidence policy. This changes read-only inclusion, not retaine
 v8 shape, preparation, Source capture, citation pages or document metadata formats.
 Nonvisual diagram IDs are presentation of already admitted identity; no migration
 or compatibility decoder is introduced.
+
+Generated-document metadata current writer is **11**. Embedded explanation
+provenance now includes its store-owned publication ID, independently of identical
+realization bytes or generated time. Earlier exports retain their historical basis. Explicit current production records
+the new identity; no compatibility conversion or rewriting of old output is added.
+The ID is ephemeral reader/receipt metadata on RetainedExplanation and is excluded
+from its stored v8 envelope, preparation equality, response and semantic seals.
+Exact citation transport additionally requires the ID and rejects replacement.
+This is a related document-provenance change, not a canonical/bundle format change.

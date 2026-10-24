@@ -54,6 +54,7 @@ fn reading(w: &UnderstandingWork, r: &ViewerRequest, claim: &str) -> Explanation
         language: "en".into(),
         state: ExplanationState::Current,
         content: Some(RetainedExplanation {
+            publication_id: None,
             realization: ExplanationRealization {
                 diagrams: Vec::new(),
                 format_kind: EXPLANATION_KIND.into(),

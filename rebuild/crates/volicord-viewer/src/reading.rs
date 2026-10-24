@@ -378,10 +378,11 @@ impl<'a> ReaderAnswers<'a> {
             scope,
             language,
             format!("{:?}", answers.explanation_state),
-            answers
-                .provenance
-                .as_ref()
-                .map(|p| (&p.subject, &p.realization_fingerprint))
+            answers.provenance.as_ref().map(|p| (
+                &p.subject,
+                &p.publication_id,
+                &p.realization_fingerprint
+            ))
         ]);
         Self {
             answers,
@@ -1858,15 +1859,16 @@ fn render_source_excerpts(
                 "이것은 작성자가 인용한 주장 범위입니다. 범위 연결만으로 각 문장이 이 코드에서 성립하는지 검증되지는 않습니다.")));
             if !snapshot {
                 let endpoint = format!(
-                    "/citation?subject={}&language={}&realization={}&unit={}&citation={}&offset=0",
+                    "/citation?subject={}&language={}&publication={}&realization={}&unit={}&citation={}&offset=0",
                     percent_encode(&provenance.subject.key()),
                     percent_encode(&provenance.language),
+                    percent_encode(provenance.publication_id.as_deref().unwrap_or("")),
                     percent_encode(&provenance.realization_fingerprint),
                     index,
                     n
                 );
-                html.push_str(&format!("<div class=\"citation-inspection\" data-citation-url=\"{}\" data-realization=\"{}\" data-unit=\"{}\" data-citation=\"{}\"><p class=\"source-note citation-status\" role=\"status\"></p><button type=\"button\" class=\"citation-read\">{}</button></div>",
-                    escape(&endpoint),escape(&provenance.realization_fingerprint),index,n,
+                html.push_str(&format!("<div class=\"citation-inspection\" data-citation-url=\"{}\" data-publication-id=\"{}\" data-realization=\"{}\" data-unit=\"{}\" data-citation=\"{}\"><p class=\"source-note citation-status\" role=\"status\"></p><button type=\"button\" class=\"citation-read\">{}</button></div>",
+                    escape(&endpoint),escape(provenance.publication_id.as_deref().unwrap_or("")),escape(&provenance.realization_fingerprint),index,n,
                     text(r.locale,"Read permitted cited bytes (up to 4,096)","허용된 인용 바이트 읽기 (최대 4,096)")));
             } else {
                 html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,

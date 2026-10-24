@@ -2731,3 +2731,22 @@ provides no Source authority. Failed rendering returns no partial SVG, while the
 admitted alternative and explicit visual-failure notice remain available only
 when current publication dependencies permit them. Renderer ID 3's normal output
 is unchanged; no render cache, new dependency, asset or license is introduced.
+
+### Exact publication citation identity
+
+Content/realization equality is not managed publication identity. Ordinary published
+provenance carries the store-assigned `publication_id`; record receipts and complete
+pages expose the same identity. Exact citation reads require it in MCP selectors
+and live HTTP URLs, and return it with the exact claim/Source binding. Republishing
+identical wording keeps its semantic/realization seal but replaces the managed ID:
+an older citation is Changed, with no body and no implicit rebinding. Each page still
+revalidates all dependencies, not only the selected element or citation.
+
+Publication ID is assigned only by the managed writer/reader. It is skipped in the
+retained explanation envelope and cannot be supplied through authoring. Current v8
+realizations/preparations and their response/retained bounds are unchanged. Source
+navigation namespaces include managed ID, so old equal-worded links cannot select
+new figure/claim origins. Known loss still withholds cached code and diagram meaning.
+Generated-document metadata advances independently to 11 because embedded publication
+provenance now preserves this managed output identity; canonical, Source-copy, bundle,
+Analysis Snapshot and explanation versions do not change.

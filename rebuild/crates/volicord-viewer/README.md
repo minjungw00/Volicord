@@ -36,7 +36,7 @@ operations proportionate to the actual repository, with analysis scope, coverage
 freshness and uncertainty. A generic Code catalog is outside this reader. Relevant code is
 accessible through the explanation's exact claim-specific Source panel.
 
-Citations preserve Project, subject, language, realization, unit/range and original
+Citations preserve Project, subject, language, managed publication, realization, unit/range and original
 bytes. Desktop panels and narrow focused reading return to the exact claim. Live
 `GET /citation` reads bounded permitted copies, rechecking currentness, lifetime,
 hashes and scope on every chunk. It never opens an arbitrary path, captures new
@@ -98,3 +98,8 @@ summary provenance remains available when its article is unavailable. Routine
 repository coverage is in supporting records; concise scope and important analysis
 failures remain visible. These presentation rules change neither v6 admission nor
 Source authority, and do not establish repository-wide semantic or human acceptance.
+
+Exact citation transport requires the `publication_id` from the current record/read
+receipt as well as the realization, unit and citation. Equal wording recorded again
+has a different publication ID; reload the current explanation after replacement.
+No read rebinds a saved citation to a replacement publication.

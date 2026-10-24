@@ -219,6 +219,9 @@ impl ExplanationRealization {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RetainedExplanation {
+    /// Store-owned read/receipt identity; never part of the retained envelope.
+    #[serde(skip)]
+    pub publication_id: Option<String>,
     pub realization: ExplanationRealization,
     pub project_id: String,
     pub subject: ExplanationSubject,
@@ -1147,6 +1150,7 @@ pub fn retain_explanation(
         }
     }
     RetainedExplanation {
+        publication_id: None,
         realization,
         project_id: plan.project_id.clone(),
         subject: plan.subject,

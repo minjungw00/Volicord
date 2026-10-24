@@ -723,6 +723,7 @@ impl HostAdapter {
                     subject,
                     language,
                     &volicord_operations::ExplanationCitationSelection {
+                        publication_id: required_str(args, "publication_id")?.into(),
                         realization_fingerprint: required_str(args, "realization_fingerprint")?
                             .into(),
                         unit_index: args["unit_index"].as_u64().unwrap_or(0) as usize,
@@ -1816,7 +1817,7 @@ impl HostAdapter {
                     .map_err(operation_error)?;
                 self.explanation_requests.remove(request_id);
                 Ok(
-                    json!({"generation_status":"recorded_host_interpretation","explanation":retained,
+                    json!({"generation_status":"recorded_host_interpretation","publication_id":retained.publication_id,"explanation":retained,
                     "host_session_correlation":self.host_session,"host_session_status":"server_generated_correlation_not_authentication",
                     "semantic_approval":"not_established"}),
                 )
@@ -3251,6 +3252,14 @@ fn explanation_read_schema() -> Value {
     let mut citation = common();
     citation.extend([
         ("action", enum_schema("Read exact citation", &["citation"])),
+        (
+            "publication_id",
+            text_schema(
+                "Exact managed publication identity returned by page/record/read",
+                1,
+                64,
+            ),
+        ),
         ("realization_fingerprint", fingerprint_schema()),
         (
             "unit_index",
@@ -3263,7 +3272,7 @@ fn explanation_read_schema() -> Value {
     ]);
     json!({"oneOf":[
         object_schema(page, &["action","project_id","subject_kind","subject_id","language","offset"]),
-        object_schema(citation, &["action","project_id","subject_kind","subject_id","language","offset","realization_fingerprint","unit_index","citation_index"])
+        object_schema(citation, &["action","project_id","subject_kind","subject_id","language","offset","publication_id","realization_fingerprint","unit_index","citation_index"])
     ]})
 }
 
