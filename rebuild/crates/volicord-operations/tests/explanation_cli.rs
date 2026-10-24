@@ -353,3 +353,200 @@ fn decision_compose_cli_binds_recorded_reason_without_json_hash_authoring(
     assert!(read.to_string().contains("Recorded recommendation"));
     Ok(())
 }
+
+#[test]
+fn human_cli_reads_parallel_diagrams_and_exact_grounding() -> Result<(), Box<dyn std::error::Error>>
+{
+    human_cli_diagram_case(false)?;
+    human_cli_diagram_case(true)
+}
+
+fn human_cli_diagram_case(controls: bool) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_operations::*;
+    use volicord_projections::*;
+    let root = tempfile::tempdir()?;
+    let repo = root.path().join("repo");
+    std::fs::create_dir(&repo)?;
+    let plain="import asyncio\nasync def run(enabled):\n    if enabled:\n        return await asyncio.gather(worker(), worker())\n";
+    let code = if controls {
+        format!("{plain}# \x1b]52;c;untrusted\x07\n")
+    } else {
+        plain.to_owned()
+    };
+    std::fs::write(repo.join("run.py"), &code)?;
+    let ops = LocalOperations::new(RuntimeLayout::new(root.path().join("runtime"))?);
+    let project = ops
+        .initialize_project("Independent workers", Some(&repo))?
+        .project
+        .id;
+    let analysis = ops
+        .analyze(project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let source = ops.observe_repository_file(RepositoryFileObservationRequest {
+        project_id: project,
+        analysis_snapshot_id: analysis,
+        path: "run.py".into(),
+        byte_range: None,
+        retain_seconds: 3600,
+    })?;
+    let source = source["source_id"].as_str().ok_or("source")?;
+    let bytes = (0..16)
+        .map(|i| u8::from_str_radix(&source[i * 2..i * 2 + 2], 16))
+        .collect::<Result<Vec<_>, _>>()?;
+    let source = volicord_context::SourceId::from_slice(&bytes)?;
+    let plan = ops.prepare_explanation(project, ExplanationSubject::Repository(analysis), "en")?;
+    let text="Scheduler starts Worker calls in parallel if enabled. This is static implementation, not an execution trace.";
+    let label = |s: &str| -> Result<DiagramLabel, Box<dyn std::error::Error>> {
+        let start = text.find(s).ok_or("label")?;
+        Ok(DiagramLabel {
+            unit: 0,
+            start_byte: start,
+            end_byte: start + s.len(),
+        })
+    };
+    let diagram = GroundedDiagram {
+        id: "workers".into(),
+        title: label("Worker calls")?,
+        caption_unit: 0,
+        semantic_fingerprint: String::new(),
+        meaning: DiagramMeaning::Sequence {
+            participants: [
+                ("scheduler", "Scheduler"),
+                ("first", "Worker"),
+                ("second", "Worker"),
+            ]
+            .into_iter()
+            .map(|(id, name)| {
+                Ok(DiagramNode {
+                    id: id.into(),
+                    kind: DiagramNodeKind::Participant,
+                    label: label(name)?,
+                })
+            })
+            .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?,
+            groups: vec![DiagramGroup {
+                order: DiagramOrder::Parallel,
+                condition: Some(label("enabled")?),
+                messages: [("first-call", "first"), ("second-call", "second")]
+                    .into_iter()
+                    .map(|(id, to)| {
+                        Ok(DiagramMessage {
+                            id: id.into(),
+                            from: "scheduler".into(),
+                            to: to.into(),
+                            kind: DiagramMessageKind::Call,
+                            label: label("starts Worker calls")?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?,
+            }],
+        },
+    };
+    let realization = ops.compose_repository_explanation(
+        project,
+        analysis,
+        RepositoryExplanationDraft {
+            diagrams: vec![diagram],
+            plan_fingerprint: plan.fingerprint,
+            language: "en".into(),
+            generator: ExplanationGenerator {
+                host: "authored-control".into(),
+                session: "cli".into(),
+                agent: None,
+                model: None,
+            },
+            paragraphs: vec![RepositoryReaderUnit {
+                question: ExplanationQuestion::Narrative,
+                text: text.into(),
+                evidence_keys: vec!["repository_basis".into()],
+                sources: vec![RepositoryClaimRange {
+                    source_id: source,
+                    start_byte: 0,
+                    end_byte: code.len(),
+                    claim: None,
+                }],
+            }],
+        },
+    )?;
+    let retained = ops.record_explanation(
+        project,
+        ExplanationSubject::Repository(analysis),
+        "en",
+        realization,
+    )?;
+    let output = Command::new(env!("CARGO_BIN_EXE_volicord"))
+        .args([
+            "--runtime",
+            ops.layout().root().to_str().ok_or("runtime")?,
+            "--project",
+            &project.to_string(),
+            "repository",
+            "explain",
+            "read",
+            "--language",
+            "en",
+        ])
+        .output()?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout)?;
+    assert!(stdout.contains("parallel (no relative order asserted) [if enabled]"));
+    assert!(stdout.contains("[message=first-call; from=scheduler; to=first]"));
+    assert!(stdout.contains("[message=second-call; from=scheduler; to=second]"));
+    assert!(stdout.contains("unit=0 citation=0"));
+    assert!(stdout.contains(
+        retained
+            .publication_id
+            .as_deref()
+            .ok_or("publication identity")?
+    ));
+    if controls {
+        assert!(!stdout.contains('\x1b'));
+        assert!(!stdout.contains('\x07'));
+        assert!(stdout.contains("\\u{001b}"));
+        assert!(stdout.contains("--json preserves exact Source bytes"));
+    } else {
+        assert!(stdout.contains(&code));
+    }
+    let raw = Command::new(env!("CARGO_BIN_EXE_volicord"))
+        .args([
+            "--runtime",
+            ops.layout().root().to_str().ok_or("runtime")?,
+            "--project",
+            &project.to_string(),
+            "--json",
+            "repository",
+            "explain",
+            "read",
+            "--language",
+            "en",
+        ])
+        .output()?;
+    assert!(raw.status.success());
+    let raw: Value = serde_json::from_slice(&raw.stdout)?;
+    assert_eq!(raw["answers"]["source_excerpts"][0]["text"], code);
+    ops.delete_repository_source_observation(project, analysis, source)?;
+    let lost = Command::new(env!("CARGO_BIN_EXE_volicord"))
+        .args([
+            "--runtime",
+            ops.layout().root().to_str().ok_or("runtime")?,
+            "--project",
+            &project.to_string(),
+            "repository",
+            "explain",
+            "read",
+            "--language",
+            "en",
+        ])
+        .output()?;
+    let lost = String::from_utf8(lost.stdout)?;
+    assert!(!lost.contains("message=first-call"));
+    assert!(!lost.contains("asyncio.gather(worker(), worker())"));
+    Ok(())
+}

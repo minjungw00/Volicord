@@ -1828,29 +1828,29 @@ fn render_repository_answer(
 ) -> Result<(), Error> {
     write_line(
         stdout,
-        match locale {
-            CliLocale::English => "Repository explanation · host interpretation",
-            CliLocale::Korean => "저장소 설명 · 호스트 해석",
-        },
+        format!(
+            "{}: {}",
+            if matches!(locale, CliLocale::English) {
+                "Explanation state"
+            } else {
+                "설명 상태"
+            },
+            answers["explanation_state"]
+                .as_str()
+                .unwrap_or("unavailable")
+        ),
     )?;
-    if let Some(units) = answers["prose"].as_array() {
-        for unit in units {
-            write_line(stdout, unit["text"].as_str().unwrap_or(""))?;
-            if let Some(citations) = unit["citations"].as_array() {
-                for c in citations {
-                    write_line(
-                        stdout,
-                        format!(
-                            "  {}:{}–{}",
-                            c["locator"].as_str().unwrap_or(""),
-                            c["start_line"],
-                            c["end_line"]
-                        ),
-                    )?;
-                }
-            }
-        }
-    }
+    render_field(
+        stdout,
+        if matches!(locale, CliLocale::English) {
+            "Repository explanation"
+        } else {
+            "저장소 설명"
+        },
+        &json!({"answers":answers}),
+        0,
+        locale,
+    )?;
     if let Some(diagnostic) = answers["diagnostic"].as_str() {
         write_line(stdout, diagnostic)?;
     }
@@ -2022,6 +2022,18 @@ fn render_analysis_summary(
         "다음: 사용 가능한 결과를 활용하고 전체 진단은 --json으로 확인하세요. 실패 원인을 해결하거나 소스를 변경한 뒤 volicord analyze를 실행하세요. 지원하지 않는 기능은 analyzer 지원이 필요합니다."))
 }
 
+fn terminal_explanation_text(text: &str) -> String {
+    text.chars()
+        .map(|ch| {
+            if ch.is_control() && ch != '\n' && ch != '\t' {
+                format!("\\u{{{:04x}}}", ch as u32)
+            } else {
+                ch.to_string()
+            }
+        })
+        .collect()
+}
+
 fn render_field(
     stdout: &mut dyn Write,
     key: &str,
@@ -2078,8 +2090,66 @@ fn render_field(
                     continue; // This authored heading was already printed above.
                 }
                 if let Some(text) = a["text"].as_str() {
-                    write_line(stdout, format_args!("{padding}  {text}"))?;
+                    write_line(
+                        stdout,
+                        format_args!("{padding}  {}", terminal_explanation_text(text)),
+                    )?;
                 }
+            }
+        }
+        if let Some(provenance) = answers.get("provenance").filter(|p| !p.is_null()) {
+            write_line(
+                stdout,
+                format!(
+                    "{padding}  publication={} realization={}",
+                    provenance["publication_id"]
+                        .as_str()
+                        .unwrap_or("unavailable"),
+                    provenance["realization_fingerprint"]
+                        .as_str()
+                        .unwrap_or("unavailable")
+                ),
+            )?;
+        }
+        let texts = answers["prose"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|unit| unit["text"].as_str().unwrap_or(""))
+            .collect::<Vec<_>>();
+        for raw in answers["diagrams"].as_array().into_iter().flatten() {
+            let diagram: volicord_projections::GroundedDiagram =
+                serde_json::from_value(raw.clone()).map_err(|error| {
+                    Error::with_source("unsupported diagram meaning in explanation", error)
+                })?;
+            let meaning =
+                volicord_projections::diagram_text(&diagram, &texts).map_err(Error::new)?;
+            write_line(stdout, terminal_explanation_text(&meaning))?;
+        }
+        for (unit_index, unit) in answers["prose"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            for (citation_index, c) in unit["citations"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                let claim = unit["text"]
+                    .as_str()
+                    .and_then(|text| {
+                        text.get(
+                            c["claim_start_byte"].as_u64().unwrap_or(0) as usize
+                                ..c["claim_end_byte"].as_u64().unwrap_or(0) as usize,
+                        )
+                    })
+                    .unwrap_or("");
+                write_line(stdout,format!("{padding}  unit={unit_index} citation={citation_index} claim={} Source={} {}:{}–{} bytes {}–{} {}",
+                    terminal_explanation_text(claim),c["source_id"].as_str().unwrap_or(""),terminal_explanation_text(c["locator"].as_str().unwrap_or("")),
+                    c["start_line"],c["end_line"],c["start_byte"],c["end_byte"],c["range_sha256"].as_str().unwrap_or("")))?;
             }
         }
         for excerpt in answers["source_excerpts"].as_array().into_iter().flatten() {
@@ -2088,7 +2158,7 @@ fn render_field(
                 stdout,
                 format!(
                     "{padding}  {}:{}–{} · {} · {}",
-                    c["locator"].as_str().unwrap_or_default(),
+                    terminal_explanation_text(c["locator"].as_str().unwrap_or_default()),
                     c["start_line"],
                     c["end_line"],
                     c["use_kind"].as_str().unwrap_or_default(),
@@ -2104,7 +2174,14 @@ fn render_field(
                 })?;
             }
             if let Some(text) = excerpt["text"].as_str() {
-                write_line(stdout, text)?;
+                let safe = terminal_explanation_text(text);
+                if safe != text {
+                    write_line(stdout, match locale {
+                        CliLocale::English => "Terminal controls are escaped; --json preserves exact Source bytes.",
+                        CliLocale::Korean => "터미널 제어 문자를 이스케이프했습니다. 정확한 Source 바이트는 --json에 있습니다.",
+                    })?;
+                }
+                write_line(stdout, safe)?;
             }
             if excerpt["omitted_utf8_bytes"].as_u64().unwrap_or(0) > 0 {
                 write_line(

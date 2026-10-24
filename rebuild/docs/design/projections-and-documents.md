@@ -2771,3 +2771,16 @@ anchors work without script; live citation reads still fetch fresh permitted byt
 Known Source loss removes the physical shared payload as well as fetched panels and
 figure alternatives. Exported static bytes record their export basis and cannot
 promise future revocation. This changes no retained format or Source authority.
+
+### Actual human CLI explanation consumption
+
+Repository and Work human output share the same explanation renderer. In addition
+to admitted prose, it emits figure IDs, distinct node/message/edge endpoints,
+conditions, sequential/parallel semantics, captions, managed publication/realization
+identity and zero-based unit/citation coordinates with exact Source ranges/hashes.
+Complete embedded windows remain available in that bounded output. JSON remains the
+exact machine-readable representation; human output is not a diagram schema dump.
+Terminal control characters in explanation/Source text are escaped visibly, with
+an exact-byte JSON alternative. They cannot become OSC/ANSI terminal commands.
+Source loss removes both the diagram alternative and dependent code on the next
+CLI read; the public text path cannot resurrect a previous publication.

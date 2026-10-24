@@ -3757,3 +3757,11 @@ controlled comparisons. Preserve source/preparation/realization/retained metadat
 render, export, first-display and selected-evidence/return costs separately. Report
 all repetitions and median/min/max, without p95 or a new latency SLA. Differences
 from added publication identity metadata are fidelity costs, not compression claims.
+
+Actual human CLI `explanation_cli::human_cli_reads_parallel_diagrams_and_exact_grounding`
+uses a source-authored guarded `asyncio.gather` control with two same-named workers.
+It invokes the executable without `--json`, checks distinct endpoints, unordered
+parallelism, condition, claim/range and publication identity, and verifies complete
+original code. A hostile OSC/ANSI comment is visibly escaped in the terminal while
+JSON preserves exact bytes. Source-copy deletion removes the diagram/code. The
+pre-fix negative is retained; passing QuestionAnswers.text alone was insufficient.

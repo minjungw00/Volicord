@@ -103,3 +103,9 @@ Exact citation transport requires the `publication_id` from the current record/r
 receipt as well as the realization, unit and citation. Equal wording recorded again
 has a different publication ID; reload the current explanation after replacement.
 No read rebinds a saved citation to a replacement publication.
+
+Human CLI Repository/Work reading includes the admitted diagram's complete text
+meaning, distinct element IDs, conditions, order and Source coordinates. `--json`
+preserves exact bytes and provenance; terminal control characters are visibly
+escaped in human output. Offline repeated citations share a complete code window
+through a native link with an exact return to the selected Source claim.
