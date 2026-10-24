@@ -568,8 +568,9 @@ above separately requires explicit regeneration of affected summaries.
 
 ### Grounded diagram current-only format
 
-The prior explanation formats were 6 (prose) and 7 (concept/sequence); the single current writer/decoder is now
-**8**, including an explicit `diagrams` collection (empty for plain prose). This
+The prior explanation formats were 6 (prose) and 7 (concept/sequence); the single
+writer/decoder uses exact-current `volicord_explanation` version 8, including an
+explicit `diagrams` collection (empty for plain prose). This
 section supersedes earlier current-v6 statements, which describe prior changes.
 The added semantic meaning is durable even when labels reuse existing grounded units.
 Preparation, Work/repository compose, admission, retained decode, ordinary answers,

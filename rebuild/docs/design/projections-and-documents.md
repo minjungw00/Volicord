@@ -2526,7 +2526,8 @@ that rule or budget/publication constraints; hiding a link removes no dependency
 
 ### Grounded concept and sequence publications
 
-The current explanation envelope is v8. It adds `diagrams` to the exact admitted
+The sole writer and decoder use exact-current `volicord_explanation` version 8.
+It adds `diagrams` to the exact admitted
 publication, supporting concept relationships, components, guarded flowcharts, owned states and UML implementation sequences.
 The earlier flat `flow_step` admission and v6 no-diagram disposition are historical;
 ordered prose alone does not satisfy the required visual understanding outcome.

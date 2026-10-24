@@ -3742,6 +3742,12 @@ the independent last-link control. Truncated/missing payload and foreign-identit
 checks still reject the same original claim/range. File-only offline browser
 contexts prevent network access; a hidden pane timeout is not a negative-case pass.
 
+Architecture ownership checks compare the active explanation-format statement in
+both owners with the sole writer. Their drift counterexample changes that writer's
+current version in an isolated fixture, rather than changing a historical v6
+paragraph that cannot challenge the current v8 agreement. This introduces no
+explanation-format change or compatibility path.
+
 Renderer-focused `volicord-viewer --lib` controls reject excess messages and markup
 namespaces before invoking any layout target callback. The negative pre-fix attempt
 is preserved separately. `citation_reading` additionally admits hostile UTF-8/XML/

@@ -1266,6 +1266,11 @@ def self_test() -> int:
     if maintained_errors:
         raise AssertionError("maintained repository did not pass before self-test: " + maintained_errors[0])
 
+    explanation_writer = "rebuild/crates/volicord-projections/src/explanation.rs"
+    writer_version = re.search(
+        r"EXPLANATION_VERSION: u32 = (\d+)",
+        (REPOSITORY_ROOT / explanation_writer).read_text(),
+    ).group(1)
     tracked = tracked_paths(REPOSITORY_ROOT)
     with tempfile.TemporaryDirectory(prefix="volicord-architecture-contracts-") as temporary:
         temporary_root = Path(temporary)
@@ -1522,9 +1527,9 @@ def self_test() -> int:
 
         cases += (
             ("explanation-format-drift", lambda root, _: replace_once(
-                root / DESIGN_DIRECTORY / "projections-and-documents.md",
-                "exact-current `volicord_explanation` version 6",
-                "exact-current `volicord_explanation` version 0"),
+                root / explanation_writer,
+                f"EXPLANATION_VERSION: u32 = {writer_version}",
+                f"EXPLANATION_VERSION: u32 = {int(writer_version) + 1}"),
              "current explanation format disagrees with writer"),
             ("mandatory-explanation-roles", lambda root, _: (
                 (root / DESIGN_DIRECTORY / "projections-and-documents.md").write_text(
