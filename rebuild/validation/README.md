@@ -1349,6 +1349,11 @@ the untouched public export before disposable mutations. `capture_sources: true`
 in the diagram driver also preserves selected-detail and returned screens, with
 publication/language/locale and renderer/font/executable identities.
 
+Node tasks exercise the SVG and full text alternative with their own exact Source
+and return identity. The relationship index contains relations/messages; a declared
+node must have no entry there. This applicability check must not omit the node's
+full text/evidence journey or turn a missing alternative into a pass.
+
 Both `viewer-design/product_review.cjs` and `article_reading_browser.cjs` use
 `source_tasks` per `repository` / selected `work` destination. Declare
 `state: required`, `realization_fingerprint` and nonempty `claims`; each claim names

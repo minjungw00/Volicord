@@ -496,3 +496,45 @@ so their timings establish no latency regression verdict; isolated renderer/mode
 human reading time is unmeasured. Technical archive integrity, qualification,
 Source-grounded semantics, dependent visual judgment and human acceptance must
 still be reported separately.
+
+### Final authored names and native consumer scope
+
+Rendered return inspection exposed a remaining authored fragment: the Korean
+node name selected `Read는`, while English selected the sentence prefix `Read
+revalidates`. The host explicitly rewrote the complete reading-step paragraph and
+selected the standalone operation name `Read`, then freshly prepared/composed/
+recorded both languages through the normal interface. Source windows, all Source
+binding fields and their lifetime remain unchanged; new claim coordinates/hashes
+bind the new sentence. Latest English/Korean publications are
+`40bd364e31481cf4930918dd70a48a5d` /
+`11472310cc4dc1889ed1cc57456cc011`. The preceding publications and failed attempts
+remain preserved. This is an authored correction on the same permitted `e6da693a`
+implementation basis, not stale-prose or fingerprint rebinding.
+
+All three figures plus the Read node's own code and return pass 48 desktop/narrow
+live/offline/no-JS journeys for these final publications. The two full MCP documents
+and forty original-range reads also pass. The four unchanged Music Deck/Work
+publication identities retain their earlier complete-consumer evidence; their
+current CLI/HTML reads and all original bytes are rechecked. Final exports and
+receipt discovery are under `release/`, with refreshed Root observations in
+`release-volicord-complete/` and `read-name-final/mcp/`, beneath the existing ignored
+evidence directory. These directories do not replace maintained owners.
+
+The maintained whole-document control passes 90 native navigation journeys across
+six publications, five widths and live/offline/live-no-JS, with logical store
+nonmutation. Twelve ordinary Overview/catalog entries check exact canonical Project
+and independent Work names. All six final exports reject broken SVG links and
+duplicate identities. The ordinary-entry, selected-detail, Source and returned
+screens remain separate from any comprehension judgment.
+
+Two additional diagnostic failures are retained. The first name-revision control
+wrongly compared whole citation objects across a deliberately changed claim; the
+corrected control compares every unchanged Source field and verifies the new claim
+against the new prose through MCP. A Read-node journey then correctly reached its
+Source/return but the generic test assumed a node belonged to the relation-only
+index. It now requires nodes in the SVG/full alternative and explicitly requires
+their absence from that index. The private catalog control similarly scoped its
+selector to the visible native page instead of counting the separate recent and
+catalog representations together. Neither repair removes Product content or weakens
+claim, Source, return, or overview requirements. These findings justify the final
+test-responsibility commit; the gate still belongs to the exact eventual clean HEAD.
