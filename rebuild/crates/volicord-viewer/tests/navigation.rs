@@ -39,7 +39,14 @@ fn project_destinations_and_exact_related_records_are_readable_without_mutation(
         let opening = work.split("class=\"audit\"").next().ok_or("opening")?;
         assert!(opening.contains(&f.decisions["explicit"].to_string()));
         assert!(!work.contains(&f.decisions["other_work"].to_string()));
-        assert!(work.contains("DECISION DOCUMENT"));
+        let (decision_heading, other_locale_heading) = match locale {
+            ViewerLocale::English => ("DECISION DOCUMENT", "판단 문서"),
+            ViewerLocale::Korean => ("판단 문서", "DECISION DOCUMENT"),
+        };
+        let decision_eyebrow = format!("<p class=\"eyebrow\">{decision_heading} · ");
+        let other_locale_eyebrow = format!("<p class=\"eyebrow\">{other_locale_heading} · ");
+        assert!(work.contains(&decision_eyebrow));
+        assert!(!work.contains(&other_locale_eyebrow));
         assert!(work.contains("class=\"recorded-choice") || work.contains("recorded-choice"));
         let snapshot = viewer
             .render_snapshot(&request, TimestampMicros::from_unix_micros(123))?
@@ -60,6 +67,8 @@ fn project_destinations_and_exact_related_records_are_readable_without_mutation(
         assert!(!snapshot.contains("<form"));
         assert!(!snapshot.contains("<script"));
         assert!(!snapshot.contains("test-authenticity"));
+        assert!(snapshot.contains(&decision_eyebrow));
+        assert!(!snapshot.contains(&other_locale_eyebrow));
     }
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())

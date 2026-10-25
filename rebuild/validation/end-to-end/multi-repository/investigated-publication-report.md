@@ -557,3 +557,24 @@ Product bound. This correction binds the registry to those reviewed fixture byte
 it changes no fixture, Product capacity, qualification ceiling, expected reading
 outcome or assertion. A fresh exact-candidate gate is required after this metadata
 fix. The historical scoped-check invariant's cause remains unrelated and unresolved.
+
+The next clean candidate, `29948c64`, passed all seventeen admission support
+checks plus Final metadata, format and Clippy. Final's workspace tests then found
+another pre-existing expectation drift: navigation requested Korean UI with English
+authored content but still required the fixed English `DECISION DOCUMENT` heading.
+`4dd67aee` had correctly localized that UI vocabulary to `판단 문서`, as required
+by the Reader/Projection locale boundary. The test now checks the correct fixed
+heading and rejects the other locale's fixed heading in both live and script-free
+output, while retaining exact Decision inclusion/exclusion and store nonmutation.
+No Product translation, authored text or acceptance outcome changes. This failed
+Final and its independently verifiable archive remain a separate candidate result;
+provider, official V11 and local rehearsal did not run. A new candidate requires
+a fresh full gate rather than combining these passing commands with later results.
+
+The focused navigation target passes with both UI locales and English authored
+content; nested formatting passes. The complete Viewer all-target/all-feature suite
+also passes with local loopback permission, including the targets after navigation
+that the failed Final had not reached. Its first sandbox attempt stopped at HTTP
+listener bind `EPERM`; the unchanged code/input rerun records the local execution
+permission as its changed condition. No earlier gate or diagnostic result is promoted
+to current qualification by these focused checks.
