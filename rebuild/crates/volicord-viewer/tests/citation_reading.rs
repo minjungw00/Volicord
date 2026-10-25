@@ -2098,6 +2098,50 @@ fn same_named_nodes_retain_distinct_nonvisual_endpoints_in_actual_publication(
 }
 
 #[test]
+fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_offline_reads(
+) -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    for sequence in [false, true] {
+        let realization = diagram_control(&f, sequence)?;
+        f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            realization,
+        )?;
+        let before = f.answers()?;
+        let live = f.get("/?view=repository")?;
+        let destination = f.temp.path().join(format!("connection-{sequence}.html"));
+        ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+            .export_snapshot(&f.request(), &destination)?;
+        let offline = fs::read_to_string(destination)?;
+        for html in [&live, &offline] {
+            let id = if sequence { "answer" } else { "dependency" };
+            let detail = html
+                .split(&format!("data-connection=\"{id}\""))
+                .nth(1)
+                .ok_or("missing selected connection")?
+                .split("</div><div class=\"diagram-claim-context\">")
+                .next()
+                .ok_or("detail")?;
+            assert!(detail.contains("connection-endpoint diagram-text-link"));
+            assert!(detail.contains("-admit-claim"));
+            assert!(detail.contains("-verify-claim"));
+            assert!(detail.contains("acceptance"));
+            if sequence {
+                assert!(detail.contains("2.1 · parallel · no relative order"));
+                assert!(detail.find("-verify-claim") < detail.find("-admit-claim"));
+            } else {
+                assert!(detail.find("-admit-claim") < detail.find("-verify-claim"));
+            }
+        }
+        assert_eq!(before.diagrams, f.answers()?.diagrams);
+        assert_eq!(before.provenance, f.answers()?.provenance);
+    }
+    Ok(())
+}
+
+#[test]
 fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<dyn Error>> {
     let f = Fixture::new()?;
     let mut realization = diagram_control(&f, false)?;

@@ -419,3 +419,8 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
 .diagram-viewport .message-label { fill: var(--surface, #fff); stroke: none; }
 /* Authored relationship wording leads; IDs/kinds keep native readable size. */
 .diagram-viewport a:has(> .edge-key, > .message-label) > text + text { opacity: .72; }
+.diagram-connection { max-width: 22rem; margin: 1rem auto; text-align: center; }
+.connection-endpoint { display: flex; flex-direction: column; padding: .6rem; border: 1px solid currentColor; border-radius: .4rem; text-decoration: none; overflow-wrap: anywhere; }
+.connection-endpoint small,.connection-wording small { display: block; font-size: 1rem; }
+.connection-wording,.connection-condition { margin: .25rem 0; overflow-wrap: anywhere; }
+.connection-arrow { font-size: 1.4rem; line-height: 1.3; }

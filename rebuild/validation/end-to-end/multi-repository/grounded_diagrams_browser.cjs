@@ -117,6 +117,20 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           if(mode==='live') assert(prior,'browser position at actual element activation');
           const claimId=(await element.getAttribute('href')).slice(1);
           const claim=page.locator('[id="'+claimId+'"]');
+          if(config.connection_details) {
+            const edge=(d.meaning.relations||d.meaning.groups.flatMap(g=>g.messages)).find(e=>e.id===c.element);
+            if(edge) {
+              const detail=claim.locator('.diagram-connection');
+              const label=l=>Buffer.from(pub.prose[l.unit].text).subarray(l.start_byte,l.end_byte).toString('utf8');
+              const nodes=d.meaning.nodes||d.meaning.participants;
+              assert.deepEqual(await detail.locator('.connection-endpoint > span').allTextContents(),[edge.from,edge.to].map(id=>label(nodes.find(n=>n.id===id).label)),'independently admitted directed endpoints');
+              assert.equal(await detail.locator('.connection-wording').evaluate(n=>n.firstChild.textContent),label(edge.label));
+              const box=await detail.boundingBox();assert(box.width<=width-32,'selected connection fits the reading width');
+              const geometry=await detail.evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth,labels:[...n.querySelectorAll('.connection-endpoint,.connection-wording,.connection-condition')].map(e=>({height:e.clientHeight,scroll:e.scrollWidth,width:e.clientWidth,font:getComputedStyle(e).fontSize}))}));
+              assert(geometry.scroll<=geometry.width+1 && geometry.labels.every(l=>l.scroll<=l.width+1&&parseFloat(l.font)>=16),'complete native-size selected connection');
+              if(config.capture_sources) await claim.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-connection.png`)});
+            }
+          }
           const actions=claim.locator('a.evidence-link');
           const action=actions.nth(c.citation);
           assert.equal(await action.count(),1,'critical purpose has exact code action');

@@ -553,6 +553,105 @@ fn diagram_namespace(
 ) -> String {
     format!("reader-{}-diagram-{}", answers.namespace, d.id)
 }
+
+// A detail is an existing directed relationship, never a renderer-inferred
+// subsystem, execution trace or reduced overview. Keep its original origin and
+// claim; only repeat the admitted endpoints beside the selected wording.
+fn diagram_connection_detail(
+    html: &mut String,
+    r: &ViewerRequest,
+    d: &volicord_projections::GroundedDiagram,
+    ns: &str,
+    id: &str,
+    texts: &[&str],
+) {
+    use volicord_projections::DiagramMeaning;
+    let mut group = None;
+    let (from, to, label, condition, kind) = match &d.meaning {
+        DiagramMeaning::Sequence { groups, .. } => {
+            let Some((g, m, gi, mi)) = groups.iter().enumerate().find_map(|(gi, g)| {
+                g.messages
+                    .iter()
+                    .enumerate()
+                    .find(|(_, m)| m.id == id)
+                    .map(|(mi, m)| (g, m, gi, mi))
+            }) else {
+                return;
+            };
+            group = Some((g.order, gi + 1, mi + 1));
+            (
+                &m.from,
+                &m.to,
+                &m.label,
+                g.condition.as_ref(),
+                m.kind.localized_text(r.locale.fixed()),
+            )
+        }
+        DiagramMeaning::Concept { relations, .. }
+        | DiagramMeaning::Component { relations, .. }
+        | DiagramMeaning::Flowchart { relations, .. }
+        | DiagramMeaning::State { relations, .. } => {
+            let Some(edge) = relations.iter().find(|edge| edge.id == id) else {
+                return;
+            };
+            (
+                &edge.from,
+                &edge.to,
+                &edge.label,
+                edge.condition.as_ref(),
+                edge.kind.localized_text(r.locale.fixed()),
+            )
+        }
+    };
+    let wording = |label| volicord_projections::diagram_label(label, texts).unwrap_or("");
+    html.push_str(&format!(
+        "<div class=\"diagram-connection\" data-connection=\"{}\"><p class=\"source-note\">{}</p>",
+        escape(id),
+        text(
+            r.locale,
+            "Selected connection from the full figure",
+            "전체 도식에서 선택한 연결"
+        )
+    ));
+    if let Some((order, gi, mi)) = group {
+        let order = match order {
+            volicord_projections::DiagramOrder::Sequential => text(r.locale, "sequential", "순차"),
+            volicord_projections::DiagramOrder::Parallel => text(
+                r.locale,
+                "parallel · no relative order",
+                "병렬 · 상대 순서 없음",
+            ),
+        };
+        html.push_str(&format!(
+            "<p class=\"connection-order\">{gi}.{mi} · {order}</p>"
+        ));
+    }
+    if let DiagramMeaning::State { owner, .. } = &d.meaning {
+        html.push_str(&format!(
+            "<p>{} {}</p>",
+            text(r.locale, "State owner:", "상태 소유자:"),
+            escape(wording(owner))
+        ));
+    }
+    let endpoint = |html: &mut String, node_id: &str| {
+        if let Some(node) = d.nodes().iter().find(|n| n.id == node_id) {
+            html.push_str(&format!("<a class=\"connection-endpoint diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\"><span>{}</span><small>{} · {}</small></a>",escape(node_id),escape(node_id),escape(wording(&node.label)),escape(node_id),node.kind.localized_text(r.locale.fixed())));
+        }
+    };
+    endpoint(html, from);
+    html.push_str(&format!("<div class=\"connection-arrow\" aria-hidden=\"true\">↓</div><p class=\"connection-wording\">{}<small>{}</small></p>",escape(wording(label)),kind));
+    if let Some(condition) = condition {
+        html.push_str(&format!(
+            "<p class=\"connection-condition\">{} {}</p>",
+            text(r.locale, "if", "조건:"),
+            escape(wording(condition))
+        ));
+    }
+    html.push_str("<div class=\"connection-arrow\" aria-hidden=\"true\">↓</div>");
+    endpoint(html, to);
+    html.push_str("</div>");
+}
+
 fn render_diagrams(
     html: &mut String,
     r: &ViewerRequest,
@@ -639,7 +738,9 @@ fn render_diagrams(
             let claim = format!("{origin}-claim");
             let selected = volicord_projections::diagram_label(label, &texts).unwrap_or("");
             let unit = &answers.prose[label.unit];
-            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p class=\"diagram-selected-label\">{}</p><div class=\"diagram-claim-context\"><span class=\"source-note\">{}</span><p>{}</p></div><div class=\"evidence-actions\">",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed())),escape(selected),text(r.locale,"Claim and material qualification","주장과 중요한 조건"),escape(&unit.text)));
+            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p class=\"diagram-selected-label\">{}</p>",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed())),escape(selected)));
+            diagram_connection_detail(html, r, d, &ns, &id, &texts);
+            html.push_str(&format!("<div class=\"diagram-claim-context\"><span class=\"source-note\">{}</span><p>{}</p></div><div class=\"evidence-actions\">",text(r.locale,"Claim and material qualification","주장과 중요한 조건"),escape(&unit.text)));
             for (n, c) in unit.citations.iter().enumerate().filter(|(_, c)| {
                 c.claim_start_byte <= label.start_byte && c.claim_end_byte >= label.end_byte
             }) {
@@ -679,6 +780,44 @@ fn render_diagrams(
                 html.push_str("</li>");
             }
             html.push_str("</ol></details>");
+        }
+        if let volicord_projections::DiagramMeaning::Sequence { groups, .. } = &d.meaning {
+            html.push_str(&format!(
+                "<details class=\"diagram-relations\" open><summary>{}</summary>",
+                text(
+                    r.locale,
+                    "Messages · select a connection to read its endpoints and evidence",
+                    "메시지 · 연결을 선택해 양끝과 근거 읽기"
+                )
+            ));
+            for (gi, group) in groups.iter().enumerate() {
+                let order = match group.order {
+                    volicord_projections::DiagramOrder::Sequential => {
+                        text(r.locale, "sequential", "순차")
+                    }
+                    volicord_projections::DiagramOrder::Parallel => text(
+                        r.locale,
+                        "parallel · no relative order",
+                        "병렬 · 상대 순서 없음",
+                    ),
+                };
+                html.push_str(&format!("<p>{} · {order}", gi + 1));
+                if let Some(condition) = &group.condition {
+                    html.push_str(&format!(
+                        " · {} {}",
+                        text(r.locale, "if", "조건:"),
+                        escape(
+                            volicord_projections::diagram_label(condition, &texts).unwrap_or("")
+                        )
+                    ));
+                }
+                html.push_str("</p><ul>");
+                for (mi, message) in group.messages.iter().enumerate() {
+                    html.push_str(&format!("<li><a class=\"diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\">{}.{} · {}: {}</a></li>",escape(&message.id),escape(&message.id),gi+1,mi+1,escape(&crate::diagram::element_caption(d,&message.id,&texts,r.locale.fixed())),escape(volicord_projections::diagram_label(&message.label,&texts).unwrap_or(""))));
+                }
+                html.push_str("</ul>");
+            }
+            html.push_str("</details>");
         }
         html.push_str("</figure>");
     }
@@ -1911,8 +2050,9 @@ fn render_source_excerpts(
                     index,
                     n
                 );
-                html.push_str(&format!("<div class=\"citation-inspection\" data-citation-url=\"{}\" data-publication-id=\"{}\" data-realization=\"{}\" data-unit=\"{}\" data-citation=\"{}\"><p class=\"source-note citation-status\" role=\"status\"></p><button type=\"button\" class=\"citation-read\">{}</button></div>",
+                html.push_str(&format!("<div class=\"citation-inspection\" data-citation-url=\"{}\" data-publication-id=\"{}\" data-realization=\"{}\" data-unit=\"{}\" data-citation=\"{}\" data-citation-binding=\"{}\"><p class=\"source-note citation-status\" role=\"status\"></p><button type=\"button\" class=\"citation-read\">{}</button></div>",
                     escape(&endpoint),escape(provenance.publication_id.as_deref().unwrap_or("")),escape(&provenance.realization_fingerprint),index,n,
+                    escape(&serde_json::to_string(c).unwrap_or_default()),
                     text(r.locale,"Read permitted cited bytes (up to 4,096)","허용된 인용 바이트 읽기 (최대 4,096)")));
             } else {
                 html.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,

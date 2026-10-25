@@ -96,7 +96,7 @@
     }
     return {target, origin};
   }
-  function withholdPublication(publication) {
+  function withholdPublication(publication, reason) {
     // A citation failure invalidates all dependent meaning, not just its file.
     // Retain opaque return positions, but no hidden code, prose or alternatives.
     for (const region of document.querySelectorAll('[data-reader-publication]')) {
@@ -105,7 +105,8 @@
       const ids=[...region.querySelectorAll('[id]')].map(n=>n.id);
       const back=region.matches('.source-point') ? region.querySelector('a.return')?.cloneNode(true) : null;
       const notice=document.createElement('p'); notice.setAttribute('role','status');
-      notice.textContent=ko?'이 발행물의 현재 근거를 사용할 수 없습니다. 현재 문서를 다시 여세요.':'This publication’s current evidence is unavailable. Reopen the current document.';
+      notice.className='publication-unavailable';
+      notice.textContent=reason+' '+(ko?'현재 문서를 다시 여세요.':'Reopen the current document.');
       const placeholders=ids.map(id=>{const n=document.createElement('span');n.id=id;n.tabIndex=-1;return n;});
       region.replaceChildren(...(back?[back]:[]),notice,...placeholders);
       region.dataset.unavailable='true';
@@ -142,11 +143,17 @@
       const result = JSON.parse(raw);
       if (!response.ok) { const error = Error('unavailable'); error.reason = result.reason; throw error; }
       const chunk = result.chunk;
+      const expectedCitation = JSON.parse(control.dataset.citationBinding);
+      // Identity at the publication/unit level cannot stand in for the exact
+      // Source revision, snapshot, range, claim and use selected on this page.
+      const boundCitation = chunk?.citation &&
+        Object.keys(chunk.citation).length === Object.keys(expectedCitation).length &&
+        Object.entries(expectedCitation).every(([key,value]) => chunk.citation[key] === value);
       const textBytes = typeof chunk?.text === 'string' ? new TextEncoder().encode(chunk.text).length : 0;
       const subjectIdentity = Array.isArray(result.subject?.identity)
         ? result.subject.identity.map(b => Number.isInteger(b) && b >= 0 && b <= 255 ? b.toString(16).padStart(2,'0') : '?').join('')
         : result.subject?.identity;
-      if (result.publication_id !== control.dataset.publicationId ||
+      if (!boundCitation || result.publication_id !== control.dataset.publicationId ||
           result.realization_fingerprint !== control.dataset.realization ||
           String(result.unit_index) !== control.dataset.unit || String(result.citation_index) !== control.dataset.citation ||
           `${result.subject?.kind}:${subjectIdentity}` !== url.searchParams.get('subject') ||
@@ -156,6 +163,8 @@
           chunk.displayed_start_byte !== chunk.citation.start_byte + offset ||
           chunk.displayed_end_byte !== chunk.displayed_start_byte + textBytes ||
           chunk.displayed_end_byte > chunk.citation.end_byte ||
+          chunk.omitted_after_utf8_bytes !== chunk.citation.end_byte - chunk.displayed_end_byte ||
+          chunk.next_offset !== (chunk.omitted_after_utf8_bytes === 0 ? null : offset + textBytes) ||
           !Number.isSafeInteger(chunk.displayed_start_line) || chunk.displayed_start_line < 1 ||
           chunk.displayed_end_line - chunk.displayed_start_line + 1 !== chunk.text.split('\n').length - Number(chunk.text.endsWith('\n'))) throw Error('binding');
       if (controller.signal.aborted || reads.get(control) !== controller || selected !== point || !point.isConnected) return;
@@ -205,7 +214,7 @@
         corrupt: ko ? '설명 또는 근거의 무결성을 확인할 수 없습니다.' : 'The publication or evidence failed its integrity check.',
         unsupported: ko ? '설명 또는 근거의 형식이 지원되지 않습니다.' : 'The publication or evidence format is unsupported.'
       };
-      if (Object.hasOwn(reasons,error.reason)) withholdPublication(control.dataset.publicationId);
+      if (Object.hasOwn(reasons,error.reason)) withholdPublication(control.dataset.publicationId,reasons[error.reason]);
       status.textContent = reasons[error.reason] || (ko ? '이 정확한 인용은 이용할 수 없거나 변경되었습니다. 설명으로 돌아가 현재 버전을 다시 여세요.'
         : 'This exact citation is unavailable or changed. Return to the explanation and reopen its current version.');
       button.dataset.nextOffset = 0;

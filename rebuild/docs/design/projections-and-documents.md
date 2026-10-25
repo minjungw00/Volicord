@@ -2833,3 +2833,27 @@ Terminal control characters in explanation/Source text are escaped visibly, with
 an exact-byte JSON alternative. They cannot become OSC/ANSI terminal commands.
 Source loss removes both the diagram alternative and dependent code on the next
 CLI read; the public text path cannot resurrect a previous publication.
+
+### Selected connection reading
+
+The selected relationship/message claim repeats its exact admitted endpoints,
+direction, wording, type and condition in a wrapping vertical detail. Endpoint IDs
+remain visible when names repeat. Sequence details retain their original group and
+message ordinal, sequential/parallel qualification and group condition; state
+details retain ownership. This is an explicitly selected connection from the full
+figure, not a reduced overview, inferred subsystem or execution trace. The complete
+SVG, caption, text alternative and all elements remain available. A visible message
+index reaches these details without requiring horizontal panning. Native links
+work in script-free exports, and live activation uses the existing per-activation
+figure/Source return records. The detail and index have the same publication-wide
+withholding boundary as their figure. No retained format or semantic seal changes.
+
+Live citation responses must match every field of the independently rendered
+admitted citation, including revisions, observation/snapshot identity, locator,
+claim/range hashes and use. Internally consistent response coordinates alone are
+insufficient. Remaining-byte and continuation fields must exactly account for the
+selected page. A mismatch displays no fetched code; server-side revalidation and
+publication-wide typed failure handling retain their existing responsibility.
+The publication-wide unavailable notice preserves the localized typed cause after
+removing dependent content; a deleted/expired/changed cause must not disappear with
+the removed citation control. Native opaque return positions remain usable.

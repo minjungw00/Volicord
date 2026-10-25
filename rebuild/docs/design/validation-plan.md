@@ -3851,3 +3851,14 @@ Separate render/export/interaction measurements from repository analysis and com
 MCP read costs. These geometric checks and dependent visual inspection establish no
 unseen-content generalization, assistive observation, human acceptance or qualification
 pass. No aggregate, gate, Final, official V11 or provider run is authorized here.
+
+### Selected connection and exact response controls
+
+`citation_reading.rs::selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_offline_reads`
+checks actual publication consumers for directed endpoints, conditions and original
+parallel/sequential context without changing diagram/provenance meaning.
+`citation_reading_browser.cjs` independently corrupts every citation binding field,
+an internally consistent shifted range, remaining bytes and continuation. Each
+response must leave no fetched code. Existing positive complete-page, delayed-read,
+foreign-selection, offline and lifecycle controls remain required. These scoped
+controls establish no human comprehension or authoritative qualification result.

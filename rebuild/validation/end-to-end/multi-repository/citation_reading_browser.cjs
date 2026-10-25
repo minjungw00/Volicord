@@ -6,7 +6,7 @@ const {pathToFileURL}=require('node:url'),crypto=require('node:crypto');
 
 function reviewedFiles(directory){const files={};for(const name of fs.readdirSync(directory).sort()){const file=path.join(directory,name);if(!fs.lstatSync(file).isFile()||!['.png','.html'].includes(path.extname(name)))continue;const bytes=fs.readFileSync(file);files[name]={sha256:require('node:crypto').createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length};}return files;}
 const controlsPath=require.resolve('../../viewer-design/product_review_controls.cjs');
-const {createOutput}=require(controlsPath);
+const {createOutput,embeddedCode}=require(controlsPath);
 const config=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 // Claim the attempt before setup, child processes or any evidence write.
 createOutput(config.output);
@@ -40,11 +40,16 @@ function command(label,args){
  return receipt;
 }
 async function initialCode(page) {
- const observed=await page.locator('.source-point > .code-region code').evaluateAll(codes=>codes.map(code=>({
+ const observed=[];
+ for(const point of await page.locator('.source-point').all()) {
+  const code=await embeddedCode(point);
+  if(!await code.count())continue;
+  observed.push(await code.evaluate(code=>({
   source:code.closest('.source-point').dataset.sourceId,text:code.textContent,syntax:code.dataset.syntax,
   spans:code.querySelectorAll('span').length,numbers:code.parentElement.querySelector('.source-line-numbers').children.length,
   tags:[...code.querySelectorAll('*')].map(n=>n.tagName),html:code.innerHTML,
  })));
+ }
  const allCitations=fixture.answers.prose.flatMap(unit=>unit.citations);
  const included=new Set(fixture.answers.source_excerpts.map(e=>e.citation.source_id));
  assert.equal(observed.length,allCitations.filter(c=>included.has(c.source_id)).length,'each included window remains accessible from every distinct claim');
@@ -318,6 +323,33 @@ async function syntaxContrast(page) {
   await page.locator('.doc a.evidence-link').nth(8).click();
   const wrongPage=page.locator('.source-point:target');await wrongPage.locator('.citation-status').filter({hasText:/unavailable or changed/}).waitFor();
   assert.equal(await wrongPage.locator('code').count(),0);await wrongPage.locator('.return').click();await context.unroute('**/citation?*');
+  // Matching publication, claim and Source ID do not authorize another
+  // revision/snapshot/range. Challenge every retained binding independently.
+  const bindingKeys=Object.keys(fixture.answers.prose[1].citations[0]);
+  for(const key of [...bindingKeys,'next_offset','omitted_after_utf8_bytes']) {
+   await context.route('**/citation?*',async route=>{
+    const response=await route.fetch();const value=await response.json();
+    if(key==='next_offset')value.chunk.next_offset=1;
+    else if(key==='omitted_after_utf8_bytes')value.chunk.omitted_after_utf8_bytes++;
+    else {
+     const original=value.chunk.citation[key];
+     value.chunk.citation[key]=typeof original==='number'?original+1:'foreign-binding';
+     // Keep the shifted range internally consistent: the independent page
+     // binding, rather than this response's own arithmetic, must reject it.
+     if(key==='start_byte') {
+      value.chunk.citation.end_byte++;
+      value.chunk.displayed_start_byte++;value.chunk.displayed_end_byte++;
+     }
+    }
+    await route.fulfill({response,json:value});
+   });
+   await page.locator('.doc a.evidence-link').nth(8).click();
+   const point=page.locator('.source-point:target');
+   await point.locator('.citation-status').filter({hasText:/unavailable or changed/}).waitFor();
+   assert.equal(await point.locator('code').count(),0,'foreign '+key+' must not paint');
+   await point.locator('.return').click();await context.unroute('**/citation?*');
+  }
+  result.rejected_citation_bindings=[...bindingKeys,'next_offset','omitted_after_utf8_bytes'];
   await page.setViewportSize({width:390,height:900});
   await page.goto(base+'?view=repository');
   let release, intercepted;
@@ -355,12 +387,14 @@ async function syntaxContrast(page) {
   await page.goto(base+'?view=repository#'+exactPoint);selected=page.locator('.source-point:target');
   await selected.locator('.citation-status').filter({hasText:/Displayed/}).waitFor();
   const c=fixture.answers.prose[1].citations[0];
+  const exactCitationUrl=new URL(await selected.locator('.citation-inspection').getAttribute('data-citation-url'),base).href;
   result.deletion=command('delete',['--runtime',fixture.runtime,'--project',fixture.project,'repository','source','delete','--analysis',fixture.analysis,'--source',c.source_id,'--json']);
   const deleted=state();await selected.locator('.citation-read').click();
-  await selected.locator('.citation-status').filter({hasText:/was deleted/}).waitFor();
+  await selected.locator('.publication-unavailable').filter({hasText:/was deleted/}).waitFor();
   assert.equal(await selected.locator('pre.code-region').count(),0,'unavailable read removes cached code from this point');
+  assert.equal(await page.locator('[data-unavailable=true] code,[data-unavailable=true] .unit-text,[data-unavailable=true] svg').count(),0,'typed failure removes every dependent cached reading surface');
   await page.screenshot({path:path.join(config.output,'unavailable.png')});
-  const denied=await context.request.get(new URL(await selected.locator('.citation-inspection').getAttribute('data-citation-url'),base).href);
+  const denied=await context.request.get(exactCitationUrl);
   assert.equal(denied.status(),409);assert.equal((await denied.json()).reason,'deleted');const deniedBytes=await denied.body();assert.ok(!deniedBytes.toString().includes(fixture.originals[8].split('\n')[0].trim()));result.unavailable_response_bytes=deniedBytes.length;
   await selected.locator('.return').click();assert.equal(state(),deleted);
   await Promise.all(measured);
