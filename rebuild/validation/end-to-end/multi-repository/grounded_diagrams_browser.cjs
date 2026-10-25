@@ -6,12 +6,15 @@ const crypto = require('node:crypto');
 const {spawn,execFileSync} = require('node:child_process');
 const assert = require('node:assert/strict');
 const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if(config.complete_publications) assert(config.publications?.length,'whole-publication reading requires the independently declared public corpus');
+const coverage = require('./publication_coverage.cjs').publicationCoverage(config.cases,config.publications);
+if(config.complete_publications) assert(coverage.complete,'whole-publication reading omitted figures: '+JSON.stringify(coverage.publications.filter(p=>p.missing.length)));
 const {chromium} = require(config.playwright);
 const output = path.resolve(config.output);
 fs.mkdirSync(output, {recursive:false});
 const hash = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),chromium:hash(config.chromium)};
-for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
+for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs','publication_coverage.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
 const sleep = ms => new Promise(r => setTimeout(r,ms));
 const {openEmbeddedCode,returnFromEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
 executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/product_review_controls.cjs'));
@@ -54,6 +57,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             external.push(u);return route.abort();
           });
           const query=c.work?'?view=work&work='+c.work:'?view=repository';
+          await require('./overview_entry.cjs').installEntryObserver(page);
           const started=Date.now();
           await page.goto(mode==='live'?base+query:'file://'+path.resolve(c.offline),{waitUntil:'load'});
           await page.evaluate(()=>document.fonts.ready);
@@ -63,6 +67,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           // A saved snapshot has native top-level page fragments.
           if(mode!=='live') await page.evaluate(id=>{location.hash=id;},c.work?'work-'+c.work:'repository-explanation');
           await require('./overview_entry.cjs').installEntryObserver(page);
+          await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-article-initial.png`)});
           // Ordinary vertical navigation only. Preserve the screen before any
           // expansion, pan, selection, Source lookup or DOM geometry inspection.
           await figure.evaluate(n=>n.scrollIntoView({block:'start'}));
@@ -302,7 +307,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
     }
     assert.equal(hash(config.viewer),executionIdentities.viewer,'executable unchanged during browser checks');
     assert.equal(hash(__filename),executionIdentities.driver,'driver unchanged during browser checks');
-    fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({status:'passed',observations:results,identities:executionIdentities,korean_fonts:koreanFonts,human_acceptance:'unobserved'},null,2),{flag:'wx'});
+    fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({status:'passed',coverage:{mode:config.complete_publications?'whole_publications':'selected_cases',...coverage},observations:results,identities:executionIdentities,korean_fonts:koreanFonts,human_acceptance:'unobserved'},null,2),{flag:'wx'});
     process.stdout.write(JSON.stringify({status:'passed',observations:results.length})+'\n');
   } finally {await browser.close();}
 })().catch(e=>{fs.writeFileSync(path.join(output,'failure.txt'),e.stack,{flag:'wx'});console.error(e);process.exitCode=1;});

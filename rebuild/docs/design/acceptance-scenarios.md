@@ -1343,6 +1343,15 @@ cannot establish those real repository meanings. Reader-specific observation and
 navigation requirements are owned by
 [the Reader](reader-experience-design.md#connected-overview-reading).
 
+Declare the actual public corpus independently of selected interaction tasks.
+Check every admitted figure in that corpus: omitting the received-close effects
+or browser-request state view cannot pass on the execution/closure pair alone.
+Omitting every task for a one-figure Work must also fail, rather than silently
+removing that publication from coverage. Capture ordinary article and section
+entry before any detail/evidence assistance. Reinstalling test observation cannot
+erase an earlier selection/disclosure. These are completeness and observation
+controls; the questions above still determine visual and semantic adequacy.
+
 Temporal/state investigations additionally use the Reader's
 [Source-first scene questions](reader-experience-design.md#temporal-reading-questions).
 Preserve the ordinary first presentation before Source or scripted interaction.

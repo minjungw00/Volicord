@@ -1325,6 +1325,20 @@ These exact claim origins need a visible non-color cue even though they have no
 node/card border. Focus observations and screenshots are separate from entry;
 they do not establish assistive-technology or human comprehension results.
 
+Use `complete_publications: true` with a separate `publications` array of
+`{public, language}` entries to require every figure of the actual corpus. The
+selected `cases` must cover that inventory, including a Work whose only figure
+would otherwise disappear with its last task. Run
+`publication_coverage_controls.cjs CONFIG` through `validate focused` with a fresh
+`output` directory to prove each omission is rejected by the real driver before
+browser launch. Partial diagnostic configurations report `selected_cases` coverage.
+`overview_entry_browser.cjs` additionally requires its selected figures to have
+a text-only guard/owner for the invisible-focus counterexample. Its assisted-entry
+control proves that repeated observer setup cannot erase previous assistance.
+Entry instrumentation is installed before navigation; article-entry screenshots
+are preserved before ordinary vertical navigation to each figure. Native no-JS
+observations remain separate from JavaScript event-instrumented controls.
+
 Both `viewer-design/product_review.cjs` and `article_reading_browser.cjs` use
 `source_tasks` per `repository` / selected `work` destination. Declare
 `state: required`, `realization_fingerprint` and nonempty `claims`; each claim names

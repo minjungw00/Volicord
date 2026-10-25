@@ -37,8 +37,10 @@ async function observeOverview(figure, diagram) {
 }
 module.exports={observeOverview};
 
-async function installEntryObserver(page) {
-  await page.evaluate(()=>{
+function entryObserver() {
+    // Reinstalling observation must never erase an earlier disclosure/selection.
+    if (window.__overviewEntryObserverInstalled) return;
+    window.__overviewEntryObserverInstalled=true;
     window.__overviewEntryInteractions=[];
     document.addEventListener('click',event=>{
       if(event.target.closest('.admitted-diagram a,.admitted-diagram button,.admitted-diagram summary'))window.__overviewEntryInteractions.push('figure selection/control');
@@ -48,7 +50,13 @@ async function installEntryObserver(page) {
         if((n.matches('details')&&record.attributeName==='open'&&n.closest('.admitted-diagram'))||
            (n.matches('svg')&&['style','transform'].includes(record.attributeName)))window.__overviewEntryInteractions.push('figure disclosure/geometry changed');
       }
-    }).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open','style','transform']});
-  });
+    }).observe(document,{subtree:true,attributes:true,attributeFilter:['open','style','transform']});
+}
+async function installEntryObserver(page) {
+  // Register before navigation so ordinary page scripts cannot perform the
+  // missing orientation step before the test starts watching. evaluate also
+  // supports the current document and native no-script diagnostic inspection.
+  await page.addInitScript(entryObserver);
+  await page.evaluate(entryObserver);
 }
 module.exports.installEntryObserver=installEntryObserver;

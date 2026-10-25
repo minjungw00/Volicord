@@ -11,12 +11,13 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
  const rows=[];
  try{
  for(const c of C.cases){const pub=JSON.parse(fs.readFileSync(c.public));const d=pub.diagrams.find(d=>d.id===c.diagram);
-  for(const control of ['hidden-card','miniature','assisted-entry','incomplete-label','reversed-edge','merged-routes']){
+  for(const control of ['hidden-card','miniature','assisted-entry','incomplete-label','reversed-edge','merged-routes','invisible-focus']){
    // The export itself is script-free. Enable evaluation callbacks for the
    // observer's event/MutationObserver negative control; no-JS product journeys
    // run separately through grounded_diagrams_browser.cjs.
    const context=await browser.newContext({viewport:{width:320,height:900},javaScriptEnabled:true});const page=await context.newPage();
    await context.route('**/*',r=>/^(file|data):/.test(r.request().url())?r.continue():r.abort());
+   await installEntryObserver(page);
    await page.goto('file://'+path.resolve(c.offline));await page.evaluate(()=>document.fonts.ready);await page.evaluate(h=>location.hash=h,c.work?'work-'+c.work:'repository-explanation');
    const figure=page.locator('.admitted-diagram[data-semantic-fingerprint="'+d.semantic_fingerprint+'"]');
    await figure.evaluate(n=>n.scrollIntoView({block:'start'}));
@@ -24,7 +25,10 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
    await installEntryObserver(page);assert.deepEqual((await observeOverview(figure,d)).errors,[],'unmodified actual entry');
    if(['hidden-card','assisted-entry'].includes(control)){
     await figure.evaluate((n,showCard)=>{const viewport=n.querySelector('.diagram-viewport');const details=document.createElement('details');details.className='counterexample-hidden-map';const summary=document.createElement('summary');summary.textContent='Full map';viewport.replaceWith(details);details.append(summary,viewport);if(showCard)n.querySelector('.diagram-claim:has(.diagram-connection)').dataset.active='true';},control==='hidden-card');
-    if(control==='assisted-entry')await figure.locator('.counterexample-hidden-map > summary').click();
+    if(control==='assisted-entry'){
+     await figure.locator('.counterexample-hidden-map > summary').click();
+     await installEntryObserver(page); // Cannot reset evidence of assisted entry.
+    }
     const observed=await observeOverview(figure,d);
     fs.writeFileSync(path.join(C.output,c.key+'-'+control+'-observation.json'),JSON.stringify(observed,null,2),{flag:'wx'});
     assert(observed.errors.includes(control==='hidden-card'?'connected map hidden or absent':'orientation was assisted before its initial observation'));
@@ -32,6 +36,15 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
    }else if(control==='miniature'){
     await figure.locator('svg').evaluate(n=>{n.style.transform='scale(.15)';n.style.transformOrigin='0 0';});
     const observed=await observeOverview(figure,d);assert(observed.errors.includes('essential text scaled below native reading size'));rows.push({case:c.key,control,observed});
+   }else if(control==='invisible-focus'){
+    const {inspectTextOriginFocus}=require('./diagram_focus.cjs');
+    const before=await inspectTextOriginFocus(figure);
+    assert.deepEqual(before.errors,[],'unmodified focus');
+    assert(before.observations.length,'select a real figure with a guard or state owner');
+    await page.addStyleTag({content:'.connected-overview .diagram-element:focus text {text-decoration:none!important}'});
+    const observed=await inspectTextOriginFocus(figure);
+    assert(observed.errors.length,'a missing focus cue must fail after correct orientation');
+    rows.push({case:c.key,control,observed});
    }else{
     const edges=d.meaning.relations||d.meaning.groups.flatMap(g=>g.messages);const edge=edges.find(e=>e.from!==e.to);
     const anchor=figure.locator('a[id="'+await figure.getAttribute('id')+'-'+edge.id+'"]');

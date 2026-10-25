@@ -3733,6 +3733,22 @@ scripted consumer; initial-framing assertions apply to the live path only.
 
 ### Critical visual evidence consumers
 
+Whole-publication reading declares `publications` independently of browser `cases`
+and sets `complete_publications: true`. The public publication defines its figure
+inventory. `publication_coverage_controls.cjs CONFIG` removes each actual figure's
+tasks while preserving that declared corpus and requires the real browser driver
+to refuse before launch. This includes removing the only figure of an entire Work.
+Partial diagnostics remain explicitly `selected_cases`; they cannot establish
+the corpus result. Case counts do not replace O1–O6 or original Source expectations.
+
+Entry observation starts before navigation and is idempotent across setup calls.
+Article entry and the vertically reached figure are captured before geometry,
+detail and exact Source journeys. The assisted-entry negative reinstalls observation
+after opening the hidden map: the previous assistance must remain recorded. Actual
+export negatives also remove the non-color cue from text-only focused conditions/
+state ownership. These controls separate initial orientation from subsequent
+keyboard/detail correctness; no isolated or human comprehension is inferred.
+
 Focused Viewer `citation_reading` covers eleven complete permission windows exceeding
 the historical aggregate, exact script-free export bytes, same-named sequence
 participants with distinct public text identities, and supporting-window competition.

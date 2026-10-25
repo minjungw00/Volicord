@@ -425,3 +425,23 @@ results are separate subsequent evidence. No current gate success is claimed her
 Independent first reading, actual human acceptance, native assistive/zoom/device
 observations remain unobserved. The historical scoped-check invariant's cause and
 the older SIGSEGV remain unresolved; this focus fix is not a causal repair of either.
+
+The outcome controls now declare the six actual English/Korean publications
+separately from selected tasks. All sixteen figure/language entries (three
+Volicord, four Music Deck, one historical Work per language) pass current normal
+script-free reading, complete selected Source, return and geometry checks. Removing
+each entry in turn fails the real driver before browser launch, including removing
+the entire one-figure Work. Fourteen real-export negatives reject the hidden correct
+map/card, unreadable miniature, assisted entry even after observer reinstallation,
+incomplete predicate, reversed direction, merged routes and invisible keyboard focus.
+All these focused wrapper exits are 0; the negative child exits are explicitly 1.
+No production change is hidden in these outcome-control additions.
+
+| Outcome | Current direct evidence | Limit |
+| --- | --- | --- |
+| O1 | Ordinary article and figure entry captured before detail; hidden/miniature/assisted substitutes rejected | Dependent visual reading; isolated first reading not observed |
+| O2 | Every declared figure covered; original conditions/state effects compared separately; direction/route negatives reject | Source interpretation, not a device trace or proof from geometry |
+| O3 | Actual purpose and Work question/activity/reported result/state read before supporting provenance | Historical Goal-only name remains independently admitted |
+| O4 | Exact selected claim/code/native return and non-color keyboard focus | Native assistive/zoom and actual human journey unobserved |
+| O5 | Existing publication/Source lifecycle controls retained; full consumer/basis refresh follows final tracked changes | No stale prose or fingerprint rebinding authorized |
+| O6 | Technical results, semantic comparison, dependent visual observation and missing human/isolation kept separate | Exact clean-candidate gate/archive result belongs to the later invocation |
