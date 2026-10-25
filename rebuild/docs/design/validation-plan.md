@@ -2600,9 +2600,10 @@ ceilings, topology and expected unresolved inner qualification remain unchanged.
 
 The retention byte-oversize input measures the actual prepared response capacity
 and exceeds it by exactly one compact UTF-8 JSON byte. Its paragraphs remain within
-the independent 16,384-character bound, using multibyte padding to isolate the byte
-failure at the current 32,768-byte ceiling. The Product must report the actual byte
-capacity and preserve the previously recorded output. The existing
+the independent 16,384-character bound, distributing multibyte padding across
+existing paragraphs to isolate the byte failure even when the first paragraph
+already contains substantial text at the current 49,152-byte ceiling. The Product
+must report the actual byte capacity and preserve the previously recorded output. The existing
 `explanation_budgets` regression separately exercises paragraph-character rejection;
 that diagnostic cannot substitute for the byte-oversize control. Rehearsal self-tests
 check the minimum, metadata-constrained and maximum capacities with independent

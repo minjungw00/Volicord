@@ -24,10 +24,22 @@ def byte_oversize_response(plan, accepted):
     extra = capacity + 1 - len(e.compact_bytes(response))
     if extra <= 0:
         raise ValueError('byte control requires an admitted response below capacity')
-    # Three-byte UTF-8 padding isolates the JSON byte boundary from the separate
-    # 16,384-character paragraph guard, even at the 32,768-byte response ceiling.
-    response['paragraphs'][0]['text'] += '가' * (extra // 3) + 'x' * (extra % 3)
-    if (len(e.compact_bytes(response)) != capacity + 1
+    # An admitted fixture may already fill much of its first paragraph. Spread
+    # padding over existing paragraphs without changing their other fields.
+    for paragraph in response['paragraphs']:
+        room = e.PARAGRAPH_CHARACTER_LIMIT - len(paragraph['text'])
+        if room < 0:
+            raise ValueError('byte control also exceeded a paragraph boundary')
+        multibyte = min(extra // 3, room)
+        paragraph['text'] += '가' * multibyte
+        extra -= multibyte * 3
+        room -= multibyte
+        ascii_bytes = min(extra, room)
+        paragraph['text'] += 'x' * ascii_bytes
+        extra -= ascii_bytes
+        if extra == 0:
+            break
+    if (extra != 0 or len(e.compact_bytes(response)) != capacity + 1
             or any(len(p['text']) > e.PARAGRAPH_CHARACTER_LIMIT for p in response['paragraphs'])):
         raise ValueError('byte control also exceeded a paragraph boundary')
     return response

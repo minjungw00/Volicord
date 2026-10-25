@@ -41,6 +41,24 @@ class ByteOversizeTests(unittest.TestCase):
                     {'retention_budget': {'response_byte_capacity': capacity}},
                     {'paragraphs': [{'text': text}]})
 
+    def test_byte_control_spreads_padding_when_the_first_paragraph_is_already_filled(self):
+        import retention_support
+        for first_text in ('x' * 2700, 'x' * 16384):
+            response = {'paragraphs': [{'text': first_text, 'evidence_keys': ['goal']},
+                {'text': 'Keep the second claim.', 'evidence_keys': ['result']}]}
+            original = copy.deepcopy(response)
+            oversized = retention_support.byte_oversize_response(
+                {'retention_budget': {'response_byte_capacity': 49152}}, response)
+            encoded = json.dumps(oversized, ensure_ascii=False, separators=(',', ':')).encode()
+            self.assertEqual(len(encoded), 49153)
+            self.assertEqual(response, original)
+            self.assertEqual(len(oversized['paragraphs']), len(original['paragraphs']))
+            self.assertNotEqual(oversized['paragraphs'][1]['text'], original['paragraphs'][1]['text'])
+            for paragraph, before in zip(oversized['paragraphs'], original['paragraphs']):
+                self.assertLessEqual(len(paragraph['text']), 16384)
+                self.assertTrue(paragraph['text'].startswith(before['text']))
+                self.assertEqual(paragraph['evidence_keys'], before['evidence_keys'])
+
 
 class ContractTests(unittest.TestCase):
     def test_temporal_receipt_accepts_missing_before_recording_without_reviving_old_content(self):
