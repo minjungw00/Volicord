@@ -137,7 +137,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           const elementId=await element.getAttribute('id');
           // Exact native SVG/text anchor access, then the actual selected Source.
           await element.focus();
-          await page.evaluate(id=>{window.__diagramActivation=null;document.addEventListener('click',event=>{const n=event.target.closest('a.diagram-element');if(n?.id===id){const v=n.closest('.diagram-viewport');window.__diagramActivation={left:v.scrollLeft,top:v.scrollTop,y:scrollY};}},{capture:true});},elementId);
+          await page.evaluate(id=>{window.__diagramActivation=null;document.addEventListener('click',event=>{const n=event.target.closest('a.diagram-element');if(n?.id===id){const v=n.closest('.diagram-viewport');window.__diagramActivation={left:v.scrollLeft,top:v.scrollTop,y:scrollY,viewportTop:v.getBoundingClientRect().top,elementTop:n.getBoundingClientRect().top};}},{capture:true});},elementId);
           await page.keyboard.press('Enter');
           const prior=await page.evaluate(()=>window.__diagramActivation);
           if(mode==='live') assert(prior,'browser position at actual element activation');
@@ -192,8 +192,8 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             await point.locator('a.return').click();
             await claim.locator('a.diagram-return').click();
             await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
-            const restored=await figure.locator('.diagram-viewport').evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,y:scrollY}));
-            for(const coordinate of ['left','top','y']) assert(Math.abs(restored[coordinate]-prior[coordinate])<=5,'exact figure/reading return '+coordinate+' '+JSON.stringify({prior,restored}));
+            const restored=await figure.locator('.diagram-viewport').evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,y:scrollY,viewportTop:n.getBoundingClientRect().top,elementTop:document.activeElement.getBoundingClientRect().top}));
+            for(const coordinate of ['left','top','y','viewportTop','elementTop']) assert(Math.abs(restored[coordinate]-prior[coordinate])<=5,'exact figure/reading return '+coordinate+' '+JSON.stringify({prior,restored}));
             return_ms=Date.now()-returnStarted;
             await page.keyboard.press('Enter');await action.click();
             assert((await page.url()).endsWith('!'+claimId),'publication-bound Source deep link');

@@ -339,6 +339,10 @@
       (prior?.trigger?.isConnected?prior.trigger:target).focus({preventScroll:true});
       if (prior) {
         const viewport=target.closest('.diagram-viewport');
+        const figure=target.closest('.admitted-diagram');
+        const claim=document.getElementById(prior.claim);
+        if (claim?.matches('.diagram-claim') && claim.closest('.admitted-diagram')===figure) claim.dataset.active='true';
+        figure.scrollLeft=prior.figureLeft;figure.scrollTop=prior.figureTop;
         viewport.scrollLeft=prior.left;viewport.scrollTop=prior.top;
         window.scrollTo(0,prior.y);
       } else target.scrollIntoView({block:'center',inline:'center'});
@@ -382,7 +386,10 @@
       const element=document.getElementById(id);const viewport=element?.closest('.diagram-viewport');
       if (viewport && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
         event.preventDefault();
-        const token=remember(diagramReturns,{element:id,trigger:diagramLink,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop});
+        const figure=viewport.closest('.admitted-diagram');
+        const claim=[...figure.querySelectorAll('.diagram-claim')].find(n=>n.getClientRects().length);
+        const token=remember(diagramReturns,{element:id,trigger:diagramLink,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop,
+          claim:claim?.id || null,figureLeft:figure.scrollLeft,figureTop:figure.scrollTop});
         const next={...state(),diagramReturn:token};
         // Both the native Back destination and the new selected claim retain
         // this activation, even if a later activation uses the same element.

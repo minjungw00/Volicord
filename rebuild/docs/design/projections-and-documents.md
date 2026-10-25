@@ -2867,3 +2867,9 @@ remain reachable through the visible index, including without JavaScript. The fu
 concept/component/flow/state or UML layout is an explicit native disclosure, with
 all original elements, geometry, pan and exact origins preserved. Native fragments
 and scripted return open its ancestors when reaching a full-layout element.
+
+A live diagram return restores the connection card visible at activation and the
+outer expanded-figure scroll before restoring canvas pan and page scroll. Changing
+which card occupies space above the full layout must not move the selected element
+outside the reading viewport. Return checks compare the actual canvas and element
+screen positions as well as focus identity and stored scroll values.

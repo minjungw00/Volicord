@@ -2609,6 +2609,12 @@ that diagnostic cannot substitute for the byte-oversize control. Rehearsal self-
 check the minimum, metadata-constrained and maximum capacities with independent
 JSON arithmetic and reject inputs that also exceed the paragraph boundary.
 
+Grounded diagram reading checks compare the selected element and canvas screen
+positions before evidence activation and after return, including expanded reading.
+Equal canvas pan and page scroll are insufficient when a visible connection card
+changes the layout above the canvas. Keep these checks in the actual live browser
+journey alongside publication-bound code equality and focus/identity restoration.
+
 The partial-sampling control mutates an actual retained two-instance observation,
 removing one instance's sample and sampled reference while keeping both running
 facts and recalculating derived measurements. It must fail for the running-instance
