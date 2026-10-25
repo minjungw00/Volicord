@@ -20,7 +20,7 @@ class ByteOversizeTests(unittest.TestCase):
                 'evidence_keys': ['goal'], 'citations': []}
                 for question in ('purpose', 'reported_change', 'expected_effect', 'verification', 'next_step')]}
         original = copy.deepcopy(response)
-        for capacity in (16384, 25000, 32768, 40960):
+        for capacity in (16384, 25000, 32768, 40960, 49152):
             with self.subTest(capacity=capacity):
                 plan = {'retention_budget': {'response_byte_capacity': capacity}}
                 oversized = retention_support.byte_oversize_response(plan, response)

@@ -3816,6 +3816,15 @@ pre-fix negative is retained; passing QuestionAnswers.text alone was insufficien
 
 ### Visible diagram relationship and glyph geometry controls
 
+Execution-scene publication capacity uses the current 48 KiB response ceiling with
+the unchanged 144 KiB retained envelope and exact metadata reserve. Focused controls
+must admit a Source-bound response above the former 40 KiB ceiling, reject one byte
+over the prepared capacity without replacing prior content, and preserve metadata-heavy
+plans' smaller capacity. The collector uses the same policy. Real publication attempts
+retain distinct claim bindings and compare at least 20% whole-text and 50% critical
+explanation growth before declaring capacity sufficient; measured fit alone proves
+neither entailment nor human readability. No official gate/resource threshold changes.
+
 The focused real-publication `grounded_diagrams_browser.cjs` accepts
 `visual_geometry`, `capture_canvas` and an explicit fixed `ui_locale` independent of
 publication `language`. Its `diagram_geometry.cjs` companion derives expected label

@@ -510,7 +510,7 @@ raw-file length and compact realization length are different measurements.
 | Boundary | Inclusive limit | Measurement / action |
 | --- | ---: | --- |
 | Preparation | 131,072 | Complete compact `ExplanationPlan`, including its final fingerprint and retention budget; reject unrepresentable evidence before generation |
-| Response | 40,960 maximum | Complete compact `ExplanationRealization`, including every Source/claim citation; actual admission uses the plan's `response_byte_capacity` |
+| Response | 49,152 maximum | Complete compact `ExplanationRealization`, including every Source/claim citation; actual admission uses the plan's `response_byte_capacity` |
 | CLI / Dogfood input file | 65,536 | Raw JSON bytes, including formatting; compact-response validation still applies after parsing; remove whitespace for transport excess |
 | Retained content / decoder | 147,456 | Complete compact `RetainedExplanation` in managed Derived `content`; same limit at record, Privacy body admission and explanation decoding; inspection preserves accepted bodies |
 | Privacy short fields | 16,384 | Purpose, retention basis and unrelated existing short metadata retain their independent bounds |
@@ -529,7 +529,7 @@ identity limitation. Only original evidence bodies and Source `observation` are
 excluded, as already required by retention; grounding is never pruned.
 
 An admitted plan still guarantees the **full** 16,384-byte response. Its exact
-capacity is `min(40,960, 147,456 - metadata_byte_reserve)`, so previously supported
+capacity is `min(49,152, 147,456 - metadata_byte_reserve)`, so previously supported
 metadata-heavy plans retain at least their guaranteed capacity without pruning
 grounding. If required metadata plus the guaranteed response cannot fit,
 preparation rejects the evidence shape
@@ -553,6 +553,23 @@ and claim bindings. Their 32 KiB refusals remain preserved. This is a resource-p
 change, not a larger preparation, retained envelope, Source copy, citation page,
 HTTP or MCP transport grant. Source-first quality and cost must still be assessed
 on each actual publication; fitting the new ceiling establishes no semantic pass.
+
+The current ceiling is 48 KiB. A subsequent Source-first execution-location overview,
+overlapping-sync scene, received-close effects and browser-request state view needed
+42,501 English / 43,104 Korean compact bytes and was refused at 40 KiB. The distinct
+claims retain their own bindings, including execution wiring, content/MAIN-world
+mediation, waiter versus queue/request effects and conditional transmission. Shared
+labels already select ordinary grounded units, and complete read transport already
+interns identical Source bindings. Collapsing distinct claims or omitting those
+conditions is not a size correction. An additional 8,192 bytes of response capacity
+avoids a new durable dictionary format solely for this pressure; it changes neither
+the 147,456-byte retained envelope nor preparation, input, Source, excerpt, SVG,
+HTTP/MCP, node/edge or official qualification limits. Metadata-heavy plans still use
+the exact smaller envelope remainder. Fresh preparation is mandatory. Focused actual
+publication checks must preserve failed originals, measure storage/read/export costs
+separately, and exercise at least 20% authored-text growth and 50% growth of a critical
+explanation with its conditions and evidence intact. These probes are capacity
+controls, not semantic or human approval.
 
 Shared answers and Viewer use the same decoder. CLI `status`/`decisions` and local
 Operations inspection expose full retained provenance. Existing bounded CLI/MCP Recall
@@ -2728,7 +2745,7 @@ repository-comparison helper adds the missing fifth historical permission/lifecy
 window: 46,260 bytes across 17 windows (largest 7,162), versus the prior 32,768-byte
 aggregate. These are distinct payloads, not duplicate claim references. Shared claim references cannot remove those
 distinct bytes. The read-only embedded aggregate is therefore 49,152 bytes; each
-Source capture/window remains 16,384, citation pages 4,096, response 40,960 and retained
+Source capture/window remains 16,384, citation pages 4,096, response 49,152 and retained
 content 147,456. No preparation, source authority, gate or transport ceiling changes.
 This policy supersedes earlier 32 KiB aggregate descriptions. Complete-window
 allocation first preserves the established 32 KiB authored bundle selection, then

@@ -135,7 +135,7 @@ fn current_repository_budget_measures_distinct_claims_and_editorial_overhead(
     Ok(())
 }
 #[test]
-fn source_rich_repository_publication_preserves_content_above_32_kib_and_refuses_overflow(
+fn source_rich_repository_publication_preserves_content_above_40_kib_and_refuses_overflow(
 ) -> Result<(), Box<dyn Error>> {
     let f = fixture()?;
     let id = source(&observe(&f, "main.py", None)?)?;
@@ -147,14 +147,14 @@ fn source_rich_repository_publication_preserves_content_above_32_kib_and_refuses
         let mut unit = realization.paragraphs[0].clone();
         unit.text = format!(
             "Observed claim {index}: greet appends a supplied name. {}",
-            "현재 Source 관측은 실행 결과나 사용자 선택을 증명하지 않습니다. ".repeat(7)
+            "현재 Source 관측은 실행 결과나 사용자 선택을 증명하지 않습니다. ".repeat(11)
         );
         unit.citations[0].claim_end_byte = unit.text.len();
         unit.citations[0].claim_sha256 = explanation_text_hash(&unit.text);
         realization.paragraphs.push(unit);
     }
     let bytes = serde_json::to_vec(&realization)?.len();
-    assert!((32_769..=40_960).contains(&bytes), "control bytes: {bytes}");
+    assert!((40_961..=49_152).contains(&bytes), "control bytes: {bytes}");
     f.ops
         .record_explanation(f.project, subject, "en", realization.clone())?;
     let read = f
