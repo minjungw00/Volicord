@@ -248,6 +248,8 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             }
             if(config.faults && c.faults!==false) for(const reason of failureReasons) {
               await page.goto(base+query,{waitUntil:'load'});
+              const faultFull=figure.locator('.diagram-full-view');
+              if(await faultFull.count() && !await faultFull.evaluate(n=>n.open))await faultFull.locator(':scope > summary').click();
               const failedPublication=await point.locator('.citation-inspection').getAttribute('data-publication-id');
               const independent=await page.locator('[data-reader-publication]').evaluateAll((ns,id)=>ns.filter(n=>n.dataset.readerPublication!==id).map(n=>({id:n.id,publication:n.dataset.readerPublication,html:n.outerHTML})),failedPublication);
               assert(await page.locator('.source-point pre.code-region').count()>1,'multiple original cached Source payloads challenge publication-wide withholding');
