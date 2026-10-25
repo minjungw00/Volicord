@@ -345,6 +345,8 @@
         figure.scrollLeft=prior.figureLeft;figure.scrollTop=prior.figureTop;
         viewport.scrollLeft=prior.left;viewport.scrollTop=prior.top;
         window.scrollTo(0,prior.y);
+        const trigger=prior.trigger?.isConnected?prior.trigger:target;
+        window.scrollBy(0,trigger.getBoundingClientRect().top-prior.triggerTop);
       } else target.scrollIntoView({block:'center',inline:'center'});
     }
   }
@@ -389,7 +391,8 @@
         const figure=viewport.closest('.admitted-diagram');
         const claim=[...figure.querySelectorAll('.diagram-claim')].find(n=>n.getClientRects().length);
         const token=remember(diagramReturns,{element:id,trigger:diagramLink,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop,
-          claim:claim?.id || null,figureLeft:figure.scrollLeft,figureTop:figure.scrollTop});
+          claim:claim?.id || null,figureLeft:figure.scrollLeft,figureTop:figure.scrollTop,
+          triggerTop:diagramLink.getBoundingClientRect().top});
         const next={...state(),diagramReturn:token};
         // Both the native Back destination and the new selected claim retain
         // this activation, even if a later activation uses the same element.

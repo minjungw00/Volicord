@@ -246,6 +246,27 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
               assert.equal(await page.locator('.source-point[data-selected=true]').count(),0);
               await page.evaluate(id=>{location.hash=id;},elementId);
             }
+            // Text origins below a closed full view move when returning opens
+            // the SVG's ancestors. Preserve the actual origin's screen position.
+            for(const representation of ['.diagram-relations','.diagram-alternative']) {
+              if(await full.evaluate(n=>n.open))await full.locator(':scope > summary').click();
+              const list=figure.locator(representation);
+              if(!await list.evaluate(n=>n.open))await list.locator(':scope > summary').click();
+              const origin=list.locator('a.diagram-text-link[data-element="'+elementId+'"]');
+              await origin.focus();await origin.evaluate(n=>n.scrollIntoView({block:'center'}));
+              assert(!await full.evaluate(n=>n.open),'full view closed before text-origin activation');
+              const top=await origin.evaluate(n=>n.getBoundingClientRect().top);
+              await page.keyboard.press('Enter');await action.click();
+              await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-inspection pre.code-region code')?.textContent.length>0,pointId);
+              assert(expected.startsWith(await point.locator('.citation-inspection pre.code-region code').textContent()),'same implementing Source from closed-view text origin');
+              await point.locator('a.return').click();await claim.locator('a.diagram-return').click();
+              await page.waitForFunction(({elementId,representation})=>{
+                const n=document.activeElement;
+                return n?.matches('a.diagram-text-link') && n.dataset.element===elementId && !!n.closest(representation);
+              },{elementId,representation});
+              assert(await origin.evaluate(n=>n===document.activeElement),'same closed-view text origin');
+              assert(Math.abs(await origin.evaluate(n=>n.getBoundingClientRect().top)-top)<=5,'visible text-origin return '+representation);
+            }
             if(config.faults && c.faults!==false) for(const reason of failureReasons) {
               await page.goto(base+query,{waitUntil:'load'});
               const faultFull=figure.locator('.diagram-full-view');

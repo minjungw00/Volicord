@@ -2873,3 +2873,5 @@ outer expanded-figure scroll before restoring canvas pan and page scroll. Changi
 which card occupies space above the full layout must not move the selected element
 outside the reading viewport. Return checks compare the actual canvas and element
 screen positions as well as focus identity and stored scroll values.
+When returning reveals the full layout above a text origin, restore that actual
+activating link's screen position; its document offset may legitimately change.

@@ -2614,6 +2614,9 @@ positions before evidence activation and after return, including expanded readin
 Equal canvas pan and page scroll are insufficient when a visible connection card
 changes the layout above the canvas. Keep these checks in the actual live browser
 journey alongside publication-bound code equality and focus/identity restoration.
+Exercise both relationship-index and text-alternative origins with the full view
+closed before activation. Revealing the SVG during return must not push the actual
+activating text link outside its prior reading position.
 
 The partial-sampling control mutates an actual retained two-instance observation,
 removing one instance's sample and sampled reference while keeping both running
