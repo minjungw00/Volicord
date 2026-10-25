@@ -77,7 +77,8 @@ def make_candidate(parent: Path) -> tuple[Path, dict[str, str], Path, Path]:
     shutil.copy2(EVIDENCE_ARCHIVE, evidence_archive)
     shutil.copy2(EVIDENCE_ARCHIVE_VERIFIER, evidence_archive_verifier)
     shutil.copy2(GATE, gate)
-    for name in ("performance.py", "performance-budgets.json", "final_evidence.py"):
+    for name in ("performance.py", "performance-budgets.json", "final_evidence.py",
+                 "build_boundary_self_test.py"):
         shutil.copy2(GATE.with_name(name), gate.with_name(name))
     shutil.copy2(RESOURCE_ESTIMATE, resource_estimate)
     shutil.copy2(GATE.with_name("result_contract.py"), gate.with_name("result_contract.py"))
