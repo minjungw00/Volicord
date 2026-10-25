@@ -1315,6 +1315,34 @@ clean install
 
 ## Current reader acceptance
 
+### Connected repository orientation outcomes
+
+These outcomes supersede connection-card-first orientation. A correct selected
+claim or an expanded diagnostic canvas cannot compensate for a failed ordinary
+entry. Freeze the questions below before comparing representations; Source-first
+verification and initial visual reading are separate observations. Scope is the
+active Volicord workspace, Music Deck's pinned repository and the separately
+identified historical investigation, never an inferred current device trace.
+
+| Outcome | Source-derived reader question | Counterexample that fails |
+| --- | --- | --- |
+| O1 — orientation before detail | What is this system for, and how do its important responsibilities connect? | An accurate first-edge card with a closed map; a miniature whose labels cannot be read; expanding before recording entry. |
+| O2 — relational and temporal understanding | In Volicord, how do Goal/Purpose roles, Work, Checkpoints and Decisions relate, which responsibility owns memory, and how does investigation reach publication? In Music Deck, where do state, control and results execute, what does tab closure await, and what ends a browser request? | Disconnected endpoint lists, merged/reversed routes, incomplete predicates, queues drawn as execution peers, or submission order presented as completion order. |
+| O3 — purposeful explanation | Why would a developer use Volicord or Music Deck, and what did this historical Work actually investigate and report? | Authoring instructions as the opening narrative; invented Purpose, patch, Decision, execution or acceptance. |
+| O4 — precise evidence journey | Can the reader choose a complete relation, inspect its exact implementing claim/code, and return to the same map element and reading position? | Same-named or foreign claims substituted; delayed bytes replace selection; closing loses origin/focus/position. |
+| O5 — faithful production and consumption | Do fresh prepare/compose/record, public CLI/MCP, live reading and offline export preserve the same scope, language, identities and critical code? | A mockup-only map, stale rebinding, omitted critical code or renderer-authored meaning. |
+| O6 — honest completion | Which findings are technical, Source-grounded, dependent visual judgments, independent first readings or human acceptance? | Relabeling a known O1–O5 failure as merely missing human feedback; revising the question after a failed design. |
+
+Source expectations come from canonical ContextRole/Checkpoint/Decision models,
+Work membership selection, the architecture dependency map and the production
+repository explanation lifecycle. Music Deck expectations come from its manifest
+and composition roots, content/worker routing, player-sync-service, HTTP bridge,
+player registry and command-service. The historical Work's original Goal,
+Checkpoints and scoped verification determine its status and limits. Test fixtures
+cannot establish those real repository meanings. Reader-specific observation and
+navigation requirements are owned by
+[the Reader](reader-experience-design.md#connected-overview-reading).
+
 Independent Work publications add these direct checks to scenario N: a record-grounded
 name/summary survives expiry or deletion of an article-only Source across CLI/MCP,
 Overview/catalog/detail, generated documents and script-free snapshot. A genuinely

@@ -17,9 +17,9 @@ executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/pr
 const failureReasons=['expired','deleted','changed','withheld','comparison_unavailable','unavailable','missing','corrupt','unsupported'];
 (async () => {
   const browserEnv={...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})};
-  const fontPaths=config.cases.some(c=>c.language?.startsWith('ko'))
+  const fontPaths=config.cases.some(c=>c.language?.startsWith('ko')||c.ui_locale?.startsWith('ko'))
     ? [...new Set(execFileSync('fc-list',['--format','%{file}\n',':lang=ko'],{encoding:'utf8',env:browserEnv}).trim().split('\n').filter(Boolean))] : [];
-  if(config.cases.some(c=>c.language?.startsWith('ko'))) assert(fontPaths.length,'Korean font prerequisite unavailable');
+  if(config.cases.some(c=>c.language?.startsWith('ko')||c.ui_locale?.startsWith('ko'))) assert(fontPaths.length,'Korean font prerequisite unavailable');
   const koreanFonts=fontPaths.map(p=>({path:p,sha256:hash(p)}));
   const browser = await chromium.launch({executablePath:config.chromium,headless:true,args:['--no-sandbox'],env:browserEnv});
   const results=[];
@@ -61,40 +61,21 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           await figure.waitFor({state:'attached'});
           // A saved snapshot has native top-level page fragments.
           if(mode!=='live') await page.evaluate(id=>{location.hash=id;},c.work?'work-'+c.work:'repository-explanation');
-          await figure.scrollIntoViewIfNeeded();
-          const initial=figure.locator('.diagram-claim[data-initial-connection=true]');
-          if(config.connection_details) {
-            assert.equal(await initial.count(),1,'one explicit initial connection');
-            const card=initial.locator('.diagram-connection');await card.waitFor({state:'visible'});
-            const fit=await card.evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth,font:getComputedStyle(n.querySelector('.connection-wording')).fontSize}));
-            assert(fit.width<=width-32 && fit.scroll<=fit.width+1 && parseFloat(fit.font)>=16,'initial visual meaning fits without horizontal travel');
-            // Capture the actual reading position clear of the sticky outline;
-            // element screenshot auto-scroll alone can put its top under it.
-            await card.evaluate(n=>n.scrollIntoView({block:'center'}));
-            // A page-owned animation callback never runs in no-JS mode.
-            await page.waitForTimeout(50);
-            const unobscured=await card.evaluate(n=>{const b=n.getBoundingClientRect();return [...document.querySelectorAll('.masthead,.document-nav')].every(h=>{const r=h.getBoundingClientRect();return r.bottom<=b.top+1 || r.top>=b.bottom-1 || r.right<=b.left || r.left>=b.right;});});
-            assert(unobscured,'initial connection including ordering qualification is clear of sticky navigation');
-            await card.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-initial-connection.png`)});
-            const next=initial.locator('.connection-navigation a').first();
-            if(await next.count()) {
-              const nextId=(await next.getAttribute('href')).slice(1);await next.click();
-              const nextClaim=page.locator('[id="'+nextId+'"]');
-              await nextClaim.locator('.diagram-connection').waitFor({state:'visible'});
-              assert.equal(await initial.isVisible(),false,'one selected connection without stale duplicate');
-              await nextClaim.locator('.connection-navigation a').first().click();
-              await initial.waitFor({state:'visible'});
-            }
-          }
-          const full=figure.locator('.diagram-full-view');
-          if(await full.count() && !await full.evaluate(n=>n.open))await full.locator(':scope > summary').click();
+          await require('./overview_entry.cjs').installEntryObserver(page);
+          // Ordinary vertical navigation only. Preserve the screen before any
+          // expansion, pan, selection, Source lookup or DOM geometry inspection.
+          await figure.evaluate(n=>n.scrollIntoView({block:'start'}));
+          await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-initial.png`)});
+          const entry=await require('./overview_entry.cjs').observeOverview(figure,d);
+          fs.writeFileSync(path.join(output,`${c.key}-${width}-${mode}-entry.json`),JSON.stringify(entry,null,2),{flag:'wx'});
+          assert.deepEqual(entry.errors,[],'ordinary connected overview entry');
           if(config.outline && mode==='live') {
             const toc=page.locator('.document-nav');await toc.locator(':scope > summary').click();
             await toc.locator('a.toc-figure[href=\"#'+await figure.getAttribute('id')+'\"]').click();
             assert(await figure.evaluate(n=>n===document.activeElement),'outline exact figure focus');
           }
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
-          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/4'));
+          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/6'));
           assert.equal(await page.locator('script').count()>0,mode==='live','live scripting versus script-free static export');
           if(mode==='live') await page.waitForFunction(id=>{
             const viewport=document.getElementById(id)?.querySelector('.diagram-viewport');
@@ -110,7 +91,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           await figure.screenshot({path:path.join(output,`${c.key}-${width}-${mode}.png`)});
           if(config.capture_canvas && width===(config.widths || [1440,390])[0] && mode==='live') {
             const canvas=await svg.evaluate(n=>({svg:n.outerHTML,width:n.width.baseVal.value,height:n.height.baseVal.value,styles:[...document.querySelectorAll('style')].map(s=>s.textContent).join('\n')}));
-            const html='<meta charset="utf-8"><style>'+canvas.styles+'</style><style>body{margin:0;padding:0}.diagram-viewport{max-height:none;overflow:visible;border:0}</style><div class="diagram-viewport">'+canvas.svg+'</div>';
+            const html='<meta charset="utf-8"><style>'+canvas.styles+'</style><style>body{margin:0;padding:0}.diagram-viewport{max-height:none;overflow:visible;border:0}.diagram-viewport .connected-overview{width:var(--map-wide-width);height:var(--map-wide-height)}.map-wide{display:inline!important}.map-narrow{display:none!important}</style><div class="diagram-viewport">'+canvas.svg+'</div>';
             fs.writeFileSync(path.join(output,c.key+'-canvas.html'),html,{flag:'wx'});
             const review=await context.newPage();await review.setViewportSize({width:Math.ceil(canvas.width),height:Math.min(1000,Math.ceil(canvas.height))});
             await review.setContent(html);await review.evaluate(()=>document.fonts.ready);await review.screenshot({path:path.join(output,c.key+'-canvas.png'),fullPage:true});await review.close();
@@ -122,6 +103,10 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             if(!config.geometry_report_only) assert.deepEqual(visual_geometry.errors,[],'actual displayed-label and glyph/path geometry');
           }
           const svg_bytes=await svg.evaluate(n=>new TextEncoder().encode(n.outerHTML).length);
+          if(config.orientation_only) {
+            results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/6'),evidence_journey:'not_exercised'});
+            await context.close();continue;
+          }
           if(config.precise_return && mode==='live') {
             await figure.locator('[data-diagram-action=in]').click();
             assert.equal(await figure.locator('.diagram-scale').textContent(),'125%');
@@ -157,8 +142,13 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
               if(config.capture_sources) await claim.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-connection.png`)});
             }
           }
-          const actions=claim.locator('a.evidence-link');
-          const action=actions.nth(c.citation);
+          // A claim may expose only its relevant subset of unit citations.
+          // Select the independently specified original coordinates, not the
+          // position of a filtered button in the selected detail.
+          const boundPoint=page.locator('.source-point[data-reader-publication="'+pub.provenance.publication_id+'"][id$="-p'+(c.unit+1)+'-c'+(c.citation+1)+'"]');
+          assert.equal(await boundPoint.count(),1,'exact independently selected citation origin');
+          const boundPointId=await boundPoint.getAttribute('id');
+          const action=claim.locator('a.evidence-link[href="#'+boundPointId+'"]');
           assert.equal(await action.count(),1,'critical purpose has exact code action');
           const selectedStarted=Date.now();
           await action.click();
@@ -246,31 +236,28 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
               assert.equal(await page.locator('.source-point[data-selected=true]').count(),0);
               await page.evaluate(id=>{location.hash=id;},elementId);
             }
-            // Text origins below a closed full view move when returning opens
-            // the SVG's ancestors. Preserve the actual origin's screen position.
+            // Supporting text origins retain their exact position while the
+            // complete visual overview stays available throughout selection.
             for(const representation of ['.diagram-relations','.diagram-alternative']) {
-              if(await full.evaluate(n=>n.open))await full.locator(':scope > summary').click();
               const list=figure.locator(representation);
               if(!await list.evaluate(n=>n.open))await list.locator(':scope > summary').click();
               const origin=list.locator('a.diagram-text-link[data-element="'+elementId+'"]');
               await origin.focus();await origin.evaluate(n=>n.scrollIntoView({block:'center'}));
-              assert(!await full.evaluate(n=>n.open),'full view closed before text-origin activation');
+              assert(await svg.isVisible(),'overview remains available at text-origin activation');
               const top=await origin.evaluate(n=>n.getBoundingClientRect().top);
               await page.keyboard.press('Enter');await action.click();
               await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-inspection pre.code-region code')?.textContent.length>0,pointId);
-              assert(expected.startsWith(await point.locator('.citation-inspection pre.code-region code').textContent()),'same implementing Source from closed-view text origin');
+              assert(expected.startsWith(await point.locator('.citation-inspection pre.code-region code').textContent()),'same implementing Source from text origin');
               await point.locator('a.return').click();await claim.locator('a.diagram-return').click();
               await page.waitForFunction(({elementId,representation})=>{
                 const n=document.activeElement;
                 return n?.matches('a.diagram-text-link') && n.dataset.element===elementId && !!n.closest(representation);
               },{elementId,representation});
-              assert(await origin.evaluate(n=>n===document.activeElement),'same closed-view text origin');
+              assert(await origin.evaluate(n=>n===document.activeElement),'same text origin');
               assert(Math.abs(await origin.evaluate(n=>n.getBoundingClientRect().top)-top)<=5,'visible text-origin return '+representation);
             }
             if(config.faults && c.faults!==false) for(const reason of failureReasons) {
               await page.goto(base+query,{waitUntil:'load'});
-              const faultFull=figure.locator('.diagram-full-view');
-              if(await faultFull.count() && !await faultFull.evaluate(n=>n.open))await faultFull.locator(':scope > summary').click();
               const failedPublication=await point.locator('.citation-inspection').getAttribute('data-publication-id');
               const independent=await page.locator('[data-reader-publication]').evaluateAll((ns,id)=>ns.filter(n=>n.dataset.readerPublication!==id).map(n=>({id:n.id,publication:n.dataset.readerPublication,html:n.outerHTML})),failedPublication);
               assert(await page.locator('.source-point pre.code-region').count()>1,'multiple original cached Source payloads challenge publication-wide withholding');
@@ -296,7 +283,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/4')});
+          results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/6')});
           await context.close();
         }
       } catch(error) {

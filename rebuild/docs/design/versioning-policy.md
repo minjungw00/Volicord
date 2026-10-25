@@ -568,6 +568,15 @@ above separately requires explicit regeneration of affected summaries.
 
 ### Grounded diagram current-only format
 
+Connected overview presentation retains exact-current explanation version 8 and
+document metadata 11. Short standalone labels remain grounded UTF-8 prose spans;
+there is no second string channel, hierarchy inference, old-format conversion or
+semantic field. Updated diagram authoring instructions change Repository and Work
+article preparations, requiring explicit fresh prepare/compose/record. Independently
+valid Goal-only name and progress-summary contracts remain unchanged. Renderer
+identity 6 records responsive presentation, not a new Source grant or retained
+semantic version. Original publications/attempts stay unchanged.
+
 The prior explanation formats were 6 (prose) and 7 (concept/sequence); the single
 writer/decoder uses exact-current `volicord_explanation` version 8, including an
 explicit `diagrams` collection (empty for plain prose). This

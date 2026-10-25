@@ -677,23 +677,18 @@ fn render_diagrams(
             .map(|p| p.realization_fingerprint.as_str())
             .unwrap_or("");
         html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" tabindex=\"-1\" data-realization=\"{}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"{}><figcaption>{}</figcaption>",escape(realization),escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),publication_scope(answers),escape(title)));
-        html.push_str(&format!(
-            "<details class=\"diagram-full-view\"><summary>{}</summary>",
-            text(
-                r.locale,
-                "Full diagram · layout and all connections",
-                "전체 도식 · 모든 연결의 배치"
-            )
-        ));
-        html.push_str(&format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{ns}-viewport\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"reset\">{}</button></div>",text(r.locale,"Expand reading area","읽기 영역 확장"),text(r.locale,"Zoom diagram out","도식 축소"),text(r.locale,"Zoom diagram in","도식 확대"),text(r.locale,"Reset","원래 크기")));
+        let mut visual = String::new();
+        visual.push_str("<div class=\"diagram-full-view\">");
+        let controls = format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{ns}-viewport\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"reset\">{}</button></div>",text(r.locale,"Zoom and pan view","확대·이동 보기"),text(r.locale,"Zoom diagram out","도식 축소"),text(r.locale,"Zoom diagram in","도식 확대"),text(r.locale,"Reset","원래 크기"));
         match crate::diagram::svg(d,&texts,&ns,&|id,_|format!("{ns}-{id}-claim"),r.locale.fixed()) {
-            Ok(svg)=>html.push_str(&format!("<div id=\"{ns}-viewport\" class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용"))),
+            Ok(svg)=>visual.push_str(&format!("<div id=\"{ns}-viewport\" class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용"))),
             Err(_)=>{
-                html.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Diagram rendering failed. Read the admitted text alternative below.","도식 렌더링에 실패했습니다. 아래 검증된 텍스트 표현을 읽으세요.")));
-                for (id,_) in crate::diagram::elements(d) {html.push_str(&format!("<span id=\"{ns}-{id}\" tabindex=\"-1\"></span>"));}
+                visual.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Diagram rendering failed. Read the admitted text alternative below.","도식 렌더링에 실패했습니다. 아래 검증된 텍스트 표현을 읽으세요.")));
+                for (id,_) in crate::diagram::elements(d) {visual.push_str(&format!("<span id=\"{ns}-{id}\" tabindex=\"-1\"></span>"));}
             },
         }
-        html.push_str("</details>");
+        visual.push_str(&controls);
+        visual.push_str("</div>");
         let caption_open = if ordinal == 0 && answers.prose[index].question == "Narrative" {
             format!("<div class=\"unit diagram-caption\" id=\"{}\" tabindex=\"-1\"><p class=\"unit-text\" data-question=\"Narrative\" lang=\"{}\" data-content-language=\"{}\">",reader_claim_anchor(answers,index),escape(&content_language_tag(&answers.language)),escape(&answers.language))
         } else {
@@ -715,33 +710,8 @@ fn render_diagrams(
                 )
             ));
         }
-        html.push_str(&format!(
-            "<details class=\"diagram-alternative\"><summary>{}</summary>",
-            text(
-                r.locale,
-                "Diagram meaning and element claims",
-                "도식 의미와 요소별 설명"
-            )
-        ));
-        match volicord_projections::diagram_text_localized(d, &texts, r.locale.fixed()) {
-            Ok(value) => html.push_str(&format!(
-                "<pre class=\"diagram-text\">{}</pre>",
-                escape(&value)
-            )),
-            Err(_) => html.push_str(&format!(
-                "<p role=\"status\">{}</p>",
-                text(
-                    r.locale,
-                    "Diagram meaning unavailable.",
-                    "도식 의미를 사용할 수 없습니다."
-                )
-            )),
-        }
-        html.push_str("<ul>");
-        for (id, _) in crate::diagram::elements(d) {
-            html.push_str(&format!("<li><a class=\"button secondary diagram-text-link\" data-element=\"{ns}-{id}\" href=\"#{ns}-{id}-claim\">{}</a></li>",escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed()))));
-        }
-        html.push_str("</ul></details><div class=\"diagram-claims\">");
+        html.push_str(&visual);
+        html.push_str("<div class=\"diagram-claims\">");
         let connections = match &d.meaning {
             volicord_projections::DiagramMeaning::Sequence { groups, .. } => groups
                 .iter()
@@ -760,7 +730,7 @@ fn render_diagrams(
             let selected = volicord_projections::diagram_label(label, &texts).unwrap_or("");
             let unit = &answers.prose[label.unit];
             let position = connections.iter().position(|edge| *edge == id);
-            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"{}><h3>{}</h3><p class=\"diagram-selected-label\">{}</p>",label.unit,if position==Some(0){" data-initial-connection=\"true\""}else{""},escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed())),escape(selected)));
+            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p class=\"diagram-selected-label\">{}</p>",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed())),escape(selected)));
             if let Some(position) = position {
                 html.push_str(&format!("<nav class=\"connection-navigation\" aria-label=\"{}\"><span>{} {} / {}</span>",text(r.locale,"Figure connections","도식의 연결"),text(r.locale,"Connection","연결"),position+1,connections.len()));
                 for (other, title) in [
@@ -860,6 +830,33 @@ fn render_diagrams(
             }
             html.push_str("</details>");
         }
+        html.push_str(&format!(
+            "<details class=\"diagram-alternative\"><summary>{}</summary>",
+            text(
+                r.locale,
+                "Diagram meaning and element claims",
+                "도식 의미와 요소별 설명"
+            )
+        ));
+        match volicord_projections::diagram_text_localized(d, &texts, r.locale.fixed()) {
+            Ok(value) => html.push_str(&format!(
+                "<pre class=\"diagram-text\">{}</pre>",
+                escape(&value)
+            )),
+            Err(_) => html.push_str(&format!(
+                "<p role=\"status\">{}</p>",
+                text(
+                    r.locale,
+                    "Diagram meaning unavailable.",
+                    "도식 의미를 사용할 수 없습니다."
+                )
+            )),
+        }
+        html.push_str("<ul>");
+        for (id, _) in crate::diagram::elements(d) {
+            html.push_str(&format!("<li><a class=\"button secondary diagram-text-link\" data-element=\"{ns}-{id}\" href=\"#{ns}-{id}-claim\">{}</a></li>",escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed()))));
+        }
+        html.push_str("</ul></details>");
         html.push_str("</figure>");
     }
 }

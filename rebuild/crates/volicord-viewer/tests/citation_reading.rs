@@ -1718,7 +1718,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             .and_then(|p| p.publication_id.as_deref())
             .ok_or("managed publication")?;
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/4\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/6\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
@@ -1790,7 +1790,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/4\""));
+            .contains("data-renderer=\"volicord-static-svg/6\""));
     }
     Ok(())
 }
@@ -1949,7 +1949,7 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
-            assert!(text.contains("volicord-static-svg/4"));
+            assert!(text.contains("volicord-static-svg/6"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"
             } else {
@@ -2116,8 +2116,19 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for html in [&live, &offline] {
-            assert_eq!(html.matches("data-initial-connection=\"true\"").count(), 1);
-            assert!(html.contains("<details class=\"diagram-full-view\"><summary>"));
+            assert!(!html.contains("data-initial-connection"));
+            assert!(html.contains("<div class=\"diagram-full-view\">"));
+            assert!(!html.contains("<details class=\"diagram-full-view\""));
+            let caption = html
+                .find("class=\"unit diagram-caption\"")
+                .ok_or("caption")?;
+            let map = html.find("class=\"diagram-full-view\"").ok_or("map")?;
+            let controls = html.find("class=\"diagram-controls\"").ok_or("controls")?;
+            let detail = html.find("class=\"diagram-claims\"").ok_or("detail")?;
+            assert!(
+                caption < map && map < controls && controls < detail,
+                "native reading order precedes detail"
+            );
             assert!(html.contains("connection-navigation"));
             let id = if sequence { "answer" } else { "dependency" };
             let detail = html
@@ -2226,7 +2237,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
         .export_snapshot(&f.request(), &output)?;
     let html = fs::read_to_string(output)?;
-    assert!(html.contains("data-renderer=\"volicord-static-svg/4\""));
+    assert!(html.contains("data-renderer=\"volicord-static-svg/6\""));
     assert!(html.contains("&lt;image"));
     assert!(!html.contains("<image"));
     assert!(!html.contains("<script"));

@@ -267,6 +267,42 @@ fallback은 **기록 접근성**의 완료 조건이다. 실제 근거가 충분
 
 ## 9. 저장소 전체 이해와 분석 상태
 
+### Connected overview reading
+
+The latest overview-first decision supersedes the prior default connection card
+and closed full-layout choice. On ordinary entry, purpose and a readable connected
+map precede detail controls in live and script-free offline readers. Normal page
+scrolling is permitted. Opening a disclosure, manually panning to discover hidden
+endpoints, enumerating edges, or opening code must not be necessary for orientation.
+The selected connection remains a useful subsequent detail.
+
+The [O1–O6 mapping](acceptance-scenarios.md#connected-repository-orientation-outcomes)
+is renderer-independent. Before candidate evaluation, record these case questions:
+
+| Case | Questions the visible overview must support | Semantic traps to retain |
+| --- | --- | --- |
+| Volicord records | How do Work, Goal, ContextItem, Purpose, Checkpoints, Decisions and their Question/Project/Source joins connect? | Work is a read grouping; Goal/Purpose are roles, not new stored classes; a generated purpose is not canonical Project Purpose. |
+| Volicord responsibilities and flow | Which boundary writes memory? How do adapters, operations, inquiry, analysis and projection cooperate? How do explicit investigation, authorship, admission and later reading connect? | Capability dependencies are not threads or execution order; read/export neither generate nor adopt memory; provider access remains opt-in. |
+| Music Deck execution | Trace content state to plugin state/rendering, deck control toward page execution, and command results back. Which boxes execute, and which state belongs inside an owner? | Worker, isolated content, MAIN-world page code and Node plugin are execution locations; queue/waiter/request maps are internal state. Opposite directions must stay distinguishable. |
+| Music Deck closure | Why can B finish while closure still waits for A? What set is awaited, and when is close attempted? What changes if that notification is received? | Submitted-set snapshot, settlement including rejection, token condition, bounded removed markers and timeout; no delivery guarantee, queue clear or browser-request completion from removePlayer. |
+| Music Deck request states | How does queued become delivered, and which success/failure/expiry transitions are possible? | Dispatch is not success; only delivered acknowledges; native launch can finish queued open without playback confirmation; no tab-close transition. |
+| Historical Work | What question was investigated, what was reported, and what remains Paused/unobserved? | A/B is illustration, not trace; original Goal and scoped VM reports retain their separate identities; no invented implementation change or user acceptance. |
+
+Capture initial viewport and ordinary vertical scroll **before** expansion, pan,
+selection or code inspection, using final wording, actual topology, font,
+viewport, UI/content languages and build/publication identities. Preserve the
+first response before feedback. Implementers who have seen Sources and these
+expectations report dependent assessment; absent isolated/human observation is
+reported separately. Then exercise user-directed relation/claim/code/return and,
+separately, Source-first verification. Neither can compensate for failed entry.
+
+Complete predicates, shared nodes, arrow direction, scope and non-color cues must
+remain distinguishable at desktop and narrow widths. Cycles and reverse edges
+need distinct routes; layout never invents an order or grouping. Any supported
+abstraction or shorter authored label must retain explicit grounding. Text and
+keyboard alternatives complement the map. Selecting detail preserves the map and
+exact origin; return restores element, focus, history and reading position.
+
 ### 9.1 저장소 설명은 계속 핵심 범위다
 
 Work 카드 개선을 이유로 저장소 전체 이해를 다시 빼지 않는다. Work가 없는 새 Project에서도 저장소의 역할·주요 책임·경계·동작을 설명할 수 있어야 한다. Work가 존재하면 저장소 설명과 해당 Work의 실제 관련 구성요소를 오갈 수 있어야 한다.

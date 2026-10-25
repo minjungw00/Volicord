@@ -808,8 +808,8 @@ Source dependencies. HTTP failure JSON carries a bounded typed reason without
 Source content. Withheld/expired/deleted content cannot populate visible code;
 retained observation fingerprints exclude ephemeral check times.
 
-The read-time aggregate for already permitted explanation windows is 32,768 UTF-8
-bytes, with the existing 16,384-byte per-window bound and 4,096-byte live citation
+The read-time aggregate for already permitted explanation windows is 49,152 UTF-8
+bytes under Projection’s existing critical-code policy, with the existing 16,384-byte per-window bound and 4,096-byte live citation
 chunks. This budget neither expands original Source collection nor retains bytes
 in explanation storage, changes expiry, authorizes transmission or grants access to
 uncited material. Larger embedded reading scope still revalidates every dependency

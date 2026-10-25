@@ -23,7 +23,7 @@
     figure.classList.remove('diagram-expanded');
     const control = figure.querySelector('[data-diagram-action=expand]');
     control.setAttribute('aria-expanded','false');
-    control.textContent = ko ? '읽기 영역 확장' : 'Expand reading area';
+    control.textContent = ko ? '확대·이동 보기' : 'Zoom and pan view';
     if (prior) {
       const viewport = figure.querySelector('.diagram-viewport');
       viewport.scrollLeft = prior.left; viewport.scrollTop = prior.top;
@@ -39,26 +39,6 @@
   const reads = new WeakMap();
   const outlineScroll = new WeakMap();
   const ko = document.documentElement.lang === 'ko';
-  function initializeVisibleFigures() {
-    for (const figure of document.querySelectorAll('.admitted-diagram')) {
-      if (figure.dataset.initialPan) continue;
-      const viewport=figure.querySelector('.diagram-viewport');
-      const svg=figure.querySelector('svg');
-      if (!viewport?.clientWidth || !svg) continue;
-      const boxes=[...svg.querySelectorAll('.participant-box')].map(n=>n.getBBox())
-        .filter(b=>b.width>0 && b.height>0).sort((a,b)=>a.y-b.y || a.x-b.x);
-      const first=boxes[0];
-      if (!first) continue;
-      // Start with an actual first-row node, rather than the outer routing
-      // lanes. This changes local presentation only, once on first display.
-      const scale=Number(figure.dataset.scale) || 1;
-      viewport.scrollLeft=Math.max(0,(first.x+first.width/2)*scale-viewport.clientWidth/2);
-      figure.dataset.initialPan='true';
-    }
-  }
-  document.addEventListener('toggle',event=>{
-    if(event.target.matches?.('.diagram-full-view') && event.target.open) initializeVisibleFigures();
-  },true);
   const syntaxNames = {javascript:'JavaScript', typescript:'TypeScript', rust:'Rust', python:'Python', shell:'Shell', json:'JSON'};
   const tokenKinds = new Set(['keyword','comment','string','type','function','number','variable']);
   function paintCode(code, source, highlight) {
@@ -118,8 +98,9 @@
   for (const figure of document.querySelectorAll('.admitted-diagram')) {
     const svg=figure.querySelector('svg');
     if (!svg) continue;
-    figure.dataset.baseWidth=svg.getAttribute('width');
-    figure.dataset.baseHeight=svg.getAttribute('height');
+    const dimension = name => parseFloat(svg.style.getPropertyValue(`--map-${narrow.matches?'narrow':'wide'}-${name}`));
+    figure.dataset.baseWidth=dimension('width');
+    figure.dataset.baseHeight=dimension('height');
     figure.dataset.scale='1';figure.querySelector('.diagram-controls').hidden=false;
   }
   async function readCitation(point, offset = 0) {
@@ -261,7 +242,6 @@
         if (parent.matches('details')) parent.open = true;
       }
     }
-    initializeVisibleFigures();
     const point = target?.closest('.source-point');
     document.body.dataset.sourceOpen=point?'true':'false';
     document.querySelectorAll('.source-point[data-selected],.appendix[data-open],.diagram-claim[data-active]').forEach(n=>{delete n.dataset.selected;delete n.dataset.open;delete n.dataset.active;});
@@ -372,11 +352,12 @@
           expandedReturns.set(figure,{y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop});
           figure.classList.add('diagram-expanded');
           diagramControl.setAttribute('aria-expanded','true');
-          diagramControl.textContent=ko?'읽기 영역 접기 (Esc)':'Close expanded area (Esc)';
+          diagramControl.textContent=ko?'개요로 돌아가기 (Esc)':'Return to overview (Esc)';
         }
       } else {
         const old=Number(figure.dataset.scale);const next=action==='reset'?1:Math.min(2,Math.max(.75,old+(action==='in'?.25:-.25)));
         figure.dataset.scale=String(next);svg.style.width=(Number(figure.dataset.baseWidth)*next)+'px';svg.style.height=(Number(figure.dataset.baseHeight)*next)+'px';
+        svg.querySelector('.diagram-content')?.setAttribute('transform',`scale(${next})`);
         figure.querySelector('.diagram-scale').textContent=Math.round(next*100)+'%';
         figure.querySelector('[data-diagram-action=in]').disabled=next===2;
         figure.querySelector('[data-diagram-action=out]').disabled=next===.75;
@@ -478,6 +459,17 @@
   window.addEventListener('scroll', () => {
     if (!scheduled) { scheduled = true; requestAnimationFrame(() => { scheduled = false; updateCue(); }); }
   }, {passive:true});
-  narrow.addEventListener('change', apply);
+  narrow.addEventListener('change', () => {
+    for (const figure of document.querySelectorAll('.admitted-diagram')) {
+      const svg=figure.querySelector('.connected-overview');
+      if (!svg) continue;
+      for (const name of ['width','height']) {
+        const size=parseFloat(svg.style.getPropertyValue(`--map-${narrow.matches?'narrow':'wide'}-${name}`));
+        figure.dataset[name==='width'?'baseWidth':'baseHeight']=size;
+        svg.style[name]=(size*(Number(figure.dataset.scale)||1))+'px';
+      }
+    }
+    apply();
+  });
   apply();
 })();

@@ -3872,11 +3872,22 @@ an internally consistent shifted range, remaining bytes and continuation. Each
 response must leave no fetched code. Existing positive complete-page, delayed-read,
 foreign-selection, offline and lifecycle controls remain required. These scoped
 controls establish no human comprehension or authoritative qualification result.
-The actual-publication browser also requires an initially visible native-size
-connection, unoccluded ordering qualification, previous/next selection without a
-stale duplicate, and explicit full-layout expansion before SVG geometry tasks.
-It repeats these paths with script-free exports; textual lists alone do not pass
-the initial visual-meaning check.
+The actual-publication browser records ordinary entry before expansion, panning,
+selection or code inspection. It must reject the previous correct-card/closed-map
+counterexample as O1 failure. Subsequent selected-connection, ordering qualification,
+geometry and exact evidence-return checks remain required in live and script-free
+exports. A visible miniature or clipped canvas also fails orientation; minimum
+fonts and hidden DOM completeness alone cannot establish the O1–O6 outcomes in the
+acceptance/Reader owners. Preserve initial screenshots, exact inputs and first
+responses; implementer assessment remains dependent.
+
+The focused connected-overview comparison and O1–O6 disposition are retained in
+the [investigated publication report](../../validation/end-to-end/multi-repository/investigated-publication-report.md#connected-overviews-2026-10-26).
+The baseline hidden map and two subsequently unreadable connected candidates remain
+failures, regardless of their geometric or exact-code results. The final isolated
+agent readings support the frozen selected questions using visible endpoint
+annotations; scrolling/route-tracing costs and absent human/native-zoom/assistive
+observations remain explicit. This focused delivery is not gate qualification.
 
 Sequence geometry also compares the original group's sequential/parallel meaning
 with its localized visible header and compares displayed message positions with

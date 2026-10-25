@@ -832,7 +832,7 @@ fn finish_plan(
         subject,
         ExplanationSubject::Work(_) | ExplanationSubject::Repository(_)
     ) {
-        plan.instructions.push_str(" Diagrams: concept/sequence; labels/guards select cited unit UTF-8 spans. Compose seals meaning.");
+        plan.instructions.push_str(" Diagrams: grounded concept/component/flow/state/sequence. Author short standalone node names and complete relationship predicates in cited prose; select their UTF-8 spans, never grammatical fragments. Purpose and connected scope precede selected detail. Distinguish execution locations, owned state and illustrative order. Compose seals meaning.");
     }
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage

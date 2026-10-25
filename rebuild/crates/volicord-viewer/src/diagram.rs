@@ -1,10 +1,9 @@
 //! Bounded, dependency-free local SVG. No generated markup, fonts, assets or I/O.
 use volicord_projections::*;
-#[path = "diagram_route.rs"]
-mod routing;
-use routing::Rect;
+#[path = "diagram_overview.rs"]
+mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/4";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/6";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -12,46 +11,52 @@ fn esc(s: &str) -> String {
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
 }
-fn words(s: &str, width: usize) -> Vec<String> {
-    // Conservative pixels at the native 16px font. ASCII is not uniformly
-    // eight pixels wide. Browser glyph checks remain the independent oracle.
-    let measure = |ch: char| {
-        if !ch.is_ascii() || "MWmw@%&#".contains(ch) {
-            16
-        } else if " iljft.,:;'!|()[]".contains(ch) {
-            6
-        } else {
-            12
-        }
-    };
-    let limit = width * 8;
+fn measure_text(s: &str) -> usize {
+    s.chars()
+        .map(|ch| {
+            if !ch.is_ascii() || "MWmw@%&#".contains(ch) {
+                16
+            } else if " iljft.,:;'!|()[]".contains(ch) {
+                6
+            } else if ch.is_ascii_uppercase() {
+                11
+            } else {
+                10
+            }
+        })
+        .sum()
+}
+fn words(s: &str, limit: usize) -> Vec<String> {
+    // Native 16px text. Keep short standalone identifiers/words intact when
+    // the conservative estimate differs by at most the surrounding padding.
+    // Browser glyph checks verify the actual font, not this estimate.
     let mut result = Vec::new();
     let mut line = String::new();
     let mut used = 0;
-    for ch in s.chars() {
-        let pixels = measure(ch);
-        if used + pixels > limit && !line.is_empty() {
-            // Preserve every original byte, including whitespace; prefer a
-            // word boundary without inventing abbreviations or shorter prose.
-            let cut = line
-                .char_indices()
-                .rev()
-                .find(|(_, c)| c.is_whitespace())
-                .map(|(i, c)| i + c.len_utf8())
-                .unwrap_or(line.len());
-            let rest = line.split_off(cut);
-            result.push(std::mem::replace(&mut line, rest));
-            used = line.chars().map(measure).sum();
-            if used + pixels > limit && !line.is_empty() {
+    for token in s.split_inclusive(char::is_whitespace) {
+        let size = measure_text(token);
+        let whole = token.trim_end_matches(char::is_whitespace);
+        if used > 0 && used + size > limit {
+            result.push(std::mem::take(&mut line));
+            used = 0;
+        }
+        if size <= limit || (whole.chars().count() <= 14 && measure_text(whole) <= limit + 12) {
+            line.push_str(token);
+            used += size;
+            continue;
+        }
+        for ch in token.chars() {
+            let size = measure_text(&ch.to_string());
+            if used + size > limit && !line.is_empty() {
                 result.push(std::mem::take(&mut line));
                 used = 0;
             }
+            line.push(ch);
+            used += size;
         }
-        line.push(ch);
-        used += pixels;
     }
     if !line.is_empty() {
-        result.push(line);
+        result.push(line)
     }
     result
 }
@@ -88,594 +93,8 @@ pub(crate) fn svg(
     target: &dyn Fn(&str, &DiagramLabel) -> String,
     locale: FixedLocale,
 ) -> Result<String, String> {
-    // The renderer is a separate allocation/markup boundary. Admission normally
-    // supplies these bounds; do not rely on it to constrain layout or a future
-    // caller before the final output-size check can run.
     bounded_input(d, texts, ns)?;
-    let label = |l: &DiagramLabel| diagram_label(l, texts);
-    let n = d.nodes().len();
-    if n == 0 || n > 12 {
-        return Err("unsupported diagram node budget".into());
-    }
-    let mut node_height = d
-        .nodes()
-        .iter()
-        .map(|n| label(&n.label).map(|s| 62 + 20 * words(s, 26).len()))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .max()
-        .unwrap_or(80)
-        .max(80);
-    // A diamond's text block sits in its wide middle, away from sloping edges.
-    if d.nodes().iter().any(|n| n.kind == DiagramNodeKind::Branch) {
-        node_height = node_height.max(
-            d.nodes()
-                .iter()
-                .filter(|n| n.kind == DiagramNodeKind::Branch)
-                .map(|n| label(&n.label).map(|s| 2 * (44 + 20 * words(s, 26).len())))
-                .collect::<Result<Vec<_>, _>>()?
-                .into_iter()
-                .max()
-                .unwrap_or(80),
-        );
-    }
-    let node_width = |i: usize| {
-        if d.nodes()[i].kind == DiagramNodeKind::Branch {
-            360
-        } else {
-            220
-        }
-    };
-    let column_step = if d.nodes().iter().any(|n| n.kind == DiagramNodeKind::Branch) {
-        400
-    } else {
-        320
-    };
-    let owner_header = if let DiagramMeaning::State { owner, .. } = &d.meaning {
-        30 + 20
-            * words(
-                &format!(
-                    "{} {}",
-                    diagram_ui(locale, "State owner:", "상태 소유자:"),
-                    label(owner)?
-                ),
-                40,
-            )
-            .len()
-    } else {
-        0
-    };
-    let mut key_y = Vec::new();
-    let mut key_slots = Vec::new();
-    let mut message_heights = Vec::new();
-    let mut group_heights = Vec::new();
-    let mut rank = vec![0usize; n];
-    let mut positions = vec![(0usize, 0usize); n];
-    let index = |id: &str| {
-        d.nodes()
-            .iter()
-            .position(|n| n.id == id)
-            .ok_or_else(|| "diagram endpoint unavailable".to_owned())
-    };
-    let (width, height) = match &d.meaning {
-        DiagramMeaning::Concept { relations, .. }
-        | DiagramMeaning::Component { relations, .. }
-        | DiagramMeaning::Flowchart { relations, .. }
-        | DiagramMeaning::State { relations, .. } => {
-            // Rank the condensation graph. A cycle stays together without
-            // reversing edges or pretending vector order is execution order.
-            let mut reaches = vec![vec![false; n]; n];
-            for r in relations {
-                reaches[index(&r.from)?][index(&r.to)?] = true;
-            }
-            for k in 0..n {
-                for a in 0..n {
-                    for b in 0..n {
-                        reaches[a][b] |= reaches[a][k] && reaches[k][b];
-                    }
-                }
-            }
-            for _ in 0..n {
-                let old = rank.clone();
-                for r in relations {
-                    let a = index(&r.from)?;
-                    let b = index(&r.to)?;
-                    if !reaches[b][a] {
-                        rank[b] = rank[b].max(old[a] + 1);
-                    }
-                }
-                for a in 0..n {
-                    for b in 0..n {
-                        if reaches[a][b] && reaches[b][a] {
-                            rank[a] = rank[a].max(rank[b]);
-                        }
-                    }
-                }
-                if old == rank {
-                    break;
-                }
-            }
-            let slots = relations
-                .iter()
-                .map(|r| {
-                    let lines = words(label(&r.label)?, 32).len();
-                    let guard = r
-                        .condition
-                        .as_ref()
-                        .map(|l| {
-                            label(l).map(|v| {
-                                words(&format!("{} {v}", diagram_ui(locale, "if", "조건:")), 30)
-                                    .len()
-                            })
-                        })
-                        .transpose()?
-                        .unwrap_or(0);
-                    Ok(52 + 20 * (lines + guard))
-                })
-                .collect::<Result<Vec<_>, String>>()?;
-            let rows = rank.iter().max().copied().unwrap_or(0) + 1;
-            let columns = (0..rows)
-                .map(|r| rank.iter().filter(|v| **v == r).count())
-                .max()
-                .unwrap_or(1);
-            // Independent columns share a label band; only labels attached
-            // to the same target need separate vertical slots.
-            let mut target_slots = vec![0usize; n];
-            let mut self_slots = vec![0usize; n];
-            for (r, slot) in relations.iter().zip(&slots) {
-                let b = index(&r.to)?;
-                if r.from == r.to {
-                    self_slots[b] += slot;
-                } else {
-                    target_slots[b] += slot;
-                }
-            }
-            let row_slots = (0..rows)
-                .map(|row| {
-                    (0..n)
-                        .filter(|i| rank[*i] == row)
-                        .map(|i| target_slots[i])
-                        .max()
-                        .unwrap_or(0)
-                })
-                .collect::<Vec<_>>();
-            let row_self = (0..rows)
-                .map(|row| {
-                    (0..n)
-                        .filter(|i| rank[*i] == row)
-                        .map(|i| self_slots[i])
-                        .max()
-                        .unwrap_or(0)
-                })
-                .collect::<Vec<_>>();
-            let top = owner_header + row_slots[0] + 40;
-            let mut row_y = vec![top; rows];
-            for row in 1..rows {
-                row_y[row] = row_y[row - 1] + node_height + row_self[row - 1] + row_slots[row] + 48;
-            }
-            let w = columns * column_step + 80;
-            for (row, y) in row_y.iter().enumerate() {
-                let entries = (0..n).filter(|i| rank[*i] == row).collect::<Vec<_>>();
-                let offset = (w - entries.len() * column_step) / 2;
-                for (col, i) in entries.into_iter().enumerate() {
-                    positions[i] = (offset + column_step / 2 + col * column_step, *y);
-                }
-            }
-            let mut consumed = vec![0usize; n];
-            let mut self_consumed = vec![0usize; n];
-            for (r, slot) in relations.iter().zip(&slots) {
-                let b = index(&r.to)?;
-                if r.from == r.to {
-                    key_y.push(positions[b].1 + node_height + 40 + self_consumed[b]);
-                    self_consumed[b] += slot;
-                } else {
-                    key_y.push(positions[b].1 - target_slots[b] + consumed[b]);
-                    consumed[b] += slot;
-                }
-            }
-            key_slots = slots;
-            (w, row_y[rows - 1] + node_height + row_self[rows - 1] + 64)
-        }
-        DiagramMeaning::Sequence { groups, .. } => {
-            // Participant order is admitted vector order. Each self-call owns
-            // its complete multiline interior and a separate return baseline.
-            let extra = groups
-                .iter()
-                .flat_map(|g| &g.messages)
-                .any(|m| m.from == m.to && index(&m.from).ok() == Some(n - 1));
-            let w = 40 + n * 300 + if extra { 190 } else { 0 };
-            for (i, p) in positions.iter_mut().enumerate() {
-                *p = (150 + i * 300, 24);
-            }
-            let guard_width = ((w - 64) / 8).min(80);
-            for g in groups {
-                let guard = g.condition.as_ref().map(label).transpose()?;
-                let header = 44
-                    + guard
-                        .map(|v| 20 * words(v, guard_width).len() + 32)
-                        .unwrap_or(0);
-                let mut gh = header;
-                for m in &g.messages {
-                    let lines = words(label(&m.label)?, 30).len();
-                    let mh = 60 + lines * 20;
-                    message_heights.push(mh);
-                    gh += mh;
-                }
-                group_heights.push((header, gh));
-            }
-            (
-                w,
-                node_height + 56 + group_heights.iter().map(|(_, h)| h).sum::<usize>(),
-            )
-        }
-    };
-    let marker = format!("{ns}:arrow");
-    let mut out=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {width} {height}\" width=\"{width}\" height=\"{height}\" role=\"group\" aria-label=\"{}\" data-renderer=\"{RENDERER_ID}\"><defs><marker id=\"{marker}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0 0L10 5L0 10Z\"/></marker></defs>",esc(label(&d.title)?));
-    if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
-        for (x, _) in &positions {
-            out.push_str(&format!(
-                "<line class=\"lifeline\" x1=\"{x}\" y1=\"{}\" x2=\"{x}\" y2=\"{}\"/>",
-                node_height + 40,
-                height - 15
-            ));
-        }
-    }
-    if let DiagramMeaning::Concept { relations, .. }
-    | DiagramMeaning::Component { relations, .. }
-    | DiagramMeaning::Flowchart { relations, .. }
-    | DiagramMeaning::State { relations, .. } = &d.meaning
-    {
-        let mut obstacles = positions
-            .iter()
-            .enumerate()
-            .map(|(i, (x, y))| {
-                Rect {
-                    x: x - node_width(i) / 2,
-                    y: *y,
-                    w: node_width(i),
-                    h: node_height,
-                }
-                .padded()
-            })
-            .collect::<Vec<_>>();
-        for (i, r) in relations.iter().enumerate() {
-            let x = positions[index(&r.to)?].0;
-            obstacles.push(
-                Rect {
-                    x: x - 140,
-                    y: key_y[i] - 21,
-                    w: 280,
-                    h: key_slots[i] - 16,
-                }
-                .padded(),
-            );
-        }
-        if owner_header > 0 {
-            obstacles.push(Rect {
-                x: 20,
-                y: 0,
-                w: width - 40,
-                h: owner_header,
-            });
-        }
-        for (i, r) in relations.iter().enumerate() {
-            let a = index(&r.from)?;
-            let b = index(&r.to)?;
-            let (x1, y1) = positions[a];
-            let (x2, y2) = positions[b];
-            open(
-                &mut out,
-                ns,
-                &r.id,
-                &r.label,
-                &format!(
-                    "{}: {}",
-                    element_caption(d, &r.id, texts, locale),
-                    label(&r.label)?
-                ),
-                target,
-            );
-            let slot = key_slots[i];
-            let label_lines = words(label(&r.label)?, 32).len();
-            let mid = key_y[i];
-            let x = x2;
-            let key_width = 280;
-            let card = Rect {
-                x: x - 140,
-                y: mid - 21,
-                w: 280,
-                h: slot - 16,
-            };
-            let (start, end, start_tip, end_tip) = if a == b {
-                (
-                    (x1 + node_width(a) / 2 + 8, y1 + node_height / 4),
-                    (x1 + node_width(a) / 2 + 8, y1 + node_height * 3 / 4),
-                    (
-                        x1 + if matches!(
-                            d.nodes()[a].kind,
-                            DiagramNodeKind::Branch
-                                | DiagramNodeKind::Initial
-                                | DiagramNodeKind::Final
-                        ) {
-                            90
-                        } else {
-                            110
-                        },
-                        y1 + node_height / 4,
-                    ),
-                    (
-                        x1 + if matches!(
-                            d.nodes()[a].kind,
-                            DiagramNodeKind::Branch
-                                | DiagramNodeKind::Initial
-                                | DiagramNodeKind::Final
-                        ) {
-                            90
-                        } else {
-                            110
-                        },
-                        y1 + node_height * 3 / 4,
-                    ),
-                )
-            } else {
-                let port = |id: &str, outgoing: bool, center: usize| {
-                    let matches =
-                        |r: &&DiagramRelation| if outgoing { r.from == id } else { r.to == id };
-                    let total = relations.iter().filter(matches).count();
-                    let ordinal = relations[..i].iter().filter(matches).count();
-                    center - 96 + (ordinal + 1) * 192 / (total + 1)
-                };
-                let from_x = if matches!(
-                    d.nodes()[a].kind,
-                    DiagramNodeKind::Branch | DiagramNodeKind::Initial | DiagramNodeKind::Final
-                ) {
-                    x1
-                } else {
-                    port(&r.from, true, x1)
-                };
-                let to_x = if matches!(
-                    d.nodes()[b].kind,
-                    DiagramNodeKind::Branch | DiagramNodeKind::Initial | DiagramNodeKind::Final
-                ) {
-                    x2
-                } else {
-                    port(&r.to, false, x2)
-                };
-                (
-                    (from_x, y1 + node_height + 8),
-                    (to_x, y2 - 8),
-                    (from_x, y1 + node_height),
-                    (to_x, y2),
-                )
-            };
-            let before = routing::route(start, (x, card.y - 8), &obstacles, width, height)?;
-            let after = routing::route((x, card.y + card.h + 8), end, &obstacles, width, height)?;
-            let connector = |a: (usize, usize), b: (usize, usize)| {
-                if a.0 == b.0 {
-                    format!("V{}", b.1)
-                } else {
-                    format!("H{}", b.0)
-                }
-            };
-            let path = format!(
-                "M{} {}{}{}{}{}",
-                start_tip.0,
-                start_tip.1,
-                connector(start_tip, start),
-                before,
-                after,
-                connector(end, end_tip)
-            );
-            out.push_str(&format!(
-                "<path class=\"relation-line\" d=\"{path}\" marker-end=\"url(#{marker})\"/>"
-            ));
-            if matches!(
-                r.kind,
-                DiagramRelationKind::DataFlow | DiagramRelationKind::DependsOn
-            ) {
-                let start = out
-                    .rfind("<path class=\"relation-line\"")
-                    .ok_or("relation path missing")?;
-                out.insert_str(start + "<path".len(), " stroke-dasharray=\"6 4\"");
-            }
-            out.push_str(&format!("<rect class=\"edge-key\" x=\"{}\" y=\"{}\" width=\"{key_width}\" height=\"{}\" rx=\"4\"/>",x.saturating_sub(key_width/2),mid.saturating_sub(21),slot-16));
-            text(&mut out, x, mid - 2, label(&r.label)?, 32);
-            text(
-                &mut out,
-                x,
-                mid + label_lines * 20,
-                &format!("E{} · {}", i + 1, r.kind.localized_text(locale)),
-                32,
-            );
-            out.push_str("</a>");
-            if let Some(condition) = &r.condition {
-                open(
-                    &mut out,
-                    ns,
-                    &format!("{}:condition", r.id),
-                    condition,
-                    label(condition)?,
-                    target,
-                );
-                text(
-                    &mut out,
-                    x,
-                    mid + label_lines * 20 + 22,
-                    &format!(
-                        "{} {}",
-                        diagram_ui(locale, "if", "조건:"),
-                        label(condition)?
-                    ),
-                    30,
-                );
-                out.push_str("</a>");
-            }
-        }
-    }
-    for (i, node) in d.nodes().iter().enumerate() {
-        let (x, y) = positions[i];
-        open(
-            &mut out,
-            ns,
-            &node.id,
-            &node.label,
-            label(&node.label)?,
-            target,
-        );
-        match node.kind {
-            DiagramNodeKind::Branch => out.push_str(&format!("<path class=\"participant-box\" d=\"M{x} {y}l180 {}l-180 {}l-180 -{}Z\"/>",node_height/2,node_height/2,node_height/2)),
-            DiagramNodeKind::Initial | DiagramNodeKind::Final => {
-                out.push_str(&format!("<ellipse class=\"participant-box\" cx=\"{x}\" cy=\"{}\" rx=\"110\" ry=\"{}\"/>",y+node_height/2,node_height/2));
-                if node.kind == DiagramNodeKind::Final {out.push_str(&format!("<ellipse class=\"participant-box\" cx=\"{x}\" cy=\"{}\" rx=\"105\" ry=\"{}\"/>",y+node_height/2,(node_height/2).saturating_sub(5)));}
-            }
-            _ => out.push_str(&format!("<rect class=\"participant-box\" x=\"{}\" y=\"{y}\" width=\"220\" height=\"{node_height}\" rx=\"{}\"/>",x.saturating_sub(110),if node.kind == DiagramNodeKind::State {20} else {6})),
-        }
-        let lines = words(label(&node.label)?, 26).len();
-        let baseline = if node.kind == DiagramNodeKind::Branch {
-            y + node_height / 2 - lines * 10 + 18
-        } else {
-            y + 42
-        };
-        text(
-            &mut out,
-            x,
-            baseline - 22,
-            node.kind.localized_text(locale),
-            28,
-        );
-        text(&mut out, x, baseline, label(&node.label)?, 26);
-        out.push_str("</a>");
-    }
-    if let DiagramMeaning::Sequence { groups, .. } = &d.meaning {
-        let mut y = node_height + 48;
-        let mut message_index = 0;
-        for (i, g) in groups.iter().enumerate() {
-            let (header, gh) = group_heights[i];
-            out.push_str(&format!(
-                "<rect class=\"sequence-frame\" x=\"10\" y=\"{y}\" width=\"{}\" height=\"{}\"/>",
-                width - 20,
-                gh - 8
-            ));
-            let order = match g.order {
-                DiagramOrder::Sequential => {
-                    diagram_ui(locale, "strict · sequential", "strict · 순차")
-                }
-                DiagramOrder::Parallel => {
-                    diagram_ui(locale, "par · no relative order", "par · 상대 순서 없음")
-                }
-            };
-            if let Some(condition) = &g.condition {
-                open(
-                    &mut out,
-                    ns,
-                    &format!("guard:{}", i + 1),
-                    condition,
-                    label(condition)?,
-                    target,
-                );
-                text(
-                    &mut out,
-                    width / 2,
-                    y + 22,
-                    &format!(
-                        "opt · {} {}",
-                        diagram_ui(locale, "if", "조건:"),
-                        label(condition)?
-                    ),
-                    ((width - 64) / 8).min(80),
-                );
-                out.push_str("</a>");
-                let inner = header - 32;
-                out.push_str(&format!(
-                    "<rect class=\"sequence-frame\" x=\"18\" y=\"{}\" width=\"{}\" height=\"{}\"/>",
-                    y + inner,
-                    width - 36,
-                    gh - inner - 12
-                ));
-            }
-            text(
-                &mut out,
-                width / 2,
-                y + header - 16,
-                &format!("{}. {order}", i + 1),
-                80,
-            );
-            y += header;
-            for (j, m) in g.messages.iter().enumerate() {
-                let mh = message_heights[message_index];
-                message_index += 1;
-                if g.order == DiagramOrder::Parallel && j > 0 {
-                    out.push_str(&format!("<path class=\"relation-line parallel-operand\" d=\"M18 {}H{}\" stroke-dasharray=\"6 4\"/>",y-8,width-18));
-                }
-                let x1 = positions[index(&m.from)?].0;
-                let x2 = positions[index(&m.to)?].0;
-                open(
-                    &mut out,
-                    ns,
-                    &m.id,
-                    &m.label,
-                    &format!(
-                        "{}: {}",
-                        element_caption(d, &m.id, texts, locale),
-                        label(&m.label)?
-                    ),
-                    target,
-                );
-                let dash = if m.kind == DiagramMessageKind::Return {
-                    "stroke-dasharray=\"6 4\""
-                } else {
-                    ""
-                };
-                let lines = words(label(&m.label)?, 30).len();
-                let x = if x1 == x2 { x1 + 145 } else { (x1 + x2) / 2 };
-                let label_y = y + 18;
-                let arrow_y = y + lines * 20 + 26;
-                if x1 == x2 {
-                    // Both horizontal legs stay outside the full label block.
-                    out.push_str(&format!("<path class=\"relation-line\" d=\"M{x1} {}H{}V{arrow_y}H{x1}\" marker-end=\"url(#{marker})\" {dash}/>",y+2,x1+280));
-                } else {
-                    out.push_str(&format!("<path class=\"relation-line\" d=\"M{x1} {arrow_y}H{x2}\" marker-end=\"url(#{marker})\" {dash}/>"));
-                }
-                // Mask lifelines only beneath the label, never a message path.
-                out.push_str(&format!(
-                    "<rect class=\"message-label\" x=\"{}\" y=\"{}\" width=\"256\" height=\"{}\"/>",
-                    x - 128,
-                    label_y - 16,
-                    lines * 20
-                ));
-                text(&mut out, x, label_y, label(&m.label)?, 30);
-                text(
-                    &mut out,
-                    x,
-                    arrow_y + 20,
-                    &format!("{}.{} · {}", i + 1, j + 1, m.kind.localized_text(locale)),
-                    30,
-                );
-                out.push_str("</a>");
-                y += mh;
-            }
-        }
-    }
-    if let DiagramMeaning::State { owner, .. } = &d.meaning {
-        open(&mut out, ns, "state:owner", owner, label(owner)?, target);
-        text(
-            &mut out,
-            width / 2,
-            24,
-            &format!(
-                "{} {}",
-                diagram_ui(locale, "State owner:", "상태 소유자:"),
-                label(owner)?
-            ),
-            40,
-        );
-        out.push_str("</a>");
-    }
-    out.push_str("</svg>");
-    if out.len() > 262144 {
-        return Err("local SVG render budget exceeded".into());
-    }
-    Ok(out)
+    overview::svg(d, texts, ns, target, locale)
 }
 
 fn bounded_input(d: &GroundedDiagram, texts: &[&str], ns: &str) -> Result<(), String> {
@@ -871,6 +290,81 @@ mod tests {
         super::svg(d, texts, ns, target, FixedLocale::English)
     }
     #[test]
+    fn cyclic_components_route_both_directions_and_parallel_channels() -> Result<(), String> {
+        // Source-derived topology control; these are renderer inputs, not an
+        // admitted repository explanation or a substitute for public reading.
+        let values = [
+            "Plugin",
+            "Worker",
+            "Content",
+            "Page",
+            "sends a DOM snapshot",
+            "augments top-frame state",
+            "returns observed state",
+            "submits /sync",
+            "delivers an ID-bearing command",
+            "messages Isolated content runtime",
+            "sends playback/volume requests back to the worker",
+            "router invokes MAIN-world page code",
+            "reports results by ID",
+        ];
+        let labels = values
+            .iter()
+            .enumerate()
+            .map(|(unit, s)| DiagramLabel {
+                unit,
+                start_byte: 0,
+                end_byte: s.len(),
+            })
+            .collect::<Vec<_>>();
+        let ids = ["plugin", "worker", "content", "page"];
+        let endpoints = [
+            (2, 1),
+            (1, 3),
+            (3, 1),
+            (1, 0),
+            (0, 1),
+            (1, 2),
+            (2, 1),
+            (1, 3),
+            (1, 0),
+        ];
+        let d = GroundedDiagram {
+            id: "cyclic-components".into(),
+            title: labels[0].clone(),
+            caption_unit: 0,
+            semantic_fingerprint: String::new(),
+            meaning: DiagramMeaning::Component {
+                nodes: ids
+                    .iter()
+                    .enumerate()
+                    .map(|(i, id)| DiagramNode {
+                        id: (*id).into(),
+                        kind: DiagramNodeKind::Component,
+                        label: labels[i].clone(),
+                    })
+                    .collect(),
+                relations: endpoints
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (from, to))| DiagramRelation {
+                        id: format!("edge-{i}"),
+                        from: ids[*from].into(),
+                        to: ids[*to].into(),
+                        kind: DiagramRelationKind::ControlFlow,
+                        label: labels[i + 4].clone(),
+                        condition: None,
+                    })
+                    .collect(),
+            },
+        };
+        let output = svg(&d, &values, "cyclic-component-control", &|id, _| {
+            format!("{id}-claim")
+        })?;
+        assert!(output.len() < 262144);
+        Ok(())
+    }
+    #[test]
     fn renderer_refuses_excess_work_and_markup_namespaces_before_layout() {
         let label = DiagramLabel {
             unit: 0,
@@ -986,7 +480,7 @@ mod tests {
             first
                 .matches("class=\"relation-line parallel-operand\"")
                 .count(),
-            1
+            2, // One geometric operand in each responsive layout.
         );
         assert!(first.contains("par · no relative order"));
         let mut sequential = d.clone();
@@ -1082,10 +576,13 @@ mod tests {
             for (kind,d) in [("sequence",sequence),("state",state),("flow",flow)] {
                 for (ui,locale) in [("en",FixedLocale::English),("ko",FixedLocale::Korean)] {
                     let ns=format!("fixture-{kind}-{script}-{ui}");
+                    let render_started=std::time::Instant::now();
                     let svg=super::svg(&d,&[&value],&ns,&|id,_|format!("{ns}-{id}-claim"),locale)?;
+                    let renderer_elapsed_ns=render_started.elapsed().as_nanos();
+                    let svg_utf8_bytes=svg.len();
                     assert!(svg.contains(&format!("aria-label=\"{value}\"")));
                     let file=format!("{ns}.svg");if let Some(root)=&root {std::fs::write(root.join(&file),svg).map_err(|e|e.to_string())?;}
-                    fixtures.push(serde_json::json!({"id":ns,"ui_locale":ui,"file":file,"diagram":d,"prose":[{"text":value}]}));
+                    fixtures.push(serde_json::json!({"id":ns,"ui_locale":ui,"file":file,"diagram":d,"prose":[{"text":value}],"renderer_elapsed_ns":renderer_elapsed_ns,"svg_utf8_bytes":svg_utf8_bytes,"classification":"renderer stress control; no source or comprehension judgment"}));
                 }
             }
         }
@@ -1169,71 +666,84 @@ mod tests {
         }
         // A side-entry line through a third state is rejected by this oracle.
         assert!(crosses((1008, 700), (370, 700), (410, 640, 220, 120)));
-        let mut boxes = Vec::new();
-        for name in names {
-            let group = output
-                .split_once(&format!("id=\"geometry-{name}\""))
-                .ok_or("node")?
-                .1
-                .split("</a>")
-                .next()
-                .ok_or("node close")?;
-            boxes.push(rect(group.split_once("<rect ").ok_or("box")?.1)?);
-        }
-        let keys = output
-            .split("<rect class=\"edge-key\"")
-            .skip(1)
-            .map(rect)
-            .collect::<Result<Vec<_>, _>>()?;
-        for (i, a) in keys.iter().enumerate() {
-            for b in &keys[i + 1..] {
-                assert!(
-                    a.0 + a.2 <= b.0 || b.0 + b.2 <= a.0 || a.1 + a.3 <= b.1 || b.1 + b.3 <= a.1,
-                    "distinct key bounds"
-                );
+        for hidden_variant in ["map-narrow", "map-wide"] {
+            // Each responsive geometry gets the same independent obstacle
+            // oracle. Hidden variants must not count as overlapping labels.
+            let mut output = output.clone();
+            let start = format!("<g class=\"{hidden_variant}\">");
+            while let Some(a) = output.find(&start) {
+                let b = output[a..].find("</g>").ok_or("variant close")? + a + 4;
+                output.replace_range(a..b, "");
             }
-        }
-        for (i, (from, to)) in edges.iter().enumerate() {
-            let group = output
-                .split_once(&format!("id=\"geometry-e{i}\""))
-                .ok_or("edge")?
-                .1
-                .split("</a>")
-                .next()
-                .ok_or("edge close")?;
-            let path = attribute(group.split_once("<path ").ok_or("path")?.1, "d")?;
-            let tokens = path
-                .replace('M', " M ")
-                .replace('H', " H ")
-                .replace('V', " V ");
-            let mut iter = tokens.split_whitespace();
-            let mut point = (0, 0);
-            let mut segments = Vec::new();
-            while let Some(command) = iter.next() {
-                let mut number = || {
-                    iter.next()
-                        .ok_or("coordinate".to_owned())?
-                        .parse::<i64>()
-                        .map_err(|e| e.to_string())
-                };
-                let next = match command {
-                    "M" => (number()?, number()?),
-                    "H" => (number()?, point.1),
-                    "V" => (point.0, number()?),
-                    _ => return Err("unsupported path command".into()),
-                };
-                if command != "M" {
-                    segments.push((point, next));
+            let mut boxes = Vec::new();
+            for name in names {
+                let group = output
+                    .split_once(&format!("id=\"geometry-{name}\""))
+                    .ok_or("node")?
+                    .1
+                    .split("</a>")
+                    .next()
+                    .ok_or("node close")?;
+                boxes.push(rect(group.split_once("<rect ").ok_or("box")?.1)?);
+            }
+            let keys = output
+                .split("<rect class=\"edge-key\"")
+                .skip(1)
+                .map(rect)
+                .collect::<Result<Vec<_>, _>>()?;
+            for (i, a) in keys.iter().enumerate() {
+                for b in &keys[i + 1..] {
+                    assert!(
+                        a.0 + a.2 <= b.0
+                            || b.0 + b.2 <= a.0
+                            || a.1 + a.3 <= b.1
+                            || b.1 + b.3 <= a.1,
+                        "distinct key bounds"
+                    );
                 }
-                point = next;
             }
-            for (a, b) in segments {
-                for (j, name) in names.iter().enumerate() {
-                    if name != from && name != to {
-                        assert!(
-                            !crosses(a, b, boxes[j]),
-                            "edge {i} passes through unrelated {name}"
-                        );
+            for (i, (from, to)) in edges.iter().enumerate() {
+                let group = output
+                    .split_once(&format!("id=\"geometry-e{i}\""))
+                    .ok_or("edge")?
+                    .1
+                    .split("</a>")
+                    .next()
+                    .ok_or("edge close")?;
+                let path = attribute(group.split_once("<path ").ok_or("path")?.1, "d")?;
+                let tokens = path
+                    .replace('M', " M ")
+                    .replace('H', " H ")
+                    .replace('V', " V ");
+                let mut iter = tokens.split_whitespace();
+                let mut point = (0, 0);
+                let mut segments = Vec::new();
+                while let Some(command) = iter.next() {
+                    let mut number = || {
+                        iter.next()
+                            .ok_or("coordinate".to_owned())?
+                            .parse::<i64>()
+                            .map_err(|e| e.to_string())
+                    };
+                    let next = match command {
+                        "M" => (number()?, number()?),
+                        "H" => (number()?, point.1),
+                        "V" => (point.0, number()?),
+                        _ => return Err("unsupported path command".into()),
+                    };
+                    if command != "M" {
+                        segments.push((point, next));
+                    }
+                    point = next;
+                }
+                for (a, b) in segments {
+                    for (j, name) in names.iter().enumerate() {
+                        if name != from && name != to {
+                            assert!(
+                                !crosses(a, b, boxes[j]),
+                                "edge {i} passes through unrelated {name}"
+                            );
+                        }
                     }
                 }
             }

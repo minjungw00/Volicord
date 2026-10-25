@@ -1,5 +1,8 @@
 # Investigated meaning through publication
 
+The current connected-overview delivery is recorded at the end of this report.
+Earlier sections retain their original dates, candidates and limitations.
+
 Status: focused technical evidence and dependent author assessment, 2026-10-22.
 Human understanding/design acceptance and independent first reading are unobserved.
 No authoritative gate, ordered Final, official V11 or provider qualification ran.
@@ -167,3 +170,109 @@ native zoom, assistive use, independent semantic sufficiency or design acceptanc
 The source archive is frozen; current remote behavior and all repository mechanisms
 are not established. The Volicord retained envelope has limited remaining capacity;
 this experiment supports no further blanket budget increase.
+
+## Connected overviews, 2026-10-26
+
+Focused delivery on base `ebf1b0a3eed5010792571d58f8c64857162fdeb5`;
+no gate, aggregate, official V11 or provider qualification. The frozen questions
+and counterexamples are in the acceptance and Reader owners. Source-first review,
+initial visual reading, evidence journeys and human acceptance remain separate.
+All raw originals, attempts, receipts and first responses stay ignored under
+`rebuild/.local/connected-overviews-20261025/`; the shared prerequisite remains
+unchanged, ignored and untracked. No legacy paths were changed.
+
+The normal producer now requests standalone grounded node names, complete
+predicates and explicit purpose/scope. Six freshly prepared, composed, recorded
+English/Korean articles cover Volicord records/responsibilities/publication,
+Music Deck execution/closure/request states, and the historical investigation Work.
+Short names are definitions in cited prose. Music Deck includes a newly inspected
+2,089-byte state-getter Source; the original observations were not renewed. Code
+claims distinguish the caller, delivery, injection, content request, MAIN execution
+and result reporting. Historical Goal, Checkpoints, reported VM checks, Paused and
+NotRequested retain their meanings; no historical change or device run is invented.
+
+| Case / pinned source basis | Project | English / Korean publication |
+| --- | --- | --- |
+| Volicord / `ebf1b0a3` | `3be4e93986b04d0d1231614765947011` | `efec7e34f147099cf9bb310c2e4ba883` / `d9ba12d62b44c80eecb3a10d9c166632` |
+| Music Deck / `74304b69` | `717891ee8726446ffb4148f5291c38b9` | `c126bd1c32eae00241dce333577dc119` / `1a3b09e15fedc3fe4e0c1d7c93edfeb2` |
+| Historical Work / `acc07330` | `0f92697b812656f62f53ee3e6d88b3b0` | `bee75d07cda50d3135964f458593b436` / `d34459ca2c44b56767353fcab2312e97` |
+
+The article's connected native-size map now precedes controls and selected detail
+in actual DOM order. Renderer `volicord-static-svg/6` replaces the previous layout
+with responsive breadth layers, explicit endpoint annotations and bounded
+obstacle/route-aware routing. Shared nodes remain connected and selectable;
+relation annotations repeat the exact sealed source → target names, complete
+predicate, kind and guard. Non-sequence ordinals were removed. Narrow relations
+use full reading width. Sequence bands preserve strict/par meaning, lifelines and
+self-calls. Renderers do not author summaries or infer execution/containment.
+One semantic anchor owns both responsive geometries. Zoom/pan is deliberate;
+normal overview entry needs no disclosure or discovery pan. Exact-current
+explanation format 8 and document metadata 11 are unchanged; explicit article
+reauthoring was performed, while independent name/summary contracts are unchanged.
+
+| Preserved candidate | Initial visual result, separate from geometry |
+| --- | --- |
+| Baseline card and closed full map | Known O1 failure before interaction |
+| Connected rail candidate | Isolated readers could not reliably associate complex edges without supporting lists; rejected |
+| Layered candidate with shorter names | Geometry passed, but isolated readers still could not assign middle responsibility/execution/state edges; rejected |
+| Layered map with visible exact endpoint annotations | Fresh isolated readers reconstructed the predefined record/dependency/control/state/closure questions in desktop English and narrow Korean; no material language contradiction reported |
+
+The final visual inputs contain only ordinary visible prose/captions/maps,
+captured before controls, selection or code; supporting relationship lists are
+excluded from the map captures. Fresh contexts saw neither this task, Sources,
+answer keys nor prior feedback. First responses are preserved verbatim with
+SHA-256 `ab76af3e574bee00714a467ac1cb0762e493af353fe4dd91bc2ba5d2815d9eb0`
+and `41253102df43d145553ebc4b4c34caec6713d3daabc09ec11361973167a3cf1e`.
+They still report long narrow scrolling, harder line tracing, occasional sticky
+navigation occlusion and sequence headers leaving the viewport. Endpoint
+annotations carry relationship identity more clearly than tracing perimeter lines.
+These observations support these selected questions, not universal usability or
+human acceptance. Earlier visual failures are not reclassified as missing humans.
+
+Focused checks returned numeric exit 0: six normal publication lifecycles with
+complete original code; CLI human/JSON equality; six complete MCP publications
+and every unique exact Source range; 12 exports; 72 live/script-free desktop/narrow
+journeys; 16 mixed UI/content journeys; 54 initial-only observations at
+1024/768/390 pixels; 36 long-label/guard/duplicate-name/self-call fixture conditions;
+six actual-export negative controls (hidden correct card/map, miniature,
+test-assisted entry, incomplete predicate, reversed arrow, merged routes);
+Viewer library 21 tests; Projection library 13 tests; focused lint/format and
+nested-workspace isolation. Journeys retain exact publication, unit, citation,
+claim, element, focus/position/history, late/foreign response and nine typed failure
+reasons. Geometry is supporting evidence, not an independent comprehension oracle.
+The assisted-entry control initially failed because JavaScript-disabled contexts
+did not run installed observation callbacks; the corrected diagnostic enables
+callbacks on a script-free export. Actual no-JS journeys remain separate.
+
+| Measured UTF-8 bytes (English / Korean) | Volicord | Music Deck | Work |
+| --- | --- | --- | --- |
+| Authored prose | 5,254 / 5,800 | 6,058 / 6,856 | 5,146 / 5,658 |
+| Preparation JSON | 112,685 / 112,685 | 51,925 / 51,925 | 25,140 / 25,140 |
+| Reserved metadata | 107,116 | 46,357 | 4,827 |
+| Actual retained content | 146,226 / 146,781 | 93,159 / 93,964 | 32,117 / 32,630 |
+| Complete selected code | 49,038 | 48,959 | 28,565 |
+
+No budget was raised. Volicord's retained Korean envelope has 675 bytes spare and
+its aggregate code has 114; Music Deck code has 193. This is measured headroom,
+not a cause for hiding structure. Public MCP JSON is 27,624–139,813 bytes; maximum
+transport envelope is 10,699 bytes. Per-publication full MCP consumption including
+all Source windows took 10.9–51.8 seconds with process high-water RSS 34–71 MiB;
+this is not renderer or model time. Actual HTML is approximately 498–880 kB.
+Browser load observations were 32–3,628 ms under concurrent local checks; no paired
+latency or human responsiveness conclusion follows. Per-fixture renderer timers,
+per-command preparation/record/export time/RSS and exact executable/input hashes
+are retained separately; host authoring token cost was not instrumented.
+
+Readonly comparison preserves every original canonical table for Volicord and
+Work; Music Deck adds only the explicit Source observation and its operation/
+dependency rows. All 18 existing independent Work name/summary records remain
+byte-identical. The build receipt records source/artifact identities; final
+Viewer SHA-256 is `2e2a36b8fbf0dc3084768ac486439b47199a3bd0ffcbfb7f8ee35018581df3d2`.
+
+One earlier concurrent citation-test process exited with SIGSEGV before individual
+results. Its cause remains unexplained; serial and isolated-target controls each
+passed all 27 tests. Interrupted long sessions with exit 143 and no completed
+wrapper result remain interrupted, not passes or demonstrated product failures.
+The bounded build-receipt path error and all rejected candidates remain preserved.
+Human reading, native zoom, assistive observation, fresh remote-head validation,
+device delivery and the historical invariant's cause remain unobserved/unresolved.

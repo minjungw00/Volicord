@@ -2583,7 +2583,7 @@ record and all original dependencies; ordinary reads generate nothing.
 Public CLI/MCP ordinary answers and complete publication pages include the exact
 semantics and seal. Human text includes endpoints, relation types, conditions and
 explicit parallel groups. Live and self-contained offline Viewer render the same
-meaning through in-tree `volicord-static-svg/4` plus a faithful linear alternative.
+meaning through in-tree `volicord-static-svg/6` plus a faithful linear alternative.
 Layout coordinates and SVG are presentation only. Relations show their exact admitted
 wording first; numbered keys and localized relationship kinds remain secondary.
 The visible label, accessible name, text representation and selected claim retain the
@@ -2858,20 +2858,32 @@ The publication-wide unavailable notice preserves the localized typed cause afte
 removing dependent content; a deleted/expired/changed cause must not disappear with
 the removed citation control. Native opaque return positions remain usable.
 
-The first admitted connection is initially visible at native text size, after its
-original scope caption. This is an explicitly numbered connection, not an inferred
-overview. Previous/next links enumerate the original vector; graph enumeration and
-parallel operand enumeration assert no execution order. Each selection retains the
-original group/order/condition and its complete claim qualification. All connections
-remain reachable through the visible index, including without JavaScript. The full
-concept/component/flow/state or UML layout is an explicit native disclosure, with
-all original elements, geometry, pan and exact origins preserved. Native fragments
-and scripted return open its ancestors when reaching a full-layout element.
+Ordinary entry shows the complete connected figure after its purpose/scope caption
+and before selected detail. The prior first-connection card with a closed full-layout
+disclosure is superseded by the overview-first Reader decision. A connection appears
+only after deliberate selection; previous/next links remain secondary navigation.
+Graph enumeration and parallel operand enumeration assert no execution order.
+The map must be readable at desktop and narrow widths without discovering hidden
+endpoints by pan or opening a disclosure. Normal page scrolling is permitted.
+Merely exposing a huge clipped SVG or shrinking its labels is not completion.
+Complete authored predicates and short standalone names remain cited prose spans;
+rendering may reflow them, but cannot invent, truncate or infer meaning/grouping.
+Each graph annotation visibly repeats its exact admitted source and target names
+with a directional arrow, alongside the complete predicate, relation kind and guard.
+Duplicate names include their admitted element IDs. These endpoint references are
+presentation of existing sealed meaning, not new summaries. Shared nodes and their
+connected routes remain visible; annotations do not replace the map with a list.
+Non-sequence relationship annotations have no ordinal that could imply execution
+order. Narrow geometry gives relations full reading width rather than splitting
+long protocol names into tiny columns.
+This preparation instruction change requires explicit fresh prepare/compose/record
+for affected Repository/Work articles. Goal-only names and independent summaries
+retain their separate contracts. No retained format or decoder changes.
 
-A live diagram return restores the connection card visible at activation and the
-outer expanded-figure scroll before restoring canvas pan and page scroll. Changing
-which card occupies space above the full layout must not move the selected element
-outside the reading viewport. Return checks compare the actual canvas and element
-screen positions as well as focus identity and stored scroll values.
-When returning reveals the full layout above a text origin, restore that actual
-activating link's screen position; its document offset may legitimately change.
+A live diagram return restores the selected-detail state visible at activation
+(which may be none), outer figure scrolling, canvas pan/zoom, page position and
+actual SVG/text trigger focus. The overview remains available during selection.
+Return checks compare the canvas and activating element's screen positions as
+well as stored scroll values and focus identity. A text origin below selected
+detail can change document offset when that detail closes; restore the actual
+activating link's screen position rather than assuming its offset is constant.
