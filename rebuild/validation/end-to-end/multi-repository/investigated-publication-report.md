@@ -538,3 +538,22 @@ selector to the visible native page instead of counting the separate recent and
 catalog representations together. Neither repair removes Product content or weakens
 claim, Source, return, or overview requirements. These findings justify the final
 test-responsibility commit; the gate still belongs to the exact eventual clean HEAD.
+
+### Authorized qualification fixture integrity correction
+
+The user subsequently approved both bounded transmissions and selected
+`gpt-6.1-sol`. The authorized gate at clean `dbf48856` passed all support checks
+except `viewer-reading-adversarial` fixture integrity, then stopped before Final,
+provider or official V11. Its failed capsule/archive remain preserved; independent
+archive verification passes without promoting that gate to success.
+
+The fixture directory contains exactly its seven tracked files, with no generated
+or untracked inputs. Hashing their actual Git bytes with the maintained checker
+shows the manifest's `4b851548…` matches `4dd67aee^`; `4dd67aee` and the candidate
+both produce `ea987adc…`. The sole change is the already accepted byte-control
+update in `explanation-size-cases.json`: actor padding 58,700 → 58,500 and retained
+Product capacity 147,456 → 163,840. The latter already agrees with the maintained
+Product bound. This correction binds the registry to those reviewed fixture bytes;
+it changes no fixture, Product capacity, qualification ceiling, expected reading
+outcome or assertion. A fresh exact-candidate gate is required after this metadata
+fix. The historical scoped-check invariant's cause remains unrelated and unresolved.
