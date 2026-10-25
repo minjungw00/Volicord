@@ -1037,21 +1037,21 @@ fn render_document_body(
             ViewerView::Work { work: None },
             "works",
             text(r.locale, "← Work list", "← 작업 목록"),
-            "WORK DOCUMENT",
+            text(r.locale, "WORK DOCUMENT", "작업 문서"),
         )
     } else if decision.is_some() {
         (
             r.view.clone(),
             "works",
             text(r.locale, "← Work", "← 작업"),
-            "DECISION DOCUMENT",
+            text(r.locale, "DECISION DOCUMENT", "판단 문서"),
         )
     } else {
         (
             ViewerView::Overview,
             "overview",
             text(r.locale, "← Overview", "← 개요"),
-            "REPOSITORY DOCUMENT",
+            text(r.locale, "REPOSITORY DOCUMENT", "저장소 문서"),
         )
     };
     html.push_str(&format!("<article class=\"doc\"{}><p class=\"breadcrumb\"><a href=\"{}\">{}</a></p><header class=\"doc-head\"><p class=\"eyebrow\">{} · {}</p>",

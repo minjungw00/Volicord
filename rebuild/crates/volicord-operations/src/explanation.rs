@@ -761,16 +761,16 @@ mod size_tests {
             generator_identity_status: "self_reported_not_independently_verified".into(),
             semantic_approval_status: "not_established".into(),
         };
-        for target in [147455, 147456, 147457] {
+        for target in [163839, 163840, 163841] {
             let mut content = encode_retained_explanation(&retained)?;
             content.push_str(&" ".repeat(target - content.len()));
             let result = decode_explanation(Some(&content));
-            if target <= 147456 {
+            if target <= 163840 {
                 assert_eq!(result.map_err(|(_, e)| e)?, retained);
             } else {
                 let (state, error) = result.err().ok_or("oversize accepted")?;
                 assert_eq!(state, ExplanationState::Corrupt);
-                assert!(error.contains("147457") && error.contains("147456"));
+                assert!(error.contains("163841") && error.contains("163840"));
             }
         }
         let mut malformed = serde_json::to_value(&retained).map_err(|e| e.to_string())?;
@@ -818,7 +818,7 @@ mod size_tests {
             ExplanationState::Corrupt
         );
         // The writer measures complete compact JSON, including UTF-8 and escaping.
-        for target in [147455, 147456, 147457] {
+        for target in [163839, 163840, 163841] {
             let mut e = retained.clone();
             e.realization.generator.session = "한\"\\\n".repeat(20);
             let base = serde_json::to_vec(&e).map_err(|e| e.to_string())?.len();
@@ -827,7 +827,7 @@ mod size_tests {
                 .session
                 .push_str(&"x".repeat(target - base));
             let result = encode_retained_explanation(&e);
-            if target <= 147456 {
+            if target <= 163840 {
                 assert_eq!(result?.len(), target);
             } else {
                 assert!(result.is_err());

@@ -23,7 +23,7 @@ pub const PRIVACY_SCHEMA_VERSION: u32 = 2;
 
 const MAX_TEXT_BYTES: usize = 16_384;
 /// Bounded managed content bodies are distinct from short metadata fields.
-pub const MANAGED_DERIVED_CONTENT_BYTE_LIMIT: usize = 147_456;
+pub const MANAGED_DERIVED_CONTENT_BYTE_LIMIT: usize = 163_840;
 const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 const MAX_SOURCES: usize = 4_096;
 

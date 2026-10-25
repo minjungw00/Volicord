@@ -801,6 +801,14 @@ sanitized delivery.
 
 ### Reader evidence visibility and authority
 
+The measured causal-reading publication correction raises managed Derived content
+body storage from 147,456 to 163,840 UTF-8 bytes, matching Projection's complete
+retained-envelope contract. This is local storage capacity, not a Source capture,
+short-field, transmission, provider, lifetime or canonical authority grant. Source
+window and aggregate read budgets remain unchanged. Fresh explicit publication is
+required where the prepared budget fingerprint changes; reading cannot renew or
+convert the old publication.
+
 Typed reading limitation and comparison metadata report existing authority and
 checks; they grant no body access. Publication pages and exact citation reads
 share current publication selection and lifecycle checks, then revalidate all

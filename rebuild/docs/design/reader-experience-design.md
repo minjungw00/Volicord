@@ -305,6 +305,28 @@ exact origin; return restores element, focus, history and reading position.
 
 ### 9.1 저장소 설명은 계속 핵심 범위다
 
+#### Temporal reading questions
+
+These Source-first questions refine O2/O3 without changing O1–O6. Freeze them
+before assessing a new presentation. They apply to prose and scenes together;
+figure type or a geometry pass is not their answer.
+
+| Scene | Required reading before Source | Counterexample |
+| --- | --- | --- |
+| Investigation Work | The actual overlap/closure question, inspected implementation and three reported VM cases, unchanged implementation, repeat over the same artifacts, Paused and unrequested review/acceptance. Put the investigation before supporting service architecture. | Opening with evaluation instructions, treating a blank result field as no investigation, or copying all repository figures into the Work. |
+| Submitted sync set | A and B have already been submitted when removal copies the set. One possible completion order is B then A; B alone cannot release the captured-set wait. Rejection settles too. Observation still pending is outside the captured set and meets the removed-tab check before posting, subject to the bounded marker set. | Submission order confused with completion order, a global browser fence, or a successful/delivered-close guarantee. |
+| Close and independent state | Only after settlement is the token read; a token permits an attempted close POST, while absence skips it and failures reach the catch. An admitted notification separately removes player state and completes existing listen waiters. | Equating player removal, waiter completion, legacy queue dispatch/cancel and ID-based request completion. |
+| Browser request | Owner, queued/delivered and terminal states remain visible; delivery precedes acknowledgement, and native launch can finish an open request from queued. | Tab closure as a request-completion transition or succeeded as physical playback confirmation. |
+| Investigation/publication | Snapshot and permitted Source investigation precede host authorship, sealed composition, locked recording and revalidated reading. Failure cannot replace the last valid publication; reads cannot author or renew evidence. | A dependency map presented as an execution trace or automatic background generation. |
+
+Long sequence scenes must identify each message's exact source and target beside
+its complete wording, including repeated-name IDs. A guard visibly qualifies its
+whole group; lifelines and self-call routes cannot cross its text. Endpoint
+references repeat admitted meaning and assert no additional order or containment.
+The connected repository overview remains the ordinary entry. A bounded detail
+scene declares its illustrative/static/reported scope and connects through its
+caption and ordinary section navigation; no hidden replacement map is acceptable.
+
 Work 카드 개선을 이유로 저장소 전체 이해를 다시 빼지 않는다. Work가 없는 새 Project에서도 저장소의 역할·주요 책임·경계·동작을 설명할 수 있어야 한다. Work가 존재하면 저장소 설명과 해당 Work의 실제 관련 구성요소를 오갈 수 있어야 한다.
 
 저장소 설명의 핵심은 다음이다.

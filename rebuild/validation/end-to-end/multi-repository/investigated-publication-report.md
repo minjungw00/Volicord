@@ -276,3 +276,106 @@ wrapper result remain interrupted, not passes or demonstrated product failures.
 The bounded build-receipt path error and all rejected candidates remain preserved.
 Human reading, native zoom, assistive observation, fresh remote-head validation,
 device delivery and the historical invariant's cause remain unobserved/unresolved.
+
+## Causal Work and state reading, 2026-10-26
+
+This focused correction starts at `29c67f2e`, preserving its ordinary connected
+overview. The Reader's temporal questions precede candidate assessment and retain
+O1–O6. Original sync implementation/tests, HTTP handler, registry, command service,
+callback wiring, timeout client and the two actual Work Checkpoints independently
+determine conditions, effects and non-effects. No Music Deck behavior, historical
+record, task event, test execution, Decision or user acceptance was added.
+
+The Work now opens with the overlap/closure question, the recorded VM investigation,
+three reported passing cases without implementation change, repeat over the same
+artifacts, and Paused/unrequested review state. Evaluation-Goal provenance and the
+blank historical result field are supporting explanation. The investigation comes
+before supporting service architecture. It keeps one relevant closure scene rather
+than copying the repository's figure set; received-close/queue/request distinctions
+remain in its grounded prose. Its independent Goal-only name and progress summary
+are explicitly freshly admitted, never inferred from the mechanism article.
+
+Repository coverage retains record roles, cooperating responsibilities and execution
+boundaries. Volicord's publication flow adds explicitly guarded success/failure
+outcomes. Music Deck shows A/B submission separately from one possible B/A settlement
+order, captured-set settlement, subsequent token read and conditional attempted POST.
+Received notification, player removal, listen waiter reply, queue dispatch/cancel
+and ID-based browser completion remain distinct. Rejection counts as settlement;
+neither the illustration nor a client timeout supplies a global processing fence.
+
+Renderer 7 repeats exact sealed endpoints beside each sequence message, keeps
+repeated-name IDs, measures endpoint/wording/type bands separately, and masks
+lifelines behind the entire conditional group heading. Guards visibly scope `opt`;
+self-call geometry and exact Source returns are preserved. Graph overview layout
+is unchanged. Existing v8 structure supports these scenes, so no semantic field,
+format revision, conversion or alternate decoder was needed. Fixed document-kind
+headings now follow UI locale as do figure explanations; identifiers remain exact.
+
+Two different capacity constraints were reproduced, rather than attributed to
+historical poor wording. Current Volicord metadata reserves 113,874 bytes, leaving
+33,582 for a 39,450-byte complete English response under the old envelope. Retained
+capacity becomes 163,840. A Korean Music Deck wording variation grows complete prose
+27.2% and its transmission claim 80.0%, needing 50,185 against the former 49,152
+response bound; response capacity becomes 53,248. Preparation, raw input, Source,
+SVG, HTTP/MCP and qualification ceilings are unchanged. Diagnostic adapters reflect
+the Product boundary without relaxing semantic quality or qualification criteria.
+The coupled view and measured-capacity corrections can form one feature commit.
+
+| Actual publication / source basis | English | Korean |
+| --- | --- | --- |
+| Volicord / local `29c67f2e` | `bc70a11e7c631f3c877589a7b225f363` | `7d0ebeb21b15817984470c9c81e1aef0` |
+| Music Deck / local `74304b69` | `42ae47eb42ba3658bb4b6c27ffa19eff` | `504426dbf47b1e894bfccd750609243f` |
+| Historical Work / `acc07330` | `8ebca163d7f7b2a4eeaa6ae954ad8b3d` | `51602db2fe694f08baea4cd1406da1a9` |
+
+| Current measurement, English / Korean | Volicord | Music Deck | Work |
+| --- | --- | --- | --- |
+| Compact response bytes | 39,450 / 39,988 | 47,258 / 48,254 | 26,327 / 27,091 |
+| Complete retained bytes | 153,320 / 153,858 | 93,611 / 94,607 | 31,150 / 31,914 |
+| Complete selected code bytes | 49,038 | 48,959 | 28,565 |
+
+Four expanded actual-source variants passed compose/record/read/export. Volicord
+responses are 43,229 / 43,985 and retained bodies 157,099 / 157,855; Music Deck
+responses are 48,902 / 50,185. Every original code window remains complete. These
+are explicitly authored wording variants, not new Works or observed device runs.
+Source aggregate headroom remains 114 / 193 bytes, a real future-content risk and
+not an established cause of an orientation or wording defect.
+
+Focused preserved numeric exits are 0 for normal six-publication production and
+four short publications, complete human/JSON CLI agreement, six full MCP documents
+and every unique original range (20 / 22 / 13 per language), 12 frozen exports,
+96 desktop/narrow live/offline/no-JS journeys, 12 middle-width initial observations,
+12 mixed UI/content journeys, 40 long-label/guard/self-call/synthetic-export geometry
+conditions and 12 real-export counterexamples. Rust controls cover Host, Viewer,
+citation reading, independent Work publications, complete-envelope CLI boundaries,
+Privacy storage and exact-current decoder; Python consumer/contract controls pass.
+Format, focused Clippy and nested-workspace isolation pass. No legacy path changes,
+aggregate, authoritative gate, official V11 or provider qualification occurred.
+
+Evidence remains ignored under `rebuild/.local/causal-reading-20261026/`. Initial
+baseline/candidate screens precede Source interaction. Opening prose and rendered
+mechanisms were assessed by the implementer who knew the Sources: **dependent**,
+not an isolated first reading. Source truth, initial presentation, subsequent exact
+evidence navigation and human acceptance are separate. The latter and native
+assistive/zoom/device observations remain unobserved. Post-commit refreshed bases,
+direct checks and final user-review locations are reported in the conversation.
+
+Failed attempts remain preserved: a sandbox subprocess EPERM, wrong diagnostic
+Source selectors, invalid authored claim coordinates/roles, both measured size
+refusals, and an attempt crossing a build/policy change. Later full consumers use
+frozen executable copies and fresh publications. A local provider-process stub
+failed in the sandbox and passed once with local execution allowed; no external
+provider ran and no causal Product fix is claimed. A parallel byte-control run hit
+ETXTBSY; its serial run passes without an integrity fix. Synthetic near-read actor
+padding was reduced by 200 characters after authoring instructions pushed that
+control 233 bytes beyond the unchanged preparation bound; it still records a
+39,450-byte response over metadata exceeding the earlier read bound. None of these
+observations resolves the historical scoped-check invariant or the earlier SIGSEGV.
+
+MCP full-read observations take 11.7–82.4 seconds, maximum envelope 10,726 bytes,
+including every selected code range. Those functional runs overlap other focused
+checks and are not a paired latency benchmark. Separate serial export measurements
+use the same frozen inputs; export includes authority checks/read/render, while
+browser first-display and selected-code-read timings remain separately recorded.
+Host authoring/model computation, isolated actual-publication renderer time and
+human document-reading time were not instrumented. Historical timings are not
+new acceptance targets.

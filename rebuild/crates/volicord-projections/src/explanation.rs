@@ -9,13 +9,13 @@ use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, Decis
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
 pub const EXPLANATION_VERSION: u32 = 8;
 /// Complete claim bindings and prose share this limit; retention stays independent.
-pub const EXPLANATION_BYTE_LIMIT: usize = 49_152;
+pub const EXPLANATION_BYTE_LIMIT: usize = 53_248;
 /// Preserve the response space guaranteed before citation metadata grew.
 pub const EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY: usize = 16_384;
 pub const EXPLANATION_PARAGRAPH_CHARACTER_LIMIT: usize = 16_384;
 pub const EXPLANATION_PLAN_BYTE_LIMIT: usize = 131_072;
 /// Independent bound for the complete compact retained envelope.
-pub const EXPLANATION_RETAINED_BYTE_LIMIT: usize = 147_456;
+pub const EXPLANATION_RETAINED_BYTE_LIMIT: usize = 163_840;
 /// File transport allows formatting; compact realization admission is independent.
 pub const EXPLANATION_INPUT_BYTE_LIMIT: usize = 65_536;
 const GENERATOR_IDENTITY_STATUS: &str = "self_reported_not_independently_verified";
@@ -26,7 +26,7 @@ const EFFECT_REVIEW: &str = "Freeze Source-first conditions, state objects, effe
 
 /// One authoring contract for CLI/MCP preparation, independent of transport.
 /// These are investigation obligations, never prewritten subject answers.
-const ARTICLE_AUTHORING: &str = "Lead with actual investigation/result/state, then grounded map/flows, mechanisms/exceptions, verification/provenance. Split effects into concise claims in topic order: conditions -> implementation -> consequence. Use substantive section_heading only. Separate static, recorded and executed evidence; unknown before-state stays unknown. Invent no patch/retry/test/Decision. Localize limits; review claims before compose. Admission is neither semantic nor human approval.";
+const ARTICLE_AUTHORING: &str = "Lead with the actual question, investigation/change, reported result and state; show the investigation before supporting architecture. Move evaluation rules/field history to provenance. Split effects: conditions -> implementation -> consequence. Use substantive section_heading only. Separate static, recorded and executed evidence; unknown history stays unknown. Invent no patch/retry/test/Decision. Localize limits; review claims before compose. Admission is neither semantic nor human approval.";
 
 /// Repository investigation is independent of a Work and precedes authoring.
 /// Inventory commitments are discovery inputs, not an architectural answer key.

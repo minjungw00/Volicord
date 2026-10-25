@@ -1343,6 +1343,16 @@ cannot establish those real repository meanings. Reader-specific observation and
 navigation requirements are owned by
 [the Reader](reader-experience-design.md#connected-overview-reading).
 
+Temporal/state investigations additionally use the Reader's
+[Source-first scene questions](reader-experience-design.md#temporal-reading-questions).
+Preserve the ordinary first presentation before Source or scripted interaction.
+Assess the Work's question/activity/result/state separately from the repository's
+execution map. Challenge a different task and changed labels/topology as explicitly
+synthetic controls, never new historical Works. Submission, settlement, received
+notification, waiter reply and ID-request completion must remain distinguishable
+without reading code. Source-first verification follows as a separate assessment;
+implementer observation is dependent and missing human feedback remains unobserved.
+
 Independent Work publications add these direct checks to scenario N: a record-grounded
 name/summary survives expiry or deletion of an article-only Source across CLI/MCP,
 Overview/catalog/detail, generated documents and script-free snapshot. A genuinely

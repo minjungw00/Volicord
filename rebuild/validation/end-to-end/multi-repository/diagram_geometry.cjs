@@ -14,6 +14,8 @@ async function inspectDiagram(svg, diagram, prose) {
   for(const [i,g] of (m.groups||[]).entries()) {
     if(g.condition)expected.push({id:'guard:'+(i+1),text:label(g.condition),prefix:true});
     expected.push(...g.messages.map(r=>({id:r.id,text:label(r.label)})));
+    const endpoint=id=>{const n=m.participants.find(n=>n.id===id);const name=label(n.label);return m.participants.filter(n=>label(n.label)===name).length>1?`${name} [${id}]`:name;};
+    expected.push(...g.messages.map(r=>({id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`})));
   }
   const edges=m.relations || (m.groups||[]).flatMap(g=>g.messages);
   return svg.evaluate((root,{expected,edges,sequence,groups})=> {

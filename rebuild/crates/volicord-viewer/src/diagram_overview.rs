@@ -408,6 +408,16 @@ fn sequence(
     };
     let label = |l: &DiagramLabel| diagram_label(l, texts);
     let n = nodes.len();
+    let endpoint = |i: usize| -> Result<String, String> {
+        let name = label(&nodes[i].label)?;
+        Ok(
+            if nodes.iter().filter(|n| label(&n.label) == Ok(name)).count() > 1 {
+                format!("{name} [{}]", nodes[i].id)
+            } else {
+                name.into()
+            },
+        )
+    };
     let lane = (width - 24) / n;
     let node_width = lane - 2;
     let repeated = nodes
@@ -479,6 +489,28 @@ fn sequence(
             }
         };
         let heading = format!("{}. {order}", gi + 1);
+        let heading_height = 20 * lines(&heading, width - 32) + 12;
+        // Mask lifelines behind the complete group heading and guard, just as
+        // behind message wording. A line through a condition changes its scope.
+        let guard_text = group
+            .condition
+            .as_ref()
+            .map(|guard| {
+                label(guard)
+                    .map(|s| format!("opt · {} {s}", diagram_ui(locale, "condition:", "조건:")))
+            })
+            .transpose()?;
+        let guard_height = guard_text
+            .as_ref()
+            .map_or(0, |s| 20 * lines(s, width - 32) + 16);
+        panel(
+            &mut layout.background,
+            8,
+            y,
+            width - 16,
+            heading_height + guard_height,
+            "message-label",
+        );
         writing(
             &mut layout.background,
             width / 2,
@@ -486,12 +518,12 @@ fn sequence(
             &heading,
             width - 32,
         );
-        y += 20 * lines(&heading, width - 32) + 12;
-        if let Some(guard) = &group.condition {
+        y += heading_height;
+        if let Some(value) = &guard_text {
             layout.order.push(format!("guard:{}", gi + 1));
             let mut out = String::new();
-            writing(&mut out, width / 2, y + 18, label(guard)?, width - 32);
-            y += 20 * lines(label(guard)?, width - 32) + 16;
+            writing(&mut out, width / 2, y + 18, value, width - 32);
+            y += guard_height;
             layout.elements.insert(format!("guard:{}", gi + 1), out);
         }
         for (mi, message) in group.messages.iter().enumerate() {
@@ -500,19 +532,32 @@ fn sequence(
             let b = index(nodes, &message.to)?;
             let mut out = String::new();
             let name = label(&message.label)?;
+            // Long scenes must remain readable after the participant headers
+            // scroll away. These names repeat sealed endpoints; no new label or
+            // ordering is inferred. Equal names keep their admitted identities.
+            let association = format!("{} → {}", endpoint(a)?, endpoint(b)?);
             let kind = format!(
                 "{}.{} · {}",
                 gi + 1,
                 mi + 1,
                 message.kind.localized_text(locale)
             );
-            let h = 20 * (lines(name, width - 48) + lines(&kind, width - 48)) + 16;
+            let association_height = 20 * lines(&association, width - 48);
+            let h =
+                20 * (lines(name, width - 48) + lines(&kind, width - 48)) + association_height + 16;
             panel(&mut out, 16, y, width - 32, h, "message-label");
-            writing(&mut out, width / 2, y + 20, name, width - 48);
+            writing(&mut out, width / 2, y + 20, &association, width - 48);
             writing(
                 &mut out,
                 width / 2,
-                y + 20 + 20 * lines(name, width - 48),
+                y + 20 + association_height,
+                name,
+                width - 48,
+            );
+            writing(
+                &mut out,
+                width / 2,
+                y + 20 + association_height + 20 * lines(name, width - 48),
                 &kind,
                 width - 48,
             );

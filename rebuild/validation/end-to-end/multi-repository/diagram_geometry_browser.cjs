@@ -29,8 +29,11 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         const wrongGroup=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
         assert(wrongGroup.errors.some(e=>e.kind==='wrong-group-order'),'wrong par/strict meaning must fail');
         await header.evaluate((n,original)=>n.innerHTML=original,original);
-        const message=page.locator('svg a[id$="-cross-sequential"]');
-        await message.evaluate(n=>{const prior=n.parentElement.querySelector('a[id$="-self-sequential"]');const shift=prior.getBBox().y-n.getBBox().y-100;n.setAttribute('transform',`translate(0,${shift})`);});
+        const sequential=f.diagram.meaning.groups.find(g=>g.order==='sequential');
+        const messageId=sequential.messages.at(-1).id;
+        const previousId=sequential.messages.length>1?sequential.messages[0].id:f.diagram.meaning.groups[0].messages[0].id;
+        const message=page.locator('svg a[id$="-'+messageId+'"]');
+        await message.evaluate((n,id)=>{const prior=[...n.parentElement.querySelectorAll('a')].find(a=>a.id.endsWith('-'+id));const shift=prior.getBBox().y-n.getBBox().y-100;n.setAttribute('transform',`translate(0,${shift})`);},previousId);
         const wrongOrder=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
         assert(wrongOrder.errors.some(e=>e.kind==='wrong-message-order'),'transformed sequential message order must fail');
         await message.evaluate(n=>n.removeAttribute('transform'));

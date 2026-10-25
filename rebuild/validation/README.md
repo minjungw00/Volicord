@@ -1306,6 +1306,19 @@ approval or proof of repository-wide semantic breadth.
 
 ## Explicit critical Source review tasks
 
+Temporal/state changes also use the Reader's Source-first scene questions and
+preserve the ordinary initial render before selections or Source inspection.
+`diagram_geometry.cjs` verifies exact source/target annotations for every sequence
+message. The emitted layout fixtures include long guards/self-calls and a separately
+labelled synthetic two-export task with repeated worker names; these are technical
+controls, not new real Works or independent comprehension evidence. Current Product
+capacity is 53,248 response / 163,840 retained bytes; preparation, raw input, Source,
+SVG and public transport bounds remain independent. Record expanded actual wording
+through normal publication and code-complete export as well as boundary tests.
+Pin the selected executable bytes for long consumer attempts so a later diagnostic
+build cannot replace their CLI/MCP/Viewer paths. Preserve interrupted/mixed attempts
+and bind new results to their fresh publication and frozen executable identities.
+
 Both `viewer-design/product_review.cjs` and `article_reading_browser.cjs` use
 `source_tasks` per `repository` / selected `work` destination. Declare
 `state: required`, `realization_fingerprint` and nonempty `claims`; each claim names

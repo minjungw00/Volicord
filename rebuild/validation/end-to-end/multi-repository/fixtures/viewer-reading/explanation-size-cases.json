@@ -9,14 +9,14 @@
   },
   "near_read_limit": {
     "source_actor_unit": "a",
-    "source_actor_repetitions": 58700,
+    "source_actor_repetitions": 58500,
     "same_work_checkpoint_count": 1,
     "response_bytes": 16384
   },
   "invariants": {
     "plan_bytes": 131072,
     "compact_response_bytes": 16384,
-    "retained_content_bytes": 147456,
+    "retained_content_bytes": 163840,
     "raw_input_bytes": 65536,
     "privacy_short_field_bytes": 16384,
     "preserve": [

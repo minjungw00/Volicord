@@ -397,7 +397,7 @@ Non-current Privacy stores are rejected before domain read/write; no migration
 or implicit conversion is supplied. Canonical schema `18` and bundle `11` carry the scoped Checkpoint run; analysis
 formats are unchanged. Source observation content has exact kind
 `volicord_source_observation`, version `4`, checked before typed decode, inside the
-existing 147,456-byte managed body limit. Unsupported/corrupt bodies are withheld;
+managed body limit owned by Projection/Privacy. Unsupported/corrupt bodies are withheld;
 metadata and explicit deletion remain available. Exact local Source/Work links,
 revision, selected snapshots, observation time and bounded representation belong
 to this disposable format, not a replacement canonical schema or explanation plan.
@@ -445,8 +445,9 @@ binding and retention dependencies remain validated on every publication.
 
 ### Reader identity production and event projection
 
-The current 48 KiB explanation realization policy (formerly 40 KiB) changes prepared
-budget/fingerprints, not retained fields or the current explanation format. Existing 144 KiB retained content and other
+The earlier 48 KiB explanation realization policy (formerly 40 KiB) changed prepared
+budget/fingerprints, not retained fields or the explanation format. The current
+52 KiB response and 160 KiB retained bounds are specified below; other
 transport/Source limits stay independent. Old publications become stale under
 the changed plan; fresh explicit preparation/admission is required. Historical
 output and failed admissions retain their own identities and original limits.
@@ -567,6 +568,23 @@ legacy decoder or automatic regeneration is introduced; the progress plan change
 above separately requires explicit regeneration of affected summaries.
 
 ### Grounded diagram current-only format
+
+Temporal reading renderer 7 adds endpoint references and complete guard/message
+spacing over existing v8 sequence meaning. This layout change requires no retained
+or document format revision. Work authoring instructions change article preparation
+fingerprints; affected articles require explicit fresh preparation/composition/
+recording. Goal-only names and independent progress summaries keep their separate
+contracts. Historical outputs are neither converted nor rebound.
+
+The measured retained-content bound is now 163,840 bytes (previously 147,456).
+The compact response ceiling is 53,248 (previously 49,152), following the separately
+reproduced 50,185-byte Korean wording/claim-variation refusal. Source and transport
+bounds do not change. This is bounded capacity, not a semantic or format extension.
+Writer, managed body admission, exact-current decoder and inspection agree on this
+resource bound. Shape and meaning remain v8; document metadata remains 11.
+Budget-bearing preparation fingerprints change for every affected scope, including
+independently valid Work names/summaries. Explicit fresh recording from their own
+Goal/progress evidence is required; article Sources cannot supply a short name.
 
 Connected overview presentation retains exact-current explanation version 8 and
 document metadata 11. Short standalone labels remain grounded UTF-8 prose spans;

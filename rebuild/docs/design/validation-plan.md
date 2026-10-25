@@ -3864,6 +3864,27 @@ pass. No aggregate, gate, Final, official V11 or provider run is authorized here
 
 ### Selected connection and exact response controls
 
+Causal/state reading additionally uses the Reader's frozen temporal questions.
+Preserve ordinary entry before inspection, then assess investigation prose,
+visible participant/guard associations and Source navigation separately. Renderer
+fixtures include an explicitly synthetic two-export task with repeated worker
+names; it is neither a historical Work nor a general unseen-quality claim.
+`diagram_geometry.cjs` checks every sequence endpoint association as well as the
+original message/guard wording, actual glyph bounds and directed lifelines.
+
+Capacity controls use the measured 160 KiB retained envelope and 52 KiB response,
+with preparation, input, Source, SVG, MCP and HTTP ceilings unchanged. The actual
+metadata-heavy Volicord article must pass normal record/read/export with all
+permission/lifecycle code; boundary-byte tests alone are insufficient. Preserve
+the original 33,582-byte capacity and 50,185-byte Korean response refusals. Test
+at least 20% complete-prose and 50% critical-claim expansion, grounded in the same
+originals. The near-read synthetic fixture's actor padding is calibrated below
+the unchanged 128 KiB preparation limit; it still exercises a 39,450-byte response
+over metadata that exceeded the previous read bound. Updating diagnostic adapters
+to the Product's measured bound grants no qualification or relaxed quality gate.
+No aggregate, authoritative gate, official V11 or provider qualification is part
+of these checks. Report local process/permission failures independently.
+
 `citation_reading.rs::selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_offline_reads`
 checks actual publication consumers for directed endpoints, conditions and original
 parallel/sequential context without changing diagram/provenance meaning.

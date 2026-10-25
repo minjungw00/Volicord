@@ -789,7 +789,7 @@ fn citation_metadata_uses_response_headroom_without_expanding_source_authority(
     assert!(bytes > 16_384 && bytes <= 32_768);
     assert_eq!(
         generation["plan"]["retention_budget"]["retained_byte_limit"],
-        147_456
+        163_840
     );
     let args = f.record_args(&generation, &realization)?;
     let retained = success(&mut f.host, args)?;

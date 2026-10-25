@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/6";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/7";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -585,6 +585,37 @@ mod tests {
                     fixtures.push(serde_json::json!({"id":ns,"ui_locale":ui,"file":file,"diagram":d,"prose":[{"text":value}],"renderer_elapsed_ns":renderer_elapsed_ns,"svg_utf8_bytes":svg_utf8_bytes,"classification":"renderer stress control; no source or comprehension judgment"}));
                 }
             }
+        }
+        // Independent synthetic task variant: two export workers with equal
+        // names, concurrent responses, a self-check and conditional publication.
+        // This is a layout control, never a new real Work or recorded execution.
+        for (ui, locale, values) in [
+            ("en", FixedLocale::English, ["Export coordinator", "Export worker", "Two independent exports", "when both exports have been requested and their original revisions remain available", "returns the complete document with its exact revision", "checks both captured revisions before publishing either result"]),
+            ("ko", FixedLocale::Korean, ["내보내기 조정", "내보내기 워커", "독립된 두 내보내기", "두 내보내기를 요청했고 원래 revision을 모두 읽을 수 있는 경우", "정확한 revision과 완전한 문서를 반환합니다", "어느 결과든 발행하기 전에 캡처한 두 revision을 검사합니다"]),
+        ] {
+            let select = |unit: usize| DiagramLabel { unit, start_byte: 0, end_byte: values[unit].len() };
+            let d = GroundedDiagram {
+                id: "independent-exports".into(), title: select(2), caption_unit: 2,
+                semantic_fingerprint: String::new(),
+                meaning: DiagramMeaning::Sequence {
+                    participants: ["coordinator", "first-worker", "second-worker"].iter().enumerate()
+                        .map(|(i,id)| DiagramNode { id: (*id).into(), kind: DiagramNodeKind::Participant, label: select(usize::from(i > 0)) }).collect(),
+                    groups: vec![
+                        DiagramGroup { order: DiagramOrder::Parallel, condition: Some(select(3)),
+                            messages: ["first-worker", "second-worker"].iter().enumerate().map(|(i,id)| DiagramMessage {
+                                id: format!("response-{i}"), from: (*id).into(), to: "coordinator".into(),
+                                kind: DiagramMessageKind::Return, label: select(4),
+                            }).collect() },
+                        DiagramGroup { order: DiagramOrder::Sequential, condition: Some(select(3)),
+                            messages: vec![DiagramMessage { id: "verify".into(), from: "coordinator".into(), to: "coordinator".into(), kind: DiagramMessageKind::Call, label: select(5) }] },
+                    ],
+                },
+            };
+            let ns = format!("independent-exports-{ui}");
+            let file = format!("{ns}.svg");
+            let svg = super::svg(&d, &values, &ns, &|id,_| format!("{id}-claim"), locale)?;
+            if let Some(root) = &root { std::fs::write(root.join(&file), &svg).map_err(|e|e.to_string())?; }
+            fixtures.push(serde_json::json!({"id":ns,"ui_locale":ui,"file":file,"diagram":d,"prose":values.iter().map(|text|serde_json::json!({"text":text})).collect::<Vec<_>>(),"classification":"independent synthetic export task; no Source or real Work claim"}));
         }
         if let Some(root) = &root {
             std::fs::write(
