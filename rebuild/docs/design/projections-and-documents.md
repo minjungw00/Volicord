@@ -2857,3 +2857,13 @@ publication-wide typed failure handling retain their existing responsibility.
 The publication-wide unavailable notice preserves the localized typed cause after
 removing dependent content; a deleted/expired/changed cause must not disappear with
 the removed citation control. Native opaque return positions remain usable.
+
+The first admitted connection is initially visible at native text size, after its
+original scope caption. This is an explicitly numbered connection, not an inferred
+overview. Previous/next links enumerate the original vector; graph enumeration and
+parallel operand enumeration assert no execution order. Each selection retains the
+original group/order/condition and its complete claim qualification. All connections
+remain reachable through the visible index, including without JavaScript. The full
+concept/component/flow/state or UML layout is an explicit native disclosure, with
+all original elements, geometry, pan and exact origins preserved. Native fragments
+and scripted return open its ancestors when reaching a full-layout element.

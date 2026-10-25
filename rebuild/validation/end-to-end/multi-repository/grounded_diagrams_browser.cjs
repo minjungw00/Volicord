@@ -62,6 +62,32 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           // A saved snapshot has native top-level page fragments.
           if(mode!=='live') await page.evaluate(id=>{location.hash=id;},c.work?'work-'+c.work:'repository-explanation');
           await figure.scrollIntoViewIfNeeded();
+          const initial=figure.locator('.diagram-claim[data-initial-connection=true]');
+          if(config.connection_details) {
+            assert.equal(await initial.count(),1,'one explicit initial connection');
+            const card=initial.locator('.diagram-connection');await card.waitFor({state:'visible'});
+            const fit=await card.evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth,font:getComputedStyle(n.querySelector('.connection-wording')).fontSize}));
+            assert(fit.width<=width-32 && fit.scroll<=fit.width+1 && parseFloat(fit.font)>=16,'initial visual meaning fits without horizontal travel');
+            // Capture the actual reading position clear of the sticky outline;
+            // element screenshot auto-scroll alone can put its top under it.
+            await card.evaluate(n=>n.scrollIntoView({block:'center'}));
+            // A page-owned animation callback never runs in no-JS mode.
+            await page.waitForTimeout(50);
+            const unobscured=await card.evaluate(n=>{const b=n.getBoundingClientRect();return [...document.querySelectorAll('.masthead,.document-nav')].every(h=>{const r=h.getBoundingClientRect();return r.bottom<=b.top+1 || r.top>=b.bottom-1 || r.right<=b.left || r.left>=b.right;});});
+            assert(unobscured,'initial connection including ordering qualification is clear of sticky navigation');
+            await card.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-initial-connection.png`)});
+            const next=initial.locator('.connection-navigation a').first();
+            if(await next.count()) {
+              const nextId=(await next.getAttribute('href')).slice(1);await next.click();
+              const nextClaim=page.locator('[id="'+nextId+'"]');
+              await nextClaim.locator('.diagram-connection').waitFor({state:'visible'});
+              assert.equal(await initial.isVisible(),false,'one selected connection without stale duplicate');
+              await nextClaim.locator('.connection-navigation a').first().click();
+              await initial.waitFor({state:'visible'});
+            }
+          }
+          const full=figure.locator('.diagram-full-view');
+          if(await full.count() && !await full.evaluate(n=>n.open))await full.locator(':scope > summary').click();
           if(config.outline && mode==='live') {
             const toc=page.locator('.document-nav');await toc.locator(':scope > summary').click();
             await toc.locator('a.toc-figure[href=\"#'+await figure.getAttribute('id')+'\"]').click();

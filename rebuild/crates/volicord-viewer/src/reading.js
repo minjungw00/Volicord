@@ -56,6 +56,9 @@
       figure.dataset.initialPan='true';
     }
   }
+  document.addEventListener('toggle',event=>{
+    if(event.target.matches?.('.diagram-full-view') && event.target.open) initializeVisibleFigures();
+  },true);
   const syntaxNames = {javascript:'JavaScript', typescript:'TypeScript', rust:'Rust', python:'Python', shell:'Shell', json:'JSON'};
   const tokenKinds = new Set(['keyword','comment','string','type','function','number','variable']);
   function paintCode(code, source, highlight) {

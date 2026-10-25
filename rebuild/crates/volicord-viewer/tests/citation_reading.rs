@@ -2116,6 +2116,9 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for html in [&live, &offline] {
+            assert_eq!(html.matches("data-initial-connection=\"true\"").count(), 1);
+            assert!(html.contains("<details class=\"diagram-full-view\"><summary>"));
+            assert!(html.contains("connection-navigation"));
             let id = if sequence { "answer" } else { "dependency" };
             let detail = html
                 .split(&format!("data-connection=\"{id}\""))

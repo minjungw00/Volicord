@@ -424,3 +424,15 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
 .connection-endpoint small,.connection-wording small { display: block; font-size: 1rem; }
 .connection-wording,.connection-condition { margin: .25rem 0; overflow-wrap: anywhere; }
 .connection-arrow { font-size: 1.4rem; line-height: 1.3; }
+.admitted-diagram { display: flex; flex-direction: column; }
+.admitted-diagram > figcaption { order: 0; }
+.admitted-diagram > .diagram-caption,.admitted-diagram > .shared-diagram-basis { order: 1; }
+.admitted-diagram > .diagram-claims { order: 2; }
+.admitted-diagram > .diagram-full-view { order: 3; margin-block: .75rem; }
+.admitted-diagram > .diagram-relations { order: 4; }
+.admitted-diagram > .diagram-alternative { order: 5; }
+.diagram-claim[data-initial-connection=true] { display: block; }
+.admitted-diagram:has(.diagram-claim:target,.diagram-claim[data-active=true],.diagram-element:target) .diagram-claim[data-initial-connection=true]:not(:target):not([data-active=true]) { display: none; }
+.diagram-claim:has(> .diagram-connection) > .diagram-selected-label { display: none; }
+.connection-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .7rem; }
+.connection-navigation span { flex-basis: 100%; }
