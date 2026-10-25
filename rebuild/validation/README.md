@@ -1339,6 +1339,16 @@ Entry instrumentation is installed before navigation; article-entry screenshots
 are preserved before ordinary vertical navigation to each figure. Native no-JS
 observations remain separate from JavaScript event-instrumented controls.
 
+The native document-navigation driver checks HTML and SVG fragment attributes
+through `reader_fragments.cjs`. Diagram-bearing cases provide `public` (the full
+current public answers JSON): figure entries must retain all admitted titles,
+semantic fingerprints and exact destinations, independently of authored section
+entries. `reader_fragments_browser.cjs CONFIG` challenges actual script-free exports
+with a broken SVG target and duplicate SVG identity. Its positive controls inspect
+the untouched public export before disposable mutations. `capture_sources: true`
+in the diagram driver also preserves selected-detail and returned screens, with
+publication/language/locale and renderer/font/executable identities.
+
 Both `viewer-design/product_review.cjs` and `article_reading_browser.cjs` use
 `source_tasks` per `repository` / selected `work` destination. Declare
 `state: required`, `realization_fingerprint` and nonempty `claims`; each claim names

@@ -445,3 +445,54 @@ No production change is hidden in these outcome-control additions.
 | O4 | Exact selected claim/code/native return and non-color keyboard focus | Native assistive/zoom and actual human journey unobserved |
 | O5 | Existing publication/Source lifecycle controls retained; full consumer/basis refresh follows final tracked changes | No stale prose or fingerprint rebinding authorized |
 | O6 | Technical results, semantic comparison, dependent visual observation and missing human/isolation kept separate | Exact clean-candidate gate/archive result belongs to the later invocation |
+
+Integrated consumption additionally exposed two pre-existing native-navigation
+control defects. `HTMLAnchorElement.hash` is unavailable on SVG anchors, so the
+first whole-document check crashed before any journey. After attribute-based
+inspection, its section-only TOC assertion rejected the correctly included figure
+entries. The correction checks sections separately and requires every figure's
+title, semantic identity and exact destination from independently declared public
+answers; it does not remove figure links to make the old assertion pass. Actual
+exports reject broken SVG links and duplicate SVG IDs. Both original failures
+remain preserved as validation-tool failures, not Product invariant causes.
+
+This justifies an additional test-responsibility commit beyond the provisional
+two-commit plan. Selected-detail/returned screenshots and explicit publication,
+locale and fontconfig identities complete its evidence boundary. Product crate,
+schema, authoring and budget inputs do not change after `e6da693a`. Its explicitly
+fresh Volicord observations/articles therefore remain the last implementation
+Source basis; the final test candidate and executable receipt are separate
+identities, not a new prose/source rebinding. Music Deck and Work retain their
+independently identified repository/historical bases. The exact final gate/archive
+and post-commit direct results belong to the eventual clean test candidate.
+
+The Source refresh is explicit normal observe/read/prepare/compose/record, followed
+by complete CLI human/JSON, MCP and export reads. Volicord has new English/Korean
+publications `dec4277237f5a3a4666e7745a1d763fb` /
+`ea79b118c56bab8f06967729c4ca3155` at `e6da693a`. Every chosen original code window
+is complete (49,038 bytes). The freshly authored responses measure 38,909 / 39,664
+bytes; retained bodies measure 152,779 / 153,534. No budget changes. Existing
+Music Deck publications `42ae47eb42ba3658bb4b6c27ffa19eff` /
+`504426dbf47b1e894bfccd750609243f` retain `74304b69`; Work publications
+`8ebca163d7f7b2a4eeaa6ae954ad8b3d` / `51602db2fe694f08baea4cd1406da1a9`
+retain `acc07330`. Their independent Goal-only names and progress summaries remain
+byte-identical, with their own publication identities.
+
+Discovery stays in the existing evidence mechanism: the ignored delivery's
+`cases.json`, per-publication `origin.json`, `read-results.json`, export process
+receipts and `mcp/summary.json` are under the directory named above. The six full
+MCP documents and 110 unique original-range journeys pass, as do 96 whole-corpus
+desktop/narrow live/offline/no-JS diagram journeys, twelve mixed-locale journeys,
+and eighteen separately captured selected-detail/Source/returned journeys.
+Independent Work publication controls pass nine tests. These are completed focused
+results for their recorded HEAD/diff/executable/publication, not an authoritative
+qualification of a later test commit. Actual current-gate results remain separate.
+
+Same-input old/new Reader exports of all six frozen publications add exactly 302
+HTML bytes each; selected code totals and publication meanings remain unchanged.
+Per-process CPU/RSS and elapsed receipts are separate from preparation, metadata,
+retention and MCP measurements. The paired export executions overlap local analysis,
+so their timings establish no latency regression verdict; isolated renderer/model/
+human reading time is unmeasured. Technical archive integrity, qualification,
+Source-grounded semantics, dependent visual judgment and human acceptance must
+still be reported separately.

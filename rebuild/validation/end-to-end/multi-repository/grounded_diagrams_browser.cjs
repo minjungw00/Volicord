@@ -14,6 +14,7 @@ const output = path.resolve(config.output);
 fs.mkdirSync(output, {recursive:false});
 const hash = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),chromium:hash(config.chromium)};
+if(config.fontconfig) executionIdentities.fontconfig=hash(config.fontconfig);
 for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs','publication_coverage.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
 const sleep = ms => new Promise(r => setTimeout(r,ms));
 const {openEmbeddedCode,returnFromEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
@@ -138,6 +139,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           if(mode==='live') assert(prior,'browser position at actual element activation');
           const claimId=(await element.getAttribute('href')).slice(1);
           const claim=page.locator('[id="'+claimId+'"]');
+          if(config.capture_sources) await claim.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-detail.png`)});
           if(config.connection_details) {
             const edge=(d.meaning.relations||d.meaning.groups.flatMap(g=>g.messages)).find(e=>e.id===c.element);
             if(edge) {
@@ -194,6 +196,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
             const restored=await figure.locator('.diagram-viewport').evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,y:scrollY,viewportTop:n.getBoundingClientRect().top,elementTop:document.activeElement.getBoundingClientRect().top}));
             for(const coordinate of ['left','top','y','viewportTop','elementTop']) assert(Math.abs(restored[coordinate]-prior[coordinate])<=5,'exact figure/reading return '+coordinate+' '+JSON.stringify({prior,restored}));
+            if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-returned.png`)});
             return_ms=Date.now()-returnStarted;
             await page.keyboard.press('Enter');await action.click();
             assert((await page.url()).endsWith('!'+claimId),'publication-bound Source deep link');
@@ -287,13 +290,14 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             await point.locator('.diagram-return-index a[href=\"#'+claimId+'\"]').click();
             await claim.locator('a.diagram-return').click();
             assert.equal(await page.evaluate(()=>location.hash),'#'+elementId,'exact native no-script return');
+            if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-returned.png`)});
           } else {
             await point.locator('a.return').click();
             await page.goBack(); // native history also preserves script-free access
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/7')});
+          results.push({entry,visual_geometry,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/7')});
           await context.close();
         }
       } catch(error) {

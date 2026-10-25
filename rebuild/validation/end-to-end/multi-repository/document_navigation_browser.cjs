@@ -8,6 +8,7 @@ fs.mkdirSync(c.output, {recursive:false});
 const hash = b => crypto.createHash('sha256').update(b).digest('hex');
 const result = {candidate:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
   diff_sha256:hash(execFileSync('git',['diff','HEAD','--','rebuild'])), viewer_sha256:hash(fs.readFileSync(c.viewer)),driver_sha256:hash(fs.readFileSync(__filename)),
+  fragment_helper_sha256:hash(fs.readFileSync(path.join(__dirname,'reader_fragments.cjs'))),
   semantic_approval:'not_established',human_acceptance:'unassessed',screen_reader:'not_observed',native_zoom:'not_observed',checks:[],processes:[]};
 function command(label, bin, args) {
   const p=spawnSync(bin,args,{encoding:'utf8',timeout:60000});
@@ -26,11 +27,8 @@ async function serve(x) {
  return {base,async stop(){await new Promise(resolve=>{child.once('exit',(code,signal)=>{fs.writeFileSync(path.join(c.output,x.key+'-viewer.stderr'),err);fs.writeFileSync(path.join(c.output,x.key+'-viewer.stdout'),out);result.processes.push({label:x.key+'-viewer',exit:code,signal,termination:'explicit cleanup'});resolve();});child.kill();});}};
 }
 async function fragments(page) {
- const errors=await page.evaluate(()=>{const counts=new Map();for(const n of document.querySelectorAll('[id]'))counts.set(n.id,(counts.get(n.id)||0)+1);
- const errors=[...counts].filter(([,v])=>v!==1).map(([id,n])=>`${id}: ${n} targets`);
- for(const a of document.querySelectorAll('a[href^="#"]'))if(counts.get(a.hash.slice(1))!==1)errors.push(`bad link ${a.getAttribute('href')}`);
- for(const n of document.querySelectorAll('[data-origin]'))if(counts.get(n.dataset.origin)!==1)errors.push(`bad return ${n.dataset.origin}`);
- return errors;});assert.deepEqual(errors,[],'every internal link and return has exactly one target');
+ const errors=await page.evaluate(require('./reader_fragments.cjs').fragmentErrors);
+ assert.deepEqual(errors,[],'every internal link and return has exactly one target');
 }
 // Measure real sticky geometry before any Playwright action can auto-scroll a
 // displaced control back into view. Native pointer/keyboard input starts scrolled.
@@ -118,7 +116,19 @@ async function scrolledOutline(page, toc, js, capture) {
  assert.equal(await toc.evaluate(n=>n.tagName),'DETAILS');assert.equal(await toc.getAttribute('open'),null);
  assert.equal(await toc.locator('a:visible').count(),0);
  const authored=await doc.locator('.article-section h2[data-question=SectionHeading]').allTextContents();
- assert.deepEqual(await toc.locator('.toc-primary a').allTextContents(),authored);
+ assert.deepEqual(await toc.locator('.toc-primary a:not(.toc-figure)').allTextContents(),authored);
+ const figureLinks=toc.locator('.toc-primary a.toc-figure');
+ const publicAnswers=x.public?JSON.parse(fs.readFileSync(x.public,'utf8')):null;
+ if(await figureLinks.count()) assert(publicAnswers,'figure navigation requires independently declared complete public answers');
+ if(publicAnswers){
+  assert.equal(await doc.locator('.admitted-diagram').count(),publicAnswers.diagrams.length,'every admitted figure remains navigable');
+  const label=l=>Buffer.from(publicAnswers.prose[l.unit].text).subarray(l.start_byte,l.end_byte).toString('utf8');
+  assert.deepEqual(await figureLinks.allTextContents(),publicAnswers.diagrams.map(d=>label(d.title)),'figure titles come from the complete admitted publication');
+  for(const d of publicAnswers.diagrams){
+   const figure=doc.locator('.admitted-diagram[data-semantic-fingerprint="'+d.semantic_fingerprint+'"]');assert.equal(await figure.count(),1);
+   assert.equal(await toc.locator('.toc-primary a.toc-figure[href="#'+await figure.getAttribute('id')+'"]').count(),1,'exact sealed figure destination');
+  }
+ }
  const geometry=await scrolledOutline(page,toc,js,path.join(c.output,`${x.key}-${width}-${mode}-scrolled-open.png`));result.checks.push({case:x.key,width,mode,scrolled_geometry:geometry,status:'passed'});
  const summary=toc.locator(':scope > summary');
  await page.keyboard.press('Tab');assert.ok(await toc.evaluate(n=>n.contains(document.activeElement)));
