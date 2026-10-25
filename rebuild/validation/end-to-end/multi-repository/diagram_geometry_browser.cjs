@@ -15,12 +15,27 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
       const context=await browser.newContext({viewport:{width:1440,height:1000}});const page=await context.newPage();const external=[];
       await page.route('**/*',r=>{external.push(r.request().url());return r.abort();});
       const svg=fs.readFileSync(path.join(config.fixtures,f.file),'utf8');
-      await page.setContent('<style>'+fs.readFileSync(config.css,'utf8')+'</style><figure id="'+f.id+'"><div class="diagram-viewport">'+svg+'</div></figure>');
+      await page.setContent('<html lang="'+f.ui_locale+'"><style>'+fs.readFileSync(config.css,'utf8')+'</style><figure id="'+f.id+'"><div class="diagram-viewport">'+svg+'</div></figure></html>');
       await page.evaluate(()=>document.fonts.ready);
       const result=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);rows.push({fixture:f.id,...result});
       fs.writeFileSync(path.join(config.output,f.id+'.json'),JSON.stringify(result,null,2),{flag:'wx'});
       await page.locator('figure').screenshot({path:path.join(config.output,f.id+'.png')});
       assert.deepEqual(external,[]);
+      if(f.diagram.meaning.kind==='sequence') {
+        const header=await page.locator('svg text').filter({hasText:f.ui_locale==='ko'?'1. par · 상대 순서 없음':'1. par · no relative order'}).elementHandle();
+        assert(header,'original group header');
+        const original=await header.innerHTML();
+        await header.evaluate(n=>n.querySelector('tspan').textContent='1. strict · sequential');
+        const wrongGroup=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
+        assert(wrongGroup.errors.some(e=>e.kind==='wrong-group-order'),'wrong par/strict meaning must fail');
+        await header.evaluate((n,original)=>n.innerHTML=original,original);
+        const message=page.locator('svg a[id$="-cross-sequential"]');
+        await message.evaluate(n=>n.setAttribute('transform','translate(0,-200)'));
+        const wrongOrder=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
+        assert(wrongOrder.errors.some(e=>e.kind==='wrong-message-order'),'transformed sequential message order must fail');
+        await message.evaluate(n=>n.removeAttribute('transform'));
+        fs.writeFileSync(path.join(config.output,f.id+'-order-controls.json'),JSON.stringify({wrongGroup:wrongGroup.errors,wrongOrder:wrongOrder.errors},null,2),{flag:'wx'});
+      }
       if(rows.length===1) {
         const text=page.locator('svg a').first().locator('text').nth(1);
         const old=await text.getAttribute('style');await text.evaluate(n=>n.style.display='none');

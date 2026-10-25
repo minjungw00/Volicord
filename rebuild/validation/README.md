@@ -1431,3 +1431,10 @@ separate full-canvas diagnostic HTML/PNG alongside actual viewport screenshots.
 fixtures with `fixtures`, `css`, `output`, `playwright`, `chromium` and `fontconfig`
 paths; it requires Korean-capable fonts and preserves per-case geometry and images.
 Run these scoped controls through `validate focused`; do not run Final/V11 here.
+
+Sequence stress fixtures include explicit `ui_locale` and unique message IDs.
+The geometry consumer checks the original group order and displayed sequential
+message order, including SVG transforms. Its negative controls change a par/strict
+header and move a message ahead of its predecessor. Existing hidden-label and
+line-through-text counterexamples remain separate controls; an ordinary edge
+crossing alone is not an error.

@@ -1075,7 +1075,8 @@ mod tests {
             let label=DiagramLabel{unit:0,start_byte:0,end_byte:value.len()};
             let nodes=["first","second","third"].iter().map(|id|DiagramNode{id:(*id).into(),kind:DiagramNodeKind::Participant,label:label.clone()}).collect::<Vec<_>>();
             let messages=[("self","first","first",DiagramMessageKind::Call),("cross","first","third",DiagramMessageKind::Await),("last-self","third","third",DiagramMessageKind::Return)].iter().map(|(id,from,to,kind)|DiagramMessage{id:(*id).into(),from:(*from).into(),to:(*to).into(),kind:*kind,label:label.clone()}).collect::<Vec<_>>();
-            let sequence=GroundedDiagram{id:"long-sequence".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Sequence{participants:nodes,groups:vec![DiagramGroup{order:DiagramOrder::Parallel,condition:Some(label.clone()),messages:messages.clone()},DiagramGroup{order:DiagramOrder::Sequential,condition:Some(label.clone()),messages}]}};
+            let sequential_messages=messages.iter().cloned().map(|mut m|{m.id=format!("{}-sequential",m.id);m}).collect();
+            let sequence=GroundedDiagram{id:"long-sequence".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Sequence{participants:nodes,groups:vec![DiagramGroup{order:DiagramOrder::Parallel,condition:Some(label.clone()),messages:messages.clone()},DiagramGroup{order:DiagramOrder::Sequential,condition:Some(label.clone()),messages:sequential_messages}]}};
             let state=GroundedDiagram{id:"long-state".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::State{owner:label.clone(),nodes:vec![DiagramNode{id:"only".into(),kind:DiagramNodeKind::State,label:label.clone()}],relations:vec![DiagramRelation{id:"self".into(),from:"only".into(),to:"only".into(),kind:DiagramRelationKind::Transition,label:label.clone(),condition:Some(label.clone())}]}};
             let flow=GroundedDiagram{id:"long-flow".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Flowchart{nodes:[("branch",DiagramNodeKind::Branch),("left",DiagramNodeKind::Process),("right",DiagramNodeKind::Process)].iter().map(|(id,kind)|DiagramNode{id:(*id).into(),kind:*kind,label:label.clone()}).collect(),relations:["left","right"].iter().map(|id|DiagramRelation{id:format!("to-{id}"),from:"branch".into(),to:(*id).into(),kind:DiagramRelationKind::ControlFlow,label:label.clone(),condition:Some(label.clone())}).collect()}};
             for (kind,d) in [("sequence",sequence),("state",state),("flow",flow)] {
@@ -1084,7 +1085,7 @@ mod tests {
                     let svg=super::svg(&d,&[&value],&ns,&|id,_|format!("{ns}-{id}-claim"),locale)?;
                     assert!(svg.contains(&format!("aria-label=\"{value}\"")));
                     let file=format!("{ns}.svg");if let Some(root)=&root {std::fs::write(root.join(&file),svg).map_err(|e|e.to_string())?;}
-                    fixtures.push(serde_json::json!({"id":ns,"file":file,"diagram":d,"prose":[{"text":value}]}));
+                    fixtures.push(serde_json::json!({"id":ns,"ui_locale":ui,"file":file,"diagram":d,"prose":[{"text":value}]}));
                 }
             }
         }

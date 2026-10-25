@@ -3862,3 +3862,12 @@ an internally consistent shifted range, remaining bytes and continuation. Each
 response must leave no fetched code. Existing positive complete-page, delayed-read,
 foreign-selection, offline and lifecycle controls remain required. These scoped
 controls establish no human comprehension or authoritative qualification result.
+
+Sequence geometry also compares the original group's sequential/parallel meaning
+with its localized visible header and compares displayed message positions with
+the admitted sequential and cross-group ordering. Bounds and path points include
+actual SVG transforms. The stress consumer must reject changed `par`/`strict`
+headers and a transformed message reordered within a sequential group. Parallel
+members have no relative-order requirement. Fixture message IDs are distinct
+across groups, so one group's anchor cannot stand in for another. These checks
+supplement Source semantics; they do not infer grouping or execution from layout.
