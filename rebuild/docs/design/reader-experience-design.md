@@ -303,6 +303,12 @@ abstraction or shorter authored label must retain explicit grounding. Text and
 keyboard alternatives complement the map. Selecting detail preserves the map and
 exact origin; return restores element, focus, history and reading position.
 
+Keyboard focus must remain visible on every selectable condition and state-owner
+label as well as boxed nodes/messages. A color-only change or a border selector
+that matches no shape cannot establish focus on a text-only origin. Check this
+after preserving entry, in live and script-free consumers, with the same exact
+claim and native return identity.
+
 ### 9.1 저장소 설명은 계속 핵심 범위다
 
 #### Temporal reading questions

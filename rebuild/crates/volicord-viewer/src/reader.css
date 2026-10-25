@@ -445,3 +445,6 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
 .diagram-expanded .diagram-viewport:has(.connected-overview) { max-height: 90vh; border: 1px solid var(--line); }
 .connected-overview .diagram-element:focus { outline: none; }
 .connected-overview .diagram-element:focus :is(.participant-box,.edge-key,.message-label) { stroke: var(--accent); stroke-width: 3; }
+/* Conditions and state owners are selectable text without a surrounding box.
+   Keep a non-color focus cue for these origins in live and script-free readers. */
+.connected-overview .diagram-element:focus text { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }

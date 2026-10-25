@@ -11,6 +11,7 @@ const output = path.resolve(config.output);
 fs.mkdirSync(output, {recursive:false});
 const hash = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),chromium:hash(config.chromium)};
+for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
 const sleep = ms => new Promise(r => setTimeout(r,ms));
 const {openEmbeddedCode,returnFromEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
 executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/product_review_controls.cjs'));
@@ -107,6 +108,10 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/7'),evidence_journey:'not_exercised'});
             await context.close();continue;
           }
+          const textFocus=await require('./diagram_focus.cjs').inspectTextOriginFocus(figure);
+          fs.writeFileSync(path.join(output,`${c.key}-${width}-${mode}-text-focus.json`),JSON.stringify(textFocus,null,2),{flag:'wx'});
+          assert.deepEqual(textFocus.errors,[],'all selectable guards and state owners have a non-color keyboard focus cue');
+          if(textFocus.observations.length) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-text-focus.png`)});
           if(config.precise_return && mode==='live') {
             await figure.locator('[data-diagram-action=in]').click();
             assert.equal(await figure.locator('.diagram-scale').textContent(),'125%');

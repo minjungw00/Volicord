@@ -379,3 +379,49 @@ browser first-display and selected-code-read timings remain separately recorded.
 Host authoring/model computation, isolated actual-publication renderer time and
 human document-reading time were not instrumented. Historical timings are not
 new acceptance targets.
+
+## Reading outcome consumer completion, 2026-10-26
+
+Execution starts at `4dd67aee`, after the two connected/causal reading commits,
+with a clean worktree. The shared reading-outcomes input remains ignored,
+untracked and unchanged (SHA-256
+`487b7281d89b9924d19f5414dffc7231655468a0629fb8a6f715aa01cddf2efd`).
+The acceptance/Reader O1–O6 questions remain the outcome oracle; no goal, format,
+Source bound, qualification limit or canonical record is changed.
+
+Ordinary desktop/narrow entry was preserved before detail, pan, disclosure or
+Source interaction. The current corpus already opens with connected maps,
+repository purpose and the historical Work's investigation/result/status. The
+implementer inspected actual opening/scrolling screens, not only geometry or
+component reports. This is dependent assessment, not a fresh isolated reading.
+Original Music Deck implementations confirm the captured submitted set,
+settlement including rejection, conditional attempted close, independent player/
+waiter effects and queued/delivered/request completion distinctions. The Work
+retains its historical source/records and reported verification; no new task,
+execution, patch, Decision or human acceptance is claimed.
+
+A reproduced consumer defect remains after those commits: selectable guards and
+state owners have neither a box nor a visible focus indicator. The global SVG
+focus-outline suppression therefore hides their keyboard position. Untouched
+actual offline publications reproduce this for flow conditions, sequence guards
+and request-state ownership. Shared CSS now underlines focused text as a non-color
+cue; exact labels, origins and native returns stay intact in live/offline readers.
+The new actual-publication check rejects the original output (exit 1), then passes
+18 desktop/narrow live/offline/no-JS focus and exact-code/return journeys (exit 0).
+Initial orientation evidence is recorded separately, before those focus checks.
+
+Focused Viewer citation/lifecycle tests, architecture-owner checks and nested
+workspace metadata pass (exit 0); all nine workspace packages and path dependencies
+remain under `rebuild/`. No legacy path is changed. Raw initial states, receipts,
+failed attempts and executable/publication/font identities remain ignored under
+`rebuild/.local/reading-outcomes-20261026/` and the maintained validation runner.
+The first sandbox browser attempt failed at `fc-list` subprocess startup; the
+subsequent local-only execution records that changed environment condition.
+
+Whole-corpus completion must include all four Music Deck figures, not only the
+execution/closure pair selected by the previous browser configuration. Remaining
+direct coverage, post-commit publication refresh, exact-candidate gate and archive
+results are separate subsequent evidence. No current gate success is claimed here.
+Independent first reading, actual human acceptance, native assistive/zoom/device
+observations remain unobserved. The historical scoped-check invariant's cause and
+the older SIGSEGV remain unresolved; this focus fix is not a causal repair of either.

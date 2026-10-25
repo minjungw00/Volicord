@@ -1319,6 +1319,12 @@ Pin the selected executable bytes for long consumer attempts so a later diagnost
 build cannot replace their CLI/MCP/Viewer paths. Preserve interrupted/mixed attempts
 and bind new results to their fresh publication and frozen executable identities.
 
+After entry is captured, the actual-publication diagram driver checks keyboard
+focus on text-only conditions and state owners through `diagram_focus.cjs`.
+These exact claim origins need a visible non-color cue even though they have no
+node/card border. Focus observations and screenshots are separate from entry;
+they do not establish assistive-technology or human comprehension results.
+
 Both `viewer-design/product_review.cjs` and `article_reading_browser.cjs` use
 `source_tasks` per `repository` / selected `work` destination. Declare
 `state: required`, `realization_fingerprint` and nonempty `claims`; each claim names
