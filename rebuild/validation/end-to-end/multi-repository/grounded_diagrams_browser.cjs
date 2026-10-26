@@ -255,12 +255,12 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
               const list=figure.locator(representation);
               if(!await list.evaluate(n=>n.open))await list.locator(':scope > summary').click();
               const origin=list.locator('a.diagram-text-link[data-element="'+elementId+'"]');
-              const isNode=(d.meaning.nodes||d.meaning.participants).some(n=>n.id===c.element);
-              if(representation==='.diagram-relations' && isNode) {
-                assert.equal(await origin.count(),0,'the relation index contains relations, not node entries');
+              const isConnection=(d.meaning.relations||d.meaning.groups.flatMap(g=>g.messages)).some(e=>e.id===c.element);
+              if(representation==='.diagram-relations' && !isConnection) {
+                assert.equal(await origin.count(),0,'the connection index excludes node, guard and state-owner entries');
                 continue;
               }
-              assert.equal(await origin.count(),1,'the full text alternative retains the exact selected node/relation');
+              assert.equal(await origin.count(),1,'the full text alternative retains every exact selected element, including conditions and state owners');
               await origin.focus();await origin.evaluate(n=>n.scrollIntoView({block:'center'}));
               assert(await svg.isVisible(),'overview remains available at text-origin activation');
               const top=await origin.evaluate(n=>n.getBoundingClientRect().top);
