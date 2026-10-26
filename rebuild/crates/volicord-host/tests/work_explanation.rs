@@ -1405,8 +1405,7 @@ fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
     let expired = call(&mut f.host, read_args);
     assert_eq!(expired["result"]["isError"], true);
     assert_eq!(
-        expired["result"]["structuredContent"]["details"]["reason"],
-        "expired",
+        expired["result"]["structuredContent"]["details"]["reason"], "expired",
         "{expired}"
     );
     let projection = f.host.operations().project_projection(f.project)?;
