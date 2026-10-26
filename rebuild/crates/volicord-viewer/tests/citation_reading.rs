@@ -1718,7 +1718,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             .and_then(|p| p.publication_id.as_deref())
             .ok_or("managed publication")?;
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/7\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/8\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
@@ -1790,7 +1790,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/7\""));
+            .contains("data-renderer=\"volicord-static-svg/8\""));
     }
     Ok(())
 }
@@ -1949,7 +1949,7 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
-            assert!(text.contains("volicord-static-svg/7"));
+            assert!(text.contains("volicord-static-svg/8"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"
             } else {
@@ -2237,7 +2237,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
         .export_snapshot(&f.request(), &output)?;
     let html = fs::read_to_string(output)?;
-    assert!(html.contains("data-renderer=\"volicord-static-svg/7\""));
+    assert!(html.contains("data-renderer=\"volicord-static-svg/8\""));
     assert!(html.contains("&lt;image"));
     assert!(!html.contains("<image"));
     assert!(!html.contains("<script"));
@@ -2377,6 +2377,20 @@ fn diagram_ui_locale_preserves_authored_english_claims_and_publication_identity(
                     "authored English relation is visibly retained"
                 );
                 assert!(figure.contains("Admission"));
+                if !sequence {
+                    let common = if locale == ViewerLocale::Korean {
+                        "모든 노드: 구성요소"
+                    } else {
+                        "All nodes: component"
+                    };
+                    assert_eq!(
+                        figure.matches(common).count(),
+                        2,
+                        "one type key per responsive geometry"
+                    );
+                    assert!(figure.contains("Admission → verification"));
+                    assert!(figure.contains("acceptance"));
+                }
                 if locale == ViewerLocale::Korean {
                     assert!(figure.contains(if sequence { "호출" } else { "의존" }));
                     assert!(!figure.contains(if sequence { ">call<" } else { ">depends on<" }));

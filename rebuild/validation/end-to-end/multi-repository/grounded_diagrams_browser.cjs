@@ -82,7 +82,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             assert(await figure.evaluate(n=>n===document.activeElement),'outline exact figure focus');
           }
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
-          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/7'));
+          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/8'));
           assert.equal(await page.locator('script').count()>0,mode==='live','live scripting versus script-free static export');
           if(mode==='live') await page.waitForFunction(id=>{
             const viewport=document.getElementById(id)?.querySelector('.diagram-viewport');
@@ -111,7 +111,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           }
           const svg_bytes=await svg.evaluate(n=>new TextEncoder().encode(n.outerHTML).length);
           if(config.orientation_only) {
-            results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/7'),evidence_journey:'not_exercised'});
+            results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/8'),evidence_journey:'not_exercised'});
             await context.close();continue;
           }
           const textFocus=await require('./diagram_focus.cjs').inspectTextOriginFocus(figure);
@@ -303,7 +303,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({entry,visual_geometry,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/7')});
+          results.push({entry,visual_geometry,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/8')});
           await context.close();
         }
       } catch(error) {

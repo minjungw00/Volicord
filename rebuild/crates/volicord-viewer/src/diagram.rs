@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/7";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/8";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -362,6 +362,30 @@ mod tests {
             format!("{id}-claim")
         })?;
         assert!(output.len() < 262144);
+        let column = |id: &str| -> Result<usize, String> {
+            let group = output
+                .split_once(&format!("id=\"cyclic-component-control-{id}\""))
+                .ok_or("element")?
+                .1
+                .split("</a>")
+                .next()
+                .ok_or("element close")?;
+            group
+                .split_once("<rect ")
+                .ok_or("box")?
+                .1
+                .split_once(" x=\"")
+                .and_then(|(_, v)| v.split_once('"'))
+                .ok_or("box column")?
+                .0
+                .parse::<usize>()
+                .map_err(|e| e.to_string())
+        };
+        // At desktop width these two same-layer sources must not borrow each
+        // other's annotation columns, even with reverse and parallel routes.
+        assert_eq!(column("content")?, column("edge-0")?);
+        assert_eq!(column("content")?, column("edge-6")?);
+        assert_eq!(column("page")?, column("edge-2")?);
         Ok(())
     }
     #[test]
@@ -677,6 +701,8 @@ mod tests {
             },
         };
         let output = svg(&d, &["state"], "geometry", &|id, _| format!("{id}-claim"))?;
+        assert_eq!(output.matches("All nodes: state").count(), 2);
+        assert_eq!(output.matches("All relations: transition").count(), 2);
         fn attribute<'a>(s: &'a str, key: &str) -> Result<&'a str, String> {
             s.split_once(&format!("{key}=\""))
                 .and_then(|(_, v)| v.split_once('"'))
@@ -715,6 +741,10 @@ mod tests {
                     .split("</a>")
                     .next()
                     .ok_or("node close")?;
+                assert!(
+                    group.contains(&format!(">[{name}]</tspan>")),
+                    "common type keys must retain each repeated-name identity"
+                );
                 boxes.push(rect(group.split_once("<rect ").ok_or("box")?.1)?);
             }
             let keys = output

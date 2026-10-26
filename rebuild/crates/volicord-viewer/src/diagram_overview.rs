@@ -50,6 +50,7 @@ fn node_kind(
     i: usize,
     texts: &[&str],
     locale: FixedLocale,
+    common_type: bool,
 ) -> Result<String, String> {
     let name = diagram_label(&nodes[i].label, texts)?;
     let repeated = nodes
@@ -57,10 +58,15 @@ fn node_kind(
         .filter(|n| diagram_label(&n.label, texts) == Ok(name))
         .count()
         > 1;
-    Ok(if repeated {
-        format!("{} [{}]", nodes[i].kind.localized_text(locale), nodes[i].id)
+    let kind = if common_type {
+        ""
     } else {
-        nodes[i].kind.localized_text(locale).into()
+        nodes[i].kind.localized_text(locale)
+    };
+    Ok(if repeated {
+        format!("{kind} [{}]", nodes[i].id).trim_start().into()
+    } else {
+        kind.into()
     })
 }
 // Breadth layers are presentation, never inferred execution or containment.
@@ -134,12 +140,32 @@ fn graph(
         ..Layout::default()
     };
     let mut y = 20;
-    if let DiagramMeaning::State { owner, .. } = &d.meaning {
-        let value = format!(
-            "{} {}",
-            diagram_ui(locale, "State owner:", "상태 소유자:"),
-            label(owner)?
-        );
+    // A uniform type belongs to the whole figure. Mixed types remain attached
+    // to their elements; no predicate, endpoint or semantic selection is elided.
+    let uniform_nodes = nodes.len() > 1 && nodes.iter().all(|n| n.kind == nodes[0].kind);
+    let uniform_edges = edges
+        .first()
+        .map(|first| edges.len() > 1 && edges.iter().all(|e| e.kind == first.kind))
+        .unwrap_or(false);
+    for value in [
+        uniform_nodes.then(|| {
+            format!(
+                "{} {}",
+                diagram_ui(locale, "All nodes:", "모든 노드:"),
+                nodes[0].kind.localized_text(locale)
+            )
+        }),
+        uniform_edges.then(|| {
+            format!(
+                "{} {}",
+                diagram_ui(locale, "All relations:", "모든 관계:"),
+                edges[0].kind.localized_text(locale)
+            )
+        }),
+    ]
+    .into_iter()
+    .flatten()
+    {
         writing(
             &mut layout.background,
             width / 2,
@@ -147,18 +173,18 @@ fn graph(
             &value,
             width - 32,
         );
-        y += 20 * lines(&value, width - 32) + 24;
+        y += 20 * lines(&value, width - 32) + 12;
     }
-    // State ownership retains its own origin rather than an unbound caption.
+    // State ownership retains its own selectable origin after the shared keys.
     if let DiagramMeaning::State { owner, .. } = &d.meaning {
-        layout.background.clear();
         let value = format!(
             "{} {}",
             diagram_ui(locale, "State owner:", "상태 소유자:"),
             label(owner)?
         );
         let mut out = String::new();
-        writing(&mut out, width / 2, 36, &value, width - 32);
+        writing(&mut out, width / 2, y + 16, &value, width - 32);
+        y += 20 * lines(&value, width - 32) + 24;
         layout.elements.insert("state:owner".into(), out);
         layout.order.push("state:owner".into());
     }
@@ -182,7 +208,7 @@ fn graph(
                 } else {
                     cell - 8
                 };
-                let kind = node_kind(nodes, i, texts, locale)?;
+                let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
                 let h = (24 + 20 * (lines(label(&nodes[i].label)?, tw) + lines(&kind, tw)))
                     .max(counts[i] * 20 + 24);
                 let h = if nodes[i].kind == DiagramNodeKind::Branch {
@@ -199,6 +225,7 @@ fn graph(
             }
             y += row_h + 28;
         }
+        let edge_start = y;
         let mut col = 0;
         let mut row_h = 0;
         for (i, e) in edges
@@ -224,7 +251,11 @@ fn graph(
             } else {
                 margin + col * (cell + gap)
             };
-            let kind = e.kind.localized_text(locale);
+            let kind = if uniform_edges {
+                ""
+            } else {
+                e.kind.localized_text(locale)
+            };
             let h = 24
                 + 20 * (lines(&associations[i], w - 12)
                     + lines(label(&e.label)?, w - 12)
@@ -245,6 +276,34 @@ fn graph(
         }
         if col > 0 {
             y += row_h + 24;
+        }
+        // Compare outgoing routes beneath their own source column. This is
+        // geometric proximity only: shared nodes, direction and full endpoint
+        // names remain, and no column becomes an execution/ownership boundary.
+        // Full-width labels and narrow layouts retain full reading width.
+        let outgoing = endpoints
+            .iter()
+            .enumerate()
+            .filter(|(_, (a, _))| group.contains(a))
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>();
+        if width >= 400
+            && group.len() > 1
+            && group.len() <= cols
+            && outgoing.iter().all(|i| edge_boxes[*i].w == cell)
+        {
+            let mut bottoms = vec![edge_start; nodes.len()];
+            for i in outgoing {
+                let a = endpoints[i].0;
+                edge_boxes[i].x = node_boxes[a].x;
+                edge_boxes[i].y = bottoms[a];
+                bottoms[a] += edge_boxes[i].h + 24;
+            }
+            y = group
+                .iter()
+                .map(|a| bottoms[*a])
+                .max()
+                .unwrap_or(edge_start);
         }
         y += 16;
     }
@@ -337,8 +396,14 @@ fn graph(
         let py = card.y + 20 + 20 * lines(&associations[i], card.w - 12);
         writing(&mut out, lx, py, label(&e.label)?, card.w - 12);
         let ky = py + 20 * lines(label(&e.label)?, card.w - 12);
-        let kind = e.kind.localized_text(locale);
-        writing(&mut out, lx, ky, kind, card.w - 12);
+        let kind = if uniform_edges {
+            ""
+        } else {
+            e.kind.localized_text(locale)
+        };
+        if !kind.is_empty() {
+            writing(&mut out, lx, ky, kind, card.w - 12);
+        }
         if let Some(guard) = &e.condition {
             let mut g = String::new();
             writing(
@@ -376,17 +441,19 @@ fn graph(
             r.w - 8
         };
         let name = label(&node.label)?;
-        let kind = node_kind(nodes, i, texts, locale)?;
+        let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
         let th = 20 * (lines(name, tw) + lines(&kind, tw));
         let top = r.y + (r.h - th) / 2 + 16;
         writing(&mut out, r.x + r.w / 2, top, name, tw);
-        writing(
-            &mut out,
-            r.x + r.w / 2,
-            top + 20 * lines(name, tw),
-            &kind,
-            tw,
-        );
+        if !kind.is_empty() {
+            writing(
+                &mut out,
+                r.x + r.w / 2,
+                top + 20 * lines(name, tw),
+                &kind,
+                tw,
+            );
+        }
         layout.elements.insert(node.id.clone(), out);
     }
     Ok(layout)

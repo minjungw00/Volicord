@@ -309,6 +309,27 @@ that matches no shape cannot establish focus on a text-only origin. Check this
 after preserving entry, in live and script-free consumers, with the same exact
 claim and native return identity.
 
+#### Relationship comparison tasks
+
+Freeze these tasks before choosing an annotation/layout alternative. Compare the
+same admitted publication first; assess new prose separately against its Sources.
+The ordinary article and vertically reached map precede selection and evidence.
+
+| Material | Initial reading and comparison | Later exact inspection |
+| --- | --- | --- |
+| Volicord records | Compare Goal/Purpose roles with Work membership; trace Work → Checkpoint and Work → Decision → Question without confusing shared names with membership. | Select each role/join independently and return to its own origin. |
+| Volicord responsibilities | Compare adapter → operations with adapter → projection, and operations → kernel with operations → analysis. Identify the write owner without treating dependency layers as execution order. | Inspect the two different destinations even when their predicates repeat. |
+| Music Deck execution | Compare content → worker state, worker → plugin sync, plugin → worker command and worker → plugin result. Keep the two directions and different worker → page routes distinct. | Follow each route's own claim/range, including reused endpoint names. |
+| Closure and historical Work | Retain the active group/condition and source/target while comparing B settlement with A settlement, then token lookup and attempted notification. Recover context by ordinary scrolling, without opening code. | Inspect captured-set settlement separately from received-close effects and ID-request completion; preserve the original Work opening/status. |
+
+Record incorrect/uncertain answers, repeated endpoint/type reading, route lookups
+and context-recovery scrolling, with the complete label lengths and actual fonts.
+Canvas height and text counts support these observations but cannot decide them.
+Challenge repeated names, parallel/reverse edges, cycles, long bilingual predicates
+and guards before qualification. A compact annotation must keep enough endpoint
+cues to answer these tasks; selected detail and faithful text retain all types and
+identities. Missing independent first reading remains a separate limitation.
+
 ### 9.1 저장소 설명은 계속 핵심 범위다
 
 #### Temporal reading questions

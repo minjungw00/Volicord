@@ -3,6 +3,9 @@
 async function inspectDiagram(svg, diagram, prose) {
   const label = l => Buffer.from(prose[l.unit].text).subarray(l.start_byte,l.end_byte).toString('utf8');
   const m=diagram.meaning;
+  // Types may be stated once for a homogeneous scope, but must remain attached
+  // in a mixed scope. This oracle starts from admitted types, not SVG metadata.
+  const kinds={record:['record','기록'],context_role:['context role','맥락 역할'],reading_group:['read grouping','읽기 묶음'],component:['component','구성요소'],participant:['participant','참여자'],process:['process','처리'],branch:['branch','분기'],initial:['initial','시작'],final:['final','종료'],state:['state','상태'],references:['references','참조'],groups:['groups','묶음'],role_of:['role of','역할'],depends_on:['depends on','의존'],produces:['produces','생성'],data_flow:['data flow','데이터 흐름'],control_flow:['control flow','제어 흐름'],transition:['transition','전이'],call:['call','호출'],return:['return','반환'],await:['await','대기'],state_change:['state change','상태 변경']};
   const expected=(m.nodes||m.participants).map(n=>({id:n.id,text:label(n.label)}));
   if(m.owner)expected.push({id:'state:owner',text:label(m.owner),prefix:true});
   for(const r of m.relations||[]) {
@@ -18,7 +21,7 @@ async function inspectDiagram(svg, diagram, prose) {
     expected.push(...g.messages.map(r=>({id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`})));
   }
   const edges=m.relations || (m.groups||[]).flatMap(g=>g.messages);
-  return svg.evaluate((root,{expected,edges,sequence,groups})=> {
+  return svg.evaluate((root,{expected,edges,sequence,groups,kinds,nodes})=> {
     const errors=[];const texts=[];const paths=[];
     const box=b=>({x:b.x,y:b.y,width:b.width,height:b.height});
     const intersects=(a,b)=>a.x<b.x+b.width-1 && a.x+a.width>b.x+1 && a.y<b.y+b.height-1 && a.y+a.height>b.y+1;
@@ -39,6 +42,20 @@ async function inspectDiagram(svg, diagram, prose) {
       return {x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};
     };
     const anchor=id=>[...root.querySelectorAll('a.diagram-element')].find(a=>a.id===root.closest('figure').id+'-'+id);
+    const ko=root.ownerDocument.documentElement.lang==='ko';
+    const kindText=k=>kinds[k][ko?1:0];
+    const visibleTexts=n=>[...n.querySelectorAll('text')].filter(rendered).map(t=>t.textContent);
+    if(!sequence) {
+      for(const [items,prefix] of [[nodes,ko?'모든 노드:':'All nodes:'],[edges,ko?'모든 관계:':'All relations:']]) {
+        const uniform=items.length && items.every(n=>n.kind===items[0].kind);
+        const legend=uniform && visibleTexts(root).includes(prefix+' '+kindText(items[0].kind));
+        for(const item of items) if(!legend && !visibleTexts(anchor(item.id)).some(t=>t===kindText(item.kind)||t.startsWith(kindText(item.kind)+' [')))errors.push({kind:'missing-visible-type',element:item.id});
+      }
+    }
+    for(const node of nodes) {
+      const name=expected.find(e=>e.id===node.id).text;
+      if(nodes.filter(n=>expected.find(e=>e.id===n.id).text===name).length>1 && !visibleTexts(anchor(node.id)).some(t=>t.includes(node.id)))errors.push({kind:'missing-repeated-name-id',element:node.id});
+    }
     const tasks=[];
     for(const e of edges) {
       const p=pick(anchor(e.id),'.relation-line');
@@ -65,6 +82,9 @@ async function inspectDiagram(svg, diagram, prose) {
         const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
         const header=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===`${gi+1}. ${order}`);
         if(!header)errors.push({kind:'wrong-group-order',group:gi+1,expected:order});
+        for(const message of g.messages) {
+          if(!visibleTexts(anchor(message.id)).some(t=>t.endsWith(' · '+kindText(message.kind))))errors.push({kind:'missing-visible-type',element:message.id});
+        }
         let last=previousGroupBottom;
         const positions=g.messages.flatMap(m=>{const p=pick(anchor(m.id),'.relation-line');return p?[{id:m.id,box:bounds(p)}]:[];});
         for(const m of positions) {
@@ -123,6 +143,6 @@ async function inspectDiagram(svg, diagram, prose) {
     for(const [pair,samples] of merges)if(samples>10)errors.push({kind:'route-merge',pair,samples});
     const v=root.closest('.diagram-viewport');
     return {canvas:{width:view.width,height:view.height},viewport:{width:v.clientWidth,height:v.clientHeight,left:v.scrollLeft,top:v.scrollTop,horizontalTravel:v.scrollWidth-v.clientWidth,verticalTravel:v.scrollHeight-v.clientHeight},expected,tasks,labels:texts,paths,errors};
-  },{expected,edges,sequence:m.kind==='sequence',groups:m.groups||[]});
+  },{expected,edges,sequence:m.kind==='sequence',groups:m.groups||[],kinds,nodes:m.nodes||m.participants});
 }
 module.exports={inspectDiagram};

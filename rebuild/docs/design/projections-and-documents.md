@@ -2604,7 +2604,7 @@ record and all original dependencies; ordinary reads generate nothing.
 Public CLI/MCP ordinary answers and complete publication pages include the exact
 semantics and seal. Human text includes endpoints, relation types, conditions and
 explicit parallel groups. Live and self-contained offline Viewer render the same
-meaning through in-tree `volicord-static-svg/6` plus a faithful linear alternative.
+meaning through in-tree `volicord-static-svg/8` plus a faithful linear alternative.
 Layout coordinates and SVG are presentation only. Relations show their exact admitted
 wording first; numbered keys and localized relationship kinds remain secondary.
 The visible label, accessible name, text representation and selected claim retain the
@@ -2890,7 +2890,10 @@ Merely exposing a huge clipped SVG or shrinking its labels is not completion.
 Complete authored predicates and short standalone names remain cited prose spans;
 rendering may reflow them, but cannot invent, truncate or infer meaning/grouping.
 Each graph annotation visibly repeats its exact admitted source and target names
-with a directional arrow, alongside the complete predicate, relation kind and guard.
+with a directional arrow, alongside the complete predicate and guard. A type shared
+by multiple nodes or by all relations may appear once in a visible, localized
+figure key. Mixed types stay attached to their own elements; a key cannot hide
+their differences. Complete types remain in selected detail and the faithful text.
 Duplicate names include their admitted element IDs. These endpoint references are
 presentation of existing sealed meaning, not new summaries. Shared nodes and their
 connected routes remain visible; annotations do not replace the map with a list.
@@ -2909,13 +2912,23 @@ well as stored scroll values and focus identity. A text origin below selected
 detail can change document offset when that detail closes; restore the actual
 activating link's screen position rather than assuming its offset is constant.
 
-Sequence renderer identity 7 repeats the sealed source → target names beside every
+Sequence presentation repeats the sealed source → target names beside every
 message, with admitted IDs when names repeat. The association and complete message
 wording reserve separate measured text bands before the arrow/self-call; long
 guards have their own opaque group header and visible `opt` condition scope.
 Lifelines remain behind these bands. These are responsive presentations of
 existing v8 endpoints, order and conditions, not new timeline or containment fields.
-Graph overview layout and exact activation/claim/Source return are unchanged.
+Message-local types remain visible after group headers scroll away.
+
+Renderer identity 8 additionally places outgoing graph annotations beneath their
+own source columns when their complete labels fit those columns. Full-width and
+narrow annotations retain full reading width. Columns express geometric proximity,
+never execution, concurrency, state ownership or a new authored group. Every
+route keeps its exact admitted endpoints, complete predicate, condition and own
+selection/return identity, including repeated names, reverse and parallel routes.
+The common type key and source proximity use existing admitted meaning only;
+retained v8, producer admission, fingerprints, CLI/MCP and document metadata do not
+change. Re-rendering an unchanged publication is not fresh content authorship.
 
 Work authoring begins with its actual question, performed investigation/change,
 reported result and current state. Its investigation precedes supporting

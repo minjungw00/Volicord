@@ -1344,6 +1344,11 @@ navigation requirements are owned by
 [the Reader](reader-experience-design.md#connected-overview-reading).
 
 Declare the actual public corpus independently of selected interaction tasks.
+For annotation/layout refinements, freeze the Reader's
+[relationship comparison tasks](reader-experience-design.md#relationship-comparison-tasks)
+before choosing a candidate. Preserve baseline wrong/uncertain answers and route
+recovery costs. Compare equivalent admitted meaning separately from reauthored
+publications; reduced size or removed metadata alone is not success.
 Check every admitted figure in that corpus: omitting the received-close effects
 or browser-request state view cannot pass on the execution/closure pair alone.
 Omitting every task for a one-figure Work must also fail, rather than silently

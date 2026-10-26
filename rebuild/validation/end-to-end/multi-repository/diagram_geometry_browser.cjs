@@ -21,6 +21,15 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
       fs.writeFileSync(path.join(config.output,f.id+'-'+width+'.json'),JSON.stringify(result,null,2),{flag:'wx'});
       await page.locator('figure').screenshot({path:path.join(config.output,f.id+'-'+width+'.png')});
       assert.deepEqual(external,[]);
+      const legends=page.locator('svg text:visible').filter({hasText:/^(All nodes:|All relations:|모든 노드:|모든 관계:)/});
+      if(await legends.count()) {
+        const legend=await legends.first().elementHandle();
+        await legend.evaluate(n=>n.style.visibility='hidden');
+        const lostType=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
+        assert(lostType.errors.some(e=>e.kind==='missing-visible-type'),'a hidden common key must not erase relation types');
+        await legend.evaluate(n=>n.style.removeProperty('visibility'));
+        fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-type-control.json'),JSON.stringify(lostType.errors,null,2),{flag:'wx'});
+      }
       if(f.diagram.meaning.kind==='sequence') {
         const header=await page.locator('svg text:visible').filter({hasText:f.ui_locale==='ko'?'1. par · 상대 순서 없음':'1. par · no relative order'}).elementHandle();
         assert(header,'original group header');

@@ -3934,3 +3934,26 @@ headers and a transformed message reordered within a sequential group. Parallel
 members have no relative-order requirement. Fixture message IDs are distinct
 across groups, so one group's anchor cannot stand in for another. These checks
 supplement Source semantics; they do not infer grouping or execution from layout.
+
+### Annotation comparison controls
+
+Freeze the Reader relationship tasks before choosing a candidate. Compare an
+unchanged admitted corpus through the old and new renderer, then compare editorial
+changes separately against permitted originals. Preserve initial desktop/narrow
+screens before selection, including the original Work opening. Report dependent,
+isolated and human reading separately; no geometry or type-count threshold proves
+comprehension.
+
+| Changed boundary | Direct consumers and controls |
+| --- | --- |
+| Shared graph type keys | Actual live/snapshot `citation_reading` mixed-UI/content locale test; `diagram_geometry.cjs` checks admitted types, visible common key or individual types, and repeated-name IDs. The stress browser hides a common key and must reject missing types. |
+| Source-column proximity | Same-meaning actual Volicord/Music Deck corpus, complete endpoints/predicates/guards, arrow/glyph/route checks, cyclic/reverse/parallel controls and exact selected claim/Source/return journeys. Full-width narrow layouts keep endpoint cues. |
+| Unchanged retained meaning | Public CLI and complete paginated MCP reads compare original publications, diagrams and exact critical Source bytes. Existing admission/lifecycle/hostile-input/history/late-response controls remain applicable. |
+| Editorial repair | Explicit prepare/read permitted Sources/compose/record/readback over identified originals; distinguish changed units from reused prose and retain independent Work name/summary/article identities. Add authoring rules only for a demonstrated production gap. |
+
+Use only `validate focused` here. Preserve numeric exits, build/renderer/font/UI
+and content language/publication/Source identities and rejected alternatives under
+ignored paths. Check actual fixture registry consumers when fixtures change; generated
+renderer stress output is not a new registered repository fixture. Measure changed
+render/export costs in isolated paired diagnostics; contended browser timings do not
+establish a speedup. This support authorizes no aggregate, gate, Final or official V11.
