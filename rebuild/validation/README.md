@@ -1323,6 +1323,10 @@ Code-return checks compare visible wording and its screen position as well as
 focus, canvas and page offsets. These are dependent technical observations.
 Native fragment entries follow normal scrolling and verify visible local wording.
 Use `route_aliases: true` for actual narrow pointer-route → claim/code/return checks.
+Use `native_navigation: true` to exercise Ctrl-click on selected-detail return and
+outline links after entry capture. The exact destination opens in a new context
+tab while original focus, selection, disclosure and page/figure offsets stay put.
+Keep the old-executable rejection and ordinary/no-JS return observations separate.
 Per-case `widths` may refine the configured matrix: retain every figure in the
 declared corpus, and separately cover all five Reader widths and mixed UI/content
 locales with the affected sequence/flow/state journeys.

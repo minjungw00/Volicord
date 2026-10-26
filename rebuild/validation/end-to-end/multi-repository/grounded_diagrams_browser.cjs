@@ -20,6 +20,32 @@ const sleep = ms => new Promise(r => setTimeout(r,ms));
 const {openEmbeddedCode,returnFromEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
 executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/product_review_controls.cjs'));
 const failureReasons=['expired','deleted','changed','withheld','comparison_unavailable','unavailable','missing','corrupt','unsupported'];
+async function nativeLinkNavigation(page, link, receipt) {
+  await link.scrollIntoViewIfNeeded();
+  await link.focus();
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  const state=()=>page.evaluate(()=>({
+    url:location.href,y:scrollY,focus:document.activeElement?.id,
+    focusHref:document.activeElement?.getAttribute('href'),
+    open:[...document.querySelectorAll('details')].map(n=>n.open),
+    selected:[...document.querySelectorAll('.diagram-claim[data-active],.source-point[data-selected]')].map(n=>n.id),
+    views:[...document.querySelectorAll('.diagram-viewport')].map(n=>({left:n.scrollLeft,top:n.scrollTop}))
+  }));
+  const expected=new URL(await link.getAttribute('href'),page.url()).href;
+  const before=await state();
+  fs.writeFileSync(receipt+'-before.json',JSON.stringify({expected,before},null,2),{flag:'wx'});
+  // Modifier-created tabs belong to the browser context; they need not have an opener.
+  const opened=page.context().waitForEvent('page',{timeout:10000});
+  await link.click({modifiers:['Control']});
+  const tab=await opened;
+  try {
+    await tab.waitForURL(expected,{waitUntil:'load'});
+    const after=await state();
+    fs.writeFileSync(receipt+'-after.json',JSON.stringify({url:tab.url(),after},null,2),{flag:'wx'});
+    assert.deepEqual(after,before,'native new-tab navigation preserves the original reading context');
+    return {destination:expected,preserved:true};
+  } finally {await tab.close();}
+}
 (async () => {
   const browserEnv={...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})};
   const fontPaths=config.cases.some(c=>c.language?.startsWith('ko')||c.ui_locale?.startsWith('ko'))
@@ -146,6 +172,15 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           const claimId=(await element.getAttribute('href')).slice(1);
           const claim=page.locator('[id="'+claimId+'"]');
           if(config.capture_sources) await claim.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-detail.png`)});
+          const native_navigation=[];
+          if(config.native_navigation && mode==='live') {
+            const receipt=path.join(output,`${c.key}-${width}-${mode}-native`);
+            native_navigation.push(await nativeLinkNavigation(page,claim.locator('a.diagram-return'),receipt+'-return'));
+            const toc=page.locator('.document-nav');
+            await toc.locator(':scope > summary').click();
+            native_navigation.push(await nativeLinkNavigation(page,toc.locator('.toc-primary a').last(),receipt+'-outline'));
+            await toc.locator(':scope > summary').click();
+          }
           if(config.connection_details) {
             const edge=(d.meaning.relations||d.meaning.groups.flatMap(g=>g.messages)).find(e=>e.id===c.element);
             if(edge) {
@@ -316,7 +351,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({entry,visual_geometry,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/9')});
+          results.push({entry,visual_geometry,native_navigation,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/9')});
           await context.close();
         }
       } catch(error) {

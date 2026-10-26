@@ -3981,6 +3981,13 @@ directly. Keep isolated paired render/export costs separate from normal public
 CLI/complete MCP/code read costs; no limit or qualification expansion is authorized.
 
 Native fragment checks must inspect actual visible wording, not only the URL.
+The actual-publication driver also accepts `native_navigation: true`. After
+preserving ordinary entry it Ctrl-clicks selected-detail return and outline links,
+requires the exact native destination in a new browser-context tab and compares
+the original tab's URL, focus, open disclosures, selection and scroll positions.
+Run the same control against the preserved pre-fix executable: intercepting the
+return or closing/scrolling the original outline must fail. Ordinary activation,
+exact code/return and no-script journeys remain separate required controls.
 Include narrow backward/cyclic routes whose path bounds exceed the reading
 viewport. Annotation origins and pointer-route aliases must reach the same claim,
 Source and publication-bound return; geometry resolves the admitted edge's route
