@@ -341,6 +341,9 @@
     if(element && diagramReturns.get(state().diagramReturn)?.element !== element.id) element.scrollIntoView({block:'nearest',inline:'nearest'});
   });
   document.addEventListener('click', event => {
+    // Modified links belong to native navigation (new tab/window/download).
+    // They must not select, close, focus or scroll this reading context.
+    const plainLink = event.button === 0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey;
     const diagramControl=event.target.closest('button[data-diagram-action]');
     if (diagramControl) {
       const figure=diagramControl.closest('.admitted-diagram');const action=diagramControl.dataset.diagramAction;
@@ -367,7 +370,7 @@
     if (diagramLink) {
       const id=diagramLink.matches('.diagram-element')?diagramLink.id:diagramLink.dataset.element;
       const element=document.getElementById(id);const viewport=element?.closest('.diagram-viewport');
-      if (viewport && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+      if (viewport && plainLink) {
         event.preventDefault();
         const figure=viewport.closest('.admitted-diagram');
         const claim=[...figure.querySelectorAll('.diagram-claim')].find(n=>n.getClientRects().length);
@@ -382,7 +385,7 @@
       }
     }
     const diagramReturn=event.target.closest('a.diagram-return');
-    if (diagramReturn) {
+    if (diagramReturn && plainLink) {
       event.preventDefault();
       navigate(diagramReturn.getAttribute('href'));
     }
@@ -398,7 +401,7 @@
       }
     }
     const outlineLink = event.target.closest('.document-nav a');
-    if (outlineLink) {
+    if (outlineLink && plainLink) {
       const toc = outlineLink.closest('.document-nav');
       toc.open = false;
       const target = document.getElementById(outlineLink.hash.slice(1));
@@ -409,11 +412,11 @@
       });
     }
     const codeReturn=event.target.closest('.source-point a.return');
-    if (codeReturn && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+    if (codeReturn && plainLink) {
       event.preventDefault();navigate(codeReturn.getAttribute('href'));
     }
     const link = event.target.closest('a.evidence-link');
-    if (link && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+    if (link && plainLink) {
       document.querySelectorAll('.document-nav[open]').forEach(toc => toc.open = false);
       event.preventDefault();
       const token=remember(sourceReturns,{claim:link.dataset.origin,trigger:link,y:scrollY});

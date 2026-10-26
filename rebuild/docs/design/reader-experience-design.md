@@ -303,6 +303,11 @@ abstraction or shorter authored label must retain explicit grounding. Text and
 keyboard alternatives complement the map. Selecting detail preserves the map and
 exact origin; return restores element, focus, history and reading position.
 
+Modified link activation retains native browser navigation. Opening a figure,
+selected-detail return, Source or outline destination in another tab/window must
+not change the original tab's selection, focus, disclosure or scroll position.
+Ordinary activation keeps the existing exact per-activation return behavior.
+
 Keyboard focus must remain visible on every selectable condition and state-owner
 label as well as boxed nodes/messages. A color-only change or a border selector
 that matches no shape cannot establish focus on a text-only origin. Check this
