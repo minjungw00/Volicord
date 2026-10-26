@@ -3957,3 +3957,32 @@ ignored paths. Check actual fixture registry consumers when fixtures change; gen
 renderer stress output is not a new registered repository fixture. Measure changed
 render/export costs in isolated paired diagnostics; contended browser timings do not
 establish a speedup. This support authorizes no aggregate, gate, Final or official V11.
+
+### Local causal context controls
+
+Freeze Reader context-recovery questions before changing presentation. Preserve
+ordinary wheel-scroll observations of real publications at upper, middle/lower and
+reverse positions, after fonts load and before evidence assistance. Compare equal
+admitted meaning and original Source-derived obligations; include actual Work
+opening, historical verification and Paused/unobserved boundaries. Reduced height
+is not an answer. Missing human/assistive/native-zoom or isolated first reading
+remains unobserved; dependent rechecks do not become independent assessments.
+
+`diagram_geometry.cjs` checks each message's local strict/par/opt meaning against
+its admitted group, and local ownership on state nodes and transitions. Stress
+controls replace an unguarded strict reminder with a previous guarded parallel
+scope and replace an owner with another figure's identity; both must fail. Long
+mixed-locale/repeated-name labels retain native type, complete endpoints and guard
+spacing. These generated renderer fixtures are synthetic, not real Work records.
+Actual corpus checks retain all figures, live/no-JS/offline, exact claim/Source and
+visible-element/focus return, native fragments/history, expansion and replacement/
+Source-loss/late-response controls. Run changed fixture and locale consumers
+directly. Keep isolated paired render/export costs separate from normal public
+CLI/complete MCP/code read costs; no limit or qualification expansion is authorized.
+
+Native fragment checks must inspect actual visible wording, not only the URL.
+Include narrow backward/cyclic routes whose path bounds exceed the reading
+viewport. Annotation origins and pointer-route aliases must reach the same claim,
+Source and publication-bound return; geometry resolves the admitted edge's route
+independently of its now-local annotation bounds. Native deep entries are recorded
+after ordinary forward/reverse reading, separately from initial orientation.

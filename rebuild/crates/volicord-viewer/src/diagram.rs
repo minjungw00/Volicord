@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/8";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/9";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -227,6 +227,15 @@ pub(crate) fn element_caption(
             .map(|n| label(&n.label))
             .unwrap_or("")
     };
+    let owner = if let DiagramMeaning::State { owner, .. } = &d.meaning {
+        format!(
+            " · {} {}",
+            diagram_ui(locale, "State owner:", "상태 소유자:"),
+            label(owner)
+        )
+    } else {
+        String::new()
+    };
     if id == "state:owner" {
         if let DiagramMeaning::State { owner, .. } = &d.meaning {
             return format!(
@@ -237,7 +246,11 @@ pub(crate) fn element_caption(
         }
     }
     if let Some(n) = d.nodes().iter().find(|n| n.id == id) {
-        return format!("{} · {}", label(&n.label), n.kind.localized_text(locale));
+        return format!(
+            "{} · {}{owner}",
+            label(&n.label),
+            n.kind.localized_text(locale)
+        );
     }
     match &d.meaning {
         DiagramMeaning::Concept { relations, .. }
@@ -247,7 +260,7 @@ pub(crate) fn element_caption(
             for r in relations {
                 if r.id == id {
                     return format!(
-                        "{} → {} · {}",
+                        "{} → {} · {}{owner}",
                         node(&r.from),
                         node(&r.to),
                         r.kind.localized_text(locale)
@@ -260,11 +273,28 @@ pub(crate) fn element_caption(
                 for m in &g.messages {
                     if m.id == id {
                         return format!(
-                            "{}. {} → {} · {}",
+                            "{}. {} → {} · {} · {}{}",
                             i + 1,
                             node(&m.from),
                             node(&m.to),
-                            m.kind.localized_text(locale)
+                            m.kind.localized_text(locale),
+                            match g.order {
+                                DiagramOrder::Sequential =>
+                                    diagram_ui(locale, "strict · sequential", "strict · 순차"),
+                                DiagramOrder::Parallel => diagram_ui(
+                                    locale,
+                                    "par · no relative order",
+                                    "par · 상대 순서 없음"
+                                ),
+                            },
+                            g.condition
+                                .as_ref()
+                                .map(|guard| format!(
+                                    " · opt · {} {}",
+                                    diagram_ui(locale, "condition:", "조건:"),
+                                    label(guard)
+                                ))
+                                .unwrap_or_default()
                         );
                     }
                 }
@@ -594,7 +624,7 @@ mod tests {
             let nodes=["first","second","third"].iter().map(|id|DiagramNode{id:(*id).into(),kind:DiagramNodeKind::Participant,label:label.clone()}).collect::<Vec<_>>();
             let messages=[("self","first","first",DiagramMessageKind::Call),("cross","first","third",DiagramMessageKind::Await),("last-self","third","third",DiagramMessageKind::Return)].iter().map(|(id,from,to,kind)|DiagramMessage{id:(*id).into(),from:(*from).into(),to:(*to).into(),kind:*kind,label:label.clone()}).collect::<Vec<_>>();
             let sequential_messages=messages.iter().cloned().map(|mut m|{m.id=format!("{}-sequential",m.id);m}).collect();
-            let sequence=GroundedDiagram{id:"long-sequence".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Sequence{participants:nodes,groups:vec![DiagramGroup{order:DiagramOrder::Parallel,condition:Some(label.clone()),messages:messages.clone()},DiagramGroup{order:DiagramOrder::Sequential,condition:Some(label.clone()),messages:sequential_messages}]}};
+            let sequence=GroundedDiagram{id:"long-sequence".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Sequence{participants:nodes,groups:vec![DiagramGroup{order:DiagramOrder::Parallel,condition:Some(label.clone()),messages:messages.clone()},DiagramGroup{order:DiagramOrder::Sequential,condition:None,messages:sequential_messages}]}};
             let state=GroundedDiagram{id:"long-state".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::State{owner:label.clone(),nodes:vec![DiagramNode{id:"only".into(),kind:DiagramNodeKind::State,label:label.clone()}],relations:vec![DiagramRelation{id:"self".into(),from:"only".into(),to:"only".into(),kind:DiagramRelationKind::Transition,label:label.clone(),condition:Some(label.clone())}]}};
             let flow=GroundedDiagram{id:"long-flow".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Flowchart{nodes:[("branch",DiagramNodeKind::Branch),("left",DiagramNodeKind::Process),("right",DiagramNodeKind::Process)].iter().map(|(id,kind)|DiagramNode{id:(*id).into(),kind:*kind,label:label.clone()}).collect(),relations:["left","right"].iter().map(|id|DiagramRelation{id:format!("to-{id}"),from:"branch".into(),to:(*id).into(),kind:DiagramRelationKind::ControlFlow,label:label.clone(),condition:Some(label.clone())}).collect()}};
             for (kind,d) in [("sequence",sequence),("state",state),("flow",flow)] {
@@ -630,7 +660,7 @@ mod tests {
                                 id: format!("response-{i}"), from: (*id).into(), to: "coordinator".into(),
                                 kind: DiagramMessageKind::Return, label: select(4),
                             }).collect() },
-                        DiagramGroup { order: DiagramOrder::Sequential, condition: Some(select(3)),
+                        DiagramGroup { order: DiagramOrder::Sequential, condition: None,
                             messages: vec![DiagramMessage { id: "verify".into(), from: "coordinator".into(), to: "coordinator".into(), kind: DiagramMessageKind::Call, label: select(5) }] },
                     ],
                 },
@@ -765,7 +795,7 @@ mod tests {
             }
             for (i, (from, to)) in edges.iter().enumerate() {
                 let group = output
-                    .split_once(&format!("id=\"geometry-e{i}\""))
+                    .split_once(&format!("data-element=\"geometry-e{i}\""))
                     .ok_or("edge")?
                     .1
                     .split("</a>")

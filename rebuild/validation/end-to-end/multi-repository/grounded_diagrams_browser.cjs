@@ -15,7 +15,7 @@ fs.mkdirSync(output, {recursive:false});
 const hash = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),chromium:hash(config.chromium)};
 if(config.fontconfig) executionIdentities.fontconfig=hash(config.fontconfig);
-for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs','publication_coverage.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
+for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs','diagram_context.cjs','publication_coverage.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
 const sleep = ms => new Promise(r => setTimeout(r,ms));
 const {openEmbeddedCode,returnFromEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
 executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/product_review_controls.cjs'));
@@ -48,7 +48,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           assert(child.exitCode===null,'live Viewer startup');await sleep(50);
         }
         assert(base,'live address');
-        for(const width of config.widths || [1440,390]) for(const mode of config.modes || ['live','offline','no-js']) {
+        for(const width of c.widths || config.widths || [1440,390]) for(const mode of config.modes || ['live','offline','no-js']) {
           const context=await browser.newContext({viewport:{width,height:900},javaScriptEnabled:mode!=='no-js',serviceWorkers:'block'});
           const page=await context.newPage();activePage=page;const external=[];const errors=[];
           page.on('pageerror',e=>errors.push(e.message));
@@ -82,7 +82,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             assert(await figure.evaluate(n=>n===document.activeElement),'outline exact figure focus');
           }
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
-          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/8'));
+          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/9'));
           assert.equal(await page.locator('script').count()>0,mode==='live','live scripting versus script-free static export');
           if(mode==='live') await page.waitForFunction(id=>{
             const viewport=document.getElementById(id)?.querySelector('.diagram-viewport');
@@ -111,8 +111,14 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           }
           const svg_bytes=await svg.evaluate(n=>new TextEncoder().encode(n.outerHTML).length);
           if(config.orientation_only) {
-            results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/8'),evidence_journey:'not_exercised'});
+            results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/9'),evidence_journey:'not_exercised'});
             await context.close();continue;
+          }
+          if(config.context_reading) {
+            const context=await require('./diagram_context.cjs').inspectReadingContext(page,figure,d,pub.prose,
+              (direction,id)=>page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-reading-${direction}-${id}.png`)}));
+            fs.writeFileSync(path.join(output,`${c.key}-${width}-${mode}-reading.json`),JSON.stringify(context,null,2),{flag:'wx'});
+            assert.deepEqual(context.errors,[],'local scope at ordinary forward/reverse reading positions');
           }
           const textFocus=await require('./diagram_focus.cjs').inspectTextOriginFocus(figure);
           fs.writeFileSync(path.join(output,`${c.key}-${width}-${mode}-text-focus.json`),JSON.stringify(textFocus,null,2),{flag:'wx'});
@@ -133,10 +139,10 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           const elementId=await element.getAttribute('id');
           // Exact native SVG/text anchor access, then the actual selected Source.
           await element.focus();
-          await page.evaluate(id=>{window.__diagramActivation=null;document.addEventListener('click',event=>{const n=event.target.closest('a.diagram-element');if(n?.id===id){const v=n.closest('.diagram-viewport');window.__diagramActivation={left:v.scrollLeft,top:v.scrollTop,y:scrollY,viewportTop:v.getBoundingClientRect().top,elementTop:n.getBoundingClientRect().top};}},{capture:true});},elementId);
+          await page.evaluate(id=>{window.__diagramActivation=null;document.addEventListener('click',event=>{const n=event.target.closest('a.diagram-element');if(n?.id===id){const v=n.closest('.diagram-viewport');window.__diagramActivation={left:v.scrollLeft,top:v.scrollTop,y:scrollY,viewportTop:v.getBoundingClientRect().top,elementTop:n.getBoundingClientRect().top,meaning:[...n.querySelectorAll('text')].map(t=>({text:t.textContent,box:t.getBoundingClientRect()})).filter(t=>t.box.height>0&&t.box.top>=160&&t.box.bottom<=innerHeight).map(t=>({text:t.text,top:t.box.top,left:t.box.left}))};}},{capture:true});},elementId);
           await page.keyboard.press('Enter');
           const prior=await page.evaluate(()=>window.__diagramActivation);
-          if(mode==='live') assert(prior,'browser position at actual element activation');
+          if(mode==='live') {assert(prior,'browser position at actual element activation');assert(prior.meaning.length,'actual visible meaning at activation');}
           const claimId=(await element.getAttribute('href')).slice(1);
           const claim=page.locator('[id="'+claimId+'"]');
           if(config.capture_sources) await claim.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-detail.png`)});
@@ -194,10 +200,17 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
             await point.locator('a.return').click();
             await claim.locator('a.diagram-return').click();
             await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
-            const restored=await figure.locator('.diagram-viewport').evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,y:scrollY,viewportTop:n.getBoundingClientRect().top,elementTop:document.activeElement.getBoundingClientRect().top}));
+            const restored=await figure.locator('.diagram-viewport').evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,y:scrollY,viewportTop:n.getBoundingClientRect().top,elementTop:document.activeElement.getBoundingClientRect().top,meaning:[...document.activeElement.querySelectorAll('text')].map(t=>({text:t.textContent,box:t.getBoundingClientRect()})).filter(t=>t.box.height>0&&t.box.top>=160&&t.box.bottom<=innerHeight).map(t=>({text:t.text,top:t.box.top,left:t.box.left}))}));
             for(const coordinate of ['left','top','y','viewportTop','elementTop']) assert(Math.abs(restored[coordinate]-prior[coordinate])<=5,'exact figure/reading return '+coordinate+' '+JSON.stringify({prior,restored}));
+            assert.deepEqual(restored.meaning.map(t=>t.text),prior.meaning.map(t=>t.text),'same visible reading meaning after code return');
+            for(let i=0;i<prior.meaning.length;i++) for(const axis of ['top','left']) assert(Math.abs(prior.meaning[i][axis]-restored.meaning[i][axis])<=5,'visible label position after code return');
             if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-returned.png`)});
             return_ms=Date.now()-returnStarted;
+            if(config.route_aliases && width===320) {
+              const route=await require('./diagram_context.cjs').inspectRouteAlias(page,figure,element,claim,action,point);
+              fs.writeFileSync(path.join(output,`${c.key}-${width}-${mode}-route.json`),JSON.stringify(route,null,2),{flag:'wx'});
+              await element.focus();
+            }
             await page.keyboard.press('Enter');await action.click();
             assert((await page.url()).endsWith('!'+claimId),'publication-bound Source deep link');
             await page.reload({waitUntil:'load'});
@@ -303,7 +316,7 @@ const failureReasons=['expired','deleted','changed','withheld','comparison_unava
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({entry,visual_geometry,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/8')});
+          results.push({entry,visual_geometry,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/9')});
           await context.close();
         }
       } catch(error) {

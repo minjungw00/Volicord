@@ -448,3 +448,4 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
 /* Conditions and state owners are selectable text without a surrounding box.
    Keep a non-color focus cue for these origins in live and script-free readers. */
 .connected-overview .diagram-element:focus text { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.connected-overview .diagram-route:focus .relation-line { stroke-width: 3; }

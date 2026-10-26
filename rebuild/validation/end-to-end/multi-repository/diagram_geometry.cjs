@@ -3,18 +3,25 @@
 async function inspectDiagram(svg, diagram, prose) {
   const label = l => Buffer.from(prose[l.unit].text).subarray(l.start_byte,l.end_byte).toString('utf8');
   const m=diagram.meaning;
+  const ko=await svg.evaluate(n=>n.ownerDocument.documentElement.lang==='ko');
+  const owner=m.owner && `${ko?'상태 소유자:':'State owner:'} ${label(m.owner)}`;
   // Types may be stated once for a homogeneous scope, but must remain attached
   // in a mixed scope. This oracle starts from admitted types, not SVG metadata.
   const kinds={record:['record','기록'],context_role:['context role','맥락 역할'],reading_group:['read grouping','읽기 묶음'],component:['component','구성요소'],participant:['participant','참여자'],process:['process','처리'],branch:['branch','분기'],initial:['initial','시작'],final:['final','종료'],state:['state','상태'],references:['references','참조'],groups:['groups','묶음'],role_of:['role of','역할'],depends_on:['depends on','의존'],produces:['produces','생성'],data_flow:['data flow','데이터 흐름'],control_flow:['control flow','제어 흐름'],transition:['transition','전이'],call:['call','호출'],return:['return','반환'],await:['await','대기'],state_change:['state change','상태 변경']};
   const expected=(m.nodes||m.participants).map(n=>({id:n.id,text:label(n.label)}));
   if(m.owner)expected.push({id:'state:owner',text:label(m.owner),prefix:true});
+  if(owner)expected.push(...m.nodes.map(n=>({id:n.id,text:owner})));
   for(const r of m.relations||[]) {
     expected.push({id:r.id,text:label(r.label)});
+    if(owner)expected.push({id:r.id,text:owner});
     const endpoint=id=>{const n=m.nodes.find(n=>n.id===id);const name=label(n.label);return m.nodes.filter(n=>label(n.label)===name).length>1?`${name} [${id}]`:name;};
     expected.push({id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`});
     if(r.condition)expected.push({id:r.id+':condition',text:label(r.condition),prefix:true});
   }
   for(const [i,g] of (m.groups||[]).entries()) {
+    const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
+    const context=order+(g.condition?` · opt · ${ko?'조건:':'condition:'} ${label(g.condition)}`:'');
+    expected.push(...g.messages.map(r=>({id:r.id,text:context,prefix:true})));
     if(g.condition)expected.push({id:'guard:'+(i+1),text:label(g.condition),prefix:true});
     expected.push(...g.messages.map(r=>({id:r.id,text:label(r.label)})));
     const endpoint=id=>{const n=m.participants.find(n=>n.id===id);const name=label(n.label);return m.participants.filter(n=>label(n.label)===name).length>1?`${name} [${id}]`:name;};
@@ -42,6 +49,7 @@ async function inspectDiagram(svg, diagram, prose) {
       return {x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};
     };
     const anchor=id=>[...root.querySelectorAll('a.diagram-element')].find(a=>a.id===root.closest('figure').id+'-'+id);
+    const edgePath=id=>pick([...root.querySelectorAll('a.diagram-route')].find(a=>a.dataset.element===root.closest('figure').id+'-'+id)||anchor(id),'.relation-line');
     const ko=root.ownerDocument.documentElement.lang==='ko';
     const kindText=k=>kinds[k][ko?1:0];
     const visibleTexts=n=>[...n.querySelectorAll('text')].filter(rendered).map(t=>t.textContent);
@@ -58,7 +66,7 @@ async function inspectDiagram(svg, diagram, prose) {
     }
     const tasks=[];
     for(const e of edges) {
-      const p=pick(anchor(e.id),'.relation-line');
+      const p=edgePath(e.id);
       const fromNode=pick(anchor(e.from),'.participant-box');
       const toNode=pick(anchor(e.to),'.participant-box');
       const from=fromNode && bounds(fromNode),to=toNode && bounds(toNode);
@@ -83,10 +91,10 @@ async function inspectDiagram(svg, diagram, prose) {
         const header=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===`${gi+1}. ${order}`);
         if(!header)errors.push({kind:'wrong-group-order',group:gi+1,expected:order});
         for(const message of g.messages) {
-          if(!visibleTexts(anchor(message.id)).some(t=>t.endsWith(' · '+kindText(message.kind))))errors.push({kind:'missing-visible-type',element:message.id});
+          if(!visibleTexts(anchor(message.id)).some(t=>t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
         }
         let last=previousGroupBottom;
-        const positions=g.messages.flatMap(m=>{const p=pick(anchor(m.id),'.relation-line');return p?[{id:m.id,box:bounds(p)}]:[];});
+        const positions=g.messages.flatMap(m=>{const p=edgePath(m.id);return p?[{id:m.id,box:bounds(p)}]:[];});
         for(const m of positions) {
           if(m.box.y<=previousGroupBottom || (g.order==='sequential' && m.box.y<=last))errors.push({kind:'wrong-message-order',group:gi+1,message:m.id});
           if(header && m.box.y<=bounds(header).y+bounds(header).height)errors.push({kind:'message-before-group',group:gi+1,message:m.id});
@@ -116,7 +124,7 @@ async function inspectDiagram(svg, diagram, prose) {
     }
     for(let i=0;i<texts.length;i++)for(let j=i+1;j<texts.length;j++)if(intersects(texts[i].box,texts[j].box))errors.push({kind:'text-overlap',a:texts[i],b:texts[j]});
     for(const p of [...root.querySelectorAll('.relation-line,.participant-box')].filter(rendered)) {
-      const length=p.getTotalLength();const d=p.getAttribute('d');const element=p.closest('a')?.id;
+      const length=p.getTotalLength();const d=p.getAttribute('d');const element=p.closest('a')?.id || p.closest('a')?.dataset.element;
       const hits=new Set();
       // Sampling <= .75 SVG px is finer than stroke width; no layout-side oracle.
       for(let at=0;at<=length;at+=.75) {
@@ -132,7 +140,7 @@ async function inspectDiagram(svg, diagram, prose) {
     // Crossings alone are legal. A long shared run between unrelated
     // directed connections is an ambiguous merged route, even with good labels.
     const runs=new Map();const merges=new Map();
-    for(const edge of edges){const p=pick(anchor(edge.id),'.relation-line');if(!p)continue;
+    for(const edge of edges){const p=edgePath(edge.id);if(!p)continue;
       const seen=new Set();
       for(let at=0;at<=p.getTotalLength();at+=1.5){const q=point(p,p.getPointAtLength(at));seen.add(Math.round(q.x/2)+','+Math.round(q.y/2));}
       for(const cell of seen){const previous=runs.get(cell)||[];

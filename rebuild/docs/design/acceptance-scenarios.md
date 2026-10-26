@@ -1367,6 +1367,12 @@ notification, waiter reply and ID-request completion must remain distinguishable
 without reading code. Source-first verification follows as a separate assessment;
 implementer observation is dependent and missing human feedback remains unobserved.
 
+For long-view refinements, use the Reader's context-recovery tasks at upper,
+middle/lower and reverse-scroll positions. The active message's strict/par/opt
+scope and each state's owner must remain locally readable across figure/group
+boundaries and exact code return, including static/no-JS reading. Repeated context
+is presentation of admitted identity, not a new message or execution stage.
+
 Independent Work publications add these direct checks to scenario N: a record-grounded
 name/summary survives expiry or deletion of an article-only Source across CLI/MCP,
 Overview/catalog/detail, generated documents and script-free snapshot. A genuinely

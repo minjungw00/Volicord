@@ -1311,8 +1311,23 @@ preserve the ordinary initial render before selections or Source inspection.
 `diagram_geometry.cjs` verifies exact source/target annotations for every sequence
 message. The emitted layout fixtures include long guards/self-calls and a separately
 labelled synthetic two-export task with repeated worker names; these are technical
-controls, not new real Works or independent comprehension evidence. Current Product
-capacity is 53,248 response / 163,840 retained bytes; preparation, raw input, Source,
+controls, not new real Works or independent comprehension evidence.
+
+The diagram driver additionally accepts `context_reading: true`: after ordinary
+entry and before any selection, `diagram_context.cjs` uses normal wheel scrolling
+to inspect upper/middle/lower elements in both directions and preserves screens
+and exact local scope. Message reminders must match their own strict/par/opt
+group; state nodes/transitions must retain their own owner. The geometry driver
+rejects previous-group reminders and foreign owners in synthetic stress controls.
+Code-return checks compare visible wording and its screen position as well as
+focus, canvas and page offsets. These are dependent technical observations.
+Native fragment entries follow normal scrolling and verify visible local wording.
+Use `route_aliases: true` for actual narrow pointer-route → claim/code/return checks.
+Per-case `widths` may refine the configured matrix: retain every figure in the
+declared corpus, and separately cover all five Reader widths and mixed UI/content
+locales with the affected sequence/flow/state journeys.
+
+Current Product capacity is 53,248 response / 163,840 retained bytes; preparation, raw input, Source,
 SVG and public transport bounds remain independent. Record expanded actual wording
 through normal publication and code-complete export as well as boundary tests.
 Pin the selected executable bytes for long consumer attempts so a later diagnostic

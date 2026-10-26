@@ -569,6 +569,13 @@ above separately requires explicit regeneration of affected summaries.
 
 ### Grounded diagram current-only format
 
+Renderer 9 adds local copies of admitted sequence scope and state ownership,
+including accessible captions. It changes presentation only: explanation v8,
+document metadata 11, preparation fingerprints and publication/Source lifetimes
+stay unchanged. Re-rendering a current publication is not new authorship or a
+conversion. No independent name/summary regeneration is needed for this display
+change; a genuine content change still requires fresh explicit production.
+
 Temporal reading renderer 7 adds endpoint references and complete guard/message
 spacing over existing v8 sequence meaning. This layout change requires no retained
 or document format revision. Work authoring instructions change article preparation

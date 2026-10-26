@@ -354,6 +354,29 @@ The connected repository overview remains the ordinary entry. A bounded detail
 scene declares its illustrative/static/reported scope and connects through its
 caption and ordinary section navigation; no hidden replacement map is acceptable.
 
+#### Context recovery while scrolling
+
+Freeze these tasks before presentation changes. At ordinary upper, middle and
+lower positions, and again in reverse, identify the message endpoints, its exact
+group's strict/parallel order and optional condition. At B settlement, the later
+A settlement and token/close boundary, distinguish what remains pending from what
+is merely attempted. For state nodes and transitions identify the owner without
+returning to the figure heading; flow branches retain their own guarded outcomes.
+Repeat after native deep-link entry, viewport changes, expansion and exact
+claim/code/return. Compare the visible activating element and surrounding meaning,
+not only equal scroll offsets. Keep the historical Work opening and state separate.
+
+Observe normal page scrolling after fonts load before selection or Source help.
+Record where the original group/owner is outside the reading viewport and whether
+local wording supplies it. Preserve correct baseline endpoints and causal meaning;
+missing context does not establish a new causal error. Include long English/Korean
+and mixed-locale labels, repeated participant IDs and guarded parallel-to-strict
+transitions as synthetic controls, never as observed execution. Local reminders
+may repeat sealed meaning without adding entities, messages or semantic stages.
+Any pinned alternative must release at its figure/group, avoid navigation/content
+and focus overlap, and retain a useful native/static counterpart. Missing isolated,
+human, assistive or native-zoom observations remain explicitly unobserved.
+
 Work 카드 개선을 이유로 저장소 전체 이해를 다시 빼지 않는다. Work가 없는 새 Project에서도 저장소의 역할·주요 책임·경계·동작을 설명할 수 있어야 한다. Work가 존재하면 저장소 설명과 해당 Work의 실제 관련 구성요소를 오갈 수 있어야 한다.
 
 저장소 설명의 핵심은 다음이다.

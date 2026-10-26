@@ -1718,7 +1718,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             .and_then(|p| p.publication_id.as_deref())
             .ok_or("managed publication")?;
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/8\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/9\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
@@ -1790,7 +1790,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/8\""));
+            .contains("data-renderer=\"volicord-static-svg/9\""));
     }
     Ok(())
 }
@@ -1949,13 +1949,44 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
-            assert!(text.contains("volicord-static-svg/8"));
+            assert!(text.contains("volicord-static-svg/9"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"
             } else {
                 "control flow"
             }));
             assert!(text.contains("calls verification"));
+            if shape == "state" {
+                let svg = text
+                    .split("<svg ")
+                    .nth(1)
+                    .ok_or("state SVG")?
+                    .split("</svg>")
+                    .next()
+                    .ok_or("state SVG end")?;
+                for id in ["admit", "verify", "dependency"] {
+                    let anchor = svg
+                        .split("<a id=\"")
+                        .skip(1)
+                        .find(|a| {
+                            a.split('"')
+                                .next()
+                                .is_some_and(|v| v.ends_with(&format!("-{id}")))
+                        })
+                        .ok_or("state element")?
+                        .split("</a>")
+                        .next()
+                        .ok_or("state element end")?;
+                    let visible = anchor
+                        .split("</title>")
+                        .nth(1)
+                        .ok_or("state visible content")?;
+                    assert!(
+                        visible.contains("State owner:"),
+                        "owner beside {id}, not only in its accessible name"
+                    );
+                }
+            }
         }
         let mut bad = r.clone();
         match &mut bad.diagrams[0].meaning {
@@ -2237,7 +2268,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
         .export_snapshot(&f.request(), &output)?;
     let html = fs::read_to_string(output)?;
-    assert!(html.contains("data-renderer=\"volicord-static-svg/8\""));
+    assert!(html.contains("data-renderer=\"volicord-static-svg/9\""));
     assert!(html.contains("&lt;image"));
     assert!(!html.contains("<image"));
     assert!(!html.contains("<script"));
@@ -2390,6 +2421,52 @@ fn diagram_ui_locale_preserves_authored_english_claims_and_publication_identity(
                     );
                     assert!(figure.contains("Admission → verification"));
                     assert!(figure.contains("acceptance"));
+                } else {
+                    for (id, expected, forbidden) in if locale == ViewerLocale::Korean {
+                        [
+                            ("invoke", "strict · 순차", "opt · 조건:"),
+                            (
+                                "answer",
+                                "par · 상대 순서 없음 · opt · 조건: acceptance",
+                                "strict · 순차",
+                            ),
+                        ]
+                    } else {
+                        [
+                            ("invoke", "strict · sequential", "opt · condition:"),
+                            (
+                                "answer",
+                                "par · no relative order · opt · condition: acceptance",
+                                "strict · sequential",
+                            ),
+                        ]
+                    } {
+                        let anchor = figure
+                            .split("<a id=\"")
+                            .skip(1)
+                            .find(|a| {
+                                a.split('"')
+                                    .next()
+                                    .is_some_and(|v| v.ends_with(&format!("-{id}")))
+                            })
+                            .ok_or("message origin")?
+                            .split("</a>")
+                            .next()
+                            .ok_or("message origin end")?;
+                        let visible = anchor.split("</title>").nth(1).ok_or("visible message")?;
+                        // Concatenate only visible SVG text content, ignoring
+                        // line wrapping. This is actual live/static production.
+                        let plain = visible
+                            .split('>')
+                            .skip(1)
+                            .filter_map(|s| s.split_once('<').map(|(t, _)| t))
+                            .collect::<String>();
+                        assert!(plain.contains(expected), "message-local scope for {id}");
+                        assert!(
+                            !plain.contains(forbidden),
+                            "another group cannot qualify {id}"
+                        );
+                    }
                 }
                 if locale == ViewerLocale::Korean {
                     assert!(figure.contains(if sequence { "호출" } else { "의존" }));

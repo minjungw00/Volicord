@@ -31,6 +31,17 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-type-control.json'),JSON.stringify(lostType.errors,null,2),{flag:'wx'});
       }
       if(f.diagram.meaning.kind==='sequence') {
+        const m=f.diagram.meaning;
+        // Local context must qualify this message, even when an earlier guard
+        // is no longer on screen. Injecting an earlier group's meaning fails.
+        const last=m.groups.at(-1).messages.at(-1);
+        const local=page.locator('svg a[id$="-'+last.id+'"] text:visible').last();
+        const saved=await local.innerHTML();
+        await local.evaluate(n=>n.textContent='par · no relative order · opt · condition: previous guard');
+        const wrongContext=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
+        assert(wrongContext.errors.some(e=>e.kind==='missing-visible-meaning'&&e.element===last.id),'a previous guard/order must fail local scope');
+        await local.evaluate((n,v)=>n.innerHTML=v,saved);
+        fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-context-control.json'),JSON.stringify(wrongContext.errors,null,2),{flag:'wx'});
         const header=await page.locator('svg text:visible').filter({hasText:f.ui_locale==='ko'?'1. par · 상대 순서 없음':'1. par · no relative order'}).elementHandle();
         assert(header,'original group header');
         const original=await header.innerHTML();
@@ -48,8 +59,18 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         await message.evaluate(n=>n.removeAttribute('transform'));
         fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-order-controls.json'),JSON.stringify({wrongGroup:wrongGroup.errors,wrongOrder:wrongOrder.errors},null,2),{flag:'wx'});
       }
+      if(f.diagram.meaning.kind==='state') {
+        const node=f.diagram.meaning.nodes[0];
+        const local=page.locator('svg a[id$="-'+node.id+'"] text:visible').last();
+        const saved=await local.innerHTML();
+        await local.evaluate(n=>n.textContent='State owner: previous figure');
+        const wrongOwner=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
+        assert(wrongOwner.errors.some(e=>e.kind==='missing-visible-meaning'&&e.element===node.id),'foreign local ownership must fail');
+        await local.evaluate((n,v)=>n.innerHTML=v,saved);
+        fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-owner-control.json'),JSON.stringify(wrongOwner.errors,null,2),{flag:'wx'});
+      }
       if(rows.length===1) {
-        const text=page.locator('svg a').first().locator('text:visible').first();
+        const text=page.locator('svg a.diagram-element').first().locator('text:visible').first();
         const old=await text.getAttribute('style');await text.evaluate(n=>n.style.display='none');
         const hidden=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
         assert(hidden.errors.some(e=>e.kind==='missing-visible-meaning'),'hidden semantic wording must fail');

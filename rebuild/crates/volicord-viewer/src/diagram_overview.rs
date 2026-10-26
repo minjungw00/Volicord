@@ -13,6 +13,7 @@ struct Layout {
     background: String,
     order: Vec<String>,
     elements: BTreeMap<String, String>,
+    routes: BTreeMap<String, String>,
 }
 fn lines(value: &str, pixels: usize) -> usize {
     words(value, pixels.max(16)).len()
@@ -147,6 +148,17 @@ fn graph(
         .first()
         .map(|first| edges.len() > 1 && edges.iter().all(|e| e.kind == first.kind))
         .unwrap_or(false);
+    // Local reminders repeat the admitted owner, never infer it from topology.
+    // They also work in static exports after the selectable owner scrolls away.
+    let owner = if let DiagramMeaning::State { owner, .. } = &d.meaning {
+        format!(
+            "{} {}",
+            diagram_ui(locale, "State owner:", "상태 소유자:"),
+            label(owner)?
+        )
+    } else {
+        String::new()
+    };
     for value in [
         uniform_nodes.then(|| {
             format!(
@@ -210,7 +222,8 @@ fn graph(
                 };
                 let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
                 let h = (24 + 20 * (lines(label(&nodes[i].label)?, tw) + lines(&kind, tw)))
-                    .max(counts[i] * 20 + 24);
+                    + 20 * lines(&owner, tw);
+                let h = h.max(counts[i] * 20 + 24);
                 let h = if nodes[i].kind == DiagramNodeKind::Branch {
                     h * 2
                 } else {
@@ -259,7 +272,8 @@ fn graph(
             let h = 24
                 + 20 * (lines(&associations[i], w - 12)
                     + lines(label(&e.label)?, w - 12)
-                    + lines(kind, w - 12))
+                    + lines(kind, w - 12)
+                    + lines(&owner, w - 12))
                 + guard.map(|v| 20 * lines(v, w - 12) + 24).unwrap_or(0);
             edge_boxes[i] = Rect { x, y, w, h };
             layout.order.push(e.id.clone());
@@ -391,6 +405,11 @@ fn graph(
             marker,
             e.kind == DiagramRelationKind::DataFlow,
         );
+        // The native fragment belongs to the readable annotation. Including
+        // a long backward route in its bounds can land a narrow reader above
+        // the actual wording. The route remains an alias to the same claim.
+        layout.routes.insert(e.id.clone(), out);
+        let mut out = String::new();
         panel(&mut out, card.x, card.y, card.w, card.h, "edge-key");
         writing(&mut out, lx, card.y + 20, &associations[i], card.w - 12);
         let py = card.y + 20 + 20 * lines(&associations[i], card.w - 12);
@@ -404,12 +423,16 @@ fn graph(
         if !kind.is_empty() {
             writing(&mut out, lx, ky, kind, card.w - 12);
         }
+        let context_y = ky + 20 * lines(kind, card.w - 12);
+        if !owner.is_empty() {
+            writing(&mut out, lx, context_y, &owner, card.w - 12);
+        }
         if let Some(guard) = &e.condition {
             let mut g = String::new();
             writing(
                 &mut g,
                 lx,
-                ky + 20 * lines(kind, card.w - 12) + 20,
+                context_y + 20 * lines(&owner, card.w - 12) + 20,
                 label(guard)?,
                 card.w - 12,
             );
@@ -442,7 +465,7 @@ fn graph(
         };
         let name = label(&node.label)?;
         let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
-        let th = 20 * (lines(name, tw) + lines(&kind, tw));
+        let th = 20 * (lines(name, tw) + lines(&kind, tw) + lines(&owner, tw));
         let top = r.y + (r.h - th) / 2 + 16;
         writing(&mut out, r.x + r.w / 2, top, name, tw);
         if !kind.is_empty() {
@@ -451,6 +474,15 @@ fn graph(
                 r.x + r.w / 2,
                 top + 20 * lines(name, tw),
                 &kind,
+                tw,
+            );
+        }
+        if !owner.is_empty() {
+            writing(
+                &mut out,
+                r.x + r.w / 2,
+                top + 20 * (lines(name, tw) + lines(&kind, tw)),
+                &owner,
                 tw,
             );
         }
@@ -609,9 +641,19 @@ fn sequence(
                 mi + 1,
                 message.kind.localized_text(locale)
             );
+            // A group ordinal alone cannot recover strict/par/opt meaning
+            // when the header is outside the reading viewport. Repeat only
+            // this message's sealed scope; never carry a previous guard forward.
+            let context = if let Some(guard) = &guard_text {
+                format!("{order} · {guard}")
+            } else {
+                order.to_owned()
+            };
+            let context = format!("{kind} · {context}");
             let association_height = 20 * lines(&association, width - 48);
-            let h =
-                20 * (lines(name, width - 48) + lines(&kind, width - 48)) + association_height + 16;
+            let h = 20 * (lines(name, width - 48) + lines(&context, width - 48))
+                + association_height
+                + 16;
             panel(&mut out, 16, y, width - 32, h, "message-label");
             writing(&mut out, width / 2, y + 20, &association, width - 48);
             writing(
@@ -625,7 +667,7 @@ fn sequence(
                 &mut out,
                 width / 2,
                 y + 20 + association_height + 20 * lines(name, width - 48),
-                &kind,
+                &context,
                 width - 48,
             );
             let baseline = y + h + 16;
@@ -695,6 +737,15 @@ pub(super) fn svg(
     let labels = elements(d).into_iter().collect::<BTreeMap<_, _>>();
     if wide.order.len() != labels.len() || wide.order != narrow.order {
         return Err("incomplete responsive elements".into());
+    }
+    for (id, route) in &wide.routes {
+        let label = labels.get(id).ok_or("missing route label")?;
+        let name =
+            super::element_caption(d, id, texts, locale) + ": " + diagram_label(label, texts)?;
+        out.push_str(&format!(
+            "<a class=\"diagram-route diagram-text-link\" data-element=\"{}-{}\" href=\"#{}\" tabindex=\"-1\" aria-label=\"{}\"><g class=\"map-wide\">{route}</g><g class=\"map-narrow\">{}</g></a>",
+            esc(ns), esc(id), esc(&target(id, label)), esc(&name), narrow.routes.get(id).ok_or("missing narrow route")?
+        ));
     }
     for id in &wide.order {
         let label = labels.get(id).ok_or("missing element label")?;

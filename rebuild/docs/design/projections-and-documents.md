@@ -2604,7 +2604,7 @@ record and all original dependencies; ordinary reads generate nothing.
 Public CLI/MCP ordinary answers and complete publication pages include the exact
 semantics and seal. Human text includes endpoints, relation types, conditions and
 explicit parallel groups. Live and self-contained offline Viewer render the same
-meaning through in-tree `volicord-static-svg/8` plus a faithful linear alternative.
+meaning through in-tree `volicord-static-svg/9` plus a faithful linear alternative.
 Layout coordinates and SVG are presentation only. Relations show their exact admitted
 wording first; numbered keys and localized relationship kinds remain secondary.
 The visible label, accessible name, text representation and selected claim retain the
@@ -2919,6 +2919,31 @@ guards have their own opaque group header and visible `opt` condition scope.
 Lifelines remain behind these bands. These are responsive presentations of
 existing v8 endpoints, order and conditions, not new timeline or containment fields.
 Message-local types remain visible after group headers scroll away.
+
+Renderer identity 9 retains those endpoint bands and adds the exact strict/par
+qualification beside each message, including only that group's opt condition.
+State nodes and transitions repeat their sealed state owner beside their wording;
+flow outcomes already retain their local guards. These static reminders support
+middle/lower reading and native deep links without a trip to the figure heading.
+They are presentation aliases, with no new anchors, canonical entities, messages,
+grouping, retained format or producer fields. Accessible element captions carry
+the same scope. The original selectable guard and owner keep their own exact
+claim/Source/return identities. No previous figure/group supplies context.
+
+This alternative uses measured local text space instead of pinning a potentially
+long participant/guard header over the reading area. It adds vertical length where
+necessary; shorter height is not its acceptance criterion. It works identically
+without JavaScript and introduces no scroll/focus handler or sticky overlap.
+Connected overview, currentness/withholding, complete text, critical code and
+existing history/expansion/return behavior keep their existing boundaries.
+
+Graph fragment origins bound the readable annotation, not the entire routed
+path. Long backward routes otherwise send native narrow-screen navigation above
+the wording. A pointer route remains a presentation alias to that exact origin
+and claim through the existing per-activation return mechanism; it adds no
+semantic identity or keyboard stop. The labelled annotation remains the accessible
+keyboard link. Both route and wording share publication invalidation. Static
+anchors reach the actual local wording without scripting or hiding the map.
 
 Renderer identity 8 additionally places outgoing graph annotations beneath their
 own source columns when their complete labels fit those columns. Full-width and
