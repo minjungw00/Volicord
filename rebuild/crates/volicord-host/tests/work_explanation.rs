@@ -1270,6 +1270,9 @@ fn explicit_equal_pair_expiry_and_semantic_limit_survive_real_storage() -> Resul
     Ok(())
 }
 fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
+    use std::time::{Duration, Instant};
+    use volicord_context::{Clock, SystemClock, TimestampMicros};
+
     let mut f = Fixture::new()?;
     let byte_range = if excerpt {
         let prefix = "# context\n".repeat(2000);
@@ -1312,7 +1315,10 @@ fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
             .as_str()
             .ok_or("analysis")?,
     )?;
-    let after = f
+    // Reading, composition and recording must finish while the Source is
+    // permitted; their setup is not a one-second performance contract. Keep
+    // a scheduling margin, then test the exact recorded UTC expiry below.
+    let after_receipt = f
         .host
         .operations()
         .observe_work_file(FileObservationRequest {
@@ -1322,9 +1328,9 @@ fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
             analysis_snapshot_id: analysis,
             path: "main.py".into(),
             before_source_id: Some(f.source),
-            retain_seconds: 1,
-        })?
-        .source_id;
+            retain_seconds: 10,
+        })?;
+    let after = after_receipt.source_id;
     let after_read = f.read(&generation, after)?;
     assert_eq!(
         after_read["observation"]["detail"]["comparison"],
@@ -1363,8 +1369,46 @@ fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
         .into_iter()
         .find(|r| r.purpose.starts_with("explanation:"))
         .ok_or("record")?;
-    assert!(retained.retained_until.is_some());
-    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let expiry = after_receipt.retained_until_unix_micros;
+    assert_eq!(
+        retained.retained_until,
+        Some(TimestampMicros::from_unix_micros(expiry)),
+        "publication retention must end with its earliest cited body"
+    );
+    let projection = f.host.operations().project_projection(f.project)?;
+    let work = projection
+        .work_history
+        .iter()
+        .find(|w| w.work_item_id == f.work)
+        .ok_or("Work")?;
+    assert_eq!(
+        work_answers(work, "en", FixedLocale::English).explanation_state,
+        ExplanationState::Current,
+        "the permitted publication must be readable before expiry"
+    );
+    assert!(SystemClock.now()?.as_unix_micros() < expiry);
+    // Recording consumes its generation. Prepare this independent inspection
+    // while the Source is valid, then require a fresh lifetime check on use.
+    let inspection = f.generate()?;
+    f.read(&inspection, after)?;
+    let wait_limit = Instant::now() + Duration::from_secs(20);
+    while SystemClock.now()?.as_unix_micros() < expiry && Instant::now() < wait_limit {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        SystemClock.now()?.as_unix_micros() >= expiry,
+        "expiry assertions require the original UTC deadline to have elapsed"
+    );
+    let mut read_args = f.args("read_source");
+    read_args["generation_id"] = inspection["generation_id"].clone();
+    read_args["source_id"] = json!(after.to_string());
+    let expired = call(&mut f.host, read_args);
+    assert_eq!(expired["result"]["isError"], true);
+    assert_eq!(
+        expired["result"]["structuredContent"]["details"]["reason"],
+        "expired",
+        "{expired}"
+    );
     let projection = f.host.operations().project_projection(f.project)?;
     let work = projection
         .work_history
@@ -1372,7 +1416,7 @@ fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
         .find(|w| w.work_item_id == f.work)
         .ok_or("Work")?;
     let reading = work_answers(work, "en", FixedLocale::English);
-    assert_ne!(reading.explanation_state, ExplanationState::Current);
+    assert_eq!(reading.explanation_state, ExplanationState::Stale);
     assert!(reading.provenance.is_none());
     Ok(())
 }

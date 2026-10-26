@@ -3646,6 +3646,16 @@ older/newer rejection, failed-record nonmutation, exact Source reading, offline 
 and text, and Source deletion withholding the complete figure. Shared paragraph
 traversal preserves existing correction/expiry/withholding checks.
 
+The host's whole-file/excerpt paired-Source publication control must establish a
+Current publication before testing expiry, and bind its retention to the earliest
+cited body's recorded deadline. Its ten-second fixture lifetime provides setup
+margin for read/compose/record under parallel workspace tests; it is neither a
+Product latency guarantee nor a changed qualification ceiling. Observe the actual
+UTC deadline with a bounded monotonic wait before asserting the public `expired`
+response, Stale projection and absent prose provenance. The separate minimum
+one-second Source-body refusal control remains required. Preserve an early expiry
+failure as a failed attempt; a later pass alone cannot establish its cause.
+
 Preserve fresh real-output runtime, author inputs, receipts, complete CLI/MCP public
 bytes, renderer/executable/source hashes, exports and browser observations under a
 new protected ignored attempt. Existing originals and failed attempts stay immutable.
