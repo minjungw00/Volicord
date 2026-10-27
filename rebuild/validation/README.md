@@ -1597,3 +1597,11 @@ notice. It supplies no corrected state through script, modified HTML or request
 interception. Run the same driver against the preserved failing export: applicable
 live-no-JS should be assessed separately from the native export failure. This is
 technical navigation evidence, not an assistive/human verdict.
+
+Run the snapshot boundary consumer on actual exports containing admitted concept,
+component, flow, sequence and state figures, not only the small markup control.
+It rejects hidden live figure buttons as well as visible/unknown active controls;
+only the two named inert native shell close buttons are exempt. Static figure
+rendering must omit the live toolbar, retaining exact maps, captions, native
+claim/code/return links and complete permitted Source bytes. The direct diagram
+publication test checks both live controls and their absence from static exports.

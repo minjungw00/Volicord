@@ -1748,6 +1748,14 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             .as_ref()
             .and_then(|p| p.publication_id.as_deref())
             .ok_or("managed publication")?;
+        assert!(live.contains("class=\"diagram-controls\""));
+        assert!(!offline.contains("class=\"diagram-controls\""));
+        assert!(!offline.contains("class=\"figure-bar\""));
+        assert_eq!(
+            offline.matches("<button").count(),
+            2,
+            "only the inert native shell close controls remain in a script-free export"
+        );
         for html in [&live, &offline] {
             assert!(html.contains("data-renderer=\"volicord-static-svg/12\""));
             assert!(html.contains("data-semantic-fingerprint"));
@@ -1815,7 +1823,6 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         }
         assert!(offline.contains("class=\"diagram-claim\""));
         assert!(offline.contains("diagram-return-index"));
-        assert!(offline.contains("class=\"diagram-controls\" hidden"));
         assert!(offline.contains("Inspect calls verification"));
         assert!(offline.contains(if sequence {
             "guard:2-claim"

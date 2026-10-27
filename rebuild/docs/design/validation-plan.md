@@ -4166,3 +4166,11 @@ the browser checks their actual native behavior. Update the snapshot-navigation
 consumer only for the explicit current-page annotation, preserving the exact three
 destination names, inactive-control/retired-route barriers and negative controls.
 No official V11/aggregate, scripted correction or human/assistive verdict follows.
+
+The protected snapshot consumer must also inspect full actual admitted-figure
+exports. A small no-figure positive cannot reveal hidden live toolbars. Keep its
+active-control guard strict: reject hidden diagram buttons while retaining only
+the two explicit inert shell-close exceptions. Exercise live controls and static
+absence through normal diagram publication, including all authored article layers,
+then recheck real exports, unique links, complete code and native return. Omission
+of inert live-only markup changes neither packaging nor admitted meaning.

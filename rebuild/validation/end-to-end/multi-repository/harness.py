@@ -589,10 +589,11 @@ def assert_viewer_reader_contract():
             positive.replace('</body>','<form></form></body>'),positive.replace("a"*64,"b"*64),
             positive.replace('</body>','<section id="works"></section></body>'),
             positive.replace('type="button" hidden','type="button"'),
-            positive.replace('class="rail-close"','class="unrelated"')]:
+            positive.replace('class="rail-close"','class="unrelated"'),
+            positive.replace('</body>','<div class="diagram-controls" hidden><button type="button" data-diagram-action="expand">Expand</button></div></body>')]:
             snapshot.write_text(mutation)
             assert viewer_project_understanding_evidence(snapshot,basis)["status"]=="failed"
-    print("Viewer reader consumer: positive and 9 independent negative controls passed")
+    print("Viewer reader consumer: positive and 10 independent negative controls passed")
 
 
 def cli_json(

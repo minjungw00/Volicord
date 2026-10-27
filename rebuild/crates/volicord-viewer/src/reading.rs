@@ -627,6 +627,7 @@ fn render_diagrams(
     r: &ViewerRequest,
     answers: &ReaderAnswers<'_>,
     index: usize,
+    snapshot: bool,
 ) {
     let texts = answers
         .prose
@@ -658,7 +659,9 @@ fn render_diagrams(
             },
         }
         visual.push_str("</div>");
-        html.push_str(&format!("<div class=\"figure-bar\">{controls}</div>"));
+        if !snapshot {
+            html.push_str(&format!("<div class=\"figure-bar\">{controls}</div>"));
+        }
         html.push_str(&visual);
         let caption_open = if ordinal == 0 && answers.prose[index].question == "Narrative" {
             format!("<div class=\"unit diagram-caption\" id=\"{}\" tabindex=\"-1\"><p class=\"unit-text\" data-question=\"Narrative\" lang=\"{}\" data-content-language=\"{}\">",reader_claim_anchor(answers,index),escape(&content_language_tag(&answers.language)),escape(&answers.language))
@@ -965,6 +968,7 @@ fn render_article_layer(
     r: &ViewerRequest,
     answers: &ReaderAnswers<'_>,
     layer: volicord_projections::ArticleLayer,
+    snapshot: bool,
 ) {
     for section in answers.sections.iter().filter(|s| s.layer == layer) {
         html.push_str("<section class=\"article-section\">");
@@ -993,7 +997,7 @@ fn render_article_layer(
             {
                 reader_unit(html, r, answers, index);
             }
-            render_diagrams(html, r, answers, index);
+            render_diagrams(html, r, answers, index, snapshot);
             if answer.question == "Comparison" {
                 html.push_str("</div></div>");
             }
@@ -1225,6 +1229,7 @@ fn render_document_body(
         r,
         answers,
         volicord_projections::ArticleLayer::Article,
+        snapshot,
     );
     html.push_str("</div>");
     if let Some(d) = decision {
@@ -1232,7 +1237,13 @@ fn render_document_body(
     }
     if let Some(work) = work {
         super::work_timeline::render(html, r, &document_anchor(answers, "timeline"), work);
-        render_verification(html, r, answers, &work.reading.verification_report);
+        render_verification(
+            html,
+            r,
+            answers,
+            &work.reading.verification_report,
+            snapshot,
+        );
     } else if has_verification {
         html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary>",document_anchor(answers,"verification"),text(r.locale,"Verification","검증")));
         render_article_layer(
@@ -1240,12 +1251,19 @@ fn render_document_body(
             r,
             answers,
             volicord_projections::ArticleLayer::Verification,
+            snapshot,
         );
         html.push_str("</details>");
     }
     if has_limits {
         html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><aside class=\"guard\"><h2>{}</h2>",document_anchor(answers,"limits"),answer_title("Limits",r.locale)));
-        render_article_layer(html, r, answers, volicord_projections::ArticleLayer::Limits);
+        render_article_layer(
+            html,
+            r,
+            answers,
+            volicord_projections::ArticleLayer::Limits,
+            snapshot,
+        );
         for fact in answers.facts.iter().filter(|a| {
             matches!(
                 a.question.as_str(),

@@ -2757,6 +2757,9 @@ list remain available; initial framing is presentation only.
 Self-contained offline exports remain script-free. Figure expansion, scale controls
 and automatic initial framing are live enhancements; static figures retain native
 scrolling and complete relationship, claim, citation and return links.
+Static exports omit the live figure-control markup itself, including controls
+for figures in verification/limits layers. Hidden live buttons are not offline
+capabilities. The two inert native shell close controls retain their separate role.
 
 ### Complete critical visual evidence consumption
 
