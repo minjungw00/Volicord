@@ -24,6 +24,11 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
       const legends=page.locator('svg text:visible').filter({hasText:/^(All nodes:|All relations:|모든 노드:|모든 관계:)/});
       if(await legends.count()) {
         const legend=await legends.first().elementHandle();
+        await legend.evaluate(n=>n.style.fontSize='16px');
+        const promotedType=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
+        assert(promotedType.errors.some(e=>e.kind==='type-hierarchy'),'a type key at node-label size must fail');
+        await legend.evaluate(n=>n.style.removeProperty('font-size'));
+        fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-type-hierarchy-control.json'),JSON.stringify(promotedType.errors,null,2),{flag:'wx'});
         await legend.evaluate(n=>n.style.visibility='hidden');
         const lostType=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
         assert(lostType.errors.some(e=>e.kind==='missing-visible-type'),'a hidden common key must not erase relation types');

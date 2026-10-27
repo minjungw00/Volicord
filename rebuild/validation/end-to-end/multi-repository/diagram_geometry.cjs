@@ -57,6 +57,7 @@ async function inspectDiagram(svg, diagram, prose) {
       for(const [items,prefix] of [[nodes,ko?'모든 노드:':'All nodes:'],[edges,ko?'모든 관계:':'All relations:']]) {
         const uniform=items.length && items.every(n=>n.kind===items[0].kind);
         const legend=uniform && visibleTexts(root).includes(prefix+' '+kindText(items[0].kind));
+        if(legend){const key=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===prefix+' '+kindText(items[0].kind));if(parseFloat(getComputedStyle(key).fontSize)!==12)errors.push({kind:'type-hierarchy',text:key.textContent,fontSize:getComputedStyle(key).fontSize});}
         for(const item of items) if(!legend && !visibleTexts(anchor(item.id)).some(t=>t===kindText(item.kind)||t.startsWith(kindText(item.kind)+' [')))errors.push({kind:'missing-visible-type',element:item.id});
       }
     }

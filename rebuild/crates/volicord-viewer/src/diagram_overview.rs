@@ -181,6 +181,9 @@ fn graph(
     .into_iter()
     .flatten()
     {
+        layout
+            .background
+            .push_str("<g class=\"diagram-type-key diagram-node-kind\">");
         writing(
             &mut layout.background,
             width / 2,
@@ -188,6 +191,7 @@ fn graph(
             &value,
             width - 32,
         );
+        layout.background.push_str("</g>");
         y += 24 * lines(&value, width - 32) + 12;
     }
     // State ownership retains its own selectable origin after the shared keys.

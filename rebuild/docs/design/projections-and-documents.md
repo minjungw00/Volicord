@@ -2608,7 +2608,7 @@ record and all original dependencies; ordinary reads generate nothing.
 Public CLI/MCP ordinary answers and complete publication pages include the exact
 semantics and seal. Human text includes endpoints, relation types, conditions and
 explicit parallel groups. Live and self-contained offline Viewer render the same
-meaning through in-tree `volicord-static-svg/10` plus a faithful linear alternative.
+meaning through in-tree `volicord-static-svg/11` plus a faithful linear alternative.
 Layout coordinates and SVG are presentation only. Relations show their exact admitted
 wording first; numbered keys and localized relationship kinds remain secondary.
 The visible label, accessible name, text representation and selected claim retain the
@@ -3052,7 +3052,10 @@ before resolving the existing exact citation endpoint. Native live/export reads 
 the same primary return directly. Deletion removes these aliases with their owning
 publication. These are ephemeral rendering identities, not new authored meaning.
 
-Current local SVG presentation is `volicord-static-svg/10`. The adopted Reader
+Current local SVG presentation is `volicord-static-svg/11`. Homogeneous node/edge
+type keys use the same quiet 12px type hierarchy as attached types, while node
+names stay 16px and complete relation wording stays 13px. These keys retain their
+exact admitted types and do not replace predicates, names or directions. The adopted Reader
 replaces the earlier boxed endpoint-repeat annotations with connected, unboxed
 complete edge wording and attached quiet types. Each routed edge is checked against
 its actual admitted endpoint boxes; complete endpoint/type/guard identity remains
@@ -3076,7 +3079,7 @@ New exports still recheck availability under the mutation lock and omit expired 
 
 | Requirement | Maintained responsibility | Direct controls |
 | --- | --- | --- |
-| Normal document/figure/claim/complete code/visible return | shared Reader, SVG 10, exact citation endpoint | `grounded_diagrams_browser.cjs` document-reader mode and `citation_reading` |
+| Normal document/figure/claim/complete code/visible return | shared Reader, SVG 11, exact citation endpoint | `grounded_diagrams_browser.cjs` document-reader mode and `citation_reading` |
 | Complete concept/component/flow/sequence/state semantics and hostile/varied inputs | admitted v8 diagrams / local renderer | Viewer diagram unit tests, `citation_reading`, glyph/path geometry controls |
 | Same publication after idle expiry/change, valid other ranges and no hidden old body | typed availability / original deadline / exact Source authority | `retained_reading_browser.cjs`, `citation_reading`, ordinary CLI/MCP and native exports |
 | Existing and new normal publications through cleanup/restart | Privacy lifetime and retained selection | `retained_originals` frozen original/source-coupled and independent-lifetime manifests |
