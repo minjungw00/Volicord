@@ -3044,6 +3044,14 @@ canonical schema, admission, fingerprint or generated-metadata revision.
 
 ### Grounded reader presentation and original body deadlines
 
+Diagram evidence links carry a native, publication-scoped origin fragment. Its
+metadata binds one admitted element/claim to its exact unit/citation and primary
+return, including alternate covering ranges and shared-body aliases. Only metadata
+is repeated; original code stays deduplicated. Scripted reads validate that binding
+before resolving the existing exact citation endpoint. Native live/export reads use
+the same primary return directly. Deletion removes these aliases with their owning
+publication. These are ephemeral rendering identities, not new authored meaning.
+
 Current local SVG presentation is `volicord-static-svg/10`. The adopted Reader
 replaces the earlier boxed endpoint-repeat annotations with connected, unboxed
 complete edge wording and attached quiet types. Each routed edge is checked against

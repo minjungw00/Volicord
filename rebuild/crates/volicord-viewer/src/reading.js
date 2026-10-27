@@ -73,18 +73,21 @@
   // A deep Source fragment carries its exact originating diagram claim. The
   // native href remains script-free; only JS adds this bounded return selector.
   function fragment() {
-    const [id, origin, extra] = location.hash.slice(1).split('!');
+    const [id, encodedOrigin, extra] = location.hash.slice(1).split('!');
+    let origin=encodedOrigin;
     let target = document.getElementById(id);
-    if(target?.matches('.shared-source-target')){
+    if(target?.matches('.shared-source-target,.source-origin-target')){
+      const nativeOrigin=target.dataset.origin;
       const selectedPoint=document.getElementById(target.dataset.selectedPoint);
       if(!selectedPoint?.matches('.source-point')||selectedPoint.dataset.readerPublication!==target.closest('.source-point')?.dataset.readerPublication)return {target:null};
+      if(nativeOrigin){if(origin&&origin!==nativeOrigin)return {target:null};origin=nativeOrigin;}
       target=selectedPoint;
     }
     if (extra !== undefined) return {target:null};
     if (origin !== undefined) {
       const claim = document.getElementById(origin);
       if (!target?.matches('.source-point') || !claim?.matches('.diagram-claim') ||
-          ![...claim.querySelectorAll('a.evidence-link')].some(a=>a.getAttribute('href')==='#'+id)) return {target:null};
+          ![...claim.querySelectorAll('a.evidence-link')].some(a=>a.getAttribute('href')==='#'+id||a.getAttribute('href')+'-shared-code'==='#'+id)) return {target:null};
     }
     return {target, origin};
   }
@@ -554,8 +557,8 @@
     if(range&&plainLink){
       event.preventDefault();range.closest('.range-selector')?.removeAttribute('open');
       const claim=fragment().origin;const scope=claim&&document.getElementById(claim);
-      const bound=scope&&[...scope.querySelectorAll('a.evidence-link')].some(a=>a.getAttribute('href')===range.getAttribute('href'));
-      navigate(range.getAttribute('href')+(bound?'!'+claim:''));
+      const bound=scope&&[...scope.querySelectorAll('a.evidence-link')].find(a=>document.getElementById(a.hash.slice(1))?.dataset.selectedPoint===range.hash.slice(1)||a.getAttribute('href')===range.getAttribute('href'));
+      navigate((bound?bound.getAttribute('href'):range.getAttribute('href'))+(bound?'!'+claim:''));
     }
     const codeReturn=event.target.closest('.source-point a.return');
     if (codeReturn && plainLink) {

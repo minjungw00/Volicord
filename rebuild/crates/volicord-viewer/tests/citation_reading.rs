@@ -1754,6 +1754,34 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
             assert!(!html.contains("<foreignObject"));
+            // The primary native return owns the actual selected element. An
+            // optional index or scripted Back must not repair this journey.
+            let origins = html
+                .split("<section class=\"source-origin-target\"")
+                .skip(1)
+                .collect::<Vec<_>>();
+            assert!(!origins.is_empty());
+            for origin in origins {
+                let tag = origin.split('>').next().ok_or("origin tag")?;
+                let claim = tag
+                    .split("data-origin=\"")
+                    .nth(1)
+                    .and_then(|s| s.split('"').next())
+                    .ok_or("native claim")?;
+                let element = claim.strip_suffix("-claim").ok_or("diagram element")?;
+                let point = tag
+                    .split("data-selected-point=\"")
+                    .nth(1)
+                    .and_then(|s| s.split('"').next())
+                    .ok_or("native citation")?;
+                assert!(html.contains(&format!("class=\"source-point\" id=\"{point}\"")));
+                assert!(origin
+                    .split("</section>")
+                    .next()
+                    .ok_or("origin body")?
+                    .contains(&format!("class=\"return\" href=\"#{element}\"")));
+                assert_eq!(html.matches(&format!(" id=\"{element}\"")).count(), 1);
+            }
             // One failed citation invalidates every dependent region, including
             // closed evidence and other Source windows. The browser must have
             // exact managed identity for all these independently rendered copies.

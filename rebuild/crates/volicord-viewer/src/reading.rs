@@ -375,6 +375,9 @@ fn reader_claim_anchor(answers: &ReaderAnswers<'_>, index: usize) -> String {
 fn source_point_anchor(answers: &ReaderAnswers<'_>, unit: usize, citation: usize) -> String {
     format!("{}-c{}", reader_claim_anchor(answers, unit), citation + 1)
 }
+fn diagram_source_anchor(claim: &str, citation: usize) -> String {
+    format!("{claim}-source-c{}", citation + 1)
+}
 fn reader_citations(
     html: &mut String,
     r: &ViewerRequest,
@@ -737,7 +740,7 @@ fn render_diagrams(
                     other_ranges = true;
                 }
                 let purpose = format!("{} {}", text(r.locale, "Inspect", "코드 확인:"), selected);
-                html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{claim}\" href=\"#{}\" aria-label=\"{} · {}:{}–{}\">{} ↗</a><small class=\"diagram-code-range\">{}:{}–{}</small>",source_point_anchor(answers,label.unit,n),escape(&purpose),escape(&c.locator),c.start_line,c.end_line,escape(&purpose),escape(&c.locator),c.start_line,c.end_line));
+                html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{claim}\" href=\"#{}\" aria-label=\"{} · {}:{}–{}\">{} ↗</a><small class=\"diagram-code-range\">{}:{}–{}</small>",diagram_source_anchor(&claim,n),escape(&purpose),escape(&c.locator),c.start_line,c.end_line,escape(&purpose),escape(&c.locator),c.start_line,c.end_line));
                 source_window_omission(html, r, answers, c);
             }
             if other_ranges {
@@ -877,6 +880,83 @@ fn diagram_source_returns(
     }
     if !links.is_empty() {
         html.push_str(&format!("<details class=\"diagram-return-index\"><summary>{}</summary><ul>{links}</ul></details>",text(r.locale,"Diagram return positions · browser Back also returns to the selected claim","도식 복귀 위치 · 브라우저 뒤로 가기로 선택한 설명에 돌아갈 수도 있습니다")));
+    }
+}
+
+/// Native origins share the exact citation body, never the originating element.
+/// These bounded fragment targets also work in a script-free exported file.
+fn diagram_source_origins(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    unit: usize,
+    citation: usize,
+    shared: bool,
+    payload_aliases: bool,
+) {
+    let texts = answers
+        .prose
+        .iter()
+        .map(|p| p.text.as_str())
+        .collect::<Vec<_>>();
+    let c = &answers.prose[unit].citations[citation];
+    let point = source_point_anchor(answers, unit, citation);
+    let language = content_language_tag(
+        answers
+            .provenance
+            .as_ref()
+            .map_or("", |p| p.language.as_str()),
+    );
+    for d in &answers.diagrams {
+        let ns = diagram_namespace(answers, d);
+        for (id, label) in crate::diagram::elements(d).into_iter().filter(|(_, l)| {
+            l.unit == unit && c.claim_start_byte <= l.start_byte && c.claim_end_byte >= l.end_byte
+        }) {
+            let element = format!("{ns}-{id}");
+            let claim = format!("{element}-claim");
+            let alias = diagram_source_anchor(&claim, citation);
+            if payload_aliases {
+                html.push_str(&format!("<section class=\"shared-source-target\" id=\"{alias}-shared-code\" data-selected-point=\"{point}\" data-origin=\"{claim}\" data-source-id=\"{}\" data-range-sha256=\"{}\" tabindex=\"-1\"><p><a class=\"shared-source-return\" href=\"#{alias}\">← {}</a></p></section>",escape(&c.source_id),escape(&c.range_sha256),text(r.locale,"Return to selected Source claim","선택한 Source 주장으로 돌아가기")));
+                continue;
+            }
+            let caption = crate::diagram::element_caption(d, &id, &texts, r.locale.fixed());
+            let wording = volicord_projections::diagram_label(label, &texts).unwrap_or("");
+            html.push_str(&format!("<section class=\"source-origin-target\" id=\"{alias}\" data-selected-point=\"{point}\" data-origin=\"{claim}\" tabindex=\"-1\"><div class=\"point-bar\"><a class=\"return\" href=\"#{element}\">← {}</a></div><h2 class=\"evidence-claim\" lang=\"{language}\">{}: {}</h2>",text(r.locale,"Return to explanation","설명으로 돌아가기"),escape(&caption),escape(wording)));
+            let covering = answers.prose[unit]
+                .citations
+                .iter()
+                .enumerate()
+                .filter(|(_, other)| {
+                    other.claim_start_byte <= label.start_byte
+                        && other.claim_end_byte >= label.end_byte
+                })
+                .collect::<Vec<_>>();
+            if covering.len() > 1 {
+                html.push_str(&format!("<details class=\"native-range-selector\"><summary>{} · {}</summary><nav class=\"native-range-links\">",text(r.locale,"Choose evidence range","근거 범위 선택"),covering.len()));
+                for (n, other) in covering {
+                    html.push_str(&format!(
+                        "<a href=\"#{}\"{}>{}:{}–{}</a>",
+                        diagram_source_anchor(&claim, n),
+                        if n == citation {
+                            " aria-current=\"true\""
+                        } else {
+                            ""
+                        },
+                        escape(&other.locator),
+                        other.start_line,
+                        other.end_line
+                    ));
+                }
+                html.push_str("</nav></details>");
+            }
+            if shared {
+                html.push_str(&format!("<p class=\"source-code-reference\"><a href=\"#{alias}-shared-code\" data-range-sha256=\"{}\">{} ↗</a></p>",escape(&c.range_sha256),text(r.locale,"Read shared complete code for this exact Source range","이 정확한 Source 범위의 공유 전체 코드 읽기")));
+            }
+            html.push_str("</section>");
+            // :target keeps the selected strip visible while reading its code,
+            // and after the native primary return reaches the actual element.
+            html.push_str(&format!("<style>body:not([data-reader-enhanced=true]):has([id=\"{alias}\"]:target,[id=\"{alias}-shared-code\"]:target,[id=\"{element}\"]:target) [id=\"{claim}\"]{{display:block}}</style>"));
+        }
     }
 }
 
@@ -1975,7 +2055,18 @@ fn render_source_excerpts(
                 .text
                 .get(c.claim_start_byte..c.claim_end_byte)
                 .unwrap_or("");
+            let range = source_excerpt_anchor(answers, c);
+            let first_payload = seen.insert(range.clone());
             html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" tabindex=\"-1\"{}><div class=\"point-bar\"><a class=\"return\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><h2 class=\"evidence-claim\" lang=\"{}\">{}</h2><h3 class=\"source-path\">{}:{}–{}</h3>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),publication_scope(answers),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),text(r.locale,"Evidence for this explanation","이 설명을 확인하는 근거"),escape(&content_language_tag(&provenance.language)),escape(claim),escape(&c.locator),c.start_line,c.end_line));
+            diagram_source_origins(
+                html,
+                r,
+                answers,
+                index,
+                n,
+                !first_payload && excerpt.is_some(),
+                false,
+            );
             html.push_str(&format!(
                 "<p class=\"evidence-correspondence\" data-evidence-comparison>{}</p>",
                 comparison_label(
@@ -2016,8 +2107,6 @@ fn render_source_excerpts(
                 }
             }
             html.push_str(&format!("<div data-statement-role=\"generated-interpretation\" data-question=\"{}\" data-paragraph=\"{}\" data-claim-start=\"{}\" data-claim-end=\"{}\"></div>",escape(&answer.question),index+1,c.claim_start_byte,c.claim_end_byte));
-            let range = source_excerpt_anchor(answers, c);
-            let first_payload = seen.insert(range.clone());
             if first_payload {
                 html.push_str(&format!("<span id=\"{}\"></span>", escape(&range)));
             }
@@ -2070,6 +2159,7 @@ fn render_source_excerpts(
                             }
                             let point = source_point_anchor(answers, u, j);
                             html.push_str(&format!("<section class=\"shared-source-target\" id=\"{point}-shared-code\" data-selected-point=\"{point}\" data-source-id=\"{}\" data-range-sha256=\"{}\" tabindex=\"-1\"><p>{} <a class=\"shared-source-return\" href=\"#{point}\">← {}</a></p></section>",escape(&other.source_id),escape(&other.range_sha256),text(r.locale,"Shared complete code. The selected claim and provenance stay at its original reading point.","공유하는 전체 코드입니다. 선택한 주장과 provenance는 원래 읽기 위치에 남습니다."),text(r.locale,"Return to selected Source claim","선택한 Source 주장으로 돌아가기")));
+                            diagram_source_origins(html, r, answers, u, j, false, true);
                         }
                     }
                     let syntax = crate::source_highlight::language(

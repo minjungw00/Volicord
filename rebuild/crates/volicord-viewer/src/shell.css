@@ -1,8 +1,8 @@
 /* Adopted project reader. Native links/disclosures remain usable in exports. */
-:root {color-scheme:light;--paper:#fff;--surface:#fff;--canvas:#f7fbff;--rail:#f5f9fd;--soft:#edf5fb;--ink:#152e40;--body:#334c5d;--muted:#627b8e;--subtle:#7f95a6;--line:#dce7ef;--accent:#087bb8;--strong:#075d91;--wash:#e8f5fe;--focus:#0284c7;--code:#17232e;--measure:100%;--rail-width:232px;--mobile-header:0px;font:14px/1.85 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR","Malgun Gothic",sans-serif;background:var(--paper);color:var(--ink)}
+:root {color-scheme:light;--paper:#fff;--surface:#fff;--canvas:#f7fbff;--rail:#f5f9fd;--soft:#edf5fb;--ink:#152e40;--body:#334c5d;--muted:#627b8e;--subtle:#7f95a6;--line:#dce7ef;--accent:#087bb8;--strong:#075d91;--wash:#e8f5fe;--focus:#0284c7;--code:#17232e;--measure:100%;--rail-width:232px;--mobile-header:0px;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK KR",NanumGothic,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font:14px/1.85 var(--sans);background:var(--paper);color:var(--ink)}
 body {background:var(--paper);color:var(--ink)}
 pre,code {font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
-h1 {font-size:35px;line-height:1.45;letter-spacing:-1.2px;font-weight:730;text-wrap:initial}
+h1 {font-size:35px;line-height:1.4;letter-spacing:-.05em;font-weight:710;text-wrap:initial}
 h2 {font-size:22px;line-height:1.5;letter-spacing:-.65px}
 h3 {font-size:16px;line-height:1.6}
 button,input,select {font:inherit}
@@ -59,7 +59,7 @@ main.shell.viewer-shell {box-sizing:border-box;margin:0 0 0 var(--rail-width);wi
 .breadcrumb {padding-top:30px;margin:0 0 17px;font-size:11px;line-height:1.8;color:var(--muted)}
 .breadcrumb>a {border:0;background:none;padding:0;min-height:0;font-size:11px;font-weight:400;color:var(--muted);justify-content:start}
 .doc-head .eyebrow {font-size:10px;margin-bottom:10px;color:var(--muted);letter-spacing:.02em;font-weight:500}
-.doc-head .lead {font-size:15px;line-height:1.95;margin-top:23px;color:var(--body);max-width:690px}
+.doc-head .lead {font-size:15px;line-height:1.95;margin-top:23px;color:#50606d;max-width:690px}
 .unit-text {font-size:14px;line-height:1.95;color:var(--body)}
 .doc .unit h2.unit-text {font-size:22px;line-height:1.5;color:var(--ink);font-weight:700;letter-spacing:-.65px}
 .doc .unit h3.unit-text {font-size:18px;color:var(--ink)}
@@ -140,7 +140,7 @@ main.shell.viewer-shell {box-sizing:border-box;margin:0 0 0 var(--rail-width);wi
 @media(max-width:760px) {
  main.shell.viewer-shell {padding:26px 18px 42px}
  .viewer-shell:has(>.snapshot-page>.doc) {padding-top:0}
- h1 {font-size:30px;line-height:1.5;letter-spacing:-1px}
+ h1 {font-size:30px;line-height:1.45;letter-spacing:-.055em}
  .index-title {font-size:27px}
  .doc-head .lead {font-size:13px;margin-top:20px;line-height:1.95}
  .doc .unit h2.unit-text {font-size:20px}

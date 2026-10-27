@@ -860,7 +860,10 @@ original evidence. A reference's fictional records never enter the Runtime.
 Live node/relation/message/guard selection opens its own exact publication-bound
 claim and first covering Source. The strip remains selected. Range selection comes
 before complete code; the original claim/provenance is deliberately expandable.
-Native/no-JS links preserve the same claim -> evidence -> return meanings. At >=1200px
+Native/no-JS links preserve the same claim -> evidence -> return meanings. The primary
+return from diagram evidence reaches the exact originating element, including after
+choosing another covering range or reading a shared code payload. A secondary return
+index or test-driven history navigation cannot substitute for that action. At >=1200px
 code is a 464px nonmodal right panel; 761–1199px uses a modal sheet up to 540px; <=760px
 is full screen. Drawer, contents, figure expansion and evidence do not leave competing
 modal/inert states. Escape/close, history, native modified links, expansion and resize

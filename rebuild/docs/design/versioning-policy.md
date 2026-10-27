@@ -665,6 +665,11 @@ headings/short labels still need fresh explicit compose/record from allowed Sour
 
 ### Ephemeral Work catalogue projections
 
+Native diagram-evidence origin fragments and shared-payload return aliases are
+ephemeral rendering coordinates. They add no retained field, decoder, admission
+path, Source lifetime or format version; current SVG bytes and renderer stay the
+same. Existing permitted publications render these origins without reauthoring.
+
 Project-scoped catalogue queries, page/basis selectors, metadata-only article
 availability and independent card reads are ephemeral. No canonical, Privacy,
 Source copy, explanation v8, bundle or generated-document metadata format changes.
