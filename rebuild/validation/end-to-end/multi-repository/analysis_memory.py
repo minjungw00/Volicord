@@ -35,6 +35,27 @@ def file_digest(path: Path) -> str:
     return hasher.hexdigest()
 
 
+def diagnostic_binaries(binary_dir: Path) -> tuple[Path, Path]:
+    selected = (binary_dir / "volicord", binary_dir / "volicord-mcp")
+    for executable in selected:
+        if not executable.is_file() or not os.access(executable, os.X_OK):
+            raise ValueError("focused Analysis diagnostic requires executable CLI and MCP binaries")
+    return selected
+
+
+def process_cost(pid: int) -> dict:
+    fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    ticks = os.sysconf("SC_CLK_TCK")
+    io = dict(line.split(":", 1) for line in Path(f"/proc/{pid}/io").read_text().splitlines())
+    return {
+        "user_seconds": int(fields[11]) / ticks,
+        "system_seconds": int(fields[12]) / ticks,
+        "child_user_seconds": int(fields[13]) / ticks,
+        "child_system_seconds": int(fields[14]) / ticks,
+        **{name: int(io[name]) for name in ("rchar", "wchar", "read_bytes", "write_bytes")},
+    }
+
+
 def run(argv: list[str], *, cwd: Path, env: dict[str, str]) -> str:
     started = time.monotonic_ns()
     completed = subprocess.run(
@@ -138,7 +159,7 @@ def analysis_contract(manifest: dict, analysis: dict) -> dict:
     return {**value, "fingerprint_sha256": hashlib.sha256(encoded).hexdigest()}
 
 
-def workload(output: Path, repository_revision: str | None) -> dict:
+def workload(output: Path, repository_revision: str | None, binary_dir: Path | None = None) -> dict:
     if not output.is_relative_to(LOCAL_ROOT):
         raise ValueError("diagnostic output must remain under rebuild/.local/analysis-memory")
     output.mkdir(parents=True, exist_ok=False)
@@ -164,7 +185,7 @@ def workload(output: Path, repository_revision: str | None) -> dict:
         "tracked_diff_sha256": hashlib.sha256(run(
             ["git", "diff", "HEAD", "--binary"], cwd=ROOT, env=env
         ).encode()).hexdigest(),
-        "profile": "release",
+        "profile": "release" if binary_dir is None else "caller-supplied (see executable build receipts)",
         "cargo_lock_sha256": file_digest(ROOT / "rebuild/Cargo.lock"),
         "rustc": run(["rustc", "--version"], cwd=ROOT, env=env).strip(),
         "cargo": run(["cargo", "--version"], cwd=ROOT, env=env).strip(),
@@ -183,19 +204,13 @@ def workload(output: Path, repository_revision: str | None) -> dict:
     analyzed_revision = run(
         ["git", "rev-parse", "HEAD"], cwd=repository, env=env
     ).strip()
-    run(
-        [
-            str(ROOT / "rebuild/install.sh"),
-            "--prefix",
-            str(prefix),
-            "--runtime-dir",
-            str(runtime),
-        ],
-        cwd=ROOT,
-        env=env,
-    )
-    cli = prefix / "bin/volicord"
-    mcp = prefix / "bin/volicord-mcp"
+    if binary_dir is None:
+        run(
+            [str(ROOT / "rebuild/install.sh"), "--prefix", str(prefix),
+             "--runtime-dir", str(runtime)], cwd=ROOT, env=env,
+        )
+        binary_dir = prefix / "bin"
+    cli, mcp = diagnostic_binaries(binary_dir)
     build_basis["executables_sha256"] = {
         "volicord": file_digest(cli), "volicord-mcp": file_digest(mcp),
     }
@@ -210,10 +225,26 @@ def workload(output: Path, repository_revision: str | None) -> dict:
 
     collector = v11.performance_module.Collector()
     collector.enabled = True
+    snapshot_costs = []
+    original_snapshots = collector.snapshots
+    def snapshots(environment):
+        wall, cpu = time.monotonic_ns(), time.process_time_ns()
+        try:
+            original_snapshots(environment)
+        finally:
+            snapshot_costs.append({
+                "wall_ms": (time.monotonic_ns() - wall) / 1_000_000,
+                "driver_cpu_ms": (time.process_time_ns() - cpu) / 1_000_000,
+            })
+    collector.snapshots = snapshots
     v11.PERFORMANCE = collector
     started = time.monotonic_ns()
     host = v11.Mcp(mcp, env)
+    initial_cost = None
+    final_cost = None
+    cost_error = None
     try:
+        initial_cost = process_cost(host.process.pid)
         host.initialize()
         goal, goal_ok = host.tool(
             "context_record",
@@ -328,6 +359,10 @@ def workload(output: Path, repository_revision: str | None) -> dict:
             raise RuntimeError("focused Materiality Review failed")
         host.tool("project_health", {"project_id": project_id})
     finally:
+        try:
+            final_cost = process_cost(host.process.pid)
+        except (OSError, ValueError, IndexError, KeyError) as error:
+            cost_error = type(error).__name__
         cleanup = host.close()
         (output / "mcp-stderr.log").write_text(cleanup["stderr"], encoding="utf-8")
         (output / "process.json").write_text(json.dumps({
@@ -374,6 +409,10 @@ def workload(output: Path, repository_revision: str | None) -> dict:
         "duration_ms": duration_ms,
         "process_count": len(diagnostics["processes"]),
         "call_count": len(diagnostics["calls"]),
+        "mcp_process_cost": ({name: final_cost[name] - value for name, value in initial_cost.items()}
+                             if final_cost is not None and initial_cost is not None else None),
+        "process_cost_error": cost_error,
+        "driver_storage_observations": snapshot_costs,
         "peak_rss_bytes": max(
             call["process_peak_rss_bytes"] or 0 for call in diagnostics["calls"]
         ),
@@ -402,6 +441,7 @@ def workload(output: Path, repository_revision: str | None) -> dict:
 def self_check() -> None:
     """Real failed setup output must survive; no Product or provider is invoked."""
     global SETUP_OUTPUT, SETUP_ORDINAL
+    assert process_cost(os.getpid())["user_seconds"] >= 0
     LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="self-check-", dir=LOCAL_ROOT) as directory:
         SETUP_OUTPUT, SETUP_ORDINAL = Path(directory) / "setup", 0
@@ -419,6 +459,26 @@ def self_check() -> None:
         assert (receipt / "stderr.log").read_text() == "failure detail\n"
         assert run([sys.executable, "-c", "print('ready')"], cwd=ROOT, env=os.environ.copy()) == "ready\n"
         assert json.loads((SETUP_OUTPUT / "002/result.json").read_text())["exit_code"] == 0
+        binaries = Path(directory) / "pinned"
+        binaries.mkdir()
+        for name in ("volicord", "volicord-mcp"):
+            try:
+                diagnostic_binaries(binaries)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("missing supplied binary accepted")
+            path = binaries / name
+            path.write_text("pinned diagnostic fixture")
+            path.chmod(0o700)
+        assert diagnostic_binaries(binaries) == (binaries / "volicord", binaries / "volicord-mcp")
+        (binaries / "volicord-mcp").chmod(0o600)
+        try:
+            diagnostic_binaries(binaries)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("non-executable supplied binary accepted")
     SETUP_OUTPUT = None
 
 
@@ -427,6 +487,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--output-dir")
     parser.add_argument("--repository-revision")
+    parser.add_argument("--binary-dir", type=Path,
+                        help="Use pinned CLI/MCP executables without building or installing; retain their build receipts separately")
     return parser.parse_args()
 
 
@@ -444,7 +506,8 @@ def main() -> int:
     )
     if not args.output_dir:
         output.rmdir()
-    summary = workload(output, args.repository_revision)
+    summary = workload(output, args.repository_revision,
+                       args.binary_dir.resolve() if args.binary_dir else None)
     print(json.dumps({
         "status": summary["status"],
         "output": str(output),

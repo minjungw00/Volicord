@@ -3,9 +3,9 @@ use crate::Error;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::File,
-    io::{BufReader, Read, Write},
+    io::{BufReader, BufWriter, Read, Write},
     ops::Range,
     path::{Path, PathBuf},
     rc::Rc,
@@ -163,13 +163,10 @@ fn pack_analysis_values(
         // Normalization only needs the base symbols. Keep the full reference
         // stream packed until delta generation, after encoder scratch is gone.
         let base_hash = base.hash;
-        let delta = {
-            let unpacked = unpack_blob(&base.packed)?;
-            #[cfg(test)]
-            trace_analysis_memory("base_values_unpacked");
-            drop(base.packed);
-            pack_delta(&unpacked, current)?
-        };
+        // Match bounded decoded chunks against the current stream. A complete
+        // decoded base need not coexist with both graphs and current values.
+        let delta = pack_delta_from_packed_base(&base.packed, current)?;
+        drop(base.packed);
         #[cfg(test)]
         trace_analysis_memory("delta_packed");
         // The full decoded base is scratch for the delta. Release it before
@@ -379,12 +376,28 @@ fn write_analysis_cache_value(
         .map_err(|error| {
             Error::with_source("cannot configure Analysis read cache encoder", error)
         })?;
-    rmp_serde::encode::write_named(&mut encoder, value)
-        .map_err(|error| Error::with_source("cannot stream Analysis read cache", error))?;
+    write_analysis_cache_payload(&mut encoder, value)?;
     encoder
         .finish()
         .map_err(|error| Error::with_source("cannot finish Analysis read cache", error))?;
     Ok(())
+}
+
+fn write_analysis_cache_payload(
+    output: &mut impl Write,
+    value: &impl Serialize,
+) -> Result<(), Error> {
+    // MessagePack emits small field/header writes. Batch those calls before
+    // compression, with a fixed request-local buffer and explicit flush errors.
+    let mut buffered = BufWriter::with_capacity(64 * 1024, output);
+    rmp_serde::encode::write_named(&mut buffered, value)
+        .map_err(|error| Error::with_source("cannot stream Analysis read cache", error))?;
+    // Drain the buffer without flushing the underlying compressor into an extra
+    // frame block. Encoder::finish below retains the existing wire bytes.
+    buffered
+        .into_inner()
+        .map(|_| ())
+        .map_err(|error| Error::with_source("cannot flush Analysis read cache", error.into_error()))
 }
 
 pub(crate) fn analysis_cache_path(
@@ -609,6 +622,7 @@ fn unpack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(output)
 }
 
+#[cfg(test)]
 fn delta_operations(base: &[u8], current: &[u8]) -> Vec<DeltaOperation> {
     let mut base_chunks = HashMap::<[u8; 32], Range<usize>>::new();
     for range in content_defined_ranges(base) {
@@ -681,14 +695,132 @@ fn write_delta(
     Ok(())
 }
 
+/// Visit the same globally rolling chunks as `content_defined_ranges`, without
+/// retaining the decoded base. Consume EOF and enforce its exact packed length.
+fn visit_base_chunks(
+    mut input: impl Read,
+    expected: usize,
+    mut visit: impl FnMut(usize, &[u8]),
+) -> Result<(), Error> {
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut window = [0_u8; CHUNK_WINDOW_BYTES];
+    let mut chunk = Vec::with_capacity(CHUNK_MAX_BYTES);
+    let mut rolling = 0_u64;
+    let mut total = 0_usize;
+    loop {
+        let limit = expected
+            .saturating_sub(total)
+            .saturating_add(1)
+            .min(buffer.len());
+        let count = input
+            .read(&mut buffer[..limit])
+            .map_err(|error| Error::with_source("cannot decompress Analysis base", error))?;
+        if count == 0 {
+            break;
+        }
+        if count > expected.saturating_sub(total) {
+            return Err(Error::new("Analysis packed blob length is corrupt"));
+        }
+        for &byte in &buffer[..count] {
+            let slot = total % CHUNK_WINDOW_BYTES;
+            rolling = rolling.rotate_left(1) ^ chunk_byte_hash(byte);
+            if total >= CHUNK_WINDOW_BYTES {
+                rolling ^= chunk_byte_hash(window[slot]).rotate_left(CHUNK_WINDOW_BYTES as u32);
+            }
+            window[slot] = byte;
+            chunk.push(byte);
+            total += 1;
+            if chunk.len() >= CHUNK_MIN_BYTES
+                && (rolling & 0x1fff == 0 || chunk.len() >= CHUNK_MAX_BYTES)
+            {
+                visit(total - chunk.len(), &chunk);
+                chunk.clear();
+            }
+        }
+    }
+    if total != expected {
+        return Err(Error::new("Analysis packed blob length is corrupt"));
+    }
+    if !chunk.is_empty() {
+        visit(total - chunk.len(), &chunk);
+    }
+    Ok(())
+}
+
+fn pack_delta_from_packed_base(packed: &[u8], current: &[u8]) -> Result<Vec<u8>, Error> {
+    let ranges = content_defined_ranges(current);
+    let mut candidates = HashMap::<[u8; 32], Vec<usize>>::new();
+    for (index, range) in ranges.iter().enumerate() {
+        candidates
+            .entry(Sha256::digest(&current[range.clone()]).into())
+            .or_default()
+            .push(index);
+    }
+    let mut matches = vec![None; ranges.len()];
+    let mut seen = HashSet::<[u8; 32]>::new();
+    let mut visit = |offset, bytes: &[u8]| {
+        let hash = Sha256::digest(bytes).into();
+        // Preserve first-base-chunk selection, including exact byte checking
+        // after the hash lookup. Duplicate chunks never change the delta.
+        if seen.insert(hash) {
+            if let Some(indices) = candidates.get(&hash) {
+                for &index in indices {
+                    if current[ranges[index].clone()] == *bytes {
+                        matches[index] = Some(offset);
+                    }
+                }
+            }
+        }
+    };
+    if let Some(raw) = packed.strip_prefix(BLOB_RAW_MAGIC) {
+        visit_base_chunks(raw, raw.len(), &mut visit)?;
+    } else {
+        let mut at = expect_magic(packed, BLOB_ZSTD_MAGIC)?;
+        let expected = usize::try_from(take_u64(packed, &mut at)?)
+            .map_err(|_| Error::new("Analysis packed blob length is unsupported"))?;
+        let decoder = zstd::stream::read::Decoder::new(&packed[at..])
+            .map_err(|error| Error::with_source("cannot decompress Analysis base", error))?;
+        visit_base_chunks(decoder, expected, &mut visit)?;
+    }
+    let mut operations = Vec::new();
+    for (range, base_offset) in ranges.into_iter().zip(matches) {
+        if let Some(base_offset) = base_offset {
+            match operations.last_mut() {
+                Some(DeltaOperation::Copy { offset, length })
+                    if *offset + *length == base_offset =>
+                {
+                    *length += range.len();
+                }
+                _ => operations.push(DeltaOperation::Copy {
+                    offset: base_offset,
+                    length: range.len(),
+                }),
+            }
+        } else {
+            match operations.last_mut() {
+                Some(DeltaOperation::Literal(value)) => value.end = range.end,
+                _ => operations.push(DeltaOperation::Literal(range)),
+            }
+        }
+    }
+    // Lookup tables are scratch too; compression only owns the compact plan.
+    drop((candidates, seen));
+    pack_delta_operations(current, &operations)
+}
+
+#[cfg(test)]
 fn pack_delta(base: &[u8], current: &[u8]) -> Result<Vec<u8>, Error> {
     let operations = delta_operations(base, current);
-    let length = delta_length(&operations);
+    pack_delta_operations(current, &operations)
+}
+
+fn pack_delta_operations(current: &[u8], operations: &[DeltaOperation]) -> Result<Vec<u8>, Error> {
+    let length = delta_length(operations);
     let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 1)
         .map_err(|error| Error::with_source("cannot compress Analysis delta", error))?;
     // Emit directly into compression instead of allocating the entire decoded
     // delta alongside the baseline, current graph and both value streams.
-    write_delta(&mut encoder, current, &operations)
+    write_delta(&mut encoder, current, operations)
         .map_err(|error| Error::with_source("cannot encode Analysis delta", error))?;
     let compressed = encoder
         .finish()
@@ -703,7 +835,7 @@ fn pack_delta(base: &[u8], current: &[u8]) -> Result<Vec<u8>, Error> {
     drop(compressed);
     let mut output = Vec::with_capacity(BLOB_RAW_MAGIC.len() + length);
     output.extend_from_slice(BLOB_RAW_MAGIC);
-    write_delta(&mut output, current, &operations)
+    write_delta(&mut output, current, operations)
         .map_err(|error| Error::with_source("cannot encode raw Analysis delta", error))?;
     Ok(output)
 }
@@ -1806,6 +1938,141 @@ mod tests {
             pack_delta(&base, &current)?,
             pack_blob(&encode_delta(&base, &current)?)?
         );
+        Ok(())
+    }
+
+    #[test]
+    fn packed_base_delta_preserves_exact_bulk_bytes_and_rejects_invalid_base() -> Result<(), Error>
+    {
+        let mut state = 17_u64;
+        let noisy = (0..300_000)
+            .map(|_| {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                (state >> 56) as u8
+            })
+            .collect::<Vec<_>>();
+        for base in [Vec::new(), b"short".to_vec(), noisy, vec![b'x'; 300_000]] {
+            let mut changed = base.clone();
+            changed.splice(
+                changed.len() / 2..changed.len() / 2,
+                "inserted-한글".as_bytes().iter().copied(),
+            );
+            for current in [Vec::new(), base.clone(), changed, base.repeat(2)] {
+                let expected = pack_delta(&base, &current)?;
+                let mut raw = BLOB_RAW_MAGIC.to_vec();
+                raw.extend_from_slice(&base);
+                for packed in [raw, pack_blob(&base)?] {
+                    assert_eq!(pack_delta_from_packed_base(&packed, &current)?, expected);
+                    assert_eq!(apply_delta(&base, &unpack_blob(&expected)?)?, current);
+                }
+            }
+        }
+        let packed = pack_blob(&vec![b'x'; 300_000])?;
+        assert!(packed.starts_with(BLOB_ZSTD_MAGIC));
+        for length in [299_999_u64, 300_001] {
+            let mut invalid = packed.clone();
+            invalid[BLOB_ZSTD_MAGIC.len()..BLOB_ZSTD_MAGIC.len() + 8]
+                .copy_from_slice(&length.to_le_bytes());
+            // Empty current must still consume/validate every base byte.
+            assert!(pack_delta_from_packed_base(&invalid, &[]).is_err());
+        }
+        assert!(pack_delta_from_packed_base(&packed[..packed.len() - 1], &[]).is_err());
+        assert!(pack_delta_from_packed_base(b"wrong format", &[]).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn base_chunk_stream_preserves_global_window_across_short_reads() -> Result<(), Error> {
+        struct ShortReads<'a>(&'a [u8], usize);
+        impl Read for ShortReads<'_> {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                let count = output.len().min(self.1);
+                self.0.read(&mut output[..count])
+            }
+        }
+        let mut state = 51_u64;
+        let base = (0..400_000)
+            .map(|_| {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                (state >> 56) as u8
+            })
+            .collect::<Vec<_>>();
+        let expected = content_defined_ranges(&base);
+        for size in [1, 7, 63, 8192, 65536] {
+            let mut ranges = Vec::new();
+            visit_base_chunks(ShortReads(&base, size), base.len(), |at, bytes| {
+                assert!(bytes.len() <= CHUNK_MAX_BYTES);
+                assert_eq!(bytes, &base[at..at + bytes.len()]);
+                ranges.push(at..at + bytes.len());
+            })?;
+            assert_eq!(ranges, expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn cache_payload_batches_writes_preserves_bytes_and_propagates_flush_failure(
+    ) -> Result<(), Error> {
+        struct Writes {
+            bytes: Vec<u8>,
+            calls: usize,
+            fail: bool,
+        }
+        impl Write for Writes {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.calls += 1;
+                if self.fail {
+                    return Err(std::io::Error::other("injected sink failure"));
+                }
+                self.bytes.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let value = (0..40_000)
+            .map(|index| json!({"name": format!("한글-{index}"), "state": true}))
+            .collect::<Vec<_>>();
+        let mut direct = Writes {
+            bytes: Vec::new(),
+            calls: 0,
+            fail: false,
+        };
+        rmp_serde::encode::write_named(&mut direct, &value)
+            .map_err(|error| Error::with_source("cannot encode test reference", error))?;
+        let mut buffered = Writes {
+            bytes: Vec::new(),
+            calls: 0,
+            fail: false,
+        };
+        write_analysis_cache_payload(&mut buffered, &value)?;
+        assert_eq!(buffered.bytes, direct.bytes);
+        assert!(direct.calls > 100_000);
+        assert!(buffered.calls <= direct.bytes.len() / (64 * 1024) + 1);
+        // Pin the complete former compressed representation too, not just JSON meaning.
+        let mut previous = ANALYSIS_CACHE_MAGIC.to_vec();
+        let mut encoder = zstd::stream::write::Encoder::new(&mut previous, 1)
+            .map_err(|error| Error::with_source("cannot create reference encoder", error))?;
+        encoder
+            .window_log(23)
+            .and_then(|_| encoder.long_distance_matching(true))
+            .map_err(|error| Error::with_source("cannot configure reference encoder", error))?;
+        rmp_serde::encode::write_named(&mut encoder, &value)
+            .map_err(|error| Error::with_source("cannot write reference cache", error))?;
+        encoder
+            .finish()
+            .map_err(|error| Error::with_source("cannot finish reference cache", error))?;
+        let mut actual = Vec::new();
+        write_analysis_cache_value(&mut actual, &value)?;
+        assert_eq!(actual, previous);
+        let mut failing = Writes {
+            bytes: Vec::new(),
+            calls: 0,
+            fail: true,
+        };
+        assert!(write_analysis_cache_payload(&mut failing, &"small final buffer").is_err());
+        assert!(failing.calls > 0);
         Ok(())
     }
 

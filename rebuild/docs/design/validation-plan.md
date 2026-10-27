@@ -1349,7 +1349,12 @@ retention 조건은 그대로 적용한다.
 Analysis publication은 shape header를 기존 allocation 안에서 완성하고 value/delta의
 최종 길이를 미리 계산한다. Delta literal은 current value stream의 범위를 참조하다
 최종 출력 때 한 번만 복사하며, raw blob은 압축 표현보다 작을 때만 할당한다.
-Value base는 normalization 동안 packed 상태로 유지하고 delta 계산 때 펼친다.
+Value base는 normalization 동안 packed 상태로 유지하고 delta 계산에서는 bounded
+decoded chunk로 순회한다. Current chunk lookup, first-base occurrence와 exact byte
+comparison을 유지하며 전체 decoded base를 두 typed graph/current values와 함께
+보존하지 않는다. Chunk/operation lookup은 입력 chunk 수에 비례하는 request-local
+scratch이며 요청 간 body cache가 아니다. MessagePack cache publication은 64 KiB
+buffer로 compressor 호출을 묶고, buffer drain 실패를 publication 실패로 전달한다.
 Blob decoder는 envelope의 decoded length만큼 할당하고 실제 길이와 EOF를 검증한다.
 Symbol 목록과 lookup은 동일한 immutable bytes를 공유하며 first-seen index를 유지한다.
 Delta publication은 operation/range metadata만 모은 뒤 같은 wire bytes를 compressor에
@@ -1364,6 +1369,12 @@ Focused Analysis resource attribution and its normal/retained-large producer-rea
 regression are documented in [Analysis resource pressure](../../validation/end-to-end/multi-repository/analysis-resource-pressure.md).
 These supporting commands preserve exact input/output identities and failed
 observations; they do not invoke or replace gate/Final/official V11 qualification.
+`analysis_memory.py --binary-dir <pinned-bin-directory> --repository-revision <revision>`
+uses the same seven-call local workload without installation/build during sampling.
+It records exact supplied executable hashes; their profile must be established by
+separate build receipts. Linux process CPU/I/O deltas and driver storage-observation
+costs supplement the unchanged RSS/call collector. CLI setup remains separately
+logged, outside the declared MCP lifetime, inside the focused wrapper duration.
 The resource roundtrip's `VOLICORD_ANALYSIS_RESOURCE_PAIRED_READER=1` mode retains
 one complete baseline while repeatedly reading a cache-absent current publication.
 It checks the same complete graph/serialized-byte fingerprints and corrupt-blob

@@ -253,3 +253,198 @@ the health/repair cost boundary. Cache policy, complete graph content, durable
 bytes, identities and corruption checks remain the same. The observed reduction
 qualifies this focused correction only; the changed clean candidate must still
 pass the authoritative gate, including its original RSS and duration ceilings.
+
+## 2026-10-28 publication cost attribution
+
+This correction starts at clean `97d87c6f8b3d13fdbcf12dc15d5a1899c155b3f5`.
+The reviewed failed candidate remains `774aad5ac2a46fe449f0291dbea9b77881e00f4c`.
+Its actual original V11 result and per-call logs were found under
+`rebuild/.local/validation/20261027T181302.148992Z-v11-gate-2zvh519h/official-v11/`.
+Their SHA-256 values are respectively
+`192550dee1a8ee05f27fbde7423e4469d61a69bc173d457b64eefacb0c92c57f` and
+`84d59c49f0694389d13b38c4514efa2d2e86dec35ea38d163da10755a8d1abbb`.
+No original measurement, Runtime, shared context or design reference was changed.
+All reference manifest entries and the supplied ZIP hash verified. The current
+native Reader was checked using the actual baseline release Viewer before the
+comparative measurements; repository/Work, exact owning location, native code
+entry/return/history, direct file and live-no-JS journeys passed at 390px.
+This is technical support, not renewed design or human acceptance.
+
+### Original process and timing boundary
+
+The original 55-leaf, three-target workload identity is
+`three-target-installed-journey-volicord-three-work-1`. Its wall timer encloses
+all three target journeys, including setup, CLI, provider/host and driver work.
+Duration was 953,404.898 ms against 900,000. MCP RSS is the maximum observed
+Linux process lifetime high-water/current RSS, sampled before/after calls and
+every 50 ms, across separately identified MCP processes; process peaks are not
+added. The first 4 GiB crossing was `mcp-011` call 26, `materiality_review`.
+The maximum was 4,315,680,768 bytes at `mcp-015` call 17, `checkpoint_record`,
+which established a new high-water mark. Its sampled current peak was
+4,283,150,336 bytes: a coarse sampled current peak is not the lifetime HWM.
+
+Of 526,589.315 ms recorded MCP call time, Materiality Review accounted for
+145,573.098, repository analysis 141,048.566 and Checkpoint recording
+140,261.266 ms. Calls include transport/decoding and collector storage scans.
+Sequential subprocess receipts sum to 379,922.200 ms; 46,893.383 ms remains
+unpartitioned. Largest subprocesses were derived repair (81,340.430 ms), corrupt
+health (53,380.646), parser degradation (37,842.673) and initial analysis
+(35,802.220). The original records do not partition Product CPU, allocator
+ownership, provider wait or host load. None is assigned an invented share.
+Catalogue iteration and HTML growth are not implicated by this evidence.
+
+Storage still uses the original first completed-manifest warmup basis and counts
+all retained physical/logical files. Original post-warmup growth was
+531,003,440 / 536,870,912 bytes. No timer, warmup, sampling, graph scope, threshold
+or qualification collector was changed.
+
+### Hypotheses and discriminating observations
+
+Before selecting a correction, `resource-correction-20261028/measurement-plan.json`
+fixed three hypotheses: overlapping publication scratch, generation/rebinding
+cost, and driver storage-inspection cost. It fixed the original completed graph,
+source revision, release profile, sequential paired sampling and retention of all
+attempts. `perf`, `heaptrack`, `valgrind` and `strace` were unavailable. Temporary
+stage marks used `/proc` memory/CPU/I/O and timestamps; their patch and original
+receipts remain ignored. Production instrumentation was removed before comparison.
+
+An instrumented CLI analysis on a disposable copy of the original Runtime measured
+generation 11.501 s / 11.44 CPU s, normalization 6.959 s / 5.75 CPU s and cache
+publication 6.194 s / 6.46 CPU s. These are stage observations on WSL2, not an exact
+partition of the older journey. In the retained two-graph producer/consumer, RSS
+rose from 3,908,880 to 4,215,480 KiB when the complete base was unpacked for delta
+construction. This reproduced a specific overlapping allocation; it does not
+establish a leak or localize every original RSS contributor.
+
+The selected Product correction stays in Analysis publication:
+
+- Stream the verified packed base in 64 KiB reads with at most 32 KiB decoded
+  chunks and a 63-byte rolling window. Current-chunk candidates, seen base hashes,
+  matches and operations scale with input chunk counts and are discarded within
+  the call. Exact first-base selection, SHA lookup followed by byte comparison,
+  global chunk boundaries, full EOF/length checks and raw/compressed fallback stay
+  unchanged. No complete decoded base remains alongside both graphs/current values.
+- Batch MessagePack writes through a 64 KiB buffer before compression, propagating
+  drain errors before publication. Draining does not force an extra compressor
+  flush. The direct control observes over 100,000 original small writes and bounds
+  buffered writes by payload bytes / 65,536 plus one.
+
+There is no cross-request cache, new body retention, publication/Project/language
+substitution, authority bypass or format change. Analysis integrity and current
+selection remain with their existing owners. Canonical observations, currentness,
+retained publications, Source permissions and exports retain their existing paths.
+
+### Equivalent-input results and uncertainty
+
+The existing retained-graph roundtrip used immutable manifest SHA-256
+`eaac0e8255eaddf8b576cbfb900de087a2c6ad57941d814932153ca1388f54f3`,
+1,259,187,404 logical JSON bytes and 60,448,393 scalars. Both normal release test
+processes loaded two graphs, encoded with the existing base, published a cache,
+repeated complete reads in one process, and rejected corruption. Both returned 0.
+All normalized output bytes were identical: manifest/input hash above, values
+`2ddfb73dbabb53b2dedf7aba9470d8a6eb3c3acf9c8bf8fcde95ae8ab98f8ff7`,
+metadata `b34da753a725f932bea6616a6c9cf57763b4f325a0e71b7fefdd4a83ff58d655`,
+and all 4,525 shape identities bound by that manifest. Full graph fingerprints
+include every identity, Source, relation, capability, provenance and diagnostic.
+Process HWM was 4,176,756 → 4,072,684 KiB; test-body wall time 51.84 → 50.42 s,
+user CPU 50.64 → 49.27 s and system CPU 3.65 → 3.34 s. This single pair is a
+mechanism/semantic control, not a distribution or public-call latency estimate.
+
+The public comparison reused the maintained seven-call `analysis_memory.py`
+workload with supplied, frozen, uninstrumented release binaries. Every sample
+locally cloned exact source revision `774aad5a`, initialized a disposable Runtime,
+ran the original CLI analysis, then initialization/discovery, context, MCP analysis,
+Engineering Choice Discovery, Materiality Review and health in one MCP process.
+CLI setup remains separately timed; it was not removed from the focused wrapper.
+No build, browser, export or other task-owned benchmark ran during these samples.
+Order was AB, BA, AB; all six attempts are retained, with exit 0 and zero sampling
+errors. OS caches were uncontrolled. Source counts, supported/degraded language
+states and diagnostic contract fingerprint were identical across all samples:
+`60bfca00327f6643139f450622983c69c2fd82c100fde585ccfdf7e67fa75423`.
+Each retained three snapshots: 1,863 inventory entries, 37,304 entities, 534,484
+relations and 60,448,229 scalars in the selected graph.
+
+| Order | Side | MCP lifetime ms | Review ms | Review process HWM bytes | Whole MCP peak bytes | Wrapper ms |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | before | 64,377.561 | 24,748.002 | 4,084,867,072 | 4,162,048,000 | 101,601.274 |
+| 2 | after | 62,683.434 | 23,884.306 | 3,956,162,560 | 4,161,904,640 | 95,560.533 |
+| 3 | after | 62,070.352 | 23,409.200 | 3,956,469,760 | 4,162,281,472 | 94,638.258 |
+| 4 | before | 65,811.119 | 25,215.890 | 4,084,629,504 | 4,161,642,496 | 99,732.910 |
+| 5 | before | 65,758.365 | 25,043.878 | 4,085,039,104 | 4,161,712,128 | 99,672.712 |
+| 6 | after | 62,847.224 | 23,882.372 | 3,956,338,688 | 4,162,035,712 | 95,648.647 |
+
+Every Review established a new HWM, so its lower peak is attributable to that
+actual public call, not an inherited unrelated mark. Later `project_health`
+history inspection established every whole-process peak: that metric did not
+improve. MCP lifetime medians were 65,758.365 → 62,683.434 ms, with all individual
+values above retained. This supports a bounded local time/Review-memory benefit,
+not a whole-V11 savings projection. Three pairs establish neither p95 nor robust
+qualification. Health/repair and long-lived repeated Work/Checkpoint cost remain.
+
+Own-process CPU (user + system) was 65.83/67.64/67.34 s before and
+64.36/63.70/64.56 s after; child CPU was separately recorded at 0.12–0.13 s.
+The new slice invokes no provider. Physical reads were 0–4,096 bytes with cached
+inputs, while rchar/wchar and physical writes were retained independently.
+Driver storage scans cost 787.093–815.467 ms total per seven-call sample and
+825.409–852.521 ms of driver CPU. These supplements do not alter the collector's
+reported durations. WSL2 clock/accounting and allocator variation remain visible;
+no environmental explanation for the old failure is claimed.
+
+Logical storage ranges overlap: before 217,588,265–218,460,650 bytes, after
+217,744,548–218,148,819; allocated ranges were 233,897,984–234,770,432 and
+234,053,632–234,459,136 bytes. Fresh Source/time identities make these separate
+legitimate publications, not identical storage byte sequences. Exact-byte equality
+is instead established on the immutable graph above. Full cache consumers preserve
+the entire decoded graph; the direct smaller cache control also pins its compressed
+bytes. No universal compressor-byte or storage-growth improvement is inferred.
+
+All raw receipts, failed controls, immutable executable copies, environment/tool
+versions, original stage patch, comparison scripts and every sample remain under
+ignored `rebuild/.local/resource-correction-20261028/`,
+`rebuild/.local/analysis-memory/resource-20261028-*` and focused validation outputs.
+The host was Linux x86_64 WSL2, Cargo/rustc 1.97.1, Python 3.12.3; exact environment
+and executable identities are retained in those receipts. No raw profile or Runtime
+is committed. Normal/negative consumer validation is recorded with the change.
+Official V11, Final and repository-wide aggregates were deliberately not run;
+the original resource failure remains authoritative for its candidate.
+
+### Scoped validation and remaining verification
+
+All following checks ran through `rebuild/scripts/validate focused`, with full
+streams and numeric exit 0 inspected under its ignored output:
+
+- Release Operations library (37 tests), analysis recovery (8), storage footprint
+  (4) and Work authority (75). These include restart, immutable history, corrupt
+  and non-current input, wrong Project/header substitution, fresh observation,
+  failed Source recording and real baseline/Review/Checkpoint transitions.
+- Release Viewer citation reading (30) and navigation (6). Complete original
+  citation bytes, normal/negative Project/publication/language bindings,
+  same-wording republication, concurrent reads, Source denial/deletion, ordinary
+  expiry/cleanup/restart, retained reading and native location remain covered.
+- Release Host `mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work`
+  through the actual public adapter (one selected test).
+- Operations release library/tests Clippy, all features, `-D warnings`; nested
+  workspace formatting; maintained workspace-boundary/metadata check (nine
+  packages under `rebuild/`, no legacy dependencies, unchanged ignored context).
+- `analysis_memory.py --self-check` (successful/failed setup receipts and supplied
+  executable rejection controls) and the unchanged `performance.py` negative
+  controls for sampling, completed-manifest warmup and storage accounting.
+- Actual baseline and candidate release native browser consumers: selected Korean
+  repository and Work at 390px, live-no-JS, byte-identical snapshot HTTP delivery
+  and direct files, section/figure/claim/code entry, exact owning location, return,
+  reload/history and unknown-target handling. Candidate files were newly exported
+  through the ordinary CLI. These are scoped navigation checks, not a new visual
+  matrix or human/assistive acceptance.
+
+The first new cache control failed because `BufWriter::flush` forced an extra
+compressor block; the corrected drain preserves the direct reference bytes and
+propagates sink failure. Its failing receipt is retained. The initial browser
+attempt was blocked by sandbox loopback `EPERM`; a separate authorized local
+attempt passed without external requests. Neither failed attempt was overwritten.
+
+Post-commit checks are reported in the task conversation. The exact candidate's
+whole gate remains unrun: the authorized scope excludes Final/official V11 and
+external replay. A later separately authorized verification must retain all target
+journeys and original ceilings, and inspect long-lived Review/Checkpoint peaks,
+health/repair CPU/RSS and the narrow storage-growth bound. The local improvements
+do not establish that the 953.4-second/4-GiB failure has been fully corrected.
