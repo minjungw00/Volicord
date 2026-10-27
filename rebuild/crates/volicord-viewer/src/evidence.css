@@ -122,6 +122,21 @@ body[data-viewer-mode=snapshot]:not(:has(main :target)) .nav-link[data-destinati
 body[data-viewer-mode=snapshot]:has(#overview:target,#overview :target) .nav-link[data-destination=overview],
 body[data-viewer-mode=snapshot]:has(#repository-explanation:target,#repository-explanation :target) .nav-link[data-destination=repository],
 body[data-viewer-mode=snapshot]:has(#works:target,#works :target,.snapshot-page[id^="work-"]:target,.snapshot-page[id^="work-"] :target) .nav-link[data-destination=work] {background:#e2f2fd;color:#066ba4;font-weight:700;border-color:#d0e9fa}
+/* The native target and its ancestors own context, including nested figures,
+   citation origins and shared code. No request text or script supplies it. */
+.native-current,.mobile-location [data-page-context] {display:none}
+body[data-viewer-mode=snapshot]:not(:has(main :target)) .mobile-location [data-page-context=overview],
+body[data-viewer-mode=snapshot]:has(#overview:target,#overview :target) .mobile-location [data-page-context=overview],
+body[data-viewer-mode=snapshot]:has(#repository-explanation:target,#repository-explanation :target) .mobile-location [data-page-context=repository],
+body[data-viewer-mode=snapshot]:has(#works:target,#works :target,.snapshot-page[id^="work-"]:target,.snapshot-page[id^="work-"] :target) .mobile-location [data-page-context=work],
+body[data-viewer-mode=snapshot]:has(#snapshot-support:target,#snapshot-support :target) .mobile-location [data-page-context=support] {display:inline}
+body[data-viewer-mode=snapshot]:not(:has(main :target)) .nav-link[data-destination=overview] .native-current,
+body[data-viewer-mode=snapshot]:has(#overview:target,#overview :target) .nav-link[data-destination=overview] .native-current,
+body[data-viewer-mode=snapshot]:has(#repository-explanation:target,#repository-explanation :target) .nav-link[data-destination=repository] .native-current,
+body[data-viewer-mode=snapshot]:has(#works:target,#works :target,.snapshot-page[id^="work-"]:target,.snapshot-page[id^="work-"] :target) .nav-link[data-destination=work] .native-current {display:inline;position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden;white-space:nowrap}
+@supports not selector(:has(*)) {
+ body[data-viewer-mode=snapshot] .mobile-location [data-page-context=all] {display:inline}
+}
 .evidence-correspondence {font-size:11px;line-height:1.85;color:var(--muted);margin:0 0 14px}
 .point-others {margin:14px 0 18px;flex-direction:column}
 .point-others a[aria-current] {background:var(--wash);border-color:#93c9e7;color:var(--strong)}

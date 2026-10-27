@@ -509,7 +509,7 @@ class ViewerUnderstandingMarkup(HTMLParser):
             self.in_link = self.in_nav
             if self.in_link:
                 self.labels.append("")
-        if self.in_link and tag == "span" and "nav-count" in attrs.get("class", "").split():
+        if self.in_link and tag == "span" and set(attrs.get("class", "").split()).intersection({"nav-count", "native-current"}):
             self.in_count = True
         # Native exports retain inert enhancement controls. A hidden close
         # button is not a prerequisite for following the ordinary fragment links.
@@ -574,7 +574,7 @@ def assert_viewer_reader_contract():
         snapshot = Path(directory)/"reader.html"
         basis={"evidence":{"snapshots":[{"analysis_snapshot_id":"a"*64}]}}
         positive=('<html><body><button class="rail-close" type="button" hidden>Close project menu</button>'
-            '<nav aria-label="Viewer"><a href="#overview">Overview </a>'
+            '<nav aria-label="Viewer"><a href="#overview">Overview<span class="native-current"> · Current page</span> </a>'
             '<a href="#repository-explanation">Repository explanation </a>'
             '<a href="#works">Work<span class="nav-count">130</span> </a></nav>'
             '<section id="overview">Canonical Purpose</section><section id="repository-explanation">'

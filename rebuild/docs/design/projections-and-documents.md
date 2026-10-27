@@ -3042,6 +3042,16 @@ catalogue and missing-identity pages have no invented document contents. This
 presentation and ephemeral list metadata change requires no retained-format,
 canonical schema, admission, fingerprint or generated-metadata revision.
 
+Single-file native exports resolve current destination from the actual fragment
+target's page ancestry, including every nested Source origin/shared payload and
+return. The header and accessible current-page text project that same owner;
+neither is frozen to the export request. Empty/unknown targets keep the actual
+Overview and its unavailable-link notice. Export-basis targets identify supporting
+metadata without claiming Repository or Work. This uses the existing native
+`:target`/`:has()` rendering boundary, unique scoped IDs and closed links; bytes,
+packaging, admission and publication identity are unchanged. Browsers without
+`:has()` keep the existing all-document fallback, labelled as exported pages.
+
 ### Grounded reader presentation and original body deadlines
 
 Diagram evidence links carry a native, publication-scoped origin fragment. Its

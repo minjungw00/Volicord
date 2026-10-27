@@ -62,7 +62,24 @@ pub(super) fn start(
     snapshot: bool,
 ) {
     let name = escape(&p.overview.project_name);
-    html.push_str(&format!("<a class=\"skip skip-link\" href=\"#viewer-content\">{}</a><details class=\"project-shell\"><summary class=\"mobile-header\" aria-label=\"{}\"><span class=\"menu-glyph\" aria-hidden=\"true\">☰</span><span class=\"mobile-project\">{name}</span><span class=\"mobile-location\">{}</span></summary><aside class=\"project-rail\" aria-label=\"{}\"><div class=\"rail-top\"><div class=\"brand-line\"><a class=\"brand\" href=\"{}\"><span class=\"v-mark\" aria-hidden=\"true\">V</span>volicord</a><button class=\"rail-close\" type=\"button\" hidden aria-label=\"{}\">×</button></div><p class=\"rail-heading\">{}</p>",text(r.locale,"Skip to content","본문으로 건너뛰기"),text(r.locale,"Open project menu","프로젝트 메뉴 열기"),page_label(r),text(r.locale,"Project navigation","프로젝트 내 이동"),escape(&href(r,&ViewerView::Overview,snapshot)),text(r.locale,"Close project menu","프로젝트 메뉴 닫기"),text(r.locale,"Project","프로젝트")));
+    let location = if snapshot {
+        [
+            ("overview", text(r.locale, "Overview", "개요")),
+            (
+                "repository",
+                text(r.locale, "Repository explanation", "저장소 설명"),
+            ),
+            ("work", text(r.locale, "Work", "작업")),
+            ("support", text(r.locale, "Export basis", "내보내기 기준")),
+            ("all", text(r.locale, "Exported pages", "내보낸 문서들")),
+        ]
+        .into_iter()
+        .map(|(kind, label)| format!("<span data-page-context=\"{kind}\">{label}</span>"))
+        .collect::<String>()
+    } else {
+        page_label(r).into()
+    };
+    html.push_str(&format!("<a class=\"skip skip-link\" href=\"#viewer-content\">{}</a><details class=\"project-shell\"><summary class=\"mobile-header\"><span class=\"menu-label\">{}</span><span class=\"menu-glyph\" aria-hidden=\"true\">☰</span><span class=\"mobile-project\">{name}</span><span class=\"mobile-location\">{location}</span></summary><aside class=\"project-rail\" aria-label=\"{}\"><div class=\"rail-top\"><div class=\"brand-line\"><a class=\"brand\" href=\"{}\"><span class=\"v-mark\" aria-hidden=\"true\">V</span>volicord</a><button class=\"rail-close\" type=\"button\" hidden aria-label=\"{}\">×</button></div><p class=\"rail-heading\">{}</p>",text(r.locale,"Skip to content","본문으로 건너뛰기"),text(r.locale,"Open project menu","프로젝트 메뉴 열기"),text(r.locale,"Project navigation","프로젝트 내 이동"),escape(&href(r,&ViewerView::Overview,snapshot)),text(r.locale,"Close project menu","프로젝트 메뉴 닫기"),text(r.locale,"Project","프로젝트")));
     html.push_str(&format!("<details class=\"project-picker\"><summary><span class=\"project-mark\" aria-hidden=\"true\">{}</span><span>{name}<small>{}</small></span><span aria-hidden=\"true\">⌄</span></summary>",escape(&p.overview.project_name.chars().next().unwrap_or('V').to_string()),text(r.locale,"Retained local context","보존된 로컬 맥락")));
     if snapshot {
         html.push_str(&format!(
@@ -113,7 +130,17 @@ pub(super) fn start(
             text(r.locale, "Work", "작업"),
         ),
     ] {
-        html.push_str(&format!("<a class=\"nav-link\" data-destination=\"{}\" href=\"{}\"{}><svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" aria-hidden=\"true\">{}</svg>{label}{} </a>",view.key(),escape(&href(r,&view,snapshot)),if !snapshot && view.key()==r.view.key(){" aria-current=\"page\""}else{""},icon(i),if i==2{format!("<span class=\"nav-count\">{}</span>",p.work_count)}else{String::new()}));
+        // CSS exposes the accessible cue on the owning native destination.
+        // aria-current cannot be frozen to the export request.
+        let current = if snapshot {
+            format!(
+                "<span class=\"native-current\"> · {}</span>",
+                text(r.locale, "Current page", "현재 페이지")
+            )
+        } else {
+            String::new()
+        };
+        html.push_str(&format!("<a class=\"nav-link\" data-destination=\"{}\" href=\"{}\"{}><svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" aria-hidden=\"true\">{}</svg>{label}{}{current} </a>",view.key(),escape(&href(r,&view,snapshot)),if !snapshot && view.key()==r.view.key(){" aria-current=\"page\""}else{""},icon(i),if i==2{format!("<span class=\"nav-count\">{}</span>",p.work_count)}else{String::new()}));
     }
     html.push_str(&format!(
         "</nav><div class=\"rail-states\"><p class=\"rail-heading\">{}</p>",

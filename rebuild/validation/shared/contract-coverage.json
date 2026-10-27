@@ -355,6 +355,24 @@
           "detail_timeline_and_native_return_keep_typed_query_scope_without_invented_history"
         ]
       ]
+    },
+    {
+      "id": "native-reader-page-context",
+      "owners": [
+        "projections",
+        "host-and-user-adapters"
+      ],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": [
+        "viewer"
+      ],
+      "evidence": [
+        [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/navigation.rs",
+          "native_snapshot_context_is_independent_of_the_export_request"
+        ]
+      ]
     }
   ]
 }

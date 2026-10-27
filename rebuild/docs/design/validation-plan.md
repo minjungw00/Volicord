@@ -4150,3 +4150,19 @@ complete guards, state ownership and sequence order; currentness/privacy and all
 original Source bindings remain separate controls. Use ordinary fresh authorship
 for changed wording, and the existing format for pure typography. No fixed SVG,
 fixture record in user Runtime, authoritative gate or human verdict follows.
+
+### Native page-context controls
+
+Preserve the actual failing export, then challenge it with the same native
+location driver used on the candidate. Keep live-no-JS results separate: request
+ownership and fragment ownership need not share a failure. Use actual local
+listeners, unchanged export bytes served over HTTP and direct files, with scripting
+disabled before context creation. Check entry, nested headings/figures/citations,
+shared complete code, owning-document return, reload/history and unknown targets;
+Overview must remain visible and unknown fragments cannot invent a document.
+Exercise five widths and applicable breakpoints. The static Rust integration
+control and contract registry guard packaging/markers and request separation;
+the browser checks their actual native behavior. Update the snapshot-navigation
+consumer only for the explicit current-page annotation, preserving the exact three
+destination names, inactive-control/retired-route barriers and negative controls.
+No official V11/aggregate, scripted correction or human/assistive verdict follows.

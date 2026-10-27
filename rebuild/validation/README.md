@@ -190,7 +190,7 @@ remains distinct from preparing later campaigns on that already validated candid
   reading consumers and exact Viewer result/state basis. Labeled test interpretations
   prove transport; the separate active-host browser run proves visible content.
   V11 snapshot navigation compares the three destination names independently of
-  the Work count badge and ignores only the two hidden native-shell close
+  the Work count badge and explicit native current-page annotation, and ignores only the two hidden native-shell close
   buttons. Visible controls, wrong destinations and duplicate fragments remain
   rejection cases; this markup check does not establish human acceptance.
   V11 CLI, MCP and portable Work readback use the shared machine state
@@ -1584,3 +1584,16 @@ and content differences remain distinct from missing presentation. Selected-code
 and returned screenshots/bytes use `grounded_diagrams_browser.cjs` on those same
 publication identities. Capture catalogue/detail/evidence/list return through
 `work_catalogue_browser.cjs` with genuine records and separately labelled scale inputs.
+
+`native_location_browser.cjs CONFIG` uses the same private Viewer/browser/corpus
+configuration and a new exclusive output. It creates genuinely script-disabled
+contexts, starts the actual public Viewer, and serves byte-identical generated
+script-free files over loopback, additionally opening each actual file directly.
+At the declared widths it follows Overview/list/document/heading/figure/claim/code/
+native primary return, direct code entry/reload and back/forward. The visible
+mobile location, one selected destination, exact Project display and owning page
+must agree; unknown export fragments must keep a visible Overview and truthful
+notice. It supplies no corrected state through script, modified HTML or request
+interception. Run the same driver against the preserved failing export: applicable
+live-no-JS should be assessed separately from the native export failure. This is
+technical navigation evidence, not an assistive/human verdict.

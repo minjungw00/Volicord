@@ -7,6 +7,70 @@ use volicord_operations::LocalOperations;
 use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerRequest, ViewerView};
 
 #[test]
+fn native_snapshot_context_is_independent_of_the_export_request(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture()?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        for view in [
+            ViewerView::RepositoryExplanation,
+            ViewerView::Work {
+                work: Some(f.goals["older"]),
+            },
+        ] {
+            let request = ViewerRequest {
+                project_id: f.project,
+                locale,
+                requested_language: "en".into(),
+                view,
+                guarded_request: None,
+            };
+            let snapshot = viewer
+                .render_snapshot(&request, TimestampMicros::from_unix_micros(123))?
+                .html;
+            let header = snapshot
+                .split("class=\"mobile-location\"")
+                .nth(1)
+                .ok_or("native location")?
+                .split("</summary>")
+                .next()
+                .ok_or("header end")?;
+            for kind in ["overview", "repository", "work", "support"] {
+                assert_eq!(
+                    header
+                        .matches(&format!("data-page-context=\"{kind}\""))
+                        .count(),
+                    1
+                );
+            }
+            let nav = snapshot
+                .split("class=\"project-navigation\"")
+                .nth(1)
+                .ok_or("navigation")?
+                .split("</nav>")
+                .next()
+                .ok_or("navigation end")?;
+            assert_eq!(nav.matches("class=\"nav-link\"").count(), 3);
+            assert_eq!(nav.matches("class=\"native-current\"").count(), 3);
+            assert!(
+                !nav.contains("aria-current=\"page\""),
+                "a frozen request cannot select a native fragment destination"
+            );
+            assert!(!snapshot.contains("<script"));
+            assert!(snapshot.contains("<summary class=\"mobile-header\"><span class=\"menu-label\">"),"the summary's accessible name must include its visible Project and native location");
+            let live = viewer.render(&request, "test")?.html;
+            assert!(
+                !live.contains("data-page-context=\""),
+                "live location remains request-owned"
+            );
+        }
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
 fn project_destinations_and_exact_related_records_are_readable_without_mutation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let f = reading_fixture::fixture()?;

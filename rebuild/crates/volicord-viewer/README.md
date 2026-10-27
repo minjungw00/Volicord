@@ -44,7 +44,11 @@ is escaped. Host/Origin and fetch-metadata protections remain enforced.
 
 Static output contains the three destinations, bounded Work/Decision explanations,
 selected admitted Sources and truthful omissions/currentness. Native fragments and
-disclosures work without JavaScript or Runtime access. It includes no management
+disclosures work without JavaScript or Runtime access. Native page-kind and
+current-destination cues follow the fragment's owning document, including figure,
+citation, shared-code and return targets. Unknown fragments show Overview with an
+unavailable-link notice. Live no-JS pages retain their request-owned context.
+It includes no management
 forms, authenticity token, live endpoints, document previews, bulk Code/diagnostic
 catalog or Tools fragments. Atomic publication refuses relative/existing targets
 and revalidates canonical, explanation and verification dependencies. Export

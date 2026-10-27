@@ -691,5 +691,11 @@ Work detail's typed list-origin selectors and bounded browser coordinates are
 ephemeral UI state. The visible timeline projects existing original canonical
 Checkpoint events; it adds no event, format, migration or decoder. New exports
 use the current renderer with the same retained publications and output formats.
+
+Native snapshot page-context markers and accessible current-destination text are
+ephemeral HTML presentation over existing scoped IDs. They keep the single-file,
+script-free format and change no explanation, generated-document metadata or
+Source format, publication, fingerprint, lifetime or admission rule. Live context
+remains request-owned; static context follows the owning fragment page.
 The citation-window control follows the shared validator's crate-visible signature
 without changing the observed function or Source-reading limits.

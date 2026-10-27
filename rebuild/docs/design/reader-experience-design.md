@@ -834,6 +834,15 @@ activation focuses the heading below sticky surfaces; passive scrolling changes 
 the current-section cue, including the last short section. Native modifier links,
 fragments, history and script-free/export reads keep their ordinary meaning.
 
+In single-file exports the native fragment's enclosing page owns the visible
+mobile location and current-destination cue. Nested headings, figure elements,
+citations and shared code keep that owning Repository/Work context; they do not
+inherit the original export request. Overview stays readable on entry and unknown
+fragments, with the existing unavailable-link notice rather than an invented
+document. Native current-page text is accessible on the selected sidebar link;
+the mobile disclosure's accessible name includes its Project and current location.
+Live/no-JS requests keep their server-owned destination. No script is required.
+
 | Requirement | Implementation owner | Direct control |
 | --- | --- | --- |
 | Same exact Project shell and active parent on all reader destinations | Viewer shell / Operations bounded canonical Project identities | Viewer navigation and shell browser controls |
