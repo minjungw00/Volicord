@@ -1330,7 +1330,7 @@ fn important_complete_window_survives_smaller_supporting_windows() -> Result<(),
             "authority.rs",
             explanation,
             "    fn permitted_read_publication(",
-            "    fn permitted_publication_from(",
+            "    pub(crate) fn permitted_publication_from(",
         ),
         (
             "publication.rs",

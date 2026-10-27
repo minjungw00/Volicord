@@ -1018,7 +1018,7 @@ fn render_document_body(
     let current = answers.provenance.is_some();
     let (back_view, back_id, back_label, kind) = if work.is_some() {
         (
-            ViewerView::Work { work: None },
+            r.view.list_return(),
             "works",
             text(r.locale, "← Work list", "← 작업 목록"),
             text(r.locale, "WORK DOCUMENT", "작업 문서"),
@@ -1041,7 +1041,11 @@ fn render_document_body(
     let article_start = html.len();
     html.push_str(&format!("<article class=\"doc\"{}><p class=\"breadcrumb\"><a href=\"{}\">{}</a></p><header class=\"doc-head\">{}",
         work.map(|w|format!(" data-work-id=\"{}\" data-work-state=\"{}\"",w.work_item_id,understanding_work_state_key(w.state))).unwrap_or_default(),
-        if snapshot { format!("#{back_id}") } else { escape(&url(r, &back_view)) }, back_label, if decision.is_some() {format!("<p class=\"eyebrow\">{kind} · {}</p>",text(r.locale,"interpretation and observations","해석과 관측"))} else {String::new()}));
+        if snapshot { format!("#{back_id}") } else {
+            let mut target=url(r,&back_view);
+            if let ViewerView::WorkContext {work,..}=&r.view { if !target.contains("work=") { target.push_str(&format!("#row-{work}")); } }
+            escape(&target)
+        }, back_label, if decision.is_some() {format!("<p class=\"eyebrow\">{kind} · {}</p>",text(r.locale,"interpretation and observations","해석과 관측"))} else {String::new()}));
     if current {
         if let Some(name) = answers
             .card_name()
@@ -1147,6 +1151,7 @@ fn render_document_body(
         render_recorded_choice(html, r, answers, d);
     }
     if let Some(work) = work {
+        super::work_timeline::render(html, r, &document_anchor(answers, "timeline"), work);
         render_verification(html, r, answers, &work.reading.verification_report);
     } else if has_verification {
         html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary>",document_anchor(answers,"verification"),text(r.locale,"Verification","검증")));
@@ -2522,7 +2527,7 @@ pub(super) fn surface(
 ) {
     match &r.view {
         ViewerView::Overview => overview(html, r, p, u, false),
-        ViewerView::Work { work: Some(_) } => {
+        ViewerView::Work { work: Some(_) } | ViewerView::WorkContext { .. } => {
             if let Some(w) = &p.selected_work {
                 work_detail(html, r, p, w, false);
             }

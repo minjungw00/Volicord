@@ -6,6 +6,8 @@ mod presentation;
 mod reading;
 #[path = "shell.rs"]
 mod shell;
+#[path = "work_timeline.rs"]
+mod work_timeline;
 pub(crate) use presentation::locale_key;
 use presentation::*;
 pub(crate) use shell::work_state_key;
@@ -94,7 +96,7 @@ enum ViewerRenderMode<'a> {
 fn read_requirements(view: &crate::ViewerView) -> volicord_projections::ProjectionReadRequirements {
     volicord_projections::ProjectionReadRequirements {
         code: false,
-        inspection: matches!(view, crate::ViewerView::Work { work: Some(_) }),
+        inspection: view.exact_work().is_some(),
     }
 }
 
@@ -450,7 +452,7 @@ impl ViewerAdapter {
         authenticity: &str,
     ) -> Result<ViewerPage, ViewerError> {
         let mut parent = request.clone();
-        parent.view = crate::ViewerView::Work { work: None };
+        parent.view = request.view.list_return();
         parent.guarded_request = None;
         let mut page = self.render(&parent, authenticity)?;
         let start = page
@@ -463,6 +465,16 @@ impl ViewerAdapter {
             .map(|n| start + n)
             .ok_or_else(|| ViewerError::new("missing reader end"))?;
         page.html.replace_range(start..end,&format!("<section class=\"page-not-found\"><h1>{}</h1><p>{}</p></section>",text(request.locale,"Work unavailable","작업을 이용할 수 없습니다"),text(request.locale,"This identity is absent from this Project. Choose another Work from the project menu.","이 프로젝트에 해당 작업이 없습니다. 프로젝트 메뉴에서 다른 작업을 선택하세요.")));
+        if let Some(end) = page.html.find("</section></main>") {
+            page.html.insert_str(
+                end,
+                &format!(
+                    "<p><a class=\"catalogue-return\" href=\"{}\">{}</a></p>",
+                    escape(&reading::url(&parent, &parent.view)),
+                    text(request.locale, "← Work list", "← 작업 목록")
+                ),
+            );
+        }
         page.explanations.clear();
         page.verification_basis.clear();
         Ok(page)

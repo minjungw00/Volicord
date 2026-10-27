@@ -129,3 +129,11 @@ state/sidebar counts cover the Project, while result count/range cover the query
 Native paging links carry `basis` for explicit refresh detection; changed data
 returns the first page with a notice. Article metadata is checked on opening,
 and catalogue reads prepare no articles or Source bodies.
+
+Catalogue links carry typed list-origin selectors into exact Work detail. Native
+return links preserve the query; the local script restores row focus and visible
+position across return/reload/history using UI coordinates only. A direct Work URL
+has a Project-list return. Missing/deleted detail keeps that return, while changed
+query data explicitly restarts paging. Work detail and fresh static exports show
+actual recorded Checkpoint history independently of article availability. Reported
+checks, Work state, review and acceptance remain separate.

@@ -302,14 +302,27 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
             server.serve_connection(&mut http.as_bytes(), &mut response)?;
             let overview = String::from_utf8(response)?;
             assert!(overview.starts_with("HTTP/1.1 200"));
-            for html in [&overview, &snapshot] {
-                let card = html
-                    .split(&format!("class=\"work-card\" data-work-id=\"{work}\""))
-                    .nth(1)
-                    .ok_or("card")?
-                    .split("</article>")
-                    .next()
-                    .ok_or("card end")?;
+            for (html, row) in [(&overview, true), (&snapshot, false)] {
+                let card = if row {
+                    html.split("<a class=\"work-row\"")
+                        .skip(1)
+                        .find(|a| {
+                            a.split("</a>")
+                                .next()
+                                .is_some_and(|a| a.contains(&format!("data-work-id=\"{work}\"")))
+                        })
+                        .ok_or("catalogue row")?
+                        .split("</a>")
+                        .next()
+                        .ok_or("row end")?
+                } else {
+                    html.split(&format!("class=\"work-card\" data-work-id=\"{work}\""))
+                        .nth(1)
+                        .ok_or("snapshot card")?
+                        .split("</article>")
+                        .next()
+                        .ok_or("card end")?
+                };
                 for state in [expected.0, expected.1, expected.2] {
                     assert!(
                         !card.contains(state),
@@ -317,7 +330,11 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     );
                 }
                 assert!(!card.contains("<details"));
-                assert!(card.contains("class=\"work-status\""));
+                assert!(card.contains(if row {
+                    "class=\"work-badge\""
+                } else {
+                    "class=\"work-status\""
+                }));
                 assert!(
                     card.contains(&format!("#work-{work}"))
                         || card.contains(&format!("work={work}"))

@@ -314,8 +314,8 @@ impl ViewerServer {
         guarded_path: Option<ConfirmationRequestId>,
     ) -> Result<HttpResponse, HttpFailure> {
         query.require_only(&[
-            "project", "q", "sort", "basis", "state", "page", "view", "work", "scope", "entity",
-            "decision", "tool", "locale", "language", "guarded",
+            "project", "from", "q", "sort", "basis", "state", "page", "view", "work", "scope",
+            "entity", "decision", "tool", "locale", "language", "guarded",
         ])?;
         let project_id = query
             .optional("project")
@@ -386,7 +386,7 @@ impl ViewerServer {
             .get("language")
             .cloned()
             .unwrap_or_else(|| self.requested_language.clone());
-        if language.is_empty() || language.len() > 128 {
+        if language.is_empty() || language.len() > 128 || language.chars().any(char::is_control) {
             return Err(HttpFailure::bad_request(
                 "requested content language must contain 1 to 128 bytes",
             ));
@@ -599,8 +599,8 @@ impl FormData {
     fn return_location(&self) -> String {
         let mut fields = Vec::new();
         for key in [
-            "project", "q", "sort", "basis", "state", "page", "view", "work", "scope", "entity",
-            "decision", "tool", "locale", "language", "guarded",
+            "project", "from", "q", "sort", "basis", "state", "page", "view", "work", "scope",
+            "entity", "decision", "tool", "locale", "language", "guarded",
         ] {
             if let Some(value) = self.values.get(key).filter(|value| !value.is_empty()) {
                 fields.push(format!("{key}={}", percent_encode(value)));

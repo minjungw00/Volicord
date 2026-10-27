@@ -3125,5 +3125,34 @@ do not claim a live searchable complete dataset.
 | Contract | Owner / consumer | Direct control |
 | --- | --- | --- |
 | Authorized dataset search, exact language, states, stable eight-item paging | Projection catalogue / Operations / live HTTP | Viewer `catalogue` actual recording/query/HTTP tests |
-| No article or Source payload in catalogue storage view | Privacy selective read / Operations query | `single_summaryless_work_missing_dates_and_large_article_storage_stay_separate`; catalogue cost counters |
+| No article or Source payload in catalogue storage view | Privacy selective read / Operations query | `single_summaryless_work_missing_dates_and_article_storage_stay_separate`; catalogue cost counters |
 | Query refresh, deletion and foreign Project isolation | Operations authority / native GET controls | `replacement_deletion_foreign_scope_and_equal_names_reset_continuation_safely` |
+
+### Work detail origin and recorded timeline
+
+Work links from the live catalogue carry `from=list` and the same typed query,
+state, order, page and visible basis, alongside exact Project/Work/UI/content
+language identities. The origin never supplies a URL, authority or a different
+Project. Direct entry without that origin returns to the Project list. Missing/
+foreign/deleted detail has no substitute document or contents and offers the
+same typed list return; a changed dataset is revalidated with explicit refresh.
+
+Full-document GET navigation isolates competing detail responses. Existing
+publication/range identity and cancellation continue to govern evidence reads.
+Native return links work without script. Scripted list return uses only bounded
+UI coordinates (route, row identity, viewport top and scroll offset) in history
+and tab session storage. It restores the actual row and focus after font/layout
+settling, through explicit return, reload and native back/forward. Coordinates
+are checked against the exact effective query basis; changed/deleted results
+never restore a foreign row. Modified links retain native behavior. A restored
+browser page revalidates instead of displaying cached summary content.
+
+Actual Work detail exposes a newest-first recorded Checkpoint timeline, even
+when its separately admitted article is absent. Every event binds the original
+Checkpoint identity/revision/instant, exact state, recorded report when present,
+verification, review and acceptance separately. Blank reports remain blank and
+no events are generated from counts. Historical checks are reports, not newly
+executed tests; passing reports never imply completion or acceptance. The existing
+creation/latest-work-record distinction remains in the header. Its real heading
+participates in the same document contents as ordinary article headings. Static
+exports use the same canonical timeline and their existing bounded public reads.

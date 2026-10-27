@@ -72,7 +72,10 @@ fn ordinary_readers_leave_unrequested_candidate_inspection_explicitly_unrequeste
             assert_eq!(profile.projection.candidate_reads, 0, "{state}");
             assert!(!page.html.contains("/inspection"));
             assert!(!page.html.contains("view=tools"));
-            assert!(!page.html.contains("<form"));
+            assert_reader_forms(
+                &page.html,
+                matches!(request.view, ViewerView::Work { work: None }),
+            );
         }
         assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
     }
@@ -130,7 +133,11 @@ fn every_reader_and_snapshot_omits_retired_surfaces_without_loading_bulk_project
                 ] {
                     assert!(!page.html.contains(forbidden), "{forbidden}");
                 }
-                assert!(!page.html.contains("<form"));
+                assert_reader_forms(
+                    &page.html,
+                    matches!(request.view, ViewerView::Work { work: None })
+                        && page.html.contains("data-viewer-mode=\"live\""),
+                );
                 let header = page
                     .html
                     .split("class=\"project-navigation\"")
@@ -147,4 +154,19 @@ fn every_reader_and_snapshot_omits_retired_surfaces_without_loading_bulk_project
     assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
     assert_eq!(privacy, f.operations.privacy_status(f.project)?);
     Ok(())
+}
+
+// Retired management forms stay absent; the catalogue has one read-only GET search.
+fn assert_reader_forms(html: &str, catalogue: bool) {
+    let forms = html
+        .split("<form")
+        .skip(1)
+        .map(|s| s.split('>').next().expect("form opening"))
+        .collect::<Vec<_>>();
+    assert_eq!(forms.len(), usize::from(catalogue));
+    for form in forms {
+        assert!(form.contains("method=\"get\""));
+        assert!(form.contains("action=\"/\""));
+        assert!(form.contains("role=\"search\""));
+    }
 }

@@ -10,6 +10,10 @@ pub enum ViewerView {
         query: volicord_projections::WorkCatalogueQuery,
     },
     RepositoryExplanation,
+    WorkContext {
+        work: ContextItemId,
+        query: volicord_projections::WorkCatalogueQuery,
+    },
     Work {
         work: Option<ContextItemId>,
     },
@@ -44,67 +48,69 @@ impl ViewerView {
                 return Err(ViewerError::new("retired Viewer selector"));
             }
         }
-        if name != "work"
-            && (value("work").is_some()
-                || value("page").is_some()
-                || value("q").is_some()
-                || value("sort").is_some()
-                || value("basis").is_some()
-                || value("state").is_some())
-        {
+        let has_query = ["q", "state", "sort", "page", "basis"]
+            .iter()
+            .any(|key| value(key).is_some());
+        if name != "work" && (value("work").is_some() || has_query || value("from").is_some()) {
             return Err(ViewerError::new("selector does not belong to this view"));
         }
-        if let Some(id) = value("work") {
-            if value("page").is_some() {
-                return Err(ViewerError::new("detail cannot select a list page"));
-            }
-            view = match WorkSelector::exact(id) {
-                Ok(WorkSelector::ExactWork(id)) => Self::Work { work: Some(id) },
-                _ => return Err(ViewerError::new("invalid Work identity")),
-            };
-        } else if let Some(page) = value("page") {
-            let page = if !page.is_empty() && page.bytes().all(|b| b.is_ascii_digit()) {
-                page.parse::<usize>().ok().filter(|p| *p < 1_000_000)
-            } else {
-                None
-            }
-            .ok_or_else(|| ViewerError::new("invalid list page"))?;
-            view = Self::WorkPage { page };
-        } else if value("view").is_none() {
-            view = default.clone();
+        let work = value("work")
+            .map(|id| match WorkSelector::exact(id) {
+                Ok(WorkSelector::ExactWork(id)) => Ok(id),
+                _ => Err(ViewerError::new("invalid Work identity")),
+            })
+            .transpose()?;
+        let from_list = match value("from") {
+            None => false,
+            Some("list") if work.is_some() => true,
+            _ => return Err(ViewerError::new("invalid Work origin")),
+        };
+        if work.is_some() && has_query && !from_list {
+            return Err(ViewerError::new("detail query requires a list origin"));
         }
-        if let Some(state) = value("state") {
-            if name != "work" || value("work").is_some() {
-                return Err(ViewerError::new("state belongs to the Work list"));
-            }
-            let state = match state {
-                "open" => volicord_projections::UnderstandingWorkState::Open,
-                "in_progress" => volicord_projections::UnderstandingWorkState::InProgress,
-                "paused" => volicord_projections::UnderstandingWorkState::Paused,
-                "completed" => volicord_projections::UnderstandingWorkState::Completed,
-                "abandoned" => volicord_projections::UnderstandingWorkState::Abandoned,
-                "superseded" => volicord_projections::UnderstandingWorkState::Superseded,
-                _ => return Err(ViewerError::new("unknown Work state")),
+        if name == "work" {
+            let page = match value("page") {
+                None => 0,
+                Some(page) if !page.is_empty() && page.bytes().all(|b| b.is_ascii_digit()) => page
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|p| *p < 1_000_000)
+                    .ok_or_else(|| ViewerError::new("invalid list page"))?,
+                _ => return Err(ViewerError::new("invalid list page")),
             };
-            let page = if let Self::WorkPage { page } = view {
-                page
-            } else {
-                0
+            let state = match value("state") {
+                None => None,
+                Some(s) => Some(match s {
+                    "open" => volicord_projections::UnderstandingWorkState::Open,
+                    "in_progress" => volicord_projections::UnderstandingWorkState::InProgress,
+                    "paused" => volicord_projections::UnderstandingWorkState::Paused,
+                    "completed" => volicord_projections::UnderstandingWorkState::Completed,
+                    "abandoned" => volicord_projections::UnderstandingWorkState::Abandoned,
+                    "superseded" => volicord_projections::UnderstandingWorkState::Superseded,
+                    _ => return Err(ViewerError::new("unknown Work state")),
+                }),
             };
-            view = Self::WorkFilter { state, page };
-        }
-        if name == "work" && value("work").is_none() {
-            let mut query = view.catalogue_query().unwrap_or_default();
-            query.term = value("q").unwrap_or_default().to_owned();
-            query.order = match value("sort").unwrap_or("recent") {
+            let order = match value("sort").unwrap_or("recent") {
                 "recent" => volicord_projections::WorkCatalogueOrder::Recent,
                 "oldest" => volicord_projections::WorkCatalogueOrder::Oldest,
                 "name" => volicord_projections::WorkCatalogueOrder::Name,
                 _ => return Err(ViewerError::new("unknown Work ordering")),
             };
-            query.expected_basis = value("basis").map(str::to_owned);
+            let query = volicord_projections::WorkCatalogueQuery {
+                term: value("q").unwrap_or_default().into(),
+                state,
+                order,
+                page,
+                expected_basis: value("basis").map(str::to_owned),
+            };
             query.validate().map_err(ViewerError::new)?;
-            view = Self::WorkQuery { query };
+            view = match work {
+                Some(work) if from_list => Self::WorkContext { work, query },
+                Some(work) => Self::Work { work: Some(work) },
+                None => Self::WorkQuery { query },
+            };
+        } else if value("view").is_none() {
+            view = default.clone();
         }
         Ok(view)
     }
@@ -112,10 +118,25 @@ impl ViewerView {
         match self {
             Self::Overview => "overview",
             Self::RepositoryExplanation => "repository",
-            Self::WorkQuery { .. }
+            Self::WorkContext { .. }
+            | Self::WorkQuery { .. }
             | Self::Work { .. }
             | Self::WorkPage { .. }
             | Self::WorkFilter { .. } => "work",
+        }
+    }
+    pub(crate) fn exact_work(&self) -> Option<ContextItemId> {
+        match self {
+            Self::Work { work: Some(id) } | Self::WorkContext { work: id, .. } => Some(*id),
+            _ => None,
+        }
+    }
+    pub(crate) fn list_return(&self) -> Self {
+        match self {
+            Self::WorkContext { query, .. } => Self::WorkQuery {
+                query: query.clone(),
+            },
+            _ => Self::Work { work: None },
         }
     }
     pub(crate) fn catalogue_query(&self) -> Option<volicord_projections::WorkCatalogueQuery> {
@@ -134,7 +155,9 @@ impl ViewerView {
     }
     pub(crate) fn selection(&self) -> WorkSelector {
         match self {
-            Self::Work { work: Some(id) } => WorkSelector::ExactWork(*id),
+            Self::Work { work: Some(id) } | Self::WorkContext { work: id, .. } => {
+                WorkSelector::ExactWork(*id)
+            }
             Self::RepositoryExplanation => WorkSelector::Repository,
             _ => WorkSelector::LatestWork,
         }
@@ -154,6 +177,15 @@ impl ViewerView {
         }
     }
     pub(crate) fn fields(&self) -> Vec<(&'static str, String)> {
+        if let Self::WorkContext { work, query } = self {
+            let mut fields = Self::WorkQuery {
+                query: query.clone(),
+            }
+            .fields();
+            fields.push(("work", work.to_string()));
+            fields.push(("from", "list".into()));
+            return fields;
+        }
         let mut fields = vec![("view", self.key().into())];
         match self {
             Self::WorkQuery { query } => {

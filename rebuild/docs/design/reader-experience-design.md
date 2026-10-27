@@ -887,3 +887,20 @@ forms/links work without JavaScript and retain Project/UI/content-language scope
 Overview's current card requires actual InProgress state. Its recent fallback is
 labelled recent, never active. Purpose absence and zero Work are ordinary states.
 Projection owns exact query/admission/order/refresh semantics.
+
+### List context and actual Work history
+
+Catalogue → Work → claim/code → return preserves the Project, content/UI
+languages, query, state, ordering, page, selected row, focus and its visible
+position. Typed native URLs carry logical return intent; optional local script
+keeps only UI coordinates. Direct-entry detail offers the Project list without
+inventing browser history. Data refresh/deletion has an explicit useful return
+and cannot select a similarly named or foreign Work.
+
+Work detail uses the existing shared document shell, authored contents and
+evidence interactions. A real recorded timeline remains useful without an
+article, showing only actual Checkpoint events and their independent verification,
+review and acceptance. The historical Music Deck input retains its two reports
+of three VM cases, Paused state and unrequested review/acceptance. It is neither
+a new run nor six inferred distinct tests. Synthetic scale controls remain
+separate from that genuine historical reading.

@@ -4,9 +4,14 @@
   "contracts": [
     {
       "id": "analysis-observation-locality",
-      "owners": ["repository-intelligence", "local-operations"],
+      "owners": [
+        "repository-intelligence",
+        "local-operations"
+      ],
       "requires_product_entrypoint": true,
-      "required_entrypoints": ["local_operations"],
+      "required_entrypoints": [
+        "local_operations"
+      ],
       "evidence": [
         [
           "local_operations",
@@ -287,6 +292,62 @@
           "viewer",
           "rebuild/crates/volicord-viewer/tests/grounded_reader.rs",
           "unavailable_explanation_storage_preserves_canonical_reading_and_recovers_without_generation"
+        ]
+      ]
+    },
+    {
+      "id": "project-work-catalogue",
+      "owners": [
+        "canonical-context",
+        "projections",
+        "privacy",
+        "local-operations",
+        "host-and-user-adapters"
+      ],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": [
+        "local_operations",
+        "viewer"
+      ],
+      "evidence": [
+        [
+          "local_operations",
+          "rebuild/crates/volicord-viewer/tests/catalogue.rs",
+          "catalogue_searches_the_authorized_dataset_before_paging_and_never_prepares_articles"
+        ],
+        [
+          "local_operations",
+          "rebuild/crates/volicord-viewer/tests/catalogue.rs",
+          "equal_recorded_dates_use_identity_ties_in_every_order_through_ordinary_recording"
+        ],
+        [
+          "local_operations",
+          "rebuild/crates/volicord-viewer/tests/catalogue.rs",
+          "replacement_deletion_foreign_scope_and_equal_names_reset_continuation_safely"
+        ],
+        [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/catalogue.rs",
+          "real_http_query_forms_are_bounded_and_preserve_exact_project"
+        ]
+      ]
+    },
+    {
+      "id": "work-list-origin-and-recorded-history",
+      "owners": [
+        "projections",
+        "local-operations",
+        "host-and-user-adapters"
+      ],
+      "requires_product_entrypoint": true,
+      "required_entrypoints": [
+        "viewer"
+      ],
+      "evidence": [
+        [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/catalogue.rs",
+          "detail_timeline_and_native_return_keep_typed_query_scope_without_invented_history"
         ]
       ]
     }

@@ -671,3 +671,10 @@ Source copy, explanation v8, bundle or generated-document metadata format change
 The selective Privacy SQL read does not rewrite existing envelopes or add a
 parallel decoder. Refresh fingerprints are request-local equality checks rather
 than durable compatibility tokens.
+
+Work detail's typed list-origin selectors and bounded browser coordinates are
+ephemeral UI state. The visible timeline projects existing original canonical
+Checkpoint events; it adds no event, format, migration or decoder. New exports
+use the current renderer with the same retained publications and output formats.
+The citation-window control follows the shared validator's crate-visible signature
+without changing the observed function or Source-reading limits.

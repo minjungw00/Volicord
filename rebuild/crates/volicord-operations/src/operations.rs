@@ -2713,7 +2713,7 @@ impl LocalOperations {
         language: &str,
     ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
         query.validate().map_err(Error::new)?;
-        if language.is_empty() || language.len() > 128 {
+        if language.is_empty() || language.len() > 128 || language.chars().any(char::is_control) {
             return Err(Error::new("invalid content language"));
         }
         let _inspection = self.layout.acquire_health_lock()?;

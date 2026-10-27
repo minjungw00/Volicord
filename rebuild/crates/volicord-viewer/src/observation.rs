@@ -106,7 +106,7 @@ pub(crate) fn context(
     for d in projection
         .selected_work_decisions
         .iter()
-        .filter(|_| matches!(request.view, crate::ViewerView::Work { work: Some(_) }))
+        .filter(|_| request.view.exact_work().is_some())
     {
         subjects.insert(
             format!("decision:{}", d.decision.decision_id),

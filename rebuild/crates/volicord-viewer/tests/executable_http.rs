@@ -268,7 +268,17 @@ fn real_listener_rejects_retired_surfaces_and_preserves_reading() {
         let page = get(&viewer.address, path);
         assert!(page.starts_with("HTTP/1.1 200"), "{page}");
         assert!(!page.contains("tools-menu"));
-        assert!(!page.contains("<form"));
+        let forms = page
+            .split("<form")
+            .skip(1)
+            .map(|s| s.split('>').next().expect("form opening"))
+            .collect::<Vec<_>>();
+        assert_eq!(forms.len(), usize::from(path == "/?view=work"));
+        for form in forms {
+            assert!(form.contains("method=\"get\""));
+            assert!(form.contains("action=\"/\""));
+            assert!(form.contains("role=\"search\""));
+        }
     }
     for path in ["/inspection", "/inspection.json", "/code", "/decisions"] {
         assert!(get(&viewer.address, path).starts_with("HTTP/1.1 404"));

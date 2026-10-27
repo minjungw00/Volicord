@@ -27,8 +27,21 @@ fn date(html: &mut String, r: &ViewerRequest, time: Option<i64>) {
         html.push_str(text(r.locale, "Date unavailable", "날짜 확인 불가"));
     }
 }
-fn row(html: &mut String, r: &ViewerRequest, e: &WorkCatalogueEntry) {
-    let target = reading::url(r, &ViewerView::Work { work: Some(e.id) });
+fn row(
+    html: &mut String,
+    r: &ViewerRequest,
+    e: &WorkCatalogueEntry,
+    origin: Option<&WorkCatalogueQuery>,
+) {
+    let target = reading::url(
+        r,
+        &origin.map_or(ViewerView::Work { work: Some(e.id) }, |query| {
+            ViewerView::WorkContext {
+                work: e.id,
+                query: query.clone(),
+            }
+        }),
+    );
     let article = match e.article {
         CatalogueArticle::Missing => text(r.locale, "Records only", "진행 기록만"),
         CatalogueArticle::Recorded => text(
@@ -62,7 +75,7 @@ pub(super) fn index(
     p: &ProjectProjection,
     c: &WorkCataloguePage,
 ) {
-    html.push_str(&format!("<section class=\"snapshot-page catalogue-page\" id=\"works\" data-catalogue-basis=\"{}\"><header class=\"page-header\"><p class=\"eyebrow\">{}</p><div class=\"heading-count\"><h1 class=\"index-title\">{}</h1><span>{}</span></div><p class=\"overview-lead\">{}</p></header>",c.basis,escape(&p.overview.project_name),text(r.locale,"Work","작업"),p.work_count,text(r.locale,"Find and read recorded goals, progress and investigations.","진행 중인 일부터 지난 조사까지, 목표와 결과를 함께 찾아 읽습니다.")));
+    html.push_str(&format!("<section class=\"snapshot-page catalogue-page\" id=\"works\" data-catalogue-route=\"{}\" data-catalogue-basis=\"{}\"><header class=\"page-header\"><p class=\"eyebrow\">{}</p><div class=\"heading-count\"><h1 class=\"index-title\">{}</h1><span>{}</span></div><p class=\"overview-lead\">{}</p></header>",escape(&href(r,c.query.clone())),c.basis,escape(&p.overview.project_name),text(r.locale,"Work","작업"),p.work_count,text(r.locale,"Find and read recorded goals, progress and investigations.","진행 중인 일부터 지난 조사까지, 목표와 결과를 함께 찾아 읽습니다.")));
     html.push_str("<form class=\"catalog-controls\" method=\"get\" action=\"/\" role=\"search\">");
     for (key, value) in [
         ("project", r.project_id.to_string()),
@@ -153,7 +166,7 @@ pub(super) fn index(
     html.push_str(&format!("<div class=\"result-summary\" role=\"status\" data-result-count=\"{}\"><span>{}: {} · {}–{} {}</span><a href=\"{}\">{}</a></div>",c.matched_count,text(r.locale,"Results","검색 결과"),c.matched_count,start,start.saturating_sub(1)+c.entries.len(),text(r.locale,"shown","표시"),escape(&href(r,WorkCatalogueQuery::default())),text(r.locale,"Reset","조건 초기화")));
     html.push_str(&format!("<div class=\"work-list-header\" aria-hidden=\"true\"><span>{}</span><span>{}</span><span>{}</span></div><div class=\"work-list\">",text(r.locale,"Work · summary","작업 · 요약"),text(r.locale,"State","상태"),text(r.locale,"Latest record","최근 기록")));
     for entry in &c.entries {
-        row(html, r, entry);
+        row(html, r, entry, Some(&c.query));
     }
     if c.entries.is_empty() {
         html.push_str(&format!(
@@ -273,7 +286,7 @@ pub(super) fn overview(
     }
     html.push_str(&format!("</div><div class=\"list-section-heading\"><div><h2>{}</h2><p>{}</p></div><a href=\"{}\">{} →</a></div><div class=\"work-list recent\">",text(r.locale,"Recent Work","최근 작업"),text(r.locale,"Latest recorded update first","마지막으로 기록한 순서대로 읽습니다."),escape(&href(r,WorkCatalogueQuery::default())),text(r.locale,"All Work","전체 작업 보기")));
     for entry in c.entries.iter().take(5) {
-        row(html, r, entry);
+        row(html, r, entry, None);
     }
     html.push_str("</div></section>");
 }

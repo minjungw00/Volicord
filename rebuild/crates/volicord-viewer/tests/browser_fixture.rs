@@ -22,7 +22,7 @@ fn seed_browser_runtime() -> Result<(), Box<dyn std::error::Error>> {
     // Keep latest Work association explicit so real catalog geometry exercises
     // the reported highlighted-card overflow; unresolved history has Rust coverage.
     scenario["unassociated_checkpoint"] = serde_json::json!(false);
-    let fixture = reading_fixture::scenario_in(&output, scenario)?;
+    let fixture = reading_fixture::browser_scenario_in(&output, scenario)?;
     let diagnostic_sources = code_fixture::add_code_diagnostics(&fixture)?;
     let prefix = "relay_boundary_with_a_very_long_common_prefix_for_distinguishing_labels_";
     let alpha = format!("{prefix}alpha");

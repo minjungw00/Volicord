@@ -4097,3 +4097,35 @@ record reads and retain originals. Query measurements declare record/publication
 counts and scan limitations; no 48-entry or universal latency guarantee is implied.
 Scoped results are implementation self-review/technical evidence, not independent
 semantic evaluation, human/assistive acceptance or aggregate/gate/V11 qualification.
+
+`work_catalogue_browser.cjs` optionally runs `work_context_journey.cjs` against
+actual listeners, preserving current executable identity and fresh outputs. It
+checks modified links, exact list-row visible position/focus, detail/reload, native
+back/forward, explicit return, direct entry, and late detail/Project replacement.
+Genuine cases require their actual critical evidence range and compare complete
+bytes with the declared original source. Record detail/comparison and exact Source
+read times separately from catalogue requests. The actual historical Work's two
+reports of three VM cases remain historical reports, with Paused state and no
+new user acceptance.
+
+`VOLICORD_CATALOGUE_WORKS` selects 1–512 synthetic authored controls for the ignored
+seed (default 33), plus its one unassociated Goal. The declared large workload
+uses 130 Goals, 258 admitted name/summary publications and 129 Checkpoints.
+`delete_selection` requires an explicit current CLI; it forgets only a selected
+Checkpoint and Goal in the driver's disposable synthetic Runtime copy, then
+checks 404 detail and preserved filters with explicit page refresh. This control
+never mutates genuine input Runtimes. No synthetic history or measurement is
+presented as actual Project execution or a universal capacity guarantee.
+
+The browser seed's identity-bound canonical projection control now uses the
+existing deliberate high-identity construction before dependent records. A
+randomized attempt exhausted 4,096 distractor Goals without reaching its asserted
+64 preceding identities; its failed numeric result is preserved. This fixture
+repair changes neither catalogue ordering nor canonical identity authority.
+
+The maintained contract registry maps `project-work-catalogue` to ordinary
+recording/Operations and HTTP controls, and `work-list-origin-and-recorded-history`
+to exact native return/timeline checks. Live reader controls allow only the new
+GET search form; retired management forms and all snapshot forms stay absent.
+History consumers check the adopted live rows and the existing bounded export
+cards without weakening independent state, report or audit assertions.

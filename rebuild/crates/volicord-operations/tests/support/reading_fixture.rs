@@ -97,6 +97,16 @@ pub fn scenario_in(
     fixture_with_temporary(tempfile::tempdir_in(parent)?, false, input)
 }
 
+/// Identity-order controls deliberately select a high Work identity before its
+/// dependent records. Ordinary scenario construction keeps random identities.
+#[allow(dead_code)]
+pub fn browser_scenario_in(
+    parent: &std::path::Path,
+    input: Value,
+) -> Result<Fixture, Box<dyn std::error::Error>> {
+    fixture_with_temporary(tempfile::tempdir_in(parent)?, true, input)
+}
+
 // Browser supporting checks retain only their explicitly selected disposable home.
 #[allow(dead_code)]
 pub fn fixture_in(parent: &std::path::Path) -> Result<Fixture, Box<dyn std::error::Error>> {
@@ -283,8 +293,9 @@ fn fixture_with_temporary(
             work["title"].as_str().ok_or("title")?,
             Vec::new(),
         )?;
-        // Display order is canonical identity order. Keep the old browser Work
-        // above enough generated distractors without relying on chance at the bound.
+        // Bounded canonical projections use identity order independently of the
+        // catalogue's recent/date/name ordering. Select this controlled Work
+        // identity before recording dependent Checkpoints and Decisions.
         let id = if browser_fixture && work["key"] == "older" {
             let mut selected = id;
             for _ in 0..1024 {

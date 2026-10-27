@@ -365,14 +365,24 @@ fn overview_uses_purpose_and_recent_cards_without_empty_legacy_sections(
                     "Purpose-only controls cannot acquire a synthesized synopsis"
                 );
                 let card = overview
-                    .split("class=\"work-card\"")
+                    .split(if mode == "live" {
+                        "class=\"work-row\""
+                    } else {
+                        "class=\"work-card\""
+                    })
                     .nth(1)
-                    .ok_or("card")?
-                    .split("</article>")
+                    .ok_or("Work entry")?
+                    .split(if mode == "live" { "</a>" } else { "</article>" })
                     .next()
-                    .ok_or("card end")?;
+                    .ok_or("Work entry end")?;
                 assert!(!card.contains(f["goal"].as_str().ok_or("original Goal")?));
-                assert!(card.contains("content-unavailable"));
+                assert!(card.contains(if mode == "snapshot" {
+                    "content-unavailable"
+                } else if key == "en" {
+                    "Work summary is unavailable"
+                } else {
+                    "작업 요약을 사용할 수 없습니다"
+                }));
                 assert!(overview.contains("data-work-state=\"open\""));
                 assert!(!overview.contains("data-work-state=\"completed\""));
                 assert!(page.contains(if mode == "live" {

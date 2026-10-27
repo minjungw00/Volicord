@@ -906,3 +906,12 @@ Article metadata is explicitly provisional until opened through the exact detail
 reader. Live GET forms preserve Host/Origin/fetch protections, no-store responses,
 fixed locale and separate content language. Projection owns query semantics and
 refresh tokens; tokens confer no authority and bind no hidden text.
+
+Catalogue return state stores at most 24 route/row/viewport coordinate entries in
+tab session storage, with no names, summaries, articles, evidence or code bodies.
+The exact effective Project/query/language/basis must match before restoration.
+UI state grants no read authority; GETs repeat the shared admission barriers.
+Native browser restoration of a cached catalogue triggers a fresh read. Detail
+requests are ordinary scoped document navigation; obsolete responses cannot
+update a different Project's DOM. Existing citation cancellation and exact
+publication/range checks still apply.

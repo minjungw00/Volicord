@@ -37,28 +37,37 @@ async function start(item,runtime){
   if(item.synthetic){
    await page.setViewportSize({width:1440,height:900});await page.goto(address());
    await page.locator('#work-search').fill('needle');await page.locator('.catalog-controls select').selectOption('oldest');await page.locator('.catalog-controls button').click();
-   assert.equal(await page.locator('[data-result-count]').getAttribute('data-result-count'),'17');
-   const expected=Array.from({length:17},(_,n)=>item.ids[`control-${String(n*2).padStart(3,'0')}`]);
-   const selected=[];for(let n=0;n<3;n++){
+   assert.equal(await page.locator('[data-result-count]').getAttribute('data-result-count'),String(Math.ceil(Object.keys(item.ids).length/2)));
+   const expected=Array.from({length:Math.ceil(Object.keys(item.ids).length/2)},(_,n)=>item.ids[`control-${String(n*2).padStart(3,'0')}`]);
+   const pages=Math.ceil(expected.length/8);const selected=[];for(let n=0;n<pages;n++){
     const rows=await page.locator('.work-row').evaluateAll(nodes=>nodes.map(n=>n.dataset.workId));selected.push(...rows);
-    if(n<2)await page.locator(`.pagination a[aria-label="Page ${n+2}"]`).click();
+    if(n<pages-1)await page.locator(`.pagination a[aria-label="Page ${n+2}"]`).click();
    }
    assert.deepEqual(selected,expected);assert.ok(new URL(page.url()).searchParams.has('basis'));
    await page.locator('.filter-tab').filter({hasText:'Completed'}).click();
-   assert.equal(await page.locator('[data-result-count]').getAttribute('data-result-count'),'6');assert.equal(new URL(page.url()).searchParams.get('page'),'0');
+   assert.equal(await page.locator('[data-result-count]').getAttribute('data-result-count'),String(Object.keys(item.ids).filter(k=>Number(k.slice(8))%2===0&&Number(k.slice(8))%3===2).length));assert.equal(new URL(page.url()).searchParams.get('page'),'0');
    await page.locator('#work-search').fill('no-such-needle');await page.locator('.catalog-controls button').click();assert.equal(await page.locator('.work-row').count(),0);
    const duplicate=await page.goto(address('overview',`&project=${item.empty}`)); // Duplicate parameters must be refused.
    assert.equal(duplicate.status(),400);
    await page.goto(listener.base+`?project=${item.empty}&view=overview`);assert.match(await page.locator('main').innerText(),/No Work has been recorded/);
    await page.goto(listener.base+'?project='+('0'.repeat(32))+'&view=overview');assert.equal((await page.locator('body').innerText()).includes('Synthetic'),false);
   }
+  if(config.context_journeys&&(item.synthetic||item.work))await require('./work_context_journey.cjs')({page,context,address,item,output:config.output,result});
   for(let n=0;n<5;n++){
    const started=performance.now(),response=await context.request.get(address());const body=await response.body();assert.equal(response.status(),200);
-   result.measurements.push({case:item.key,workload:item.synthetic?'34 Goals / 66 admitted card publications / 33 Checkpoints':'genuine permitted retained records; sparse history',sample:n,milliseconds:performance.now()-started,html_bytes:body.length});
+   result.measurements.push({case:item.key,workload:item.synthetic?`${item.count} Goals / ${Object.keys(item.ids).length*2} admitted card publications / ${Object.keys(item.ids).length} Checkpoints`:'genuine permitted retained records; sparse history',sample:n,milliseconds:performance.now()-started,html_bytes:body.length});
   }
   const native=await browser.newContext({javaScriptEnabled:false});const nojs=await native.newPage();await nojs.goto(address());
-  if(item.synthetic){await nojs.locator('#work-search').fill('needle');await nojs.locator('.catalog-controls button').click();assert.equal(await nojs.locator('[data-result-count]').getAttribute('data-result-count'),'17');await nojs.locator('.pagination a').filter({hasText:'2'}).click();assert.equal(await nojs.locator('.work-row').count(),8);}
-  await native.close();await context.close();await listener.stop();listener=null;
+  if(item.synthetic){await nojs.locator('#work-search').fill('needle');await nojs.locator('.catalog-controls button').click();assert.equal(await nojs.locator('[data-result-count]').getAttribute('data-result-count'),String(Math.ceil(Object.keys(item.ids).length/2)));await nojs.locator('.pagination a').filter({hasText:'2'}).click();assert.equal(await nojs.locator('.work-row').count(),8);}
+  if(item.synthetic){
+   await nojs.setViewportSize({width:390,height:900});const row=nojs.locator('.work-row').first(),id=await row.getAttribute('id');
+   await row.click();assert.equal(await nojs.locator('.recorded-timeline').count(),1);
+   const back=nojs.locator('.doc>.breadcrumb a').first();assert.equal(new URL(await back.getAttribute('href'),nojs.url()).searchParams.get('page'),'1');
+   await back.click();assert.equal(new URL(nojs.url()).hash,'#'+id);assert.ok(await nojs.locator(`[id="${id}"]`).evaluate(n=>n.getBoundingClientRect().top)>=56,'native target below mobile header');
+  }
+  await native.close();
+  if(config.delete_selection&&item.synthetic)await require('./work_context_journey.cjs').deleteSelection({page,address,item,runtime,cli:config.cli,output:config.output,result});
+  await context.close();await listener.stop();listener=null;
  }
  if(config.reference){
   for(const width of [1440,1024,768,390,320])for(const name of ['index','works']){
