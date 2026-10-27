@@ -109,3 +109,14 @@ meaning, distinct element IDs, conditions, order and Source coordinates. `--json
 preserves exact bytes and provenance; terminal control characters are visibly
 escaped in human output. Offline repeated citations share a complete code window
 through a native link with an exact return to the selected Source claim.
+
+Normally admitted explanations remain readable on their original basis after
+ordinary Source TTL expiry, repository changes or unavailable comparison. Shared
+`applicability` separates publication readability, scoped repository comparison
+and exact unit/citation body availability. Changed comparison establishes no
+semantic impact result. Expired bodies are absent from delivered HTML/JSON and
+new exports; other permitted ranges remain exact historical bytes. Explicit
+deletion/forgetting/access withdrawal and damaged publication integrity still
+block all dependent meaning. New authoring keeps current-evidence admission.
+Export rechecks captured Source availability, so an older rendered page cannot
+publish code after its body expires. Static files cannot revoke distributed bytes.

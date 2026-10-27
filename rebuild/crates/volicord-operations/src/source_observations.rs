@@ -104,9 +104,9 @@ pub(crate) fn observation_lifetime_failure(
     use volicord_projections::ExplanationFailureReason as F;
     if withheld {
         Some(F::Withheld)
-    } else if record.state == ManagedDerivedState::Deleted {
+    } else if record.state == ManagedDerivedState::Deleted && !record.expired_by_cleanup() {
         Some(F::Deleted)
-    } else if record.retained_until.is_none_or(|t| t <= now) {
+    } else if record.expired_by_cleanup() || record.retained_until.is_none_or(|t| t <= now) {
         Some(F::Expired)
     } else if record.state == ManagedDerivedState::Invalidated {
         Some(F::Changed)
@@ -206,10 +206,14 @@ impl LocalOperations {
                                 && r.purpose == format!("work-source:{work}:{before}")
                         })
                         .is_some_and(|r| {
-                            matches!(
+                            // Body TTL is range-local. The admitted pair remains
+                            // a historical observation when its earlier body
+                            // expires; explicit removal still denies derivatives.
+                            (matches!(
                                 r.state,
                                 ManagedDerivedState::Current | ManagedDerivedState::Stale
-                            ) && r.retained_until.is_some_and(|t| t > now)
+                            ) || r.expired_by_cleanup())
+                                && !inspection.withheld_for_canonical_forgetting.contains(&r.id)
                         });
                     if !permitted_before {
                         return Ok(ObservationRead {

@@ -1583,8 +1583,10 @@ decode only after explicit `complete`. Overall supported compact content is
 1,048,576 bytes; excess is an explicit unsupported-size failure, never truncated
 success. Existing retained/admission and 256 KiB MCP envelope limits are unchanged.
 Every request revalidates all publication dependencies under the inspection lock.
-Replacement (even equal wording), expiry, deletion, withholding, changed evidence
-or a foreign selector reject continuation. Exact citation requests retain the
+Replacement (even equal wording), independent publication expiry, explicit deletion,
+withholding, damaged publication integrity or a foreign selector reject continuation.
+Ordinary Source expiry and repository comparison changes preserve that publication's
+continuation; their dynamic states are outside its stable content fingerprint. Exact citation requests retain the
 existing independently bounded Source reader and authority. This is nonmutating
 transport completion, not semantic approval or an enduring currentness promise.
 
@@ -1641,14 +1643,14 @@ and a typed limitation supplied by Operations/Source lifecycle owners. Verified
 comparison is scoped to that read; record-only publications establish no current
 repository comparison. Missing, changed, expired, deleted, withheld, unavailable
 comparison, corrupt and unsupported content remain distinct. Unknown detail is
-left unknown, never inferred from a diagnostic substring. A failed dependency
-withholds the affected article while independent name/summary and canonical facts
-keep their own authority.
+left unknown, never inferred from a diagnostic substring. Publication authority failures withhold the affected article. Ordinary body expiry
+and repository changes keep the admitted article with separate comparison and range
+availability, as specified by the retained-reading contract below.
 
-A confirmed repository identity mismatch during preparation is `stale` with
-comparison `changed`, just as a mismatch during later Source validation is. It
-must not be reported as an unavailable comparison. A missing repository remains
-`unavailable` with `comparison_unavailable`; unknown checks remain `not_checked`.
+A confirmed repository identity mismatch rejects new preparation/admission. For
+retained reading it is comparison `changed` with unknown semantic impact. A missing
+repository is comparison `unavailable`, never a missing publication. Unknown checks
+remain `not_checked`.
 The reason is carried by the dependency owner, not parsed from diagnostics.
 
 Dynamic comparison times live outside compact publication fingerprints, so a
@@ -1874,7 +1876,9 @@ No locator is opened and no current-file or generated-answer fallback exists.
 Historical copy access asserts no current repository state. Wrong revisions,
 changed fingerprints and corrupt/unsupported/hash-incompatible copies cannot
 provide content. Work correction, canonical forgetting, invalidation, expiry,
-explicit copy deletion and unavailable before-state withhold the affected copy.
+explicit copy deletion withholds affected derivatives. Ordinary before-body expiry
+withholds that earlier body while a permitted after-body remains independently
+readable as its recorded historical observation; new pair authoring still needs both.
 A prior continuation can only return an unavailable state or reject changed
 content; it never returns a deleted suffix. Metadata/lifecycle state remains
 separate from transport completion and original representation/omitted counts.
@@ -1920,10 +1924,10 @@ locator/line references; Viewer links those references to local provenance detai
 and documents retain them alongside exact citation metadata (metadata version 10).
 
 Recording adds all citation Sources/repository Sources and explicit before Sources
-to existing managed canonical dependencies and limits explanation retention to the
-earliest cited body expiry. Deletion, denied read, correction, expiry, corruption
-or repository change withhold current prose; read-only canonical facts remain
-available. Publication rechecks Source dependencies in addition to canonical and
+to existing managed canonical dependencies. Explanation preservation is independent
+of body TTL; explicit deletion/forgetting and canonical authority changes remain
+blocking. Ordinary body loss and repository change carry their own typed states;
+read-only canonical facts retain their own authority. Publication rechecks Source dependencies in addition to canonical and
 retained-output identity. The retained recorder-owned `semantic_approval_status`
 is always `not_established`: valid ranges, readable prose or generation do not
 certify causal meaning, translation, execution success or independent user approval.
@@ -2246,11 +2250,11 @@ expiry. Uncited technical bodies are not dependencies of record-only publication
 
 Each successful explicit record creates one complete independently admitted envelope
 under its subject/language purpose. Latest local insertion selects replacement only
-within that purpose. Retention is bounded by that scope's earliest cited body expiry;
-record-only scopes need no retained code copy. Deleting a publication removes its
+within that purpose. Publication preservation is independent of cited body expiry;
+every Source retains its own deadline and record-only scopes need no code copy. Deleting a publication removes its
 languages/history without deleting sibling publications. Canonical correction or
 forgetting invalidates/deletes all genuinely linked publications through existing
-managed links/barriers. Expired or invalid article text is never partitioned, stripped
+managed links/barriers. An independently expired, denied or invalid article is never partitioned, stripped
 of dependencies or reused as a current card: recovery requires fresh preparation,
 host authorship and admission. Failed admission leaves prior permitted output intact.
 
@@ -2260,7 +2264,7 @@ Counterexamples determine this boundary:
 | --- | --- | --- | --- |
 | Goal only, no code | Meaningful requested-action name | Request and unreported outcome | Missing/partial detail remains explicit |
 | New selected progress, even with blank report | Unchanged Goal name remains current | Stale; explicitly author supported current progress and qualifications | Full preparation becomes stale |
-| Uncited technical copy expires | Record-only name remains current | Record-only report summary remains current | Citing article becomes stale |
+| Uncited technical copy expires | Record-only name remains current | Record-only report summary remains current | Admitted article remains readable; expired cited ranges have no body |
 | Summary actually cites deleted Source | Goal name remains current | Withheld/stale; never drop citation after admission | Only affected publications become non-current |
 | Goal correction/forgetting | Non-current/deleted | Non-current/deleted | Non-current/deleted |
 | Different requested language | No language fallback | No language fallback | No language fallback |
@@ -2807,7 +2811,8 @@ Publication ID is assigned only by the managed writer/reader. It is skipped in t
 retained explanation envelope and cannot be supplied through authoring. Current v8
 realizations/preparations and their response/retained bounds are unchanged. Source
 navigation namespaces include managed ID, so old equal-worded links cannot select
-new figure/claim origins. Known loss still withholds cached code and diagram meaning.
+new figure/claim origins. Publication authority loss still withholds cached prose, code and diagram meaning.
+Ordinary Source expiry removes affected cached code without erasing the explanation.
 Generated-document metadata advances independently to 11 because embedded publication
 provenance now preserves this managed output identity; canonical, Source-copy, bundle,
 Analysis Snapshot and explanation versions do not change.
@@ -2961,3 +2966,59 @@ architecture; evaluation instructions and field-history explanations belong in
 provenance. Canonical-only progress still uses its exact evidence keys. Technical
 diagram labels/captions retain covering Source claims; no progress-only Source is
 invented to fill a figure. A Work need not duplicate the repository figure set.
+
+### Independently readable retained publications — accepted 2026-10-27
+
+This accepted policy replaces earlier blanket stale/expiry withholding in the
+reading sections above. Normal prepare/compose/record still admits the whole
+realization, every claim/diagram and dependency against permitted current evidence.
+Historical reading never admits a new claim, fetches current replacement bytes,
+changes canonical facts, regenerates content or renews a body lifetime.
+
+Three typed read decisions are shared by Operations, Projection, CLI/MCP, Viewer
+and new exports. `applicability.publication` describes readability of the selected
+intact publication; `repository_comparison`, `comparison_scope` (included inventory),
+explained snapshots and actual check time describe current comparison; each
+`source_ranges` entry addresses the original `unit_index`/`citation_index` and
+reports availability and a typed cause. The exact binding remains in that unit
+(or its compact publication binding table), avoiding another full wire copy.
+Changed inventory establishes changed bytes with unknown semantic impact; absent
+repositories/metadata or failed comparison establish unknown correspondence.
+Neither outcome hides permitted prose/diagrams or substitutes a live file.
+`ExplanationState::Current` denotes the selected permitted publication, not proof
+of current repository behavior. Canonical correction, forgetting or changed
+admission basis still cannot present obsolete text as current canonical authority.
+
+The retained repository evidence envelope reconstructs its admission metadata
+without requiring the original repository or Source bodies. Exact-current format,
+Project/subject/language, preparation/realization grounding, hashes, diagram seals,
+managed identity and latest-record selection remain checked. Unsupported, erased,
+foreign or malformed records receive no invented historical conversion or recovery.
+Source body corruption is range-local; publication corruption blocks all meaning.
+Explicit copy deletion/withdrawal propagates to the publication and all alternatives.
+
+Only available exact ranges enter `source_excerpts`. A missing body is an
+`unavailable` Source-window scope, distinct from an initial/offline budget omission.
+Live errors report whether publication readability survived the range failure;
+the browser removes cached affected Source bytes while preserving permitted meaning.
+Authority failure clears every dependent region, including hidden alternatives.
+Every pagination/citation request rechecks current permission and exact identity;
+equal-text replacement never rebinds the original selection.
+
+Render-to-file publication rechecks a request-local Source-availability fingerprint
+alongside canonical and publication equality under the existing mutation lock.
+A projection rendered before expiry/deletion cannot export cached bodies after the
+transition; render afresh for a permitted article with unavailable-range notices.
+This fingerprint is excluded from durable/generated metadata and publication page
+identity. Static output states its recorded comparison/export basis and cannot
+revoke distributed bytes or certify continuing/remote correspondence.
+
+| Requirement | Owner / implementation | Direct public-consumer controls |
+| --- | --- | --- |
+| Retain the same admitted meaning through body cleanup/restart | Privacy lifetime / Operations retained selection | Viewer `citation_reading::admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart`; `retained_originals` on frozen permitted publications |
+| Changed cited/uncited repository or absent comparison | Repository Intelligence comparison / typed applicability | Operations `repository_explanation::confirmed_repository_changes_are_distinct_from_unavailable_comparison` |
+| Exact independent ranges and denied new authoring | Source scoped readers / shared resolver | `citation_reading`, `work_publication`, ordinary CLI/MCP readers |
+| Deletion/forgetting, wrong identity, corruption, replacement and cached export | Privacy / Operations / Host / Viewer | `repository_explanation`, `work_publication`, `work_explanation`, exact citation tests |
+
+These are technical acceptance controls, independent of R3 layout fidelity,
+semantic entailment and user/assistive acceptance. No visual redesign is included.

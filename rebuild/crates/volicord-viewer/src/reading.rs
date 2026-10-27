@@ -1433,7 +1433,7 @@ fn render_source_scope(
         return;
     }
     html.push_str(&format!("<details class=\"code-reading-scope\"><summary>{}</summary><p>{}</p><ul>",
-        text(r.locale,"Included code windows", "포함된 코드 범위"),
+        text(r.locale,"Initially included code windows", "처음 포함된 코드 범위"),
         if snapshot { text(r.locale,"Offline verification covers only claims with all cited windows included below. Other supporting ranges are omitted; this file cannot retrieve them or compare with a current repository.","오프라인에서는 아래 모든 인용 범위가 포함된 주장만 코드로 확인할 수 있습니다. 나머지 근거 범위는 생략되었으며, 이 파일에서 가져오거나 현재 저장소와 비교할 수 없습니다.") }
         else { text(r.locale,"Complete windows are included for the claims below. Remaining permitted ranges can be read through their exact Source actions.","아래 주장에는 완전한 코드 범위를 포함했습니다. 나머지 허용된 범위는 각 Source 동작으로 읽을 수 있습니다.") }));
     for claim in scope {
@@ -1442,10 +1442,11 @@ fn render_source_scope(
             volicord_projections::SourceWindowState::Complete => "complete",
             volicord_projections::SourceWindowState::InitialOmission => "initial_omission",
             volicord_projections::SourceWindowState::OfflineOmission => "offline_omission",
+            volicord_projections::SourceWindowState::Unavailable => "unavailable",
         };
         html.push_str(&format!("<li data-source-window-state=\"{state}\" data-unit=\"{}\"><a href=\"#{}\">{} {}</a> · {}<ul>",claim.unit_index,
             reader_claim_anchor(answers,claim.unit_index),text(r.locale,"Claim","주장"),claim.unit_index+1,
-            if complete {text(r.locale,"All cited code included","모든 인용 코드 포함")} else {text(r.locale,"Supporting code omitted","근거 코드 일부 생략")}));
+            if complete {text(r.locale,"All cited code included","모든 인용 코드 포함")} else if !claim.unavailable_citation_indices.is_empty() {text(r.locale,"Some evidence bodies are unavailable","일부 근거 본문 이용 불가")} else {text(r.locale,"Supporting code omitted","근거 코드 일부 생략")}));
         for (n, c) in answers.prose[claim.unit_index].citations.iter().enumerate() {
             html.push_str(&format!(
                 "<li><a href=\"#{}\">{}:{}–{}</a> · {}</li>",
@@ -1455,6 +1456,13 @@ fn render_source_scope(
                 c.end_line,
                 if claim.included_citation_indices.contains(&n) {
                     text(r.locale, "complete window", "완전한 범위")
+                } else if let Some(status) = answers
+                    .applicability
+                    .source_ranges
+                    .iter()
+                    .find(|r| r.citation == *c && !r.available)
+                {
+                    limitation_label(r.locale, status.limitation)
                 } else {
                     text(r.locale, "omitted", "생략")
                 }
@@ -1757,8 +1765,8 @@ fn limitation_label(
         ),
         Some(F::Expired) => text(
             locale,
-            "Retained evidence expired; the article cannot be shown as current.",
-            "보존된 근거의 보존 기간이 만료되어 현재 유효한 글로 표시할 수 없습니다.",
+            "This evidence range expired. The retained explanation remains readable on its original basis.",
+            "이 근거 범위의 보존 기간이 만료되었습니다. 보존된 설명은 작성 당시 근거로 계속 읽을 수 있습니다.",
         ),
         Some(F::Deleted) => text(
             locale,
@@ -1812,8 +1820,8 @@ fn render_applicability(
     let label = match (snapshot, basis.repository_comparison) {
         (true, C::VerifiedAtRead) => text(
             r.locale,
-            "Local repository matched when this export was created; this file performs no current or remote check.",
-            "내보낼 때 로컬 저장소가 일치했습니다. 이 파일은 현재 상태나 원격 최신성을 검사하지 않습니다.",
+            "Local repository matched at the recorded comparison time below; this file performs no current or remote check.",
+            "아래 기록된 비교 시각에 로컬 저장소가 일치했습니다. 이 파일은 현재 상태나 원격 최신성을 검사하지 않습니다.",
         ),
         (false, C::VerifiedAtRead) => text(
             r.locale,
@@ -1822,13 +1830,13 @@ fn render_applicability(
         ),
         (_, C::Changed) => text(
             r.locale,
-            "Repository comparison: changed.",
-            "저장소 비교: 변경됨.",
+            "Repository comparison: changed. The retained explanation describes its original basis; semantic impact is unknown.",
+            "저장소 비교: 변경됨. 보존된 설명은 작성 당시 근거를 설명하며 의미상 영향은 알 수 없습니다.",
         ),
         (_, C::Unavailable) => text(
             r.locale,
-            "Repository comparison: unavailable.",
-            "저장소 비교: 이용 불가.",
+            "Repository comparison: unavailable. The retained explanation describes its original basis; current correspondence is unknown.",
+            "저장소 비교: 이용 불가. 보존된 설명은 작성 당시 근거를 설명하며 현재 대응은 알 수 없습니다.",
         ),
         (_, C::NotChecked) => text(
             r.locale,
@@ -1837,14 +1845,15 @@ fn render_applicability(
         ),
     };
     html.push_str(&format!(
-        "<details class=\"applicability\" data-comparison-state=\"{}\"><summary>{}</summary><dl>",
+        "<details class=\"applicability\"{} data-comparison-state=\"{}\"><summary>{}</summary><dl>",
+        publication_scope(answers),
         serde_json::to_value(basis.repository_comparison)
             .ok()
             .and_then(|v| v.as_str().map(str::to_owned))
             .unwrap_or_default(),
         label
     ));
-    for (label, value) in [
+    for (index, (label, value)) in [
         (
             text(r.locale, "Generated at", "설명 생성 시각"),
             basis.generated_at_unix_micros,
@@ -1865,10 +1874,18 @@ fn render_applicability(
             ),
             basis.checked_at_unix_micros,
         ),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         if let Some(value) = value {
             html.push_str(&format!(
-                "<dt>{label}</dt><dd>{}</dd>",
+                "<dt>{label}</dt><dd{}>{}</dd>",
+                if index == 1 {
+                    " data-comparison-time"
+                } else {
+                    ""
+                },
                 timestamp_label(TimestampMicros::from_unix_micros(value), r.locale)
             ));
         }
@@ -2066,14 +2083,32 @@ fn render_source_excerpts(
                     ));
                 }
             } else {
-                empty_state(
-                    html,
-                    text(
-                        r.locale,
-                        "This cited range was omitted by the shared code-reading bound.",
-                        "이 인용 범위는 공통 코드 읽기 한도로 생략되었습니다.",
-                    ),
-                );
+                if let Some(status) = answers
+                    .applicability
+                    .source_ranges
+                    .iter()
+                    .find(|a| a.citation.same_source_range(c) && !a.available)
+                {
+                    html.push_str(&format!(
+                        "<p class=\"source-note range-unavailable\" data-range-state=\"{}\">{}</p>",
+                        escape(
+                            serde_json::to_value(status.limitation)
+                                .unwrap_or_default()
+                                .as_str()
+                                .unwrap_or("unavailable")
+                        ),
+                        limitation_label(r.locale, status.limitation)
+                    ));
+                } else {
+                    empty_state(
+                        html,
+                        text(
+                            r.locale,
+                            "This cited range was omitted by the shared code-reading bound.",
+                            "이 인용 범위는 공통 코드 읽기 한도로 생략되었습니다.",
+                        ),
+                    );
+                }
             }
             context.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,
                 "This is the author's cited claim span. Range binding does not verify that each statement follows from this code.",

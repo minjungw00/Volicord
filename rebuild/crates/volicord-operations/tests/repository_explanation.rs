@@ -546,18 +546,26 @@ fn publication_requests_recheck_sources_beyond_the_returned_page() -> Result<(),
         }
         let before = f.ops.privacy_status(f.project)?;
         for offset in [0, offset] {
-            assert!(
-                f.ops
-                    .read_explanation_page(
-                        f.project,
-                        subject,
-                        "en",
-                        offset,
-                        (offset > 0).then_some(fingerprint)
-                    )
-                    .is_err(),
-                "{change}"
+            let result = f.ops.read_explanation_page(
+                f.project,
+                subject,
+                "en",
+                offset,
+                (offset > 0).then_some(fingerprint),
             );
+            // Authorized retained-reading policy: body expiry/corruption is
+            // range-local; explicit removal/forgetting still denies all meaning.
+            if matches!(change, "expire" | "corrupt") {
+                let result = result?;
+                assert_eq!(result["fingerprint"], fingerprint);
+                assert!(result["applicability"]["source_ranges"]
+                    .as_array()
+                    .ok_or("ranges")?
+                    .iter()
+                    .any(|a| a["available"] == false));
+            } else {
+                assert!(result.is_err(), "{change}");
+            }
         }
         assert_eq!(f.ops.privacy_status(f.project)?, before);
     }
@@ -600,11 +608,7 @@ fn confirmed_repository_changes_are_distinct_from_unavailable_comparison(
         let unavailable = change == "missing";
         assert_eq!(
             read.explanation_state,
-            if unavailable {
-                ExplanationState::Unavailable
-            } else {
-                ExplanationState::Stale
-            },
+            ExplanationState::Current,
             "{change}"
         );
         assert_eq!(
@@ -623,7 +627,11 @@ fn confirmed_repository_changes_are_distinct_from_unavailable_comparison(
                 RepositoryComparisonState::Changed
             }
         );
-        assert!(read.provenance.is_none() && read.source_excerpts.is_empty());
+        assert!(read.provenance.is_some() && !read.source_excerpts.is_empty());
+        assert_eq!(
+            read.applicability.publication,
+            PublicationReadability::Readable
+        );
         assert_eq!(f.ops.privacy_status(f.project)?, before);
     }
     Ok(())
@@ -857,7 +865,8 @@ fn bounded_ranges_full_file_changes_and_symlinks_are_enforced() -> Result<(), Bo
         f.root.join("main.py"),
         "def greet(name):\n    return 'later'\n",
     )?;
-    assert!(!f
+    // Ordinary repository changes retain the exact admitted interpretation.
+    assert!(f
         .ops
         .read_repository_explanation(f.project, "en", FixedLocale::English)?
         .prose
@@ -879,7 +888,7 @@ fn bounded_ranges_full_file_changes_and_symlinks_are_enforced() -> Result<(), Bo
 }
 
 #[test]
-fn expired_corrupt_and_unsupported_copies_and_outputs_never_supply_prose(
+fn unavailable_ranges_preserve_prose_but_damaged_publications_never_supply_it(
 ) -> Result<(), Box<dyn Error>> {
     for variant in [
         "expired",
@@ -934,18 +943,24 @@ fn expired_corrupt_and_unsupported_copies_and_outputs_never_supply_prose(
         let reading = f
             .ops
             .read_repository_explanation(f.project, "en", FixedLocale::English)?;
-        assert_ne!(
-            reading.explanation_state,
-            ExplanationState::Current,
-            "{variant}"
-        );
-        assert!(
-            !reading
+        if variant.ends_with("output") {
+            assert_ne!(
+                reading.explanation_state,
+                ExplanationState::Current,
+                "{variant}"
+            );
+            assert!(!reading
                 .prose
                 .iter()
-                .any(|p| p.role == AnswerRole::GeneratedInterpretation),
-            "{variant}"
-        );
+                .any(|p| p.role == AnswerRole::GeneratedInterpretation));
+        } else {
+            assert_eq!(
+                reading.explanation_state,
+                ExplanationState::Current,
+                "{variant}"
+            );
+            assert!(!reading.applicability.source_ranges[0].available);
+        }
         assert!(reading.source_excerpts.is_empty());
         if variant == "unsupported_output" {
             assert_eq!(reading.explanation_state, ExplanationState::Unsupported);
@@ -1054,7 +1069,12 @@ fn missing_analysis_rebinding_and_storage_failure_have_bounded_recovery(
     let absent = f
         .ops
         .read_repository_explanation(f.project, "en", FixedLocale::English)?;
-    assert_eq!(absent.explanation_state, ExplanationState::Unavailable);
+    assert_eq!(absent.explanation_state, ExplanationState::Current);
+    assert_eq!(
+        absent.applicability.repository_comparison,
+        RepositoryComparisonState::Unavailable
+    );
+    assert!(absent.source_excerpts.is_empty());
     assert!(f
         .ops
         .read_repository_explanation_source(f.project, f.analysis, id)
@@ -1107,7 +1127,7 @@ fn missing_analysis_rebinding_and_storage_failure_have_bounded_recovery(
         .ops
         .read_repository_explanation_source(f.project, f.analysis, id)
         .is_err());
-    assert_ne!(
+    assert_eq!(
         f.ops
             .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
@@ -1295,7 +1315,7 @@ fn large_polyglot_inventory_keeps_exact_scope_outside_bounded_reader_plan(
         .contains("Full inventory and coverage paths are excluded")));
     assert_eq!(before, f.ops.canonical_basis(f.project)?);
     fs::write(f.root.join("main.py"), "def changed(): pass\n")?;
-    assert_ne!(
+    assert_eq!(
         f.ops
             .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
@@ -1371,7 +1391,7 @@ fn repository_reading_uses_verified_inventory_without_claiming_graph_integrity(
         .ops
         .read_repository_explanation_source(f.project, f.analysis, id)
         .is_err());
-    assert_ne!(
+    assert_eq!(
         f.ops
             .read_repository_explanation(f.project, "en", FixedLocale::English)?
             .explanation_state,
@@ -1767,5 +1787,69 @@ fn repository_cli_keeps_fixed_locale_independent_from_publication_language(
         assert!(unavailable["provenance"].is_null());
     }
     assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn independent_publication_expiry_and_damaged_admission_links_remain_blocking(
+) -> Result<(), Box<dyn Error>> {
+    for variant in [
+        "publication_expiry",
+        "missing_source_link",
+        "foreign_source_project",
+        "changed_claim",
+    ] {
+        let f = fixture()?;
+        let id = source(&observe(&f, "main.py", None)?)?;
+        let subject = ExplanationSubject::Repository(f.analysis);
+        f.ops
+            .record_explanation(f.project, subject, "en", response(&f, id)?)?;
+        let db = rusqlite::Connection::open(f.ops.layout().privacy_store())?;
+        let (key,raw):(Vec<u8>,String) = db.query_row("SELECT id,record_json FROM managed_derived WHERE json_extract(record_json,'$.kind')='cached_summary'",[],|r|Ok((r.get(0)?,r.get(1)?)))?;
+        let mut record: Value = serde_json::from_str(&raw)?;
+        match variant {
+            "publication_expiry" => record["retained_until"] = serde_json::json!(1),
+            "missing_source_link" => record["canonical_links"] = serde_json::json!([]),
+            "foreign_source_project" => {
+                record["included_sources"][0]["project"] = serde_json::json!("11".repeat(16))
+            }
+            _ => {
+                let mut body: Value =
+                    serde_json::from_str(record["content"].as_str().ok_or("content")?)?;
+                body["realization"]["paragraphs"][0]["text"] =
+                    serde_json::json!("damaged published meaning");
+                record["content"] = serde_json::json!(body.to_string());
+            }
+        }
+        db.execute(
+            "UPDATE managed_derived SET record_json=?1 WHERE id=?2",
+            rusqlite::params![record.to_string(), key],
+        )?;
+        drop(db);
+        let failed = f
+            .ops
+            .read_explanation_page(f.project, subject, "en", 0, None);
+        assert!(failed.is_err(), "{variant}");
+        let answers = f
+            .ops
+            .read_repository_explanation(f.project, "en", FixedLocale::English)?;
+        assert!(
+            answers.provenance.is_none() && answers.source_excerpts.is_empty(),
+            "{variant}"
+        );
+        if variant == "publication_expiry" {
+            assert_eq!(
+                answers.applicability.limitation,
+                Some(ExplanationFailureReason::Expired)
+            );
+            let mut privacy = volicord_privacy::PrivacyStore::open(f.ops.layout().privacy_store())?;
+            assert_eq!(privacy.cleanup_expired(f.project)?.len(), 1);
+            drop(privacy);
+            let restarted = LocalOperations::new(f.ops.layout().clone());
+            assert!(restarted
+                .read_explanation_page(f.project, subject, "en", 0, None)
+                .is_err());
+        }
+    }
     Ok(())
 }

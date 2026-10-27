@@ -6,6 +6,7 @@ pub struct Error {
     source: Option<Box<dyn StdError + Send + Sync>>,
     checkpoint_scope_violation: Option<Box<crate::CheckpointScopeViolation>>,
     reading_failure: Option<volicord_projections::ExplanationFailureReason>,
+    publication_readable: bool,
 }
 
 impl Error {
@@ -15,6 +16,7 @@ impl Error {
             source: None,
             checkpoint_scope_violation: None,
             reading_failure: None,
+            publication_readable: false,
         }
     }
 
@@ -27,6 +29,7 @@ impl Error {
             source: Some(Box::new(source)),
             checkpoint_scope_violation: None,
             reading_failure: None,
+            publication_readable: false,
         }
     }
 
@@ -82,6 +85,15 @@ impl Error {
         self
     }
 
+    pub fn publication_readable(&self) -> bool {
+        self.publication_readable
+    }
+
+    pub(crate) fn with_readable_publication(mut self) -> Self {
+        self.publication_readable = true;
+        self
+    }
+
     pub fn checkpoint_scope_violation(&self) -> Option<&crate::CheckpointScopeViolation> {
         self.checkpoint_scope_violation.as_deref()
     }
@@ -95,6 +107,7 @@ impl Error {
             source: None,
             checkpoint_scope_violation: Some(Box::new(violation)),
             reading_failure: None,
+            publication_readable: false,
         }
     }
 }

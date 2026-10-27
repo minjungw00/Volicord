@@ -1021,9 +1021,14 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
             .set_times(fs::FileTimes::new().set_modified(original_mtime))?;
         assert_eq!(fs::metadata(&path)?.len(), original_bytes.len() as u64);
         assert_eq!(before, f.host.operations().canonical_basis(f.project)?);
-        let denied = page(&mut f.host, continuation.clone());
-        assert_eq!(denied["result"]["isError"], true, "{denied}");
-        assert!(denied["result"]["structuredContent"].get("chunk").is_none());
+        // The accepted retained-reading policy preserves this exact page;
+        // current correspondence is now an independent typed notice.
+        let historical = page(&mut f.host, continuation.clone());
+        assert_eq!(historical["result"]["isError"], false);
+        assert_eq!(
+            historical["result"]["structuredContent"]["applicability"]["repository_comparison"],
+            "changed"
+        );
         fs::write(&path, original_bytes)?;
         fs::File::options()
             .write(true)
@@ -1035,8 +1040,12 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
     let repository = f.temp.path().join("repo");
     let unavailable = f.temp.path().join("unavailable-repository");
     fs::rename(&repository, &unavailable)?;
-    let denied = page(&mut f.host, continuation.clone());
-    assert_eq!(denied["result"]["isError"], true, "{denied}");
+    let historical = page(&mut f.host, continuation.clone());
+    assert_eq!(historical["result"]["isError"], false);
+    assert_eq!(
+        historical["result"]["structuredContent"]["applicability"]["repository_comparison"],
+        "unavailable"
+    );
     fs::rename(&unavailable, &repository)?;
     assert_eq!(
         page(&mut f.host, continuation.clone())["result"]["isError"],
@@ -1216,8 +1225,8 @@ fn changed_and_deleted_sources_cannot_publish_current_prose_and_recovery_is_expl
             &[provenance],
             &[],
         )
-        .is_err());
-    assert!(!stale_destination.exists());
+        .is_ok());
+    assert!(stale_destination.exists());
     let args = f.record_args(&next, &valid)?;
     assert_eq!(call(&mut f.host, args)["result"]["isError"], true);
     assert_eq!(
@@ -1234,8 +1243,12 @@ fn changed_and_deleted_sources_cannot_publish_current_prose_and_recovery_is_expl
         .find(|w| w.work_item_id == f.work)
         .ok_or("Work")?;
     let reading = work_answers(work, "en", FixedLocale::English);
-    assert_eq!(reading.explanation_state, ExplanationState::Stale);
-    assert!(reading.provenance.is_none());
+    assert_eq!(reading.explanation_state, ExplanationState::Current);
+    assert!(reading.provenance.is_some());
+    assert_eq!(
+        reading.applicability.repository_comparison,
+        RepositoryComparisonState::Changed
+    );
     assert!(!reading.facts.is_empty());
     fs::write(
         f.temp.path().join("repo/main.py"),
@@ -1271,7 +1284,7 @@ fn explicit_equal_pair_expiry_and_semantic_limit_survive_real_storage() -> Resul
 }
 fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
     use std::time::{Duration, Instant};
-    use volicord_context::{Clock, SystemClock, TimestampMicros};
+    use volicord_context::{Clock, SystemClock};
 
     let mut f = Fixture::new()?;
     let byte_range = if excerpt {
@@ -1371,9 +1384,8 @@ fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
         .ok_or("record")?;
     let expiry = after_receipt.retained_until_unix_micros;
     assert_eq!(
-        retained.retained_until,
-        Some(TimestampMicros::from_unix_micros(expiry)),
-        "publication retention must end with its earliest cited body"
+        retained.retained_until, None,
+        "normally admitted explanation retention is independent of Source TTL"
     );
     let projection = f.host.operations().project_projection(f.project)?;
     let work = projection
@@ -1415,8 +1427,13 @@ fn explicit_pair_expiry(excerpt: bool) -> Result<(), Box<dyn Error>> {
         .find(|w| w.work_item_id == f.work)
         .ok_or("Work")?;
     let reading = work_answers(work, "en", FixedLocale::English);
-    assert_eq!(reading.explanation_state, ExplanationState::Stale);
-    assert!(reading.provenance.is_none());
+    assert_eq!(reading.explanation_state, ExplanationState::Current);
+    assert!(reading.provenance.is_some());
+    assert!(reading
+        .applicability
+        .source_ranges
+        .iter()
+        .any(|r| r.limitation == Some(ExplanationFailureReason::Expired)));
     Ok(())
 }
 
@@ -1829,7 +1846,7 @@ fn large_file_excerpt_mcp_citations_use_independent_absolute_coordinates(
         .ok_or("work")?;
     assert_eq!(
         work_answers(w, "en", FixedLocale::English).explanation_state,
-        ExplanationState::Stale
+        ExplanationState::Current
     );
     // Historical retained read never substitutes the changed filesystem version.
     assert_eq!(
@@ -1956,7 +1973,7 @@ fn every_reader_unit_is_grounded_atomic_and_invalidated_through_mcp() -> Result<
             .find(|w| w.work_item_id == f.work)
             .ok_or("work")?;
         let answers = work_answers(w, "en", FixedLocale::English);
-        assert_eq!(answers.explanation_state, ExplanationState::Stale);
+        assert_eq!(answers.explanation_state, ExplanationState::Deleted);
         assert!(answers.provenance.is_none() && answers.source_excerpts.is_empty());
         assert!(answers.reading_title().is_none() && answers.synopsis().is_none());
     }
@@ -2044,7 +2061,7 @@ fn compose_work_name_summary_and_unicode_citations_without_manual_bindings(
         .project_projection_selected(f.project, WorkSelector::ExactWork(f.work))?;
     assert_eq!(
         current.selected_work.ok_or("work")?.reading.explanations[0].state,
-        ExplanationState::Stale
+        ExplanationState::Deleted
     );
     let fresh = f.generate()?;
     let mut record_only = f.args("compose");

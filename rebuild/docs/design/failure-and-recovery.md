@@ -127,9 +127,10 @@ strings. Explained snapshots and known generation basis remain distinct from a
 current comparison; inability to perform that comparison is not confirmed change.
 
 This distinction also applies when Repository preparation detects the mismatch
-before Source validation: confirmed changed identity produces stale content and a
-changed comparison, while an absent repository produces unavailable content and
-comparison-unavailable. Both withhold prose and code without writes or fallback.
+before Source validation: confirmed changed identity rejects new authoring. In
+retained reading, changed/unavailable comparison preserves the intact permitted
+publication with its original basis; semantic impact remains unknown. Source
+bodies have independent availability and no current-file fallback.
 An unavailable or generic dependency is never presented as a more specific cause
 without confirmation. Current publication/Source checks are shared by bounded
 MCP and exact citation reads. Dynamic check time changes no publication token.
@@ -137,8 +138,9 @@ MCP and exact citation reads. Dynamic check time changes no publication token.
 Work name, summary and article fail within their independently admitted publication
 scope (Projection's format-6 contract). A technical article Source failure cannot
 erase a separately current Goal-grounded name or report-grounded summary. A genuinely
-cited summary Source failure still withholds that entire summary; no dependency is
-removed after retention. Each unavailable scope keeps its own state/diagnostic and
+cited summary Source expiry preserves the admitted summary with range-local
+unavailability. Explicit removal/authority loss still withholds that summary;
+no dependency is removed after retention. Each unavailable scope keeps its own state/diagnostic and
 explicit prepare/compose/record recovery. Canonical state, both event bases and
 independent verification/review/acceptance remain readable. Replacing/deleting one
 scope never falls back to another historical realization of that scope.
@@ -497,8 +499,9 @@ stored analysis. Ordinary reading performs neither action.
 
 Complete MCP consumption also has `explanation_read` publication pages. A
 continuation fingerprint binds the entire compact document and managed publication
-identity, not merely its prefix. Missing/foreign tokens, replacement and any lost
-dependency reject before returning a suffix. There is no historical fallback,
+identity, not merely its prefix. Missing/foreign tokens, replacement and publication
+authority loss reject before returning a suffix. Ordinary body expiry updates
+per-range availability without changing publication continuation. There is no historical fallback,
 successful incomplete document or assumption that a paragraph fits one chunk.
 The intact repository response's size refusal advertises this bounded read path.
 
@@ -557,6 +560,8 @@ command Source. Raw stream cleanup failure prevents a retention receipt.
 Fresh observation is explicit and distinct from recovery of historical bytes.
 Snapshot-stale copies carry historical-only meaning; invalidated, expired,
 deleted, corrected-Work or forbidden Source content cannot supply body readback.
+An expired before-body does not erase independently permitted after-bytes; the pair
+remains historical and cannot supply new authoring without adequate current evidence.
 
 ### Explicit host explanation failure
 
@@ -566,8 +571,10 @@ usable. No fallback is labeled completed prose. Request expiry/restart or denied
 Source retrieval requires explicit new generation or corrected scope; no model retry
 is scheduled. Invalid/stale citation, Work, repository or edited-claim bindings reject
 recording before managed insertion and preserve earlier valid records. Current
-reading/publication withholds prose when any required body is expired/deleted,
-withheld, corrupted, unavailable or changed. Diagnostics name the affected dependency
+reading/publication keeps intact admitted prose after ordinary body expiry,
+body corruption/unavailability or repository change. Each range has a precise
+body-free failure state. Publication corruption and explicit deletion/withholding
+still block all dependent meaning. Diagnostics name the affected dependency
 and explicit observe/prepare/generate recovery. Existing managed cleanup owns deletion
 and incomplete sanitation retry; local deletion never claims host/provider deletion.
 
@@ -584,7 +591,8 @@ to excerpts and their dependent explanations through the existing lifecycle.
 
 Missing/foreign/stale Analysis Snapshots and redirected/unavailable local bindings
 prevent current repository preparation, observation or publication. Missing,
-expired/deleted/withheld or corrupt repository Source copies cannot supply prose;
+expired/corrupt repository Source copies cannot supply body bytes; retained prose
+has independent readability. Explicit deletion/withholding still blocks dependent meaning;
 no ordinary read repairs them from current files. Unsupported retained formats have
 explicit current preparation/recording recovery. Failed record admission leaves
 earlier valid content unchanged. Source capture may publish a canonical identity
@@ -601,9 +609,9 @@ changed repository, expired/deleted Source or binding mismatch fail closed. Bulk
 scope lists are excluded with counts/hashes and an exact analysis evidence command;
 over-budget scope metadata still rejects before authoring without ceiling changes.
 
-Selected live citation reads fail closed when the latest realization, claim/citation
-selection or any current dependency is unavailable/changed, including a split UTF-8
-offset. The HTTP response contains no Source bytes; the evidence pane removes its
+Selected live citation reads fail closed when publication authority/identity or the
+selected exact range is unavailable, including a split UTF-8 offset. Ordinary
+repository change and other expired ranges do not deny a permitted historical range. The HTTP response contains no Source bytes; the evidence pane removes its
 previously displayed code and keeps the exact claim/return target with an unavailable
 notice. Reopening a current permitted explanation is read recovery, never automatic
 observation, retention renewal, generation or a fallback to another realization.
@@ -656,3 +664,16 @@ Shared code payload aliases retain distinct claim/return identities; unavailable
 live Source reads remove shared and fetched code, never restore it from an alias.
 Atomic export recomputes its own read basis under publication validation rather
 than treating render-time success as current authority.
+
+### Retained-reading recovery boundary — accepted 2026-10-27
+
+The retained-reading policy in the Projection and Privacy owners supersedes prior
+blanket withholding on ordinary expiry/change. Safe read recovery needs no new
+capture/authoring and never resurrects erased bodies. Source bodies are resolved
+independently; typed publication failures still remove cached prose/diagrams and
+alternatives. Expired/corrupt range errors carry readable-publication scope so
+consumers remove only affected code. New exports compare captured range availability
+before writing; a changed body permission requires re-render, with no partial file.
+New authoring retains the complete current-evidence admission checks. Independent
+publication deadlines, latest-record replacement, canonical correction/forgetting,
+foreign selectors, corrupted publication and access withdrawal remain negative cases.

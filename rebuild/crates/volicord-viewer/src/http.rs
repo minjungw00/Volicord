@@ -228,6 +228,7 @@ impl ViewerServer {
             Err(error) => return Ok(HttpResponse {
                 status:409,reason:"Conflict",content_type:"application/json; charset=utf-8",location:None,
                 body:serde_json::to_vec(&serde_json::json!({"reason":error.reading_failure().unwrap_or(volicord_projections::ExplanationFailureReason::Unavailable),
+                    "publication_readable":error.publication_readable(),
                     "error":"This exact citation is unavailable or changed. Return to the explanation and reopen its current permitted version."}))
                     .map_err(|_|HttpFailure::bad_request("citation failure encoding failed"))?,
             }),

@@ -8,10 +8,10 @@ use volicord_projections::{
 
 pub(crate) struct ValidatedExplanationSources {
     pub dependencies: Vec<SourceId>,
-    pub expiry: Option<volicord_context::TimestampMicros>,
     pub excerpts: Vec<volicord_projections::ExplanationSourceExcerpt>,
     pub omitted_excerpt_count: usize,
     pub selected: Option<Value>,
+    pub availability: Vec<volicord_projections::SourceRangeAvailability>,
 }
 
 impl LocalOperations {
@@ -158,6 +158,28 @@ impl LocalOperations {
         selection: Option<(&volicord_projections::ExplanationCitation, usize)>,
         repository: Option<&crate::repository_explanation::RepositoryExplanationReadBasis>,
     ) -> Result<ValidatedExplanationSources, Error> {
+        self.resolve_subject_sources(basis, subject, response, selection, repository, false)
+    }
+
+    pub(crate) fn read_retained_sources(
+        &self,
+        basis: &CanonicalReadBasis,
+        subject: ExplanationSubject,
+        response: &ExplanationRealization,
+        selection: Option<(&volicord_projections::ExplanationCitation, usize)>,
+    ) -> Result<ValidatedExplanationSources, Error> {
+        self.resolve_subject_sources(basis, subject, response, selection, None, true)
+    }
+
+    fn resolve_subject_sources(
+        &self,
+        basis: &CanonicalReadBasis,
+        subject: ExplanationSubject,
+        response: &ExplanationRealization,
+        selection: Option<(&volicord_projections::ExplanationCitation, usize)>,
+        repository: Option<&crate::repository_explanation::RepositoryExplanationReadBasis>,
+        historical: bool,
+    ) -> Result<ValidatedExplanationSources, Error> {
         if let Some(repository) = repository {
             if subject != ExplanationSubject::Repository(repository.analysis.identity)
                 || repository.analysis.project.identity() != basis.project.id
@@ -177,7 +199,11 @@ impl LocalOperations {
             .transpose()?;
         let repository_metadata = match subject {
             ExplanationSubject::Repository(id) if inspection.is_some() && repository.is_none() => {
-                Some(self.repository_source_metadata(basis.project.id, id)?)
+                match self.repository_source_metadata(basis.project.id, id) {
+                    Ok(metadata) => Some(metadata),
+                    Err(_) if historical => None,
+                    Err(e) => return Err(e),
+                }
             }
             _ => None,
         };
@@ -198,8 +224,11 @@ impl LocalOperations {
             ExplanationSubject::Repository(_) => self
                 .read_repository_explanation_source_with_basis(
                     basis,
-                    repository_metadata
-                        .ok_or_else(|| Error::new("repository Source metadata unavailable"))?,
+                    repository_metadata.ok_or_else(|| {
+                        Error::new("repository Source metadata unavailable").with_reading_failure(
+                            volicord_projections::ExplanationFailureReason::Unavailable,
+                        )
+                    })?,
                     inspection
                         .as_ref()
                         .ok_or_else(|| Error::new("Source inspection unavailable"))?,
@@ -224,115 +253,134 @@ impl LocalOperations {
         }
         let mut excerpts = Vec::new();
         let mut excerpt_keys = std::collections::BTreeSet::new();
-        for citation in response.citations() {
-            if let ExplanationSubject::Repository(analysis) = subject {
-                if citation.analysis_snapshot_id != analysis.to_string()
-                    || citation.use_kind != ExplanationSourceUse::CurrentCode
-                {
-                    return Err(Error::new("repository explanation requires current file Sources from its exact Analysis Snapshot"));
-                }
-            }
-            let source = SourceId::from_bytes(parse_identity(&citation.source_id)?);
-            if let std::collections::btree_map::Entry::Vacant(entry) = readings.entry(source) {
-                entry.insert(read_source(source)?);
-            }
-            let read = &readings[&source];
-            let observation = &read["observation"];
-            let detail = &observation["detail"];
-            if read["observation_fingerprint"] != citation.observation_fingerprint
-                || observation["source_revision"] != citation.source_revision
-                || observation["analysis_snapshot_id"] != citation.analysis_snapshot_id
-                || observation["repository_snapshot_id"] != citation.repository_snapshot_id
-                || read["citation_basis"]["repository_source_id"] != citation.repository_source_id
-            {
-                return Err(Error::new(
-                    "explanation Source identity, revision or retrieval binding changed",
-                ));
-            }
-            let (body, locator) = match citation.field.as_str() {
-                "body" if detail["kind"] == "file" => {
-                    (detail["body"].as_str(), detail["path"].as_str())
-                }
-                "stdout" | "stderr" if detail["kind"] == "command" => {
-                    let canonical = basis
-                        .sources
-                        .iter()
-                        .find(|s| s.source.id == source)
-                        .ok_or_else(|| Error::new("command Source unavailable"))?;
-                    let volicord_context::SourcePayload::CommandExecution { command_label, .. } =
-                        &canonical.source.payload
-                    else {
-                        return Err(Error::new("command Source kind mismatch"));
-                    };
-                    (
-                        detail[&citation.field]["body"].as_str(),
-                        Some(command_label.as_str()),
-                    )
-                }
-                _ => return Err(Error::new("explanation Source field is not permitted")),
-            };
-            let body = body.ok_or_else(|| Error::new("explanation Source bytes unavailable"))?;
-            let file_region = (detail["kind"] == "file"
-                && detail["representation"] == "bounded_excerpt")
-                .then_some(&detail["region"]);
-            let byte_base = file_region
-                .and_then(|r| r["start_byte"].as_u64())
-                .unwrap_or(0) as usize;
-            let line_base = file_region
-                .and_then(|r| r["start_line"].as_u64())
-                .unwrap_or(1) as usize;
-            let start = citation
-                .start_byte
-                .checked_sub(byte_base)
-                .ok_or_else(|| Error::new("citation precedes observed excerpt"))?;
-            let end = citation
-                .end_byte
-                .checked_sub(byte_base)
-                .ok_or_else(|| Error::new("citation precedes observed excerpt"))?;
-            let range = body
-                .get(start..end)
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| Error::new("invalid explanation Source range"))?;
-            let line = |offset: usize| {
-                body.as_bytes()[..offset]
+        let mut availability = Vec::new();
+        for (unit_index, citation_index, citation) in response
+            .generated_units()
+            .enumerate()
+            .flat_map(|(u, unit)| {
+                unit.citations
                     .iter()
-                    .filter(|b| **b == b'\n')
-                    .count()
-                    + line_base
-            };
-            if locator != Some(citation.locator.as_str())
-                || explanation_text_hash(range) != citation.range_sha256
-                || line(start) != citation.start_line
-                || line(end - 1) != citation.end_line
-            {
-                return Err(Error::new(
-                    "explanation Source locator, range or hash mismatch",
-                ));
-            }
-            match citation.use_kind {
-                ExplanationSourceUse::CurrentCode => {
-                    if detail["kind"] != "file" {
-                        return Err(Error::new("current code requires a file observation"));
+                    .enumerate()
+                    .map(move |(c, citation)| (u, c, citation))
+            })
+        {
+            let result = (|| -> Result<(), Error> {
+                if let ExplanationSubject::Repository(analysis) = subject {
+                    if citation.analysis_snapshot_id != analysis.to_string()
+                        || citation.use_kind != ExplanationSourceUse::CurrentCode
+                    {
+                        return Err(Error::new("repository explanation requires current file Sources from its exact Analysis Snapshot"));
                     }
-                    let binding = self
-                        .open_canonical_read_only()?
-                        .get_local_binding(basis.project.id)
-                        .map_err(|e| {
-                            Error::with_source("explanation repository binding unavailable", e)
-                        })?;
-                    let root =
-                        volicord_local_platform::RepositoryRoot::open(&binding.absolute_path)
+                }
+                let source = SourceId::from_bytes(parse_identity(&citation.source_id)?);
+                if let std::collections::btree_map::Entry::Vacant(entry) = readings.entry(source) {
+                    entry.insert(read_source(source)?);
+                }
+                let read = &readings[&source];
+                let observation = &read["observation"];
+                let detail = &observation["detail"];
+                if read["observation_fingerprint"] != citation.observation_fingerprint
+                    || observation["source_revision"] != citation.source_revision
+                    || observation["analysis_snapshot_id"] != citation.analysis_snapshot_id
+                    || observation["repository_snapshot_id"] != citation.repository_snapshot_id
+                    || read["citation_basis"]["repository_source_id"]
+                        != citation.repository_source_id
+                {
+                    return Err(Error::new(
+                        "explanation Source identity, revision or retrieval binding changed",
+                    ));
+                }
+                let (body, locator) = match citation.field.as_str() {
+                    "body" if detail["kind"] == "file" => {
+                        (detail["body"].as_str(), detail["path"].as_str())
+                    }
+                    "stdout" | "stderr" if detail["kind"] == "command" => {
+                        let canonical = basis
+                            .sources
+                            .iter()
+                            .find(|s| s.source.id == source)
+                            .ok_or_else(|| Error::new("command Source unavailable"))?;
+                        let volicord_context::SourcePayload::CommandExecution {
+                            command_label, ..
+                        } = &canonical.source.payload
+                        else {
+                            return Err(Error::new("command Source kind mismatch"));
+                        };
+                        (
+                            detail[&citation.field]["body"].as_str(),
+                            Some(command_label.as_str()),
+                        )
+                    }
+                    _ => return Err(Error::new("explanation Source field is not permitted")),
+                };
+                let body =
+                    body.ok_or_else(|| Error::new("explanation Source bytes unavailable"))?;
+                let file_region = (detail["kind"] == "file"
+                    && detail["representation"] == "bounded_excerpt")
+                    .then_some(&detail["region"]);
+                let byte_base = file_region
+                    .and_then(|r| r["start_byte"].as_u64())
+                    .unwrap_or(0) as usize;
+                let line_base = file_region
+                    .and_then(|r| r["start_line"].as_u64())
+                    .unwrap_or(1) as usize;
+                let start = citation
+                    .start_byte
+                    .checked_sub(byte_base)
+                    .ok_or_else(|| Error::new("citation precedes observed excerpt"))?;
+                let end = citation
+                    .end_byte
+                    .checked_sub(byte_base)
+                    .ok_or_else(|| Error::new("citation precedes observed excerpt"))?;
+                let range = body
+                    .get(start..end)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| Error::new("invalid explanation Source range"))?;
+                let line = |offset: usize| {
+                    body.as_bytes()[..offset]
+                        .iter()
+                        .filter(|b| **b == b'\n')
+                        .count()
+                        + line_base
+                };
+                if locator != Some(citation.locator.as_str())
+                    || explanation_text_hash(range) != citation.range_sha256
+                    || line(start) != citation.start_line
+                    || line(end - 1) != citation.end_line
+                {
+                    return Err(Error::new(
+                        "explanation Source locator, range or hash mismatch",
+                    ));
+                }
+                match citation.use_kind {
+                    ExplanationSourceUse::CurrentCode => {
+                        if detail["kind"] != "file" {
+                            return Err(Error::new("current code requires a file observation"));
+                        }
+                        if !historical {
+                            let binding = self
+                                .open_canonical_read_only()?
+                                .get_local_binding(basis.project.id)
+                                .map_err(|e| {
+                                    Error::with_source(
+                                        "explanation repository binding unavailable",
+                                        e,
+                                    )
+                                })?;
+                            let root = volicord_local_platform::RepositoryRoot::open(
+                                &binding.absolute_path,
+                            )
                             .map_err(|e| {
                                 Error::with_source("explanation repository unavailable", e)
                             .with_reading_failure(
                             volicord_projections::ExplanationFailureReason::ComparisonUnavailable,
                         )
                             })?;
-                    if root.canonical_path() != binding.absolute_path {
-                        return Err(Error::new("explanation repository root was redirected; explicit binding is required"));
-                    }
-                    let current_hash = if file_region.is_some() {
-                        root.read_utf8_excerpt(
+                            if root.canonical_path() != binding.absolute_path {
+                                return Err(Error::new("explanation repository root was redirected; explicit binding is required"));
+                            }
+                            let current_hash = if file_region.is_some() {
+                                root.read_utf8_excerpt(
                             std::path::Path::new(&citation.locator),
                             byte_base,
                             byte_base + body.len(),
@@ -341,9 +389,9 @@ impl LocalOperations {
                             Error::with_source("explanation current excerpt unavailable", e).with_reading_failure(volicord_projections::ExplanationFailureReason::ComparisonUnavailable)
                         })?
                         .sha256
-                    } else {
-                        use sha2::Digest;
-                        let current = root
+                            } else {
+                                use sha2::Digest;
+                                let current = root
                             .read_bounded_regular_file(
                                 std::path::Path::new(&citation.locator),
                                 16_384,
@@ -351,187 +399,202 @@ impl LocalOperations {
                             .map_err(|e| {
                                 Error::with_source("explanation current Source unavailable", e).with_reading_failure(volicord_projections::ExplanationFailureReason::ComparisonUnavailable)
                             })?;
-                        format!("{:x}", sha2::Sha256::digest(&current))
-                    };
-                    if detail["sha256"] != current_hash {
-                        return Err(Error::new(
-                            "explanation Source bytes changed; observe and generate again",
-                        )
-                        .with_reading_failure(
-                            volicord_projections::ExplanationFailureReason::Changed,
-                        ));
-                    }
-                    let analysis_id =
-                        crate::AnalysisSnapshotId::from_hex(&citation.analysis_snapshot_id)
-                            .map_err(Error::new)?;
-                    if let Some((repository, repository_source)) =
-                        current_snapshots.get(&analysis_id)
-                    {
-                        if repository != &citation.repository_snapshot_id
-                            || repository_source != &citation.repository_source_id
-                        {
-                            return Err(Error::new(
-                                "explanation Analysis/Repository/Source binding mismatch",
-                            ));
-                        }
-                    } else {
-                        // Repository articles claim inspected Source meaning, not
-                        // graph completeness. Their authority is verified metadata,
-                        // included hashes and a fresh repository comparison.
-                        let (repository_source, repository_snapshot, entries) =
-                            if matches!(subject, ExplanationSubject::Repository(_)) {
-                                let metadata = repository_metadata.ok_or_else(|| {
-                                    Error::new("repository Source metadata unavailable")
-                                })?;
-                                (
-                                    metadata.repository_source.clone(),
-                                    metadata.repository_snapshot,
-                                    metadata.inventory.entries.clone(),
-                                )
-                            } else {
-                                let analysis =
-                                    self.load_analysis_snapshot(basis.project.id, analysis_id)?;
-                                (
-                                    analysis.repository_source,
-                                    analysis.repository_snapshot,
-                                    analysis.inventory.entries,
-                                )
+                                format!("{:x}", sha2::Sha256::digest(&current))
                             };
-                        if repository_source.identity().to_string() != citation.repository_source_id
-                            || repository_snapshot.to_string() != citation.repository_snapshot_id
-                        {
+                            if detail["sha256"] != current_hash {
+                                return Err(Error::new(
+                                    "explanation Source bytes changed; observe and generate again",
+                                )
+                                .with_reading_failure(
+                                    volicord_projections::ExplanationFailureReason::Changed,
+                                ));
+                            }
+                            let analysis_id =
+                                crate::AnalysisSnapshotId::from_hex(&citation.analysis_snapshot_id)
+                                    .map_err(Error::new)?;
+                            if let Some((repository, repository_source)) =
+                                current_snapshots.get(&analysis_id)
+                            {
+                                if repository != &citation.repository_snapshot_id
+                                    || repository_source != &citation.repository_source_id
+                                {
+                                    return Err(Error::new(
+                                        "explanation Analysis/Repository/Source binding mismatch",
+                                    ));
+                                }
+                            } else {
+                                // Repository articles claim inspected Source meaning, not
+                                // graph completeness. Their authority is verified metadata,
+                                // included hashes and a fresh repository comparison.
+                                let (repository_source, repository_snapshot, entries) = if matches!(
+                                    subject,
+                                    ExplanationSubject::Repository(_)
+                                ) {
+                                    let metadata = repository_metadata.ok_or_else(|| {
+                                            Error::new("repository Source metadata unavailable").with_reading_failure(volicord_projections::ExplanationFailureReason::Unavailable)
+                                        })?;
+                                    (
+                                        metadata.repository_source.clone(),
+                                        metadata.repository_snapshot,
+                                        metadata.inventory.entries.clone(),
+                                    )
+                                } else {
+                                    let analysis =
+                                        self.load_analysis_snapshot(basis.project.id, analysis_id)?;
+                                    (
+                                        analysis.repository_source,
+                                        analysis.repository_snapshot,
+                                        analysis.inventory.entries,
+                                    )
+                                };
+                                if repository_source.identity().to_string()
+                                    != citation.repository_source_id
+                                    || repository_snapshot.to_string()
+                                        != citation.repository_snapshot_id
+                                {
+                                    return Err(Error::new(
+                                        "explanation repository snapshot binding changed",
+                                    )
+                                    .with_reading_failure(
+                                        volicord_projections::ExplanationFailureReason::Changed,
+                                    ));
+                                }
+                                let comparison = self.observe_projection_repository(basis,repository_source.identity(),&entries)
+                            .map_err(|e|e.with_reading_failure(volicord_projections::ExplanationFailureReason::ComparisonUnavailable))?;
+                                if comparison.identity != repository_snapshot {
+                                    return Err(Error::new("explanation repository changed; analyze, observe and generate again")
+                                .with_reading_failure(volicord_projections::ExplanationFailureReason::Changed));
+                                }
+                                current_snapshots.insert(
+                                    analysis_id,
+                                    (
+                                        citation.repository_snapshot_id.clone(),
+                                        citation.repository_source_id.clone(),
+                                    ),
+                                );
+                            }
+                        }
+                        // Admission checks the complete before/after pair. Historical
+                        // range disclosure never upgrades that pair to current code.
+                        if !historical {
+                            // A corrupt comparison cannot supply even an otherwise valid current range.
+                            if let Some(before) = detail["before_source_id"].as_str() {
+                                let before = SourceId::from_bytes(parse_identity(before)?);
+                                let earlier = read_source(before)?;
+                                let old = &earlier["observation"];
+                                let comparison = if old["detail"]["sha256"] == detail["sha256"] {
+                                    "no_change"
+                                } else {
+                                    "changed"
+                                };
+                                if old["detail"]["path"] != detail["path"]
+                                    || !crate::source_observations::compatible_file_regions(
+                                        &old["detail"],
+                                        detail,
+                                    )
+                                    || old["observed_at_unix_micros"].as_i64()
+                                        >= observation["observed_at_unix_micros"].as_i64()
+                                    || detail["comparison"] != comparison
+                                {
+                                    return Err(Error::new(
+                                        "invalid before/after explanation evidence",
+                                    ));
+                                }
+                                dependencies.insert(before);
+                                dependencies.insert(SourceId::from_bytes(parse_identity(
+                                    earlier["citation_basis"]["repository_source_id"]
+                                        .as_str()
+                                        .ok_or_else(|| {
+                                            Error::new("before-state repository Source unavailable")
+                                        })?,
+                                )?));
+                                bound_expiry(&mut expiry, &earlier)?;
+                            } else if detail["comparison"] != "missing_before_state" {
+                                return Err(Error::new("missing explicit before-state"));
+                            }
+                        }
+                    }
+                    ExplanationSourceUse::BeforeCode => {
+                        if detail["kind"] != "file" {
+                            return Err(Error::new("before code requires a file observation"));
+                        }
+                    }
+                    ExplanationSourceUse::ObservedExecution => {
+                        if detail["kind"] != "command" {
                             return Err(Error::new(
-                                "explanation repository snapshot binding changed",
-                            )
-                            .with_reading_failure(
-                                volicord_projections::ExplanationFailureReason::Changed,
+                                "execution evidence requires an observed command Source",
                             ));
                         }
-                        let comparison = self.observe_projection_repository(basis,repository_source.identity(),&entries)
-                            .map_err(|e|e.with_reading_failure(volicord_projections::ExplanationFailureReason::ComparisonUnavailable))?;
-                        if comparison.identity != repository_snapshot {
-                            return Err(Error::new("explanation repository changed; analyze, observe and generate again")
-                                .with_reading_failure(volicord_projections::ExplanationFailureReason::Changed));
-                        }
-                        current_snapshots.insert(
-                            analysis_id,
-                            (
-                                citation.repository_snapshot_id.clone(),
-                                citation.repository_source_id.clone(),
-                            ),
-                        );
-                    }
-                    // A corrupt comparison cannot supply even an otherwise valid current range.
-                    if let Some(before) = detail["before_source_id"].as_str() {
-                        let before = SourceId::from_bytes(parse_identity(before)?);
-                        let earlier = read_source(before)?;
-                        let old = &earlier["observation"];
-                        let comparison = if old["detail"]["sha256"] == detail["sha256"] {
-                            "no_change"
-                        } else {
-                            "changed"
-                        };
-                        if old["detail"]["path"] != detail["path"]
-                            || !crate::source_observations::compatible_file_regions(
-                                &old["detail"],
-                                detail,
-                            )
-                            || old["observed_at_unix_micros"].as_i64()
-                                >= observation["observed_at_unix_micros"].as_i64()
-                            || detail["comparison"] != comparison
-                        {
-                            return Err(Error::new("invalid before/after explanation evidence"));
-                        }
-                        dependencies.insert(before);
-                        dependencies.insert(SourceId::from_bytes(parse_identity(
-                            earlier["citation_basis"]["repository_source_id"]
-                                .as_str()
-                                .ok_or_else(|| {
-                                    Error::new("before-state repository Source unavailable")
-                                })?,
-                        )?));
-                        bound_expiry(&mut expiry, &earlier)?;
-                    } else if detail["comparison"] != "missing_before_state" {
-                        return Err(Error::new("missing explicit before-state"));
                     }
                 }
-                ExplanationSourceUse::BeforeCode => {
-                    if detail["kind"] != "file" {
-                        return Err(Error::new("before code requires a file observation"));
+                if !observation["integrity_source_id"].is_null() {
+                    let integrity: SourceId =
+                        serde_json::from_value(observation["integrity_source_id"].clone())
+                            .map_err(|_| {
+                                Error::new(
+                                    "command observation integrity Source binding unavailable",
+                                )
+                            })?;
+                    dependencies.insert(integrity);
+                }
+                dependencies.insert(source);
+                dependencies.insert(SourceId::from_bytes(parse_identity(
+                    &citation.repository_source_id,
+                )?));
+                bound_expiry(&mut expiry, read)?;
+                if let Some((target, offset)) = selection.filter(|(target, _)| *target == citation)
+                {
+                    let suffix = range
+                        .get(offset..)
+                        .filter(|s| !s.is_empty())
+                        .ok_or_else(|| Error::new("invalid selected citation UTF-8 offset"))?;
+                    let mut size = suffix
+                        .len()
+                        .min(volicord_projections::EXPLANATION_SOURCE_RANGE_BYTE_LIMIT);
+                    while !suffix.is_char_boundary(size) {
+                        size -= 1;
                     }
+                    selected = Some(json!({
+                        "citation":target, "text":&suffix[..size],
+                        "displayed_start_byte":citation.start_byte + offset,
+                        "displayed_end_byte":citation.start_byte + offset + size,
+                        "displayed_start_line":line(start + offset),
+                        "displayed_end_line":line(start + offset + size - 1),
+                        "omitted_before_utf8_bytes":offset,
+                        "omitted_after_utf8_bytes":range.len() - offset - size,
+                        "next_offset":(offset + size < range.len()).then_some(offset + size),
+                        "source_representation":detail["representation"],
+                        "observation_region":file_region,
+                        "comparison":detail["comparison"],
+                        "before_source_id":detail["before_source_id"],
+                        "observed_at_unix_micros":observation["observed_at_unix_micros"],
+                        "work_revision":observation["work_revision"],
+                        "execution":(detail["kind"] == "command").then(|| json!({
+                            "exit_code":detail["exit_code"],"termination":detail["termination"],
+                            "stream":citation.field,"representation":detail[&citation.field]["representation"],
+                            "observed_bytes":detail[&citation.field]["observed_bytes"],
+                            "omitted_bytes":detail[&citation.field]["omitted_bytes"]}))
+                    }));
                 }
-                ExplanationSourceUse::ObservedExecution => {
-                    if detail["kind"] != "command" {
-                        return Err(Error::new(
-                            "execution evidence requires an observed command Source",
-                        ));
+                // Materialize only exact cited bytes already admitted by this reader.
+                // Repeated claims may cite the same range; retain one navigation target.
+                let key = (
+                    citation.source_id.clone(),
+                    citation.field.clone(),
+                    citation.start_byte,
+                    citation.end_byte,
+                    format!("{:?}", citation.use_kind),
+                );
+                if selection.is_none() && excerpt_keys.insert(key) {
+                    let mut bytes = range
+                        .len()
+                        .min(volicord_projections::EXPLANATION_SOURCE_WINDOW_BYTE_LIMIT);
+                    while !range.is_char_boundary(bytes) {
+                        bytes -= 1;
                     }
-                }
-            }
-            if !observation["integrity_source_id"].is_null() {
-                let integrity: SourceId =
-                    serde_json::from_value(observation["integrity_source_id"].clone()).map_err(
-                        |_| Error::new("command observation integrity Source binding unavailable"),
-                    )?;
-                dependencies.insert(integrity);
-            }
-            dependencies.insert(source);
-            dependencies.insert(SourceId::from_bytes(parse_identity(
-                &citation.repository_source_id,
-            )?));
-            bound_expiry(&mut expiry, read)?;
-            if let Some((target, offset)) = selection.filter(|(target, _)| *target == citation) {
-                let suffix = range
-                    .get(offset..)
-                    .filter(|s| !s.is_empty())
-                    .ok_or_else(|| Error::new("invalid selected citation UTF-8 offset"))?;
-                let mut size = suffix
-                    .len()
-                    .min(volicord_projections::EXPLANATION_SOURCE_RANGE_BYTE_LIMIT);
-                while !suffix.is_char_boundary(size) {
-                    size -= 1;
-                }
-                selected = Some(json!({
-                    "citation":target, "text":&suffix[..size],
-                    "displayed_start_byte":citation.start_byte + offset,
-                    "displayed_end_byte":citation.start_byte + offset + size,
-                    "displayed_start_line":line(start + offset),
-                    "displayed_end_line":line(start + offset + size - 1),
-                    "omitted_before_utf8_bytes":offset,
-                    "omitted_after_utf8_bytes":range.len() - offset - size,
-                    "next_offset":(offset + size < range.len()).then_some(offset + size),
-                    "source_representation":detail["representation"],
-                    "observation_region":file_region,
-                    "comparison":detail["comparison"],
-                    "before_source_id":detail["before_source_id"],
-                    "observed_at_unix_micros":observation["observed_at_unix_micros"],
-                    "work_revision":observation["work_revision"],
-                    "execution":(detail["kind"] == "command").then(|| json!({
-                        "exit_code":detail["exit_code"],"termination":detail["termination"],
-                        "stream":citation.field,"representation":detail[&citation.field]["representation"],
-                        "observed_bytes":detail[&citation.field]["observed_bytes"],
-                        "omitted_bytes":detail[&citation.field]["omitted_bytes"]}))
-                }));
-            }
-            // Materialize only exact cited bytes already admitted by this reader.
-            // Repeated claims may cite the same range; retain one navigation target.
-            let key = (
-                citation.source_id.clone(),
-                citation.field.clone(),
-                citation.start_byte,
-                citation.end_byte,
-                format!("{:?}", citation.use_kind),
-            );
-            if selection.is_none() && excerpt_keys.insert(key) {
-                let mut bytes = range
-                    .len()
-                    .min(volicord_projections::EXPLANATION_SOURCE_WINDOW_BYTE_LIMIT);
-                while !range.is_char_boundary(bytes) {
-                    bytes -= 1;
-                }
-                if bytes > 0 {
-                    let end = citation.start_byte + bytes;
-                    excerpts.push(volicord_projections::ExplanationSourceExcerpt {
+                    if bytes > 0 {
+                        let end = citation.start_byte + bytes;
+                        excerpts.push(volicord_projections::ExplanationSourceExcerpt {
                         citation: citation.clone(),
                         work_revision: match subject {
                             ExplanationSubject::Work(_) | ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_) => Some(observation["work_revision"].as_u64().ok_or_else(||Error::new("Source Work revision unavailable"))?),
@@ -551,8 +614,24 @@ impl LocalOperations {
                             "observed_bytes":detail[&citation.field]["observed_bytes"],
                             "omitted_bytes":detail[&citation.field]["omitted_bytes"]})),
                     });
+                    }
                 }
+                Ok(())
+            })();
+            let failure = result.as_ref().err().map(|e| {
+                e.reading_failure()
+                    .unwrap_or(volicord_projections::ExplanationFailureReason::Corrupt)
+            });
+            if !historical {
+                result?;
             }
+            availability.push(volicord_projections::SourceRangeAvailability {
+                unit_index,
+                citation_index,
+                citation: citation.clone(),
+                available: failure.is_none(),
+                limitation: failure,
+            });
         }
         for before in response
             .citations()
@@ -569,7 +648,7 @@ impl LocalOperations {
                             r["observation"]["detail"]["before_source_id"] == before.source_id
                         })
                 });
-            if !paired {
+            if !paired && !historical {
                 return Err(Error::new(
                     "before-state citation requires its explicit observed after-state",
                 ));
@@ -578,10 +657,10 @@ impl LocalOperations {
         let omitted_excerpt_count = bound_excerpts(&mut excerpts, response);
         Ok(ValidatedExplanationSources {
             dependencies: dependencies.into_iter().collect(),
-            expiry,
             excerpts,
             omitted_excerpt_count,
             selected,
+            availability,
         })
     }
 }

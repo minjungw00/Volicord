@@ -136,9 +136,9 @@ and compact realization limits in [Projection](projections-and-documents.md#expl
 Source-cited explanation recording also retains exact range/claim hashes and
 Source snapshot identities, without duplicating raw file/stream bytes. Existing
 managed links cover the cited file/command and repository Sources plus explicit
-before Sources; retention expires no later than the earliest dependency body.
-Reading/publication rechecks local permitted body state so deleting a copy cannot
-leave dependent prose current. Explanation deletion still sanitizes all languages
+before Sources. Ordinary body expiry does not expire the admitted explanation.
+Reading/publication rechecks local permission so explicit deletion or withdrawal
+cannot leave dependent prose readable. Explanation deletion still sanitizes all languages
 and history through the existing managed cleanup; failed regeneration does not
 replace a prior valid output. Generated output identities remain their distinct
 managed records, generation timestamp and exact retained realization, never a
@@ -647,7 +647,7 @@ cannot borrow that authority. Binding revision, canonical availability, managed
 state, expiry, content hash and canonical forgetting are checked before disclosure.
 Every reader unit, including headings/synopsis/limits, traverses shared grounding,
 size, dependency, deletion and expiry checks. Repository summaries use the existing
-CachedSummary lifecycle and expire no later than their earliest cited Source copy.
+CachedSummary lifecycle with publication readability independent of Source-copy TTL.
 Reads, rendering and export never create copies, regenerate or renew retention.
 
 Repository copy retention expiry and complete observed metadata are bound into
@@ -845,3 +845,33 @@ Metadata-only discovery preserves Project/Work identity and rejects changed or
 foreign continuation bases. It grants no command/file body access, collection,
 retention renewal, transmission or background authority. Every selected body still
 requires its original scoped supported reader and all lifetime/forgetting barriers.
+
+### Retained explanation authority — accepted 2026-10-27
+
+The user's retained-reading decision supersedes earlier blanket withholding on
+ordinary Source expiry or repository change. A normally admitted intact explanation
+uses the existing record-only CachedSummary lifetime (until explicit removal, or
+an independently specified publication deadline). This does not renew Source
+retention, create another archive/store, grant Source access, or preserve raw code
+inside prose metadata. Existing subject deletion removes every language/history;
+no historical-version selector or fallback to an older denied record is added.
+
+For intact existing publications the original recorder's exact receipt and matching
+linked Source-observation deadline witness identify its original source-computed
+deadline. Other offered canonical Sources may have separate earlier lifetimes;
+readers do not recompute the original minimum from that broader offered set.
+That deadline continues to describe evidence lifetime; it is neither rewritten nor
+used to erase the explanation. An unrelated/independent publication deadline still
+blocks reading and cleanup erases that publication. Already erased material and
+unsupported formats remain unavailable; there is no conversion or reconstruction.
+
+Explicit Source-copy deletion, canonical forgetting, scoped availability withdrawal,
+publication deletion and publication integrity failure remain blocking. Cleanup's
+expiry deletion is distinguished from explicit deletion by its existing receipt,
+deadline and deletion time. Canonical links and forgetting barriers remain intact.
+A report admitted with an explicitly unavailable historical witness preserves that
+limitation; subsequent loss of an available witness is not silently accepted.
+Each exact body is separately checked through its original scoped reader, including
+hash, revision, binding, original deadline and range. Failed/corrupt/unsupported
+bodies disclose no bytes; other permitted ranges remain readable. New authoring
+continues to require the complete current admission checks.

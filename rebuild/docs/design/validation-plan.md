@@ -4003,3 +4003,37 @@ viewport. Annotation origins and pointer-route aliases must reach the same claim
 Source and publication-bound return; geometry resolves the admitted edge's route
 independently of its now-local annotation bounds. Native deep entries are recorded
 after ordinary forward/reverse reading, separately from initial orientation.
+
+### Focused retained-reading controls — accepted 2026-10-27
+
+Use `validate focused` for these responsibility-scoped controls; they do not invoke
+the repository aggregate, authoritative gate, official V11 or provider qualification.
+The accepted retained-reading change replaces old blanket expiry/change expectations
+while preserving admission, privacy, integrity, correction and foreign-identity negatives.
+
+- Operations `repository_explanation`, `work_publication`, `source_observations`,
+  `explanation_cli` and `cli_work_sources`: normal admission, precise body lifetime,
+  cited/uncited repository change, absent comparison, Source/pair independence,
+  independent publication expiry, metadata corruption, forgetting and new-authoring refusal.
+- Viewer `citation_reading`, `work_explanation`, `work_publication` and Host
+  `work_explanation`/`answer_consumers`: actual public read/HTTP/MCP, exact identity,
+  cleanup/reopen, alternative text, cached export and deletion/permission checks.
+- Viewer ignored `retained_originals` explicitly consumes a frozen local input manifest
+  through `VOLICORD_ORIGINAL_PUBLICATIONS`, current CLI via `VOLICORD_TEST_CLI`, and
+  a new `VOLICORD_ORIGINAL_OUTPUT` directory. Preserve original Runtime hashes;
+  mutate only disposable copies. It checks the same normally admitted original
+  publication through actual cleanup, separately restarted CLI and new exports;
+  logs retain numeric child results and byte-identical publication envelopes.
+- `retained_reading_browser.cjs` uses the maintained exclusive-output control and
+  a fresh `seed_retained_browser_runtime` fixture. Actual real TTL expiry occurs
+  while a page stays open; other ranges, diagrams and exact publication identity
+  survive. Changed uncited dependencies/missing repositories, live comparison
+  notices, ordinary CLI/MCP, new exports, restarted listener and no-JS reading
+  exercise the current consumers. This is technical evidence, not an R3 redesign
+  or independent semantic/human acceptance.
+
+Compare content/retention bytes, read time, Source exclusions and export bytes
+separately. The current format/budget/qualification ceilings are unchanged. Already
+erased or unsupported original data is reported independently; no reconstruction,
+new evidence acquisition, lifetime renewal or external transmission is authorized
+by these controls. Preserve every failed attempt and use fresh output directories.

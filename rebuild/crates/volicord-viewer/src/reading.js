@@ -103,6 +103,22 @@
     figure.dataset.baseHeight=dimension('height');
     figure.dataset.scale='1';figure.querySelector('.diagram-controls').hidden=false;
   }
+  function updateComparison(publication, basis) {
+    const labels = {
+      verified_at_read: ko ? '이번 비교에서 로컬 저장소가 작성 당시 스냅샷과 일치했습니다. 원격 최신성은 확인하지 않았습니다.' : 'This local comparison matched the original snapshot. Remote freshness was not checked.',
+      changed: ko ? '저장소가 변경되었습니다. 설명은 작성 당시 근거로 보존되며 의미상 영향은 알 수 없습니다.' : 'Repository changed. The explanation retains its original basis; semantic impact is unknown.',
+      unavailable: ko ? '현재 저장소 비교를 이용할 수 없습니다. 설명은 작성 당시 근거로 보존됩니다.' : 'Current repository comparison is unavailable. The explanation retains its original basis.',
+      not_checked: ko ? '현재 저장소 비교가 확립되지 않았습니다.' : 'No current repository comparison is established.'
+    };
+    if (!basis || !Object.hasOwn(labels,basis.repository_comparison)) return;
+    for (const region of document.querySelectorAll('.applicability')) {
+      if (region.dataset.readerPublication !== publication) continue;
+      region.dataset.comparisonState = basis.repository_comparison;
+      region.querySelector('summary').textContent = labels[basis.repository_comparison];
+      const time = region.querySelector('[data-comparison-time]');
+      if (time && Number.isSafeInteger(basis.checked_at_unix_micros)) time.textContent = new Date(basis.checked_at_unix_micros/1000).toISOString();
+    }
+  }
   async function readCitation(point, offset = 0) {
     if (point.dataset.unavailable === 'true') return;
     const control = point.querySelector('.citation-inspection');
@@ -125,7 +141,7 @@
       const raw = await response.text();
       if (new TextEncoder().encode(raw).length > 32768) throw Error('bound');
       const result = JSON.parse(raw);
-      if (!response.ok) { const error = Error('unavailable'); error.reason = result.reason; throw error; }
+      if (!response.ok) { const error = Error('unavailable'); error.reason = result.reason; error.publicationReadable = result.publication_readable === true; throw error; }
       const chunk = result.chunk;
       const expectedCitation = JSON.parse(control.dataset.citationBinding);
       // Identity at the publication/unit level cannot stand in for the exact
@@ -152,6 +168,7 @@
           !Number.isSafeInteger(chunk.displayed_start_line) || chunk.displayed_start_line < 1 ||
           chunk.displayed_end_line - chunk.displayed_start_line + 1 !== chunk.text.split('\n').length - Number(chunk.text.endsWith('\n'))) throw Error('binding');
       if (controller.signal.aborted || reads.get(control) !== controller || selected !== point || !point.isConnected) return;
+      updateComparison(control.dataset.publicationId,result.applicability);
       point.querySelectorAll('pre.code-region,.code-caption,.initial-range-omission').forEach(n => n.hidden = true);
       let region = control.querySelector('pre');
       if (!region) {
@@ -183,8 +200,10 @@
       // A deleted shared Source must not leave an earlier claim's cached code.
       document.querySelectorAll('.source-point').forEach(other => {
         if (other.dataset.readerPublication === control.dataset.publicationId &&
-            other.dataset.sourceId === point.dataset.sourceId)
+            other.dataset.sourceId === point.dataset.sourceId) {
           other.querySelectorAll('pre.code-region,.code-caption').forEach(n => n.remove());
+          if (error.reason) other.dataset.rangeState = error.reason;
+        }
       });
       point.querySelectorAll('.initial-range-omission').forEach(n => n.hidden = true);
       const reasons = {
@@ -198,7 +217,7 @@
         corrupt: ko ? '설명 또는 근거의 무결성을 확인할 수 없습니다.' : 'The publication or evidence failed its integrity check.',
         unsupported: ko ? '설명 또는 근거의 형식이 지원되지 않습니다.' : 'The publication or evidence format is unsupported.'
       };
-      if (Object.hasOwn(reasons,error.reason)) withholdPublication(control.dataset.publicationId,reasons[error.reason]);
+      if (!error.publicationReadable && Object.hasOwn(reasons,error.reason)) withholdPublication(control.dataset.publicationId,reasons[error.reason]);
       status.textContent = reasons[error.reason] || (ko ? '이 정확한 인용은 이용할 수 없거나 변경되었습니다. 설명으로 돌아가 현재 버전을 다시 여세요.'
         : 'This exact citation is unavailable or changed. Return to the explanation and reopen its current version.');
       button.dataset.nextOffset = 0;

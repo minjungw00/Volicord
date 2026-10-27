@@ -537,3 +537,84 @@ fn excerpt_authority_rejects_invalid_scope_boundaries_bytes_and_pairs() -> Resul
         .any(|i| i.id == w));
     Ok(())
 }
+
+#[test]
+fn earlier_body_expiry_preserves_permitted_after_bytes_but_not_new_pair_authority(
+) -> Result<(), Box<dyn Error>> {
+    use volicord_context::{FixedClock, SystemIdGenerator, TimestampMicros};
+    use volicord_privacy::PrivacyStore;
+    let temp = tempfile::tempdir()?;
+    let root = temp.path().join("repository");
+    fs::create_dir(&root)?;
+    fs::write(root.join("main.py"), "value = 1\n")?;
+    let ops = LocalOperations::new(RuntimeLayout::new(temp.path().join("runtime"))?);
+    let p = ops
+        .initialize_project("Pair lifetime", Some(&root))?
+        .project
+        .id;
+    let work = ops
+        .record_current_host_user_context(
+            p,
+            "control".into(),
+            "pair".into(),
+            "Inspect pair lifetime".into(),
+            ContextItemRole::Goal,
+            "Inspect pair lifetime".into(),
+        )?
+        .context_item_id;
+    let a = ops
+        .analyze(p, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let first = ops.observe_work_file(FileObservationRequest {
+        project_id: p,
+        work_item_id: work,
+        analysis_snapshot_id: a,
+        path: "main.py".into(),
+        byte_range: None,
+        before_source_id: None,
+        retain_seconds: 60,
+    })?;
+    fs::write(root.join("main.py"), "value = 2\n")?;
+    let a = ops
+        .analyze(p, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let after = observe(&ops, p, work, a, Some(first.source_id))?;
+    let frozen = ops.read_explanation_source(p, work, after.source_id)?;
+    let deadline = ops
+        .privacy_status(p)?
+        .managed_derived
+        .iter()
+        .filter_map(|r| r.retained_until)
+        .min()
+        .ok_or("expiry")?;
+    let mut privacy = PrivacyStore::open_with(
+        ops.layout().privacy_store(),
+        SystemIdGenerator,
+        FixedClock::new(TimestampMicros::from_unix_micros(
+            deadline.as_unix_micros() + 1,
+        )),
+    )?;
+    assert_eq!(privacy.cleanup_expired(p)?.len(), 1);
+    drop(privacy);
+    let restarted = LocalOperations::new(ops.layout().clone());
+    assert!(restarted
+        .read_explanation_source(p, work, first.source_id)
+        .is_err());
+    assert_eq!(
+        restarted.read_explanation_source(p, work, after.source_id)?,
+        frozen
+    );
+    assert_eq!(frozen["observation"]["detail"]["body"], "value = 2\n");
+    assert!(observe(&restarted, p, work, a, Some(first.source_id)).is_err());
+    restarted.delete_work_source_observation(p, work, first.source_id)?;
+    assert!(restarted
+        .read_explanation_source(p, work, after.source_id)
+        .is_err());
+    Ok(())
+}

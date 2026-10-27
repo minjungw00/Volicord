@@ -184,6 +184,12 @@ Canonical Context와 Repository Intelligence에서 파생한 read-side interpret
 agent용 표현의 깊이는 달라도 record identity, source, freshness, uncertainty,
 supersession와 omission basis는 같다.
 
+Retained explanation selection, current repository comparison and exact Source body
+availability are separate read-side decisions. Local Operations coordinates their
+owners; Source TTL does not become publication deletion, and historical readability
+does not grant new-authoring evidence authority. Privacy retains deletion/forgetting
+and access boundaries; Projection and adapters consume typed states.
+
 Projection은 authoritative record가 아니며 generated document도 explicit adoption
 전에는 canonical truth가 아니다. Rendering, preview, 파일 출력 또는 실패가
 source record를 바꾸지 않는다. 상세 Recall selection, document grounding,

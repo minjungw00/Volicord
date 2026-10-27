@@ -40,15 +40,12 @@ impl LocalOperations {
         const CHUNK: usize = 8_192;
         const CONTENT: usize = 1_048_576;
         let _inspection = self.layout().acquire_health_lock()?;
-        let (canonical, retained, publication_id, repository) =
+        let (canonical, retained, publication_id) =
             self.permitted_read_publication(project, subject, language)?;
-        self.validate_subject_sources_in_read(
-            &canonical,
-            subject,
-            &retained.realization,
-            None,
-            repository.as_ref(),
-        )?;
+        let sources =
+            self.read_retained_sources(&canonical, subject, &retained.realization, None)?;
+        let applicability =
+            self.retained_applicability(&canonical, &retained, sources.availability);
         let document = compact_publication(&retained, &publication_id);
         let encoded = serde_json::to_string(&document)
             .map_err(|e| Error::with_source("publication encoding failed", e))?;
@@ -76,7 +73,7 @@ impl LocalOperations {
             "state":if end == encoded.len() {"complete"} else {"partial"},
             "total_utf8_bytes":encoded.len(),"remaining_utf8_bytes":encoded.len()-end,
             "chunk_byte_limit":CHUNK,"supported_content_byte_limit":CONTENT,"response_byte_limit":65_536,
-            "applicability":validated_applicability(&retained),"read_only":true}),
+            "applicability":applicability,"read_only":true}),
         )
     }
 
@@ -87,17 +84,22 @@ impl LocalOperations {
         project: ProjectId,
         subject: ExplanationSubject,
         language: &str,
-    ) -> Result<
-        (
-            CanonicalReadBasis,
-            RetainedExplanation,
-            String,
-            Option<crate::repository_explanation::RepositoryExplanationReadBasis>,
-        ),
-        Error,
-    > {
+    ) -> Result<(CanonicalReadBasis, RetainedExplanation, String), Error> {
         let canonical = self.canonical_basis(project)?;
         let records = self.privacy_status(project)?;
+        let (retained, publication) =
+            self.permitted_publication_from(&canonical, &records, subject, language)?;
+        Ok((canonical, retained, publication))
+    }
+
+    fn permitted_publication_from(
+        &self,
+        canonical: &CanonicalReadBasis,
+        records: &volicord_privacy::ProjectPrivacyInspection,
+        subject: ExplanationSubject,
+        language: &str,
+    ) -> Result<(RetainedExplanation, String), Error> {
+        let project = canonical.project.id;
         let target = purpose(subject, language);
         let record = records
             .managed_derived
@@ -114,12 +116,16 @@ impl LocalOperations {
             Some(ExplanationFailureReason::Withheld)
         } else if record.state == ManagedDerivedState::Deleted {
             Some(ExplanationFailureReason::Deleted)
-        } else if record
-            .retained_until
-            .is_some_and(|t| now_micros().is_ok_and(|now| t <= now))
+        } else if !record.source_computed_explanation_deadline(&records.managed_derived)
+            && record
+                .retained_until
+                .is_some_and(|t| now_micros().is_ok_and(|now| t <= now))
         {
             Some(ExplanationFailureReason::Expired)
-        } else if record.state != ManagedDerivedState::Current {
+        } else if !matches!(
+            record.state,
+            ManagedDerivedState::Current | ManagedDerivedState::Stale
+        ) {
             Some(ExplanationFailureReason::Changed)
         } else {
             None
@@ -138,28 +144,120 @@ impl LocalOperations {
                 )
             })?;
         retained.publication_id = Some(record.id.to_string());
-        let (plan, repository) = self
-            .prepare_subject_explanation_for_read(&canonical, subject, language)
-            .map_err(|e| {
-                if e.reading_failure().is_some() {
-                    e
-                } else {
-                    e.with_reading_failure(
-                        if matches!(subject, ExplanationSubject::Repository(_)) {
-                            ExplanationFailureReason::ComparisonUnavailable
-                        } else {
-                            ExplanationFailureReason::Unavailable
-                        },
-                    )
-                }
-            })?;
+        if retained.project_id != project.to_string()
+            || retained.subject != subject
+            || retained.realization.language != language
+        {
+            return Err(Error::new("publication identity is corrupt")
+                .with_reading_failure(ExplanationFailureReason::Corrupt));
+        }
+        let corrupt = || {
+            Error::new("publication admission metadata is corrupt")
+                .with_reading_failure(ExplanationFailureReason::Corrupt)
+        };
+        let mut required_sources: std::collections::BTreeSet<_> = retained
+            .evidence
+            .iter()
+            .flat_map(|e| e.sources.iter().cloned())
+            .collect();
+        for citation in retained.realization.citations() {
+            required_sources.insert(citation.source_id.clone());
+            required_sources.insert(citation.repository_source_id.clone());
+        }
+        if record.included_sources.iter().any(|source| {
+            source.project() != project
+                || !record
+                    .canonical_links
+                    .contains(&ManagedCanonicalLink::Source(source.identity()))
+        }) || required_sources.iter().any(|id| {
+            !record
+                .included_sources
+                .iter()
+                .any(|source| source.identity().to_string() == *id)
+        }) {
+            return Err(corrupt());
+        }
+        for evidence in &retained.evidence {
+            if evidence.record_kind == "analysis_snapshot" {
+                continue;
+            }
+            let id = parse_identity(&evidence.identity).map_err(|_| corrupt())?;
+            let link = match evidence.record_kind.as_str() {
+                "context_item" => ManagedCanonicalLink::ContextItem(ContextItemId::from_bytes(id)),
+                "checkpoint" => ManagedCanonicalLink::Checkpoint(CheckpointId::from_bytes(id)),
+                "decision" => ManagedCanonicalLink::Decision(DecisionId::from_bytes(id)),
+                "question" => ManagedCanonicalLink::Question(QuestionId::from_bytes(id)),
+                _ => return Err(corrupt()),
+            };
+            if !record.canonical_links.contains(&link) {
+                return Err(corrupt());
+            }
+        }
+        if matches!(subject, ExplanationSubject::Repository(id) if record.analysis_snapshot != Some(id))
+        {
+            return Err(corrupt());
+        }
+        // Explicit body deletion/access withdrawal propagates to the explanation;
+        // ordinary expiry removes only evidence bytes. No older-record fallback.
+        for source in &record.included_sources {
+            let current = canonical
+                .sources
+                .iter()
+                .find(|s| s.source.id == source.identity());
+            let admitted_unavailable = current.is_some_and(|s| {
+                retained.source_status.iter().any(|status| {
+                    status["identity"] == source.identity().to_string()
+                        && status["availability"] == format!("{:?}", s.availability)
+                })
+            });
+            // A canonical report may have been admitted with an explicitly
+            // unavailable historical witness. Preserve that recorded limitation;
+            // loss of a previously available witness remains a blocking change.
+            if current.is_none()
+                || current.is_some_and(|s| {
+                    s.availability != volicord_context::Availability::Available
+                        && !admitted_unavailable
+                })
+            {
+                return Err(Error::new("publication Source authority withdrawn")
+                    .with_reading_failure(ExplanationFailureReason::Withheld));
+            }
+        }
+        for dependency in &records.managed_derived {
+            if dependency.kind == ManagedDerivedKind::SourceObservation
+                && dependency.purpose.rsplit(':').next().is_some_and(|id| {
+                    record
+                        .included_sources
+                        .iter()
+                        .any(|s| s.identity().to_string() == id)
+                })
+                && ((dependency.state == ManagedDerivedState::Deleted
+                    && !dependency.expired_by_cleanup())
+                    || dependency.state == ManagedDerivedState::Invalidated
+                    || records
+                        .withheld_for_canonical_forgetting
+                        .contains(&dependency.id))
+            {
+                return Err(
+                    Error::new("publication evidence explicitly removed or withheld")
+                        .with_reading_failure(
+                            if dependency.state == ManagedDerivedState::Deleted {
+                                ExplanationFailureReason::Deleted
+                            } else {
+                                ExplanationFailureReason::Withheld
+                            },
+                        ),
+                );
+            }
+        }
+        let plan = self.retained_plan(canonical, &retained)?;
         if !retained_matches(&plan, &retained) {
             return Err(
                 Error::new("publication basis changed; reopen the current explanation")
                     .with_reading_failure(ExplanationFailureReason::Changed),
             );
         }
-        Ok((canonical, retained, record.id.to_string(), repository))
+        Ok((retained, record.id.to_string()))
     }
 
     pub(crate) fn validate_read_publication(
@@ -177,41 +275,31 @@ impl LocalOperations {
         if explanations.is_empty() {
             return Ok(());
         }
-        let records = self.privacy_status(project)?;
         for provenance in explanations {
-            let target = purpose(provenance.subject, &provenance.language);
-            let record = records
-                .managed_derived
-                .iter()
-                .rfind(|r| r.kind == ManagedDerivedKind::CachedSummary && r.purpose == target)
-                .ok_or_else(|| {
-                    Error::new("explanation deleted; render again before publication")
-                })?;
-            let mut retained = decode_explanation(record.content.as_deref()).map_err(|_| {
-                Error::new("explanation unavailable; render again before publication")
-            })?;
-            retained.publication_id = Some(record.id.to_string());
-            let (plan, repository) = self.prepare_subject_explanation_for_read(
-                &canonical,
-                provenance.subject,
-                &provenance.language,
-            )?;
-            if record.state != ManagedDerivedState::Current
-                || ExplanationProvenance::from(&retained) != *provenance
-                || !retained_matches(&plan, &retained)
+            let (_, retained, _) =
+                self.permitted_read_publication(project, provenance.subject, &provenance.language)?;
+            let mut expected = ExplanationProvenance::from(&retained);
+            if retained.realization.citations().next().is_some()
+                && provenance.source_read_fingerprint.is_none()
             {
                 return Err(Error::new(
-                    "explanation changed; render again before publication",
+                    "missing evidence read basis; render again before publication",
                 ));
             }
-            if !matches!(provenance.subject, ExplanationSubject::Decision(_)) {
-                self.validate_subject_sources_in_read(
+            if provenance.source_read_fingerprint.is_some() {
+                let sources = self.read_retained_sources(
                     &canonical,
                     provenance.subject,
                     &retained.realization,
                     None,
-                    repository.as_ref(),
                 )?;
+                expected.source_read_fingerprint =
+                    Some(source_availability_fingerprint(&sources.availability));
+            }
+            if expected != *provenance {
+                return Err(Error::new(
+                    "explanation changed; render again before publication",
+                ));
             }
         }
         Ok(())
@@ -225,30 +313,6 @@ impl LocalOperations {
     ) -> Result<ExplanationPlan, Error> {
         let canonical = self.canonical_basis(project)?;
         self.prepare_subject_explanation(&canonical, subject, language)
-    }
-    fn prepare_subject_explanation_for_read(
-        &self,
-        canonical: &CanonicalReadBasis,
-        subject: ExplanationSubject,
-        language: &str,
-    ) -> Result<
-        (
-            ExplanationPlan,
-            Option<crate::repository_explanation::RepositoryExplanationReadBasis>,
-        ),
-        Error,
-    > {
-        if let ExplanationSubject::Repository(id) = subject {
-            let repository = self.repository_explanation_read_basis(canonical, id)?;
-            let plan =
-                self.repository_explanation_plan_from_read(canonical, &repository, language)?;
-            Ok((plan, Some(repository)))
-        } else {
-            Ok((
-                self.prepare_subject_explanation(canonical, subject, language)?,
-                None,
-            ))
-        }
     }
     pub(crate) fn prepare_subject_explanation(
         &self,
@@ -274,15 +338,15 @@ impl LocalOperations {
         let canonical = self.canonical_basis(project)?;
         let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
         validate_explanation(&plan, &realization).map_err(Error::new)?;
-        let (source_dependencies, retained_until) = match subject {
+        let source_dependencies = match subject {
             ExplanationSubject::Work(_)
             | ExplanationSubject::WorkName(_)
             | ExplanationSubject::WorkSummary(_)
             | ExplanationSubject::Repository(_) => {
                 let validated = self.validate_subject_sources(&canonical, subject, &realization)?;
-                (validated.dependencies, validated.expiry)
+                validated.dependencies
             }
-            ExplanationSubject::Decision(_) => (Vec::new(), None),
+            ExplanationSubject::Decision(_) => Vec::new(),
         };
         let grounding =
             volicord_repository_intelligence::CanonicalGrounding::from_read_basis(&canonical)
@@ -338,7 +402,7 @@ impl LocalOperations {
         let record = privacy.record_managed_derived(ManagedDerivedDraft { project_id:project, kind:ManagedDerivedKind::CachedSummary,
             provider:None, model:retained.realization.generator.model.clone(), purpose:purpose(subject, language), analysis_snapshot:match subject { ExplanationSubject::Repository(id) => Some(id), _ => None },
             included_sources, canonical_links, content,
-            uncertainty:None, retained_until,
+            uncertainty:None, retained_until:None,
             retention_basis:"Explicit active-host explanation recording; local disposable Derived content; no provider invocation".into() })
             .map_err(|e| {
                 if e.kind() == volicord_privacy::ErrorKind::InvalidInput {
@@ -412,7 +476,7 @@ impl LocalOperations {
         selection: &ExplanationCitationSelection,
     ) -> Result<serde_json::Value, Error> {
         let _inspection = self.layout().acquire_health_lock()?;
-        let (canonical, retained, publication_id, repository) =
+        let (canonical, retained, publication_id) =
             self.permitted_read_publication(project, subject, language)?;
         if selection.publication_id != publication_id {
             return Err(Error::new(
@@ -436,13 +500,24 @@ impl LocalOperations {
             .citations
             .get(selection.citation_index)
             .ok_or_else(|| Error::new("selected citation unavailable"))?;
-        let validated = self.validate_subject_sources_in_read(
+        let validated = self.read_retained_sources(
             &canonical,
             subject,
             &retained.realization,
             Some((citation, selection.offset)),
-            repository.as_ref(),
         )?;
+        let applicability =
+            self.retained_applicability(&canonical, &retained, validated.availability.clone());
+        if let Some(failure) = validated
+            .availability
+            .iter()
+            .find(|a| &a.citation == citation)
+            .and_then(|a| a.limitation)
+        {
+            return Err(Error::new("selected evidence range is unavailable")
+                .with_reading_failure(failure)
+                .with_readable_publication());
+        }
         let chunk = validated
             .selected
             .ok_or_else(|| Error::new("selected citation bytes unavailable"))?;
@@ -453,7 +528,7 @@ impl LocalOperations {
         let result = serde_json::json!({"publication_id":publication_id,"project_id":project.to_string(),"subject":subject,
             "language":language,"realization_fingerprint":selection.realization_fingerprint,
             "unit_index":selection.unit_index,"citation_index":selection.citation_index,
-            "claim":claim,"chunk":chunk,"applicability":validated_applicability(&retained),"read_only":true,"semantic_approval":"not_established",
+            "claim":claim,"chunk":chunk,"applicability":applicability,"read_only":true,"semantic_approval":"not_established",
             "text_byte_limit":EXPLANATION_SOURCE_RANGE_BYTE_LIMIT,"response_byte_limit":32_768});
         let bytes = serde_json::to_vec(&result)
             .map_err(|e| Error::with_source("citation encoding failed", e))?;
@@ -486,19 +561,22 @@ impl LocalOperations {
             if let Some(readings) = attached.get(&key) {
                 return readings.clone();
             }
-            if let Err(e) = &records {
-                return vec![ExplanationReading {
-                    language: "*".into(),
-                    state: ExplanationState::Unavailable,
-                    content: None,
-                    diagnostic: Some(format!("explanation storage unavailable: {e}")),
-                    applicability: ExplanationApplicability::unavailable(
-                        ExplanationState::Unavailable,
-                    ),
-                    source_excerpts: Vec::new(),
-                    omitted_source_excerpt_count: 0,
-                }];
-            }
+            let records = match &records {
+                Ok(records) => records,
+                Err(e) => {
+                    return vec![ExplanationReading {
+                        language: "*".into(),
+                        state: ExplanationState::Unavailable,
+                        content: None,
+                        diagnostic: Some(format!("explanation storage unavailable: {e}")),
+                        applicability: ExplanationApplicability::unavailable(
+                            ExplanationState::Unavailable,
+                        ),
+                        source_excerpts: Vec::new(),
+                        omitted_source_excerpt_count: 0,
+                    }]
+                }
+            };
             let prefix = format!("explanation:{key}:");
             let readings = latest
                 .range(prefix.as_str()..)
@@ -506,82 +584,81 @@ impl LocalOperations {
                 .map(|(_, record)| *record)
                 .map(|record| {
                     let language = record.purpose[prefix.len()..].to_owned();
-                    let mut source_excerpts = Vec::new();
-                    let mut omitted_source_excerpt_count = 0;
-                    let mut applicability = ExplanationApplicability::default();
-                    let withheld = records.as_ref().is_ok_and(|inspection|
-                        inspection.withheld_for_canonical_forgetting.contains(&record.id));
-                    let (state, content, diagnostic) = if withheld {
-                        (ExplanationState::Withheld,None,Some("canonical forgetting cleanup is pending; affected content is withheld".into()))
-                    } else if record.state == ManagedDerivedState::Deleted {
-                        (ExplanationState::Deleted,None,Some("explicitly deleted local explanation; no generation on read".into()))
-                    } else if record.retained_until.zip(now_micros().ok()).is_some_and(|(until, now)| until <= now) {
-                        applicability.limitation = Some(ExplanationFailureReason::Expired);
-                        (ExplanationState::Stale,None,Some("explanation retention expired; explicit fresh observation/generation is required".into()))
-                    } else {
-                        match decode_explanation(record.content.as_deref()) {
-                            Err((state, diagnostic)) => (state, None, Some(diagnostic)),
-                            Ok(mut retained) => {
-                                retained.publication_id = Some(record.id.to_string());
-                                applicability = ExplanationApplicability::from_retained(&retained);
-                                preparations += 1;
-                                match self.prepare_subject_explanation_for_read(canonical, subject, &language) {
-                            Err(e) => {
-                                let reason = e.reading_failure().unwrap_or(
-                                    if matches!(subject, ExplanationSubject::Repository(_)) { ExplanationFailureReason::ComparisonUnavailable } else { ExplanationFailureReason::Unavailable });
-                                applicability.limitation = Some(reason);
-                                applicability.repository_comparison = match reason {
-                                    ExplanationFailureReason::Changed => RepositoryComparisonState::Changed,
-                                    ExplanationFailureReason::ComparisonUnavailable => RepositoryComparisonState::Unavailable,
-                                    _ => RepositoryComparisonState::NotChecked,
-                                };
-                                (if reason == ExplanationFailureReason::Changed { ExplanationState::Stale } else { ExplanationState::Unavailable }, None, Some(e.to_string()))
-                            },
-                            Ok((plan, repository))
-                                if record.state == ManagedDerivedState::Current
-                                    && retained_matches(&plan, &retained) =>
-                            {
-                                let validation = match subject {
-                                    ExplanationSubject::Work(_) | ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_) | ExplanationSubject::Repository(_) => self.validate_subject_sources_in_read(canonical,subject,&retained.realization,None,repository.as_ref()).map(|validated| {
-                                        source_excerpts = validated.excerpts;
-                                        omitted_source_excerpt_count = validated.omitted_excerpt_count;
-                                    }),
-                                    ExplanationSubject::Decision(_) => Ok(()),
-                                };
-                                match validation {
-                                    Ok(()) => {
-                                        if retained.realization.citations().any(|c| c.use_kind == ExplanationSourceUse::CurrentCode) {
-                                            applicability.checked_at_unix_micros = now_micros().ok().map(|t| t.as_unix_micros());
-                                            applicability.repository_comparison = RepositoryComparisonState::VerifiedAtRead;
-                                        }
-                                        (ExplanationState::Current, Some(retained), None)
-                                    },
-                                    Err(error) => {
-                                        let reason = error.reading_failure().unwrap_or(ExplanationFailureReason::Unavailable);
-                                        applicability.limitation = Some(reason);
-                                        applicability.repository_comparison = match reason {
-                                            ExplanationFailureReason::Changed => RepositoryComparisonState::Changed,
-                                            ExplanationFailureReason::ComparisonUnavailable => RepositoryComparisonState::Unavailable,
-                                            _ => RepositoryComparisonState::NotChecked,
-                                        };
-                                        (ExplanationState::Stale,None,Some(format!("explanation Source dependency unavailable or changed: {error}; prepare and generate again")))
-                                    },
-                                }
+                    preparations += 1;
+                    let (
+                        state,
+                        content,
+                        diagnostic,
+                        applicability,
+                        source_excerpts,
+                        omitted_source_excerpt_count,
+                    ) = match self
+                        .permitted_publication_from(canonical, records, subject, &language)
+                    {
+                        Ok((retained, _)) => match self.read_retained_sources(
+                            canonical,
+                            subject,
+                            &retained.realization,
+                            None,
+                        ) {
+                            Ok(sources) => {
+                                let applicability = self.retained_applicability(
+                                    canonical,
+                                    &retained,
+                                    sources.availability,
+                                );
+                                (
+                                    ExplanationState::Current,
+                                    Some(retained),
+                                    None,
+                                    applicability,
+                                    sources.excerpts,
+                                    sources.omitted_excerpt_count,
+                                )
                             }
-                            Ok(_) => (
-                                ExplanationState::Stale,
+                            Err(e) => (
+                                ExplanationState::Unavailable,
                                 None,
-                                Some(
-                                    "evidence changed or invalidated; prepare and generate again"
-                                        .into(),
+                                Some(e.to_string()),
+                                ExplanationApplicability::unavailable(
+                                    ExplanationState::Unavailable,
                                 ),
+                                Vec::new(),
+                                0,
                             ),
+                        },
+                        Err(e) => {
+                            let state = match e.reading_failure() {
+                                Some(ExplanationFailureReason::Deleted) => {
+                                    ExplanationState::Deleted
+                                }
+                                Some(ExplanationFailureReason::Withheld) => {
+                                    ExplanationState::Withheld
+                                }
+                                Some(ExplanationFailureReason::Corrupt) => {
+                                    ExplanationState::Corrupt
+                                }
+                                Some(ExplanationFailureReason::Unsupported) => {
+                                    ExplanationState::Unsupported
+                                }
+                                Some(
+                                    ExplanationFailureReason::Changed
+                                    | ExplanationFailureReason::Expired,
+                                ) => ExplanationState::Stale,
+                                _ => ExplanationState::Unavailable,
+                            };
+                            let mut applicability = ExplanationApplicability::unavailable(state);
+                            applicability.limitation = e.reading_failure();
+                            (
+                                state,
+                                None,
+                                Some(e.to_string()),
+                                applicability,
+                                Vec::new(),
+                                0,
+                            )
                         }
-                            }
-                        }};
-                    if applicability.limitation.is_none() && state != ExplanationState::Current {
-                        applicability.limitation = ExplanationApplicability::unavailable(state).limitation;
-                    }
+                    };
                     ExplanationReading {
                         language,
                         state,
@@ -663,17 +740,89 @@ impl LocalOperations {
         preparations
     }
 }
-fn validated_applicability(retained: &RetainedExplanation) -> ExplanationApplicability {
-    let mut basis = ExplanationApplicability::from_retained(retained);
-    if retained
-        .realization
-        .citations()
-        .any(|c| c.use_kind == ExplanationSourceUse::CurrentCode)
-    {
-        basis.checked_at_unix_micros = now_micros().ok().map(|t| t.as_unix_micros());
-        basis.repository_comparison = RepositoryComparisonState::VerifiedAtRead;
+impl LocalOperations {
+    /// Reconstruct the admitted metadata using the stored repository basis,
+    /// never a current file or a replacement Source body. Canonical correction
+    /// remains a separate authority boundary.
+    fn retained_plan(
+        &self,
+        canonical: &CanonicalReadBasis,
+        retained: &RetainedExplanation,
+    ) -> Result<ExplanationPlan, Error> {
+        if let ExplanationSubject::Repository(id) = retained.subject {
+            let evidence = retained
+                .evidence
+                .iter()
+                .find(|e| e.key == "repository_basis")
+                .ok_or_else(|| {
+                    Error::new("publication repository basis missing")
+                        .with_reading_failure(ExplanationFailureReason::Corrupt)
+                })?;
+            let source = evidence
+                .sources
+                .first()
+                .ok_or_else(|| Error::new("publication repository Source missing"))?;
+            volicord_projections::prepare_repository_explanation(
+                canonical,
+                id,
+                SourceId::from_bytes(parse_identity(source)?),
+                evidence.content.clone(),
+                &retained.realization.language,
+            )
+            .map_err(Error::new)
+        } else {
+            self.prepare_subject_explanation(
+                canonical,
+                retained.subject,
+                &retained.realization.language,
+            )
+        }
     }
-    basis
+
+    fn retained_applicability(
+        &self,
+        canonical: &CanonicalReadBasis,
+        retained: &RetainedExplanation,
+        source_ranges: Vec<SourceRangeAvailability>,
+    ) -> ExplanationApplicability {
+        let mut basis = ExplanationApplicability::from_retained(retained);
+        basis.publication = PublicationReadability::Readable;
+        basis.canonical_basis_current = Some(true);
+        basis.source_ranges = source_ranges;
+        let ids: std::collections::BTreeSet<_> = retained
+            .realization
+            .citations()
+            .filter(|c| c.use_kind == ExplanationSourceUse::CurrentCode)
+            .map(|c| c.analysis_snapshot_id.as_str())
+            .collect();
+        for id in ids {
+            basis.comparison_scope = Some(RepositoryComparisonScope::IncludedInventory);
+            basis.checked_at_unix_micros = now_micros().ok().map(|t| t.as_unix_micros());
+            let comparison = crate::AnalysisSnapshotId::from_hex(id)
+                .map_err(Error::new)
+                .and_then(|id| self.repository_source_metadata(canonical.project.id, id))
+                .and_then(|metadata| self.current_explanation_repository(canonical, &metadata));
+            match comparison {
+                Ok(_)
+                    if basis.repository_comparison != RepositoryComparisonState::Changed
+                        && basis.repository_comparison
+                            != RepositoryComparisonState::Unavailable =>
+                {
+                    basis.repository_comparison = RepositoryComparisonState::VerifiedAtRead;
+                }
+                Err(e) if e.reading_failure() == Some(ExplanationFailureReason::Changed) => {
+                    basis.repository_comparison = RepositoryComparisonState::Changed;
+                    basis.limitation = Some(ExplanationFailureReason::Changed);
+                }
+                Err(_) if basis.repository_comparison != RepositoryComparisonState::Changed => {
+                    basis.repository_comparison = RepositoryComparisonState::Unavailable;
+                    basis.limitation = Some(ExplanationFailureReason::ComparisonUnavailable);
+                }
+                _ => {}
+            }
+        }
+        basis
+    }
 }
 
 fn decode_explanation(

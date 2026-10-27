@@ -789,3 +789,23 @@ This strengthens technical correspondence and preserves independent publication 
 scoped Decision controls; it does not establish semantic sufficiency, visual benefit,
 human acceptance or unseen-case generalization. Source context reports the actual
 shared excerpt budget using the producer-owned constant.
+
+### Retained-reading acceptance — accepted 2026-10-27
+
+The user's decision to keep explanations readable after ordinary Source expiry or
+repository change supersedes earlier blanket withholding. This task adds lifecycle
+notices within the existing reader, without redesigning R3. Publication permission,
+current correspondence and each original range's body availability are separate
+shared typed inputs from Operations. Changed or unavailable comparison keeps the
+article/map with original basis and unknown semantic impact. Expired ranges have
+no code payload, while other permitted ranges retain exact bytes and return targets.
+An unavailable body is not described as a budget omission. Current canonical facts
+and historical generated interpretation keep separate authority.
+
+Explicit deletion/forgetting/withdrawal and damaged publication integrity still
+remove all dependent prose, diagrams, alternatives and cached code; replacement
+cannot splice equal wording. Existing publication and language identity checks
+remain. New exports repeat these checks and exclude expired code even from hidden
+markup. Offline states describe export-time content, never continuing permission.
+Technical controls are routed by Projection's retained-publication mapping;
+R3 visual fidelity and human/native assistive acceptance remain independent.

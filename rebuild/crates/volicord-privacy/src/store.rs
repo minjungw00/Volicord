@@ -603,9 +603,11 @@ impl PrivacyStore {
     ) -> Result<Vec<ManagedDerivedId>, Error> {
         let now = self.clock.now().map_err(clock_error)?;
         let mut deleted = Vec::new();
-        for mut record in self.read_derived(project_id)? {
+        let records = self.read_derived(project_id)?;
+        for mut record in records.clone() {
             if record.state != ManagedDerivedState::Deleted
                 && record.retained_until.is_some_and(|expiry| expiry <= now)
+                && !record.source_computed_explanation_deadline(&records)
             {
                 record.content = None;
                 record.state = ManagedDerivedState::Deleted;

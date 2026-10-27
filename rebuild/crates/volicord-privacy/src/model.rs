@@ -388,6 +388,32 @@ pub struct ManagedDerivedRecord {
 }
 
 impl ManagedDerivedRecord {
+    /// Cleanup expiry and explicit removal have different read consequences.
+    pub fn expired_by_cleanup(&self) -> bool {
+        self.state == ManagedDerivedState::Deleted
+            && self.local_deletion.as_ref().is_some_and(|d| {
+                d.basis == self.retention_basis
+                    && self
+                        .retained_until
+                        .is_some_and(|until| until <= d.deleted_at)
+            })
+    }
+
+    /// The original explanation recorder computed this deadline from Source
+    /// bodies. Recognize only its exact receipt and matching dependency deadline witness;
+    /// an independent deadline is never silently renewed or ignored.
+    pub fn source_computed_explanation_deadline(&self, records: &[Self]) -> bool {
+        self.kind == ManagedDerivedKind::CachedSummary
+            && self.purpose.starts_with("explanation:")
+            && self.retention_basis == "Explicit active-host explanation recording; local disposable Derived content; no provider invocation"
+            && self.retained_until.is_some()
+            && records.iter().any(|r| r.kind == ManagedDerivedKind::SourceObservation
+                && r.project_id == self.project_id
+                && r.retained_until == self.retained_until
+                && r.purpose.rsplit(':').next().is_some_and(|id|
+                    self.included_sources.iter().any(|source| source.identity().to_string() == id)))
+    }
+
     pub fn semantic_annotation(&self) -> Option<SemanticAnnotation> {
         if self.kind != ManagedDerivedKind::SemanticAnnotation
             || self.state == ManagedDerivedState::Deleted

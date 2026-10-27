@@ -37,6 +37,14 @@ impl Fixture {
         production: bool,
         custom: Option<Vec<(String, String)>>,
     ) -> Result<Self, Box<dyn Error>> {
+        Self::new_retention(parent, production, custom, false)
+    }
+    fn new_retention(
+        parent: Option<&std::path::Path>,
+        production: bool,
+        custom: Option<Vec<(String, String)>>,
+        short_mechanism: bool,
+    ) -> Result<Self, Box<dyn Error>> {
         let temp = match parent {
             Some(path) => tempfile::tempdir_in(path)?,
             None => tempfile::tempdir()?,
@@ -141,7 +149,7 @@ impl Fixture {
                     start_byte: intervals[i].0,
                     end_byte: intervals[i].1,
                 }),
-                retain_seconds: 3600,
+                retain_seconds: if short_mechanism && i == 8 { 60 } else { 3600 },
             })?;
             let id = receipt["source_id"].as_str().ok_or("source")?;
             let mut bytes = [0; 16];
@@ -789,7 +797,7 @@ fn exact_citation_rejects_changed_output_wrong_subject_origin_and_deleted_suppor
 }
 
 #[test]
-fn selected_citation_withholds_expired_corrupt_unsupported_and_changed_file_evidence(
+fn selected_citation_separates_body_availability_from_repository_comparison(
 ) -> Result<(), Box<dyn Error>> {
     for variant in [
         "expired",
@@ -896,6 +904,19 @@ fn selected_citation_withholds_expired_corrupt_unsupported_and_changed_file_evid
         }
         let before = f.ops.privacy_status(f.project)?;
         let response = f.get(&citation_target(&f, &chosen))?;
+        if matches!(
+            variant,
+            "changed_file" | "missing_repository" | "redirected_file"
+        ) {
+            assert!(response.starts_with("HTTP/1.1 200"), "{variant}");
+            assert!(response.contains("return verify"));
+            assert_eq!(f.answers()?.explanation_state, ExplanationState::Current);
+            assert_ne!(
+                f.answers()?.applicability.repository_comparison,
+                RepositoryComparisonState::VerifiedAtRead
+            );
+            continue;
+        }
         assert!(
             response.starts_with("HTTP/1.1 409"),
             "{variant}: {response}"
@@ -916,11 +937,23 @@ fn selected_citation_withholds_expired_corrupt_unsupported_and_changed_file_evid
         };
         if let Some((reason, typed)) = expected {
             assert_eq!(failure_body(&response)?["reason"], reason, "{variant}");
-            assert_eq!(
-                f.answers()?.applicability.limitation,
-                Some(typed),
-                "{variant}"
-            );
+            let answers = f.answers()?;
+            if variant.ends_with("output") {
+                assert_eq!(answers.applicability.limitation, Some(typed), "{variant}");
+            } else {
+                assert_eq!(
+                    answers
+                        .applicability
+                        .source_ranges
+                        .iter()
+                        .find(|a| a.citation == f.realization.paragraphs[1].citations[0])
+                        .and_then(|a| a.limitation),
+                    Some(typed),
+                    "{variant}"
+                );
+                assert_eq!(failure_body(&response)?["publication_readable"], true);
+                assert_eq!(answers.explanation_state, ExplanationState::Current);
+            }
         }
         assert_eq!(before, f.ops.privacy_status(f.project)?);
     }
@@ -971,9 +1004,7 @@ fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
         reader.text, f.originals[8],
         "the representative function must reach its actual validation and bounded-return logic"
     );
-    assert!(reader
-        .text
-        .contains("self.validate_subject_sources_in_read("));
+    assert!(reader.text.contains("self.read_retained_sources("));
     assert!(reader.text.contains("bytes.len() > 32_768"));
     assert!(answers.source_excerpts.len() >= 3);
     assert_eq!(
@@ -1017,7 +1048,7 @@ fn offline_keeps_a_complete_material_function_without_starving_other_ranges(
     let html = fs::read_to_string(destination)?;
     assert!(code_texts(&html)
         .iter()
-        .any(|s| s.contains("self.validate_subject_sources_in_read(")));
+        .any(|s| s.contains("self.read_retained_sources(")));
     assert!(code_texts(&html)
         .iter()
         .any(|s| s.contains("bytes.len() > 32_768")));
@@ -1299,7 +1330,7 @@ fn important_complete_window_survives_smaller_supporting_windows() -> Result<(),
             "authority.rs",
             explanation,
             "    fn permitted_read_publication(",
-            "    pub(crate) fn validate_read_publication(",
+            "    fn permitted_publication_from(",
         ),
         (
             "publication.rs",
@@ -2480,5 +2511,174 @@ fn diagram_ui_locale_preserves_authored_english_claims_and_publication_identity(
         assert_eq!(after.diagrams, realized.diagrams);
         assert_eq!(after.prose, before.prose);
     }
+    Ok(())
+}
+
+#[test]
+fn admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart(
+) -> Result<(), Box<dyn Error>> {
+    use volicord_context::{FixedClock, SystemIdGenerator, TimestampMicros};
+    use volicord_privacy::{ManagedDerivedKind, PrivacyStore};
+    let f = Fixture::new_retention(None, false, None, true)?;
+    let realization = diagram_control(&f, false)?;
+    let retained = f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization.clone(),
+    )?;
+    let frozen = explanation_text_hash(&serde_json::to_string(&realization)?);
+    let before = f.answers()?;
+    let page = f
+        .ops
+        .read_explanation_page(f.project, retained.subject, "en", 0, None)?;
+    let adapter = ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()));
+    let rendered_before =
+        adapter.render_snapshot(&f.request(), TimestampMicros::from_unix_micros(1))?;
+    let inspection = f.ops.privacy_status(f.project)?;
+    let deadline = inspection
+        .managed_derived
+        .iter()
+        .filter(|r| r.kind == ManagedDerivedKind::SourceObservation)
+        .filter_map(|r| r.retained_until)
+        .min()
+        .ok_or("deadline")?;
+    let mut privacy = PrivacyStore::open_with(
+        f.ops.layout().privacy_store(),
+        SystemIdGenerator,
+        FixedClock::new(TimestampMicros::from_unix_micros(
+            deadline.as_unix_micros() + 1,
+        )),
+    )?;
+    assert_eq!(privacy.cleanup_expired(f.project)?.len(), 1);
+    drop(privacy);
+    // Actual cleanup erased only one Source body. Reopen the runtime through
+    // new Operations, HTTP and export consumers; do not re-record the article.
+    let restarted = LocalOperations::new(f.ops.layout().clone());
+    let after = restarted.read_repository_explanation(f.project, "en", FixedLocale::English)?;
+    assert_eq!(before.prose, after.prose);
+    assert_eq!(before.diagrams, after.diagrams);
+    assert_eq!(
+        before
+            .provenance
+            .as_ref()
+            .and_then(|p| p.publication_id.as_ref()),
+        retained.publication_id.as_ref()
+    );
+    assert_eq!(
+        after
+            .provenance
+            .as_ref()
+            .and_then(|p| p.publication_id.as_ref()),
+        retained.publication_id.as_ref()
+    );
+    assert_eq!(
+        frozen,
+        explanation_text_hash(&serde_json::to_string(&realization)?)
+    );
+    assert_eq!(
+        after.applicability.publication,
+        PublicationReadability::Readable
+    );
+    assert!(after
+        .applicability
+        .source_ranges
+        .iter()
+        .any(|r| r.limitation == Some(ExplanationFailureReason::Expired)));
+    assert!(!after
+        .source_excerpts
+        .iter()
+        .any(|e| e.text == f.originals[8]));
+    assert!(after
+        .source_excerpts
+        .iter()
+        .any(|e| e.text == f.originals[9]));
+    let continued = restarted.read_explanation_page(
+        f.project,
+        retained.subject,
+        "en",
+        0,
+        Some(page["fingerprint"].as_str().ok_or("fingerprint")?),
+    )?;
+    assert_eq!(page["publication_id"], continued["publication_id"]);
+    assert_eq!(page["fingerprint"], continued["fingerprint"]);
+    let provenance = after.provenance.as_ref().ok_or("provenance")?;
+    let target = format!(
+        "/citation?subject={}&language=en&publication={}&realization={}&unit=1&citation=0&offset=0",
+        retained.subject.key(),
+        retained.publication_id.as_deref().ok_or("publication")?,
+        provenance.realization_fingerprint
+    );
+    let http = f.get(&target)?;
+    assert!(http.starts_with("HTTP/1.1 409"));
+    assert!(
+        http.contains("\"reason\":\"expired\"") && http.contains("\"publication_readable\":true")
+    );
+    assert!(!http.contains("return verify(value)"));
+    let live = f.get("/?view=repository")?;
+    assert!(live.contains("admitted-diagram") && live.contains("data-range-state=\"expired\""));
+    assert!(!code_texts(&live).iter().any(|s| s == &f.originals[8]));
+    assert!(code_texts(&live).iter().any(|s| s == &f.originals[9]));
+    let destination = f.temp.path().join("after-expiry.html");
+    adapter.export_snapshot(&f.request(), &destination)?;
+    let offline = fs::read_to_string(destination)?;
+    assert!(
+        offline.contains("admitted-diagram") && offline.contains("data-range-state=\"expired\"")
+    );
+    assert!(!code_texts(&offline).iter().any(|s| s == &f.originals[8]));
+    assert!(code_texts(&offline).iter().any(|s| s == &f.originals[9]));
+    // An artifact rendered before expiry cannot publish cached expired bytes.
+    let stale = f.temp.path().join("stale-export.html");
+    assert!(restarted
+        .publish_viewer_snapshot(
+            &rendered_before.html,
+            &stale,
+            f.project,
+            &rendered_before.canonical_read_fingerprint,
+            &rendered_before.explanations,
+            &rendered_before.verification_basis
+        )
+        .is_err());
+    assert!(!stale.exists());
+    assert!(restarted
+        .record_explanation(f.project, retained.subject, "en", realization)
+        .is_err());
+    Ok(())
+}
+
+#[test]
+fn seed_retained_browser_runtime() -> Result<(), Box<dyn Error>> {
+    let Some(output) = std::env::var_os("VOLICORD_RETAINED_REVIEW_ROOT") else {
+        return Ok(());
+    };
+    let output = std::path::Path::new(&output);
+    fs::create_dir(output)?;
+    let f = Fixture::new_retention(Some(output), false, None, true)?;
+    let realization = diagram_control(&f, false)?;
+    let retained = f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization,
+    )?;
+    let answers = f.answers()?;
+    let expiry = f
+        .ops
+        .privacy_status(f.project)?
+        .managed_derived
+        .iter()
+        .filter(|r| r.kind == volicord_privacy::ManagedDerivedKind::SourceObservation)
+        .filter_map(|r| r.retained_until)
+        .min()
+        .ok_or("expiry")?
+        .as_unix_micros();
+    fs::write(
+        output.join("fixture.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+        "runtime":f.ops.layout().root(),"project":f.project.to_string(),"analysis":f.analysis.to_string(),
+        "repository":f.temp.path().join("repo"),"answers":answers,"originals":f.originals,"publication":retained.publication_id,"expires_at":expiry,
+        "provenance":"authored polyglot lifetime control, not semantic or human approval"}))?,
+    )?;
+    let _ = f.temp.keep();
     Ok(())
 }

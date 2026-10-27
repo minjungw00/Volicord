@@ -2159,6 +2159,43 @@ fn render_field(
                     c["start_line"],c["end_line"],c["start_byte"],c["end_byte"],c["range_sha256"].as_str().unwrap_or("")))?;
             }
         }
+        if answers["applicability"]["publication"] == "readable" {
+            let comparison = answers["applicability"]["repository_comparison"]
+                .as_str()
+                .unwrap_or("not_checked");
+            write_line(stdout, match locale {
+                CliLocale::English => format!("{padding}Retained publication · repository comparison: {comparison} · original authored basis; semantic impact is unknown after change"),
+                CliLocale::Korean => format!("{padding}보존된 설명 · 저장소 비교: {comparison} · 작성 당시 근거이며 변경의 의미상 영향은 알 수 없습니다"),
+            })?;
+            for range in answers["applicability"]["source_ranges"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|r| r["available"] == false)
+            {
+                let citation = &answers["prose"]
+                    [range["unit_index"].as_u64().unwrap_or(0) as usize]["citations"]
+                    [range["citation_index"].as_u64().unwrap_or(0) as usize];
+                write_line(
+                    stdout,
+                    format!(
+                        "{padding}{} {}:{}–{} · {} · {}",
+                        match locale {
+                            CliLocale::English => "Evidence",
+                            CliLocale::Korean => "근거",
+                        },
+                        terminal_explanation_text(citation["locator"].as_str().unwrap_or("")),
+                        citation["start_line"],
+                        citation["end_line"],
+                        range["limitation"].as_str().unwrap_or("unavailable"),
+                        match locale {
+                            CliLocale::English => "body unavailable",
+                            CliLocale::Korean => "본문 이용 불가",
+                        }
+                    ),
+                )?;
+            }
+        }
         for excerpt in answers["source_excerpts"].as_array().into_iter().flatten() {
             let c = &excerpt["citation"];
             write_line(

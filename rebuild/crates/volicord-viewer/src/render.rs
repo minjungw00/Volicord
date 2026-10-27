@@ -409,8 +409,7 @@ impl ViewerAdapter {
                         e.language == request.requested_language
                             && e.state == volicord_projections::ExplanationState::Current
                     })
-                    .filter_map(|e| e.content.as_ref())
-                    .map(Into::into)
+                    .filter_map(volicord_projections::ExplanationReading::provenance)
                     .collect(),
                 project_id: request.project_id,
                 html,

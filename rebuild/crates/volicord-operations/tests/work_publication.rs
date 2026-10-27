@@ -141,7 +141,7 @@ fn admitted_record_identity_survives_deleted_technical_source_and_article_replac
     let degraded = work(&f, id)?;
     assert_eq!(
         degraded.reading.explanations[0].state,
-        ExplanationState::Stale
+        ExplanationState::Deleted
     );
     assert!(degraded.reading.explanations[0].content.is_none());
     assert_eq!(
@@ -376,7 +376,7 @@ fn new_report_stales_summary_but_not_goal_name_and_forgetting_cleans_only_linked
 }
 
 #[test]
-fn genuinely_source_dependent_summary_expires_without_erasing_record_only_name(
+fn source_expiry_preserves_admitted_summary_and_name_without_authorizing_new_claims(
 ) -> Result<(), Box<dyn Error>> {
     let f = fixture()?;
     let id = f.goals["goal_only"];
@@ -426,9 +426,16 @@ fn genuinely_source_dependent_summary_expires_without_erasing_record_only_name(
     );
     assert_eq!(
         expired.reading.summary_explanations[0].state,
-        ExplanationState::Stale
+        ExplanationState::Current
     );
-    assert!(expired.reading.summary_explanations[0].content.is_none());
+    assert!(expired.reading.summary_explanations[0].content.is_some());
+    assert_eq!(
+        expired.reading.summary_explanations[0]
+            .applicability
+            .source_ranges[0]
+            .limitation,
+        Some(ExplanationFailureReason::Expired)
+    );
     assert!(f
         .operations
         .record_explanation(f.project, summary, "en", response)
@@ -633,7 +640,7 @@ fn out_of_order_report_changes_article_plan_without_replacing_summary_result(
     assert!(after.reading.explanations[0]
         .diagnostic
         .as_deref()
-        .is_some_and(|d| d.contains("evidence changed")));
+        .is_some_and(|d| d.contains("publication basis changed")));
     Ok(())
 }
 
@@ -714,7 +721,7 @@ fn corrupt_foreign_old_and_changed_plan_name_records_never_revive_prior_text(
                 selected.reading.name_explanations[0].state,
                 match case {
                     "old" => ExplanationState::Unsupported,
-                    "corrupt" => ExplanationState::Corrupt,
+                    "corrupt" | "foreign" => ExplanationState::Corrupt,
                     _ => ExplanationState::Stale,
                 }
             );

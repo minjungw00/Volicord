@@ -637,3 +637,19 @@ The ID is ephemeral reader/receipt metadata on RetainedExplanation and is exclud
 from its stored v8 envelope, preparation equality, response and semantic seals.
 Exact citation transport additionally requires the ID and rejects replacement.
 This is a related document-provenance change, not a canonical/bundle format change.
+
+### Retained reading and original deadlines — accepted 2026-10-27
+
+Independent publication readability, included-inventory comparison and exact
+unit/citation range availability are ephemeral read projections over the current
+`volicord_explanation` v8 envelope. The recorder/decoder, Source-copy formats,
+Privacy schema 2, canonical/Analysis/bundle formats and generated-document metadata
+11 remain unchanged. A request-local export availability fingerprint is skipped
+in generated/durable metadata; it is not a portable token or compatibility version.
+
+Original supported envelopes retain their bytes and managed IDs. The Privacy
+owner identifies the original source-computed deadline from existing recorder and
+dependency receipts; no timestamp is extended or rewritten. Independent publication
+expiry still applies. Admission metadata can be validated on read without current
+Source bodies/repository; unavailable comparison is a separate notice. Already
+erased, unsupported or corrupted records are not converted, rebound or recovered.

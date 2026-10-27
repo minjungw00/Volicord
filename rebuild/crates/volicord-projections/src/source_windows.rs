@@ -29,6 +29,7 @@ pub enum SourceWindowState {
     Complete,
     InitialOmission,
     OfflineOmission,
+    Unavailable,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -37,6 +38,7 @@ pub struct ClaimSourceWindows {
     pub state: SourceWindowState,
     pub included_citation_indices: Vec<usize>,
     pub omitted_citation_indices: Vec<usize>,
+    pub unavailable_citation_indices: Vec<usize>,
 }
 
 impl QuestionAnswers {
@@ -57,7 +59,19 @@ impl QuestionAnswers {
                                     == unit.citations[i].end_byte - unit.citations[i].start_byte
                         })
                     });
-                let state = if omitted_citation_indices.is_empty() {
+                let unavailable_citation_indices: Vec<_> = omitted_citation_indices
+                    .iter()
+                    .copied()
+                    .filter(|&i| {
+                        self.applicability
+                            .source_ranges
+                            .iter()
+                            .any(|r| r.citation == unit.citations[i] && !r.available)
+                    })
+                    .collect();
+                let state = if !unavailable_citation_indices.is_empty() {
+                    SourceWindowState::Unavailable
+                } else if omitted_citation_indices.is_empty() {
                     SourceWindowState::Complete
                 } else if offline {
                     SourceWindowState::OfflineOmission
@@ -69,6 +83,7 @@ impl QuestionAnswers {
                     state,
                     included_citation_indices,
                     omitted_citation_indices,
+                    unavailable_citation_indices,
                 }
             })
             .collect()

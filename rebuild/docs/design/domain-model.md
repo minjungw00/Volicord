@@ -685,7 +685,11 @@ copy. The copy binds exact Project, Goal-backed Work/revision, Source/revision,
 selected Repository/Analysis Snapshot and repository Source, observation time and
 retention expiry. It is neither a new canonical entity nor a relevance judgment.
 Removing the copy makes body evidence unavailable while Source identity and
-unrelated Canonical Context remain inspectable.
+unrelated Canonical Context remain inspectable. Ordinary expiry of that disposable
+body does not itself erase an independently admitted Derived explanation. Its
+readability is governed by the Privacy/Projection owners, preserving original
+Source/claim/publication identity and historical interpretation rather than
+promoting it to current canonical authority.
 
 An explicit same-Work, same-path earlier file observation can establish changed
 or equal observed bytes. It does not establish exclusive actor attribution or

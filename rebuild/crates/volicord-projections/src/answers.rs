@@ -5,6 +5,9 @@ use serde::Serialize;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ExplanationProvenance {
+    /// Request-local export barrier, outside durable/generated metadata formats.
+    #[serde(skip)]
+    pub source_read_fingerprint: Option<String>,
     pub publication_id: Option<String>,
     pub project_id: String,
     pub subject: ExplanationSubject,
@@ -25,6 +28,19 @@ pub struct ExplanationProvenance {
     pub source_status: Vec<serde_json::Value>,
     pub conflicts: Vec<serde_json::Value>,
 }
+impl ExplanationReading {
+    pub fn provenance(&self) -> Option<ExplanationProvenance> {
+        let retained = self
+            .content
+            .as_ref()
+            .filter(|_| self.state == ExplanationState::Current)?;
+        let mut provenance = ExplanationProvenance::from(retained);
+        provenance.source_read_fingerprint = Some(source_availability_fingerprint(
+            &self.applicability.source_ranges,
+        ));
+        Some(provenance)
+    }
+}
 impl From<&RetainedExplanation> for ExplanationProvenance {
     fn from(e: &RetainedExplanation) -> Self {
         let cited: std::collections::BTreeSet<_> = e
@@ -40,6 +56,7 @@ impl From<&RetainedExplanation> for ExplanationProvenance {
             .collect();
         let uncited_evidence_count = e.evidence.len() - evidence.len();
         Self {
+            source_read_fingerprint: None,
             publication_id: e.publication_id.clone(),
             project_id: e.project_id.clone(),
             subject: e.subject,
@@ -226,6 +243,44 @@ impl QuestionAnswers {
                 Err(_) => article.push_str("\nDiagram alternative unavailable."),
             }
         }
+        if matches!(
+            self.applicability.repository_comparison,
+            RepositoryComparisonState::Changed | RepositoryComparisonState::Unavailable
+        ) {
+            article.push_str(&format!(
+                "\n{} {:?}. {}",
+                fixed(
+                    self.fixed_locale,
+                    "Original authored basis; current repository comparison:",
+                    "작성 당시 근거; 현재 저장소 비교:"
+                ),
+                self.applicability.repository_comparison,
+                fixed(
+                    self.fixed_locale,
+                    "Semantic impact is unknown; this explanation is historical interpretation.",
+                    "의미상 영향은 알 수 없으며 이 설명은 과거 근거의 해석입니다."
+                )
+            ));
+        }
+        for range in self
+            .applicability
+            .source_ranges
+            .iter()
+            .filter(|r| !r.available)
+        {
+            article.push_str(&format!(
+                "\n{} {}:{}–{}: {:?}",
+                fixed(
+                    self.fixed_locale,
+                    "Evidence body unavailable:",
+                    "근거 본문 이용 불가:"
+                ),
+                range.citation.locator,
+                range.citation.start_line,
+                range.citation.end_line,
+                range.limitation
+            ));
+        }
         if self.work_name.is_none() && self.work_summary.is_none() {
             return article;
         }
@@ -345,7 +400,7 @@ pub fn explanation_answers(
         applicability: reading
             .map(|e| e.applicability.clone())
             .unwrap_or_else(|| crate::ExplanationApplicability::unavailable(state)),
-        provenance: current.map(Into::into),
+        provenance: reading.and_then(ExplanationReading::provenance),
         source_excerpts: if current.is_some() {
             reading
                 .map(|r| r.source_excerpts.clone())

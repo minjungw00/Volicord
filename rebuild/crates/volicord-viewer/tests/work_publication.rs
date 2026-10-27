@@ -268,7 +268,7 @@ fn same_work_independent_publications_reach_cli_mcp_http_documents_and_offline(
             selected["answers"]["work_summary"],
             original["answers"]["work_summary"]
         );
-        assert_eq!(selected["answers"]["explanation_state"], "stale");
+        assert_eq!(selected["answers"]["explanation_state"], "deleted");
         assert!(!selected["answers"]["prose"].to_string().contains(text[2]));
         for field in [
             "state",
@@ -454,7 +454,7 @@ fn cited_summary_has_its_own_exact_http_authority_and_cannot_borrow_article_iden
             .as_ref()
             .ok_or("summary")?
             .explanation_state,
-        ExplanationState::Stale
+        ExplanationState::Deleted
     );
     assert_eq!(
         answers.explanation_state,
