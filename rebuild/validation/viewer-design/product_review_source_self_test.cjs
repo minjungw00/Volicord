@@ -34,7 +34,7 @@ const {chromium}=require(config.playwright);
     const point=page.locator(`[id="${target.slice(1)}"]`);
     await link.focus();await link.press('Enter');await point.waitFor({state:'visible'});
     await criticalPoint(point,task);await criticalBytes(page,point,task,true);checks++;
-    await point.locator('a.return').click();
+    await point.locator('a.return:visible').click();
     const otherTargets=await article.locator('a.evidence-link:visible').evaluateAll((ns,own)=>ns.map(n=>n.getAttribute('href')).filter(h=>h!==own),target);
     assert(otherTargets.length,'counterexample needs another independently bound Source link');
     const otherTarget=otherTargets.at(-1);

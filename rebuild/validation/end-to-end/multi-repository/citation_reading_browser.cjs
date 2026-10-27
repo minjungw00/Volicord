@@ -370,7 +370,7 @@ async function syntaxContrast(page) {
   await active.locator('.citation-status').filter({hasText:/Displayed/}).waitFor();
   assert.equal(await active.locator('.claim-quote').textContent(),fixture.answers.prose[2].text);
   assert.equal(await active.locator('.citation-read').isEnabled(),true,'aborted request does not strand its button');
-   const modalControls=active.locator('a.return');await modalControls.focus();
+   const modalControls=active.locator('a.return:visible');await modalControls.focus();
   await page.keyboard.press('Shift+Tab');assert.ok(await active.evaluate(n=>n.contains(document.activeElement)),'mobile focus remains inside the Source dialog');
   await page.keyboard.press('Escape');assert.ok(originFocus);
   // Pagination replaces a bounded chunk rather than appending retained file bytes.

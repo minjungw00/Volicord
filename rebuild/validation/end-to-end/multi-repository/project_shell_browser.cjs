@@ -8,6 +8,12 @@ const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex
 const result={outcome:'failed',scope:'technical shell/navigation; dependent design comparison; no human or assistive acceptance',checks:[],requests:[],identities:{viewer:hash(config.viewer),chromium:hash(config.chromium)}};
 let browser,listener;
 const frame=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+async function presentation(page,reference=false){return page.evaluate(reference=>{
+ const properties=(selector,keys)=>{const n=document.querySelector(selector);if(!n)throw Error('missing design surface '+selector);const s=getComputedStyle(n);return Object.fromEntries(keys.map(k=>[k,s[k]]));};
+ return {title:properties(reference?'#repo-document h1':'.doc-head h1',['fontSize','fontWeight','lineHeight','letterSpacing','fontFamily','color']),
+ lead:properties(reference?'#repo-document .lead':'.doc-head .lead',['fontSize','lineHeight','fontFamily','color']),
+ rail:properties(reference?'.sidebar':'.project-rail',['width','backgroundColor'])};
+ },reference);}
 async function start(item,runtime){
  const process=spawn(config.viewer,['--runtime',runtime,'--project',item.project,'--bind','127.0.0.1:0']);let stderr='',stdout='';
  process.stdout.on('data',b=>stdout+=b);process.stderr.on('data',b=>stderr+=b);
@@ -27,6 +33,17 @@ async function start(item,runtime){
    await page.setViewportSize({width,height:900});await page.goto(address());await page.evaluate(()=>document.fonts.ready);await frame(page);
    await page.screenshot({path:path.join(config.output,`${item.key}-${width}-initial.png`)});
    const initial=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,rail:getComputedStyle(document.querySelector('.project-rail')).width,article:document.querySelector('.doc').clientWidth,nav:[...document.querySelectorAll('.project-navigation [aria-current=page]')].map(n=>n.dataset.destination),font:getComputedStyle(document.body).fontFamily,ink:getComputedStyle(document.body).color,toc:document.querySelector('.document-nav')?.getBoundingClientRect().toJSON(),contents:document.querySelector('.document-nav>summary')?.getClientRects().length}));
+   if(config.reference){
+    const ref=await browser.newContext({viewport:{width,height:900},locale:'ko-KR'});
+    await ref.route('**/*',route=>new URL(route.request().url()).origin==='http://reference.invalid'?route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(config.reference,'repository.html'))}):route.abort());
+    const oracle=await ref.newPage();await oracle.goto('http://reference.invalid/repository.html');await oracle.evaluate(()=>document.fonts.ready);await frame(oracle);
+    const actual=await presentation(page),expected=await presentation(oracle,true);
+    write(`${item.key}-${width}-reference-comparison.json`,JSON.stringify({reference_sha256:hash(path.join(config.reference,'repository.html')),actual,expected}));
+    await oracle.screenshot({path:path.join(config.output,`${item.key}-${width}-reference.png`)});await ref.close();
+    if(!config.reference_report_only){assert.deepEqual(actual,expected,'unchanged reference typography and rail');
+     await page.locator('.project-rail').evaluate(n=>n.style.backgroundColor='purple');assert.notDeepEqual(await presentation(page),expected,'palette substitution must fail');await page.locator('.project-rail').evaluate(n=>n.style.removeProperty('background-color'));
+    }
+   }
    assert.ok(initial.overflow<=1,'ordinary overflow');assert.deepEqual(initial.nav,['repository']);assert.equal(initial.ink,'rgb(21, 46, 64)');
    if(width<=980){
     const trigger=page.locator('.project-shell>summary');await trigger.click();await frame(page);

@@ -1535,7 +1535,9 @@ Use `validate focused`; technical controls and dependent screenshot comparison d
 not establish isolated first reading, screen-reader behavior or human acceptance.
 
 `grounded_diagrams_browser.cjs CONFIG` supports `document_reader: true` for
-the complete admitted-document journey. Each case additionally supplies `public`
+the complete admitted-document journey. Native evidence returns through its visible
+primary link, including after alternate-range/shared-body reading; a secondary
+index or scripted history cannot complete missing Product navigation. Each case additionally supplies `public`
 (the ordinary CLI public answer JSON), `offline` (the ordinary Viewer export),
 `repository` (the exact local cited source tree), and `publication`. It checks
 every declared figure before interaction, complete cited bytes, publication and

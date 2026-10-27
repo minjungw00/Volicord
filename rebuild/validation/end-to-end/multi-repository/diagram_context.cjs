@@ -64,7 +64,7 @@ async function inspectRouteAlias(page, figure, element, claim, action, point) {
   const before=await element.evaluate(n=>({top:n.getBoundingClientRect().top,pageY:scrollY,left:n.closest('.diagram-viewport').scrollLeft,panY:n.closest('.diagram-viewport').scrollTop}));
   await page.mouse.click(hit.x,hit.y);await action.click();
   await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-inspection pre.code-region code')?.textContent.length>0,await point.getAttribute('id'));
-  await point.locator('a.return').click();await claim.locator('a.diagram-return').click();
+  await point.locator('a.return:visible').click();await claim.locator('a.diagram-return').click();
   await page.waitForFunction(id=>document.activeElement?.matches('a.diagram-route')&&document.activeElement.dataset.element===id,id);
   const after=await element.evaluate(n=>({top:n.getBoundingClientRect().top,pageY:scrollY,left:n.closest('.diagram-viewport').scrollLeft,panY:n.closest('.diagram-viewport').scrollTop}));
   for(const k of Object.keys(before))if(Math.abs(before[k]-after[k])>5)throw Error('route alias lost reading context: '+k);

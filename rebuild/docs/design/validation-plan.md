@@ -4053,6 +4053,13 @@ No aggregate/gate/official V11/provider run is part of this focused work.
 
 ### Grounded document-reader and idle-expiry focused validation
 
+Native diagram evidence must use its visible primary return after the original
+range and an alternate covering range, including a shared payload. The browser
+driver may resolve a fragment's exact citation metadata to locate its body, but
+must not open a secondary return index or use history to supply missing Product
+navigation. Challenge the pre-fix executable with this same primary-return control;
+its paragraph return must fail the independently chosen element identity.
+
 `grounded_diagrams_browser.cjs` accepts `document_reader: true` for the adopted
 normal reader journey through its existing actual local listener and declared
 publication corpus. Each case provides a normal public reading, Runtime, Project,

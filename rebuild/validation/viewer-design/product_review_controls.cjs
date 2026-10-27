@@ -127,10 +127,30 @@ function citationResponse(page,task,offset) {
 }
 // Resolve only an exact native payload alias; expected text/hashes still come
 // from the independently recorded Source, never from the compact/render helper.
+async function citationPoint(page,href) {
+ const target=page.locator('[id="'+href.slice(1)+'"]');
+ assert.equal(await target.count(),1,'exact citation fragment must exist');
+ const own=await target.getAttribute('data-selected-point');
+ return own?page.locator('.source-point[id="'+own+'"]'):target;
+}
+module.exports.citationPoint=citationPoint;
+async function embeddedReference(point) {
+ const id=new URL(point.page().url()).hash.slice(1).split('!')[0];
+ const native=point.locator(':scope > .source-origin-target[id="'+id+'"]');
+ if(await native.count())return native.locator(':scope > .source-code-reference a');
+ // While shared code is open its native origin is its own explicit return.
+ const shared=point.page().locator('.shared-source-target[id="'+id+'"]');
+ if(await shared.count()) {
+  const back=await shared.locator('.shared-source-return').getAttribute('href');
+  const origin=point.locator(':scope > .source-origin-target[id="'+back.slice(1)+'"]');
+  if(await origin.count())return origin.locator(':scope > .source-code-reference a');
+ }
+ return point.locator(':scope > .source-code-reference a');
+}
 async function embeddedCode(point) {
  const own=point.locator(':scope > pre.code-region code');
  if(await own.count())return own;
- const ref=point.locator(':scope > .source-code-reference a');
+ const ref=await embeddedReference(point);
  if(!await ref.count())return own;
  assert.equal(await ref.count(),1,'one exact shared code reference');
  const href=await ref.getAttribute('href');assert(href?.startsWith('#'),'native shared payload');
@@ -138,18 +158,19 @@ async function embeddedCode(point) {
  assert.equal(await target.count(),1,'shared payload target must exist');
  assert.equal(await target.getAttribute('data-source-id'),await point.getAttribute('data-source-id'),'shared Source identity');
  assert.equal(await target.getAttribute('data-range-sha256'),await ref.getAttribute('data-range-sha256'),'shared range identity');
- assert.equal(await target.locator('a.shared-source-return').getAttribute('href'),'#'+await point.getAttribute('id'),'exact shared claim return');
+ const back=await target.locator('a.shared-source-return').getAttribute('href');
+ assert.equal(await (await citationPoint(point.page(),back)).getAttribute('id'),await point.getAttribute('id'),'exact shared claim return');
  return target.locator('xpath=..').locator(':scope > pre.code-region code');
 }
 async function openEmbeddedCode(point) {
- const code=await embeddedCode(point),ref=point.locator(':scope > .source-code-reference a');
+ const code=await embeddedCode(point),ref=await embeddedReference(point);
  if(await ref.count() && await code.count()) {
   await ref.focus();await ref.press('Enter');await code.waitFor({state:'visible'});
  }
  return code;
 }
 async function returnFromEmbeddedCode(point) {
- const ref=point.locator(':scope > .source-code-reference a');
+ const ref=await embeddedReference(point);
  if(await ref.count()) {
   const href=await ref.getAttribute('href');
   const back=point.page().locator('[id="'+href.slice(1)+'"] a.shared-source-return');

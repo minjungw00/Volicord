@@ -202,11 +202,13 @@ async function nativeLinkNavigation(page, link, receipt) {
           const boundPoint=page.locator('.source-point[data-reader-publication="'+pub.provenance.publication_id+'"][id$="-p'+(c.unit+1)+'-c'+(c.citation+1)+'"]');
           assert.equal(await boundPoint.count(),1,'exact independently selected citation origin');
           const boundPointId=await boundPoint.getAttribute('id');
-          const action=claim.locator('a.evidence-link[href="#'+boundPointId+'"]');
+          const action=claim.locator('a.evidence-link[href$="-source-c'+(c.citation+1)+'"]');
           assert.equal(await action.count(),1,'critical purpose has exact code action');
+          const nativeId=(await action.getAttribute('href')).slice(1);
+          assert.equal(await page.locator('[id="'+nativeId+'"]').getAttribute('data-selected-point'),boundPointId,'native origin keeps independently selected citation');
           const selectedStarted=Date.now();
           await action.click();
-          const pointId=(await action.getAttribute('href')).slice(1);
+          const pointId=boundPointId;
           const point=page.locator('[id="'+pointId+'"]');
           if(mode==='live') {
             await page.waitForFunction(id=>{const n=document.getElementById(id);return n?.querySelector('.citation-inspection pre.code-region code')?.textContent.length>0;},pointId);
@@ -233,7 +235,7 @@ async function nativeLinkNavigation(page, link, receipt) {
           const returnStarted=Date.now();let return_ms=null;
           if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-source.png`)});
           if(config.precise_return && mode==='live') {
-            await point.locator('a.return').click();
+            await point.locator('a.return:visible').click();
             await claim.locator('a.diagram-return').click();
             await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
             const restored=await figure.locator('.diagram-viewport').evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,y:scrollY,viewportTop:n.getBoundingClientRect().top,elementTop:document.activeElement.getBoundingClientRect().top,meaning:[...document.activeElement.querySelectorAll('text')].map(t=>({text:t.textContent,box:t.getBoundingClientRect()})).filter(t=>t.box.height>0&&t.box.top>=160&&t.box.bottom<=innerHeight).map(t=>({text:t.text,top:t.box.top,left:t.box.left}))}));
@@ -251,7 +253,7 @@ async function nativeLinkNavigation(page, link, receipt) {
             assert((await page.url()).endsWith('!'+claimId),'publication-bound Source deep link');
             await page.reload({waitUntil:'load'});
             await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-inspection pre.code-region code')?.textContent.length>0,pointId);
-            await point.locator('a.return').click();
+            await point.locator('a.return:visible').click();
             await page.waitForFunction(id=>document.activeElement?.id===id,claimId);
             await claim.locator('a.diagram-return').click();
             await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
@@ -316,7 +318,7 @@ async function nativeLinkNavigation(page, link, receipt) {
               await page.keyboard.press('Enter');await action.click();
               await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-inspection pre.code-region code')?.textContent.length>0,pointId);
               assert(expected.startsWith(await point.locator('.citation-inspection pre.code-region code').textContent()),'same implementing Source from text origin');
-              await point.locator('a.return').click();await claim.locator('a.diagram-return').click();
+              await point.locator('a.return:visible').click();await claim.locator('a.diagram-return').click();
               await page.waitForFunction(({elementId,representation})=>{
                 const n=document.activeElement;
                 return n?.matches('a.diagram-text-link') && n.dataset.element===elementId && !!n.closest(representation);
@@ -341,13 +343,11 @@ async function nativeLinkNavigation(page, link, receipt) {
               await page.unroute(/\/citation\?/);
             }
           } else if(config.precise_return) {
-            await point.locator('.diagram-return-index > summary').click();
-            await point.locator('.diagram-return-index a[href=\"#'+claimId+'\"]').click();
-            await claim.locator('a.diagram-return').click();
+            await point.locator('a.return:visible').click();
             assert.equal(await page.evaluate(()=>location.hash),'#'+elementId,'exact native no-script return');
             if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-returned.png`)});
           } else {
-            await point.locator('a.return').click();
+            await point.locator('a.return:visible').click();
             await page.goBack(); // native history also preserves script-free access
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;

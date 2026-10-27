@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn,execFileSync}=require('node:child_process'),{pathToFileURL}=require('node:url');
 const crypto=require('node:crypto');
-const {createOutput,openEmbeddedCode,returnFromEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
+const {createOutput,openEmbeddedCode,returnFromEmbeddedCode,citationPoint}=require('../../viewer-design/product_review_controls.cjs');
 const {inspectDiagram}=require('./diagram_geometry.cjs');
 const {observeOverview,installEntryObserver}=require('./overview_entry.cjs');
 const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
@@ -59,10 +59,10 @@ async function run(config){
     await element.focus();await settled(page);const before=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left,y:scrollY}));
     await page.keyboard.press('Enter');await settled(page);
     const href=await claim.locator(`a.evidence-link[href$="-c${citationIndex+1}"]`).getAttribute('href').catch(()=>null)||await claim.locator('a.evidence-link').first().getAttribute('href');
-    const point=page.locator(`[id="${href.slice(1)}"]`);
+    const point=await citationPoint(page,href),pointId=await point.getAttribute('id');let returnPoint=point;
     if(scripted){
      await point.waitFor({state:'visible'});assert.equal(await point.getAttribute('data-reader-publication'),c.publication);
-     await page.waitForFunction(id=>{const p=document.getElementById(id);const b=p?.querySelector('.citation-read');return b&&!b.disabled&&b.dataset.nextOffset==='0'&&p.querySelector('.citation-status')?.textContent.includes(document.documentElement.lang==='ko'?'표시 범위':'Displayed');},href.slice(1));
+     await page.waitForFunction(id=>{const p=document.getElementById(id);const b=p?.querySelector('.citation-read');return b&&!b.disabled&&b.dataset.nextOffset==='0'&&p.querySelector('.citation-status')?.textContent.includes(document.documentElement.lang==='ko'?'표시 범위':'Displayed');},pointId);
      assert.equal(await point.locator('.citation-inspection code').textContent(),expected,'complete exact cited bytes');
      assert.equal(await point.getAttribute('aria-modal'),width<1200?'true':null,'actual evidence modality');
      assert.equal(await point.locator('.evidence-original').getAttribute('open'),null,'original wording deliberately disclosed');
@@ -75,8 +75,24 @@ async function run(config){
      await returnFromEmbeddedCode(point);
     }
     await page.screenshot({path:path.join(config.output,key+'-code.png')});
+    if(!scripted){
+     const origin=point.locator(':scope > .source-origin-target:target'),chooser=origin.locator('.native-range-selector>summary');
+     assert.equal(await origin.count(),1,'native claim origin is retained');
+     assert.equal(await chooser.count(),unit.citations.filter(q=>q.claim_start_byte<=label.start_byte&&q.claim_end_byte>=label.end_byte).length>1?1:0,'native range choices reflect admitted covering citations');
+     if(await chooser.count()){
+      await chooser.click();const next=origin.locator('.native-range-links a:not([aria-current])').first();
+      const nextHref=await next.getAttribute('href');await next.click();await settled(page);
+      const nextPoint=await citationPoint(page,nextHref),n=Number(nextHref.match(/-c(\d+)$/)[1])-1,q=unit.citations[n];
+      assert.equal(await nextPoint.getAttribute('data-source-id'),q.source_id,'native alternate exact Source');
+      const alternate=fs.readFileSync(path.join(c.repository,q.locator)).subarray(q.start_byte,q.end_byte).toString('utf8');
+      assert.equal('sha256:'+crypto.createHash('sha256').update(alternate).digest('hex'),q.range_sha256);
+      assert.equal(await (await openEmbeddedCode(nextPoint)).textContent(),alternate,'native alternate complete bytes');
+      await returnFromEmbeddedCode(nextPoint);returnPoint=nextPoint;
+      await page.screenshot({path:path.join(config.output,key+'-alternate-code.png')});
+     }
+    }
     if(scripted)await page.keyboard.press('Escape');else {
-      const index=point.locator('.diagram-return-index');await index.locator('summary').click();await index.locator(`a[href="#${claimId}"]`).click();await claim.locator('a.diagram-return').click();
+      await returnPoint.locator('a.return:visible').click();
       assert.equal(new URL(page.url()).hash,'#'+figureId+'-'+semantic.id,'native exact diagram return');
     }await settled(page);
     if(scripted){
@@ -86,7 +102,7 @@ async function run(config){
     }
     await page.screenshot({path:path.join(config.output,key+'-returned.png')});
     if(config.interactions&&scripted&&d===publicAnswers.diagrams[0]){
-      const interaction=await require('./evidence_interactions.cjs').inspect(page,context,{address,figureId,elementId:figureId+'-'+semantic.id,claimId,sourceId:href.slice(1),width});write(key+'-interactions.json',JSON.stringify(interaction,null,2));
+      const interaction=await require('./evidence_interactions.cjs').inspect(page,context,{address,figureId,elementId:figureId+'-'+semantic.id,claimId,sourceId:pointId,width});write(key+'-interactions.json',JSON.stringify(interaction,null,2));
     }
     result.checks.push({case:c.key,diagram:d.id,width,mode,publication:c.publication,unit:label.unit,citation:citationIndex,code_bytes:Buffer.byteLength(expected),entry,geometry_errors:geometry.errors});
     // Restore ordinary entry before observing the next declared figure.

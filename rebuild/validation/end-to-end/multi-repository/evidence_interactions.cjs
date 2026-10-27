@@ -44,6 +44,10 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
   const id=await alias.getAttribute('id'),own=await alias.getAttribute('data-selected-point');await page.goto(address+'#'+id);await complete(page);assert.equal(await point().getAttribute('id'),own);const inspection=point().locator('.citation-inspection');const binding=JSON.parse(await inspection.getAttribute('data-citation-binding'));assert.ok(binding.claim_sha256);assert.equal(await point().getAttribute('data-origin'),'reader-'+own.split('reader-')[1].replace(/-c\d+$/,''));notes.push('shared alias own claim');
  }
  await page.goto(address+'#foreign-publication-same-name');await settle(page);assert.equal(await page.locator('.source-point[data-selected]').count(),0);assert.equal(await page.locator('.fragment-unavailable').isVisible(),true);notes.push('foreign fragment refusal');
+ const native=await page.locator(`[id="${claimId}"] a.evidence-link`).first().getAttribute('href');
+ await page.goto(address+native);await complete(page);assert.equal(await point().getAttribute('id'),sourceId,'native origin resolves its exact Source');
+ await page.keyboard.press('Escape');await settle(page);assert.equal(await element.evaluate(n=>n===document.activeElement),true,'native deep entry returns to its exact element');
+ await page.goto(address+native+'!foreign-claim');await settle(page);assert.equal(await page.locator('.source-point[data-selected]').count(),0);assert.equal(await page.locator('.fragment-unavailable').isVisible(),true);notes.push('native origin and foreign claim refusal');
  return {width,sourceId,checks:notes};
 }
 module.exports={inspect};

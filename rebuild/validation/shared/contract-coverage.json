@@ -229,6 +229,11 @@
       ],
       "evidence": [
         [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/citation_reading.rs",
+          "admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss"
+        ],
+        [
           "local_operations",
           "rebuild/crates/volicord-operations/tests/work_authority.rs",
           "answer_selection_tracks_every_grounded_history_prefix"
