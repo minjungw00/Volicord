@@ -4037,3 +4037,16 @@ separately. The current format/budget/qualification ceilings are unchanged. Alre
 erased or unsupported original data is reported independently; no reconstruction,
 new evidence acquisition, lifetime renewal or external transmission is authorized
 by these controls. Preserve every failed attempt and use fresh output directories.
+
+### Adopted shell and heading-navigation focused controls
+
+Use `validate focused` for Viewer navigation/reading/HTTP/supporting-disclosure,
+affected canonical identity queries and Projection Work-state paging, plus actual
+local-server browser journeys. Preserve the immutable reference manifest/ZIP hash,
+baseline and candidate initial views before scripted selection at 1440/1024/768/
+390/320 and breakpoint boundaries. Check full-title contents below 730px available
+article width, passive current cue, last short heading, explicit focus/clearance,
+direct/history/native modifier anchors, many/long headings and drawer modal resize.
+Keep unchanged reference screenshots and rejected attempts. New screenshots judge
+fidelity against the adopted reference, not freshly generated expected images.
+No aggregate/gate/official V11/provider run is part of this focused work.

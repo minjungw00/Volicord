@@ -875,3 +875,10 @@ Each exact body is separately checked through its original scoped reader, includ
 hash, revision, binding, original deadline and range. Failed/corrupt/unsupported
 bodies disclose no bytes; other permitted ranges remain readable. New authoring
 continues to require the complete current admission checks.
+
+Local Viewer Project selection reads canonical identity/display-name records from
+its explicitly opened local Runtime (32 choices per bounded read). It does not
+aggregate Project content, enumerate Sources, grant a foreign publication access,
+transmit data, or carry Guarded mutation authority into another Project. Each
+page/citation names its exact Project; canonical subject/publication/range checks
+remain per request. Static exports expose only their selected Project.

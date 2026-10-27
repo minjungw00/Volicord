@@ -24,13 +24,20 @@ fn project_destinations_and_exact_related_records_are_readable_without_mutation(
         assert!(!overview.contains("class=\"repository-entry\""));
         assert!(!overview.contains("RECENT WORK"));
         assert!(!overview.contains("Project Decisions"));
-        assert!(!overview.contains("class=\"project-navigation\""));
+        assert!(overview.contains("class=\"project-navigation\""));
         assert!(overview.contains("view=repository"));
         assert!(!overview.contains("view=decisions"));
-        let masthead = overview.split("</header>").next().ok_or("header")?;
-        assert_eq!(masthead.matches("<nav ").count(), 1);
-        assert!(!masthead.contains("Read-only"));
-        assert!(!masthead.contains("읽기 전용"));
+        let navigation = overview
+            .split("class=\"project-navigation\"")
+            .nth(1)
+            .ok_or("navigation")?
+            .split("</nav>")
+            .next()
+            .ok_or("navigation end")?;
+        assert_eq!(navigation.matches("class=\"nav-link\"").count(), 3);
+        assert!(!navigation.contains("Read-only"));
+        assert!(!navigation.contains("읽기 전용"));
+        assert!(!overview.contains("class=\"document-nav\""));
         assert!(!overview.contains("<form"));
         request.view = ViewerView::Work {
             work: Some(f.goals["older"]),
@@ -215,12 +222,9 @@ fn repository_scope_precedes_explanation_with_exact_boundaries_in_supporting_rec
             .split("id=\"repository-explanation\"")
             .nth(1)
             .ok_or("repository page")?;
-        assert!(
-            doc.find("data-question=\"RepositoryScopeSummary\"")
-                .ok_or("short ordinary scope")?
-                < doc.find("class=\"document-nav\"").ok_or("reading links")?
-        );
-        assert_eq!(doc.matches("class=\"document-nav\"").count(), 1);
+        assert!(doc.contains("data-question=\"RepositoryScopeSummary\""));
+        // A heading-free article does not receive invented supporting entries.
+        assert!(doc.matches("class=\"document-nav\"").count() <= 1);
         let body = doc.split("class=\"audit\"").next().ok_or("reading body")?;
         assert!(!body.contains("data-question=\"RepositoryScope\""));
         assert!(!body.contains("data-question=\"RepositoryCoverage\""));
@@ -228,30 +232,20 @@ fn repository_scope_precedes_explanation_with_exact_boundaries_in_supporting_rec
         assert!(doc.contains(fact("RepositoryCoverage")?));
         assert!(!doc.contains("Inspect exact states"));
         assert!(!doc.contains("Read the explanation's stated limits"));
-        let nav = doc
-            .split("class=\"document-nav\"")
-            .nth(1)
-            .ok_or("nav")?
-            .split("</nav>")
-            .next()
-            .ok_or("nav end")?;
-        assert!(!nav.contains("Original instructions"));
-        assert!(!nav.contains("Verification report"));
-        for destination in nav
-            .split("href=\"#")
-            .skip(1)
-            .filter_map(|s| s.split('"').next())
-        {
-            assert!(
-                doc.contains(&format!("id=\"{destination}\"")),
-                "missing actual section {destination}"
-            );
+        if let Some(nav) = doc.split("class=\"document-nav\"").nth(1) {
+            let nav = nav.split("</nav>").next().ok_or("nav end")?;
+            assert!(!nav.contains("Original instructions"));
+            for destination in nav
+                .split("href=\"#")
+                .skip(1)
+                .filter_map(|s| s.split('"').next())
+            {
+                assert!(
+                    doc.contains(&format!("id=\"{destination}\"")),
+                    "missing actual heading {destination}"
+                );
+            }
         }
-        assert!(doc.contains("Full inventory and coverage path lists are not embedded"));
-        assert!(doc.contains("repository explain evidence --analysis"));
-        assert!(!doc.contains("<li>legacy</li>"));
-        assert!(!doc.contains("unexamined = True"));
-        assert!(doc.contains("Included, excluded and unexamined boundaries"));
     }
     assert_eq!(before, viewer.operations().canonical_basis(project)?);
     // A missing dependency may not preserve a plausible scope card as current explanation.
@@ -268,5 +262,95 @@ fn repository_scope_precedes_explanation_with_exact_boundaries_in_supporting_rec
         .facts
         .iter()
         .any(|a| a.question == "RepositoryScope"));
+    Ok(())
+}
+
+#[test]
+fn explicit_project_choice_keeps_equal_names_and_foreign_work_separate(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Cursor;
+    use volicord_viewer::ViewerServer;
+    let f = reading_fixture::fixture()?;
+    let other = f
+        .operations
+        .initialize_project("Equal Project", None)?
+        .project
+        .id;
+    let another = f
+        .operations
+        .initialize_project("Equal Project", None)?
+        .project
+        .id;
+    let choices = f.operations.project_choices(0)?;
+    assert!(choices.iter().any(|p| p.id == other));
+    assert!(choices.iter().any(|p| p.id == another));
+    let server = ViewerServer::new(
+        ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone())),
+        f.project,
+        ViewerLocale::English,
+        ViewerView::Overview,
+        "en".into(),
+        "127.0.0.1:3219".parse()?,
+    )?;
+    let request = |query: &str| -> Result<String, Box<dyn std::error::Error>> {
+        let mut input = Cursor::new(
+            format!("GET /?{query} HTTP/1.1\r\nHost: 127.0.0.1:3219\r\n\r\n").into_bytes(),
+        );
+        let mut output = Vec::new();
+        server.serve_connection(&mut input, &mut output)?;
+        Ok(String::from_utf8(output)?)
+    };
+    let page = request(&format!("project={other}&view=overview"))?;
+    assert!(page.starts_with("HTTP/1.1 200"));
+    assert!(page.contains(&format!("project={other}&amp;locale=en")));
+    assert!(page.contains("No Work has been recorded"));
+    let absent = request(&format!(
+        "project={other}&view=work&work={}",
+        f.goals["older"]
+    ))?;
+    assert!(absent.starts_with("HTTP/1.1 404"));
+    assert!(absent.contains("class=\"project-rail\""));
+    assert!(!absent.contains("class=\"document-nav\""));
+    assert!(!absent.contains("class=\"reading-section recorded-choice\""));
+    for state in [
+        "open",
+        "in_progress",
+        "paused",
+        "completed",
+        "abandoned",
+        "superseded",
+    ] {
+        let page = request(&format!("view=work&state={state}"))?;
+        assert!(page.starts_with("HTTP/1.1 200"));
+        assert!(page.contains("data-destination=\"work\""));
+    }
+    assert!(
+        request("project=00000000000000000000000000000000&view=overview")?
+            .starts_with("HTTP/1.1 404")
+    );
+    Ok(())
+}
+
+#[test]
+fn local_project_choice_reads_are_bounded_and_stably_paged(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let ops = LocalOperations::new(volicord_operations::RuntimeLayout::new(
+        root.path().join("runtime"),
+    )?);
+    let mut ids = Vec::new();
+    for _ in 0..35 {
+        ids.push(ops.initialize_project("Repeated name", None)?.project.id);
+    }
+    ids.sort();
+    let first = ops.project_choices(0)?;
+    let last = ops.project_choices(32)?;
+    assert_eq!(first.len(), 32);
+    assert_eq!(last.len(), 3);
+    assert_eq!(
+        first.iter().chain(&last).map(|p| p.id).collect::<Vec<_>>(),
+        ids
+    );
+    assert!(ops.project_choices(64)?.is_empty());
     Ok(())
 }

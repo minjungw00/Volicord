@@ -308,11 +308,15 @@ fn outline_uses_only_substantive_authored_headings_and_keeps_original_indices(
         };
         let mut html = String::new();
         super::render_answers(&mut html, &request, &answers, None, true);
+        if count == 0 {
+            assert!(!html.contains("class=\"document-nav\""));
+            continue;
+        }
         let primary = html
             .split("class=\"toc-primary\"")
             .nth(1)
             .ok_or("primary list")?
-            .split("</ul>")
+            .split("</ol>")
             .next()
             .ok_or("list end")?;
         assert_eq!(primary.matches("<a ").count(), count);
@@ -329,7 +333,22 @@ fn outline_uses_only_substantive_authored_headings_and_keeps_original_indices(
                 ),
                 2 * n,
             );
-            assert!(primary.contains(&format!("href=\"#{id}\"")));
+            let heading = format!(
+                "{}-heading-{}",
+                super::document_anchor(
+                    &super::ReaderAnswers::new(
+                        &answers,
+                        request.project_id,
+                        "repository",
+                        "en",
+                        "article"
+                    ),
+                    "contents"
+                ),
+                n + 1
+            );
+            assert!(primary.contains(&format!("href=\"#{heading}\"")));
+            assert!(html.contains(&format!("id=\"{heading}\" tabindex=\"-1\"")));
             assert_eq!(html.matches(&format!("id=\"{id}\"")).count(), 1);
         }
         if let Some(root) = std::env::var_os("VOLICORD_OUTLINE_CONTROL_CAPTURE") {
@@ -405,8 +424,12 @@ fn repository_analysis_failures_stay_visible_above_optional_coverage(
         };
         let mut html = String::new();
         super::render_answers(&mut html, &request, &answers, None, true);
+        let reading = super::document_anchor(
+            &super::ReaderAnswers::new(&answers, request.project_id, "repository", "en", "article"),
+            "reading",
+        );
         let opening = html
-            .split("class=\"document-nav\"")
+            .split(&format!("<div id=\"{reading}\""))
             .next()
             .ok_or("opening")?;
         assert_eq!(opening.contains("data-warning=\"analysis\""), warning);

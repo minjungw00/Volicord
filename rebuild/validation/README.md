@@ -1522,3 +1522,14 @@ The two previously overwritten diagnostics (`metadata.stdout` and
 `boundary-result.json`) remain an unresolved historical loss. Their prior bytes
 were not recovered; neither the historical scripts nor their outputs are edited.
 This is caller output protection, not a new evidence framework or qualification.
+
+`end-to-end/multi-repository/project_shell_browser.cjs <private-config.json>`
+exercises actual local-server project navigation, document-only contents, available
+article width, heading focus/history/modifier links, modal drawer resize and native
+no-JS navigation. Configuration supplies `viewer`, `chromium`, `playwright`, optional
+`fontconfig`, a new exclusive `output`, and `cases` (`key`, `runtime`, `project`,
+`locale`, `language`, optional exact `work`). Runtime inputs are copied into the new
+attempt before reading. Default widths include both sides of 1200/980/760 and the
+730px available-article boundary. Initial screenshots precede scripted assistance.
+Use `validate focused`; technical controls and dependent screenshot comparison do
+not establish isolated first reading, screen-reader behavior or human acceptance.

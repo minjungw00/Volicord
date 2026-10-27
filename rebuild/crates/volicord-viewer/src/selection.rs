@@ -7,8 +7,16 @@ use volicord_projections::{ProjectionDetail, WorkSelector};
 pub enum ViewerView {
     Overview,
     RepositoryExplanation,
-    Work { work: Option<ContextItemId> },
-    WorkPage { page: usize },
+    Work {
+        work: Option<ContextItemId>,
+    },
+    WorkPage {
+        page: usize,
+    },
+    WorkFilter {
+        state: volicord_projections::UnderstandingWorkState,
+        page: usize,
+    },
 }
 impl ViewerView {
     pub fn named(name: &str) -> Result<Self, ViewerError> {
@@ -55,13 +63,33 @@ impl ViewerView {
         } else if value("view").is_none() {
             view = default.clone();
         }
+        if let Some(state) = value("state") {
+            if name != "work" || value("work").is_some() {
+                return Err(ViewerError::new("state belongs to the Work list"));
+            }
+            let state = match state {
+                "open" => volicord_projections::UnderstandingWorkState::Open,
+                "in_progress" => volicord_projections::UnderstandingWorkState::InProgress,
+                "paused" => volicord_projections::UnderstandingWorkState::Paused,
+                "completed" => volicord_projections::UnderstandingWorkState::Completed,
+                "abandoned" => volicord_projections::UnderstandingWorkState::Abandoned,
+                "superseded" => volicord_projections::UnderstandingWorkState::Superseded,
+                _ => return Err(ViewerError::new("unknown Work state")),
+            };
+            let page = if let Self::WorkPage { page } = view {
+                page
+            } else {
+                0
+            };
+            view = Self::WorkFilter { state, page };
+        }
         Ok(view)
     }
     pub fn key(&self) -> &'static str {
         match self {
             Self::Overview => "overview",
             Self::RepositoryExplanation => "repository",
-            Self::Work { .. } | Self::WorkPage { .. } => "work",
+            Self::Work { .. } | Self::WorkPage { .. } | Self::WorkFilter { .. } => "work",
         }
     }
     pub(crate) fn selection(&self) -> WorkSelector {
@@ -74,8 +102,12 @@ impl ViewerView {
     pub(crate) fn detail(&self) -> ProjectionDetail {
         ProjectionDetail {
             work_page: match self {
-                Self::WorkPage { page } => *page,
+                Self::WorkPage { page } | Self::WorkFilter { page, .. } => *page,
                 _ => 0,
+            },
+            work_state: match self {
+                Self::WorkFilter { state, .. } => Some(*state),
+                _ => None,
             },
             ..Default::default()
         }
@@ -84,6 +116,10 @@ impl ViewerView {
         let mut fields = vec![("view", self.key().into())];
         match self {
             Self::WorkPage { page } => fields.push(("page", page.to_string())),
+            Self::WorkFilter { state, page } => {
+                fields.push(("page", page.to_string()));
+                fields.push(("state", super::render::work_state_key(*state).into()));
+            }
             Self::Work { work: Some(id) } => fields.push(("work", id.to_string())),
             _ => {}
         }

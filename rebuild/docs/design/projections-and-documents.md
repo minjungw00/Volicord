@@ -3022,3 +3022,22 @@ revoke distributed bytes or certify continuing/remote correspondence.
 
 These are technical acceptance controls, independent of R3 layout fidelity,
 semantic entailment and user/assistive acceptance. No visual redesign is included.
+
+### Shared project navigation and heading projection
+
+The Reader's adopted sidebar replaces the former top destination links. Local
+Operations supplies a bounded identity-only Project choice list from the canonical
+store. Explicit live Project selection carries its exact identity through every
+page and citation URL; foreign subjects/publications still fail exact binding.
+Guarded confirmation remains restricted to the listener's configured Project.
+Work state totals are computed from the complete canonical Work index, before
+materialization/paging; a state shortcut filters that index before page selection.
+This is a scoped list entry, not catalogue search/scale redesign. Existing list
+page size/order remain unchanged. No publication or Source is prepared on selection.
+
+Native top contents project actual visible document headings, including supported
+long/nested titles, into publication-scoped heading targets. Figures retain their
+own selection/Source identity and do not become global navigation. Overview,
+catalogue and missing-identity pages have no invented document contents. This
+presentation and ephemeral list metadata change requires no retained-format,
+canonical schema, admission, fingerprint or generated-metadata revision.

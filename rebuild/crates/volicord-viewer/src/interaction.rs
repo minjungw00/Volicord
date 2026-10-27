@@ -1,6 +1,6 @@
 //! Bounded browser presentation. The transport permits only this exact script.
 use sha2::{Digest, Sha256};
-pub(crate) const SCRIPT: &str = include_str!("reading.js");
+pub(crate) const SCRIPT: &str = concat!(include_str!("reading.js"), "\n", include_str!("shell.js"));
 pub(crate) fn csp_source() -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let digest = Sha256::digest(SCRIPT.as_bytes());

@@ -131,7 +131,7 @@ fn every_reader_and_snapshot_omits_retired_surfaces_without_loading_bulk_project
                     assert!(!page.html.contains(forbidden), "{forbidden}");
                 }
                 assert!(!page.html.contains("<form"));
-                let header = page.html.split("</header>").next().ok_or("header")?;
+                let header = page.html.split("class=\"project-navigation\"").nth(1).ok_or("navigation")?.split("</nav>").next().ok_or("navigation end")?;
                 assert_eq!(header.matches("class=\"nav-link\"").count(), 3);
                 assert!(!header.contains("Read-only"));
             }

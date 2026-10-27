@@ -186,6 +186,7 @@ impl ViewerServer {
         }
         let q = request.query;
         q.require_only(&[
+            "project",
             "subject",
             "language",
             "publication",
@@ -222,7 +223,7 @@ impl ViewerServer {
             citation_index: integer("citation")?,
             offset: integer("offset")?,
         };
-        let mut result = match self.adapter.operations().read_explanation_citation(self.project_id,
+        let mut result = match self.adapter.operations().read_explanation_citation(q.optional("project").map(identity).transpose()?.map(ProjectId::from_bytes).unwrap_or(self.project_id),
             subject,q.required("language")?,&selection) {
             Ok(result) => result,
             Err(error) => return Ok(HttpResponse {
@@ -313,9 +314,19 @@ impl ViewerServer {
         guarded_path: Option<ConfirmationRequestId>,
     ) -> Result<HttpResponse, HttpFailure> {
         query.require_only(&[
-            "page", "view", "work", "scope", "entity", "decision", "tool", "locale", "language",
-            "guarded",
+            "project", "state", "page", "view", "work", "scope", "entity", "decision", "tool",
+            "locale", "language", "guarded",
         ])?;
+        let project_id = query
+            .optional("project")
+            .map(identity)
+            .transpose()?
+            .map(ProjectId::from_bytes)
+            .unwrap_or(self.project_id);
+        self.adapter
+            .operations()
+            .canonical_basis(project_id)
+            .map_err(|_| HttpFailure::not_found())?;
         let view = self.view_parameters(&query.values)?;
         let guarded_query = query
             .optional("guarded")
@@ -328,20 +339,30 @@ impl ViewerServer {
             ));
         }
         let guarded = guarded_path.or(guarded_query);
-        let page = self
-            .adapter
-            .render(
-                &ViewerRequest {
-                    project_id: self.project_id,
-                    locale: view.locale,
-                    view: view.view,
-                    requested_language: view.language,
-                    guarded_request: guarded,
-                },
-                &self.request_authenticity,
-            )
-            .map_err(domain_failure)?;
-        Ok(HttpResponse::html(page.html))
+        if guarded.is_some() && project_id != self.project_id {
+            return Err(HttpFailure::not_found());
+        }
+        let selected = ViewerRequest {
+            project_id,
+            locale: view.locale,
+            view: view.view,
+            requested_language: view.language,
+            guarded_request: guarded,
+        };
+        match self.adapter.render(&selected, &self.request_authenticity) {
+            Ok(page) => Ok(HttpResponse::html(page.html)),
+            Err(error) if error.not_found && selected.guarded_request.is_none() => {
+                let page = self
+                    .adapter
+                    .render_not_found(&selected, &self.request_authenticity)
+                    .map_err(domain_failure)?;
+                let mut response = HttpResponse::html(page.html);
+                response.status = 404;
+                response.reason = "Not Found";
+                Ok(response)
+            }
+            Err(error) => Err(domain_failure(error)),
+        }
     }
 
     fn view_parameters(
@@ -578,8 +599,8 @@ impl FormData {
     fn return_location(&self) -> String {
         let mut fields = Vec::new();
         for key in [
-            "page", "view", "work", "scope", "entity", "decision", "tool", "locale", "language",
-            "guarded",
+            "project", "state", "page", "view", "work", "scope", "entity", "decision", "tool",
+            "locale", "language", "guarded",
         ] {
             if let Some(value) = self.values.get(key).filter(|value| !value.is_empty()) {
                 fields.push(format!("{key}={}", percent_encode(value)));

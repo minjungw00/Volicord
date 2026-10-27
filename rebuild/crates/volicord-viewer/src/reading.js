@@ -235,18 +235,16 @@
   document.querySelector('main')?.prepend(fragmentNotice);
   function updateCue() {
     document.querySelectorAll('.document-nav').forEach(toc => {
-      const links = [...toc.querySelectorAll('.toc-primary a')];
-      let current = null;
-      for (const link of links) {
-        const node = document.getElementById(link.hash.slice(1));
-        if (node && node.getBoundingClientRect().top <= 180) current = link;
-      }
-      for (const link of links) {
-        if (link === current) link.setAttribute('aria-current', 'location');
-        else link.removeAttribute('aria-current');
-      }
+      const links=[...toc.querySelectorAll('.toc-primary a')];
+      const clearance=toc.getBoundingClientRect().bottom+16;
+      let current=links[0];
+      for(const link of links){const node=document.getElementById(link.hash.slice(1));if(node&&node.getBoundingClientRect().top<=clearance)current=link;}
+      const article=toc.closest('.doc');
+      if(article&&article.getBoundingClientRect().bottom<=innerHeight+2)current=links.at(-1);
+      for(const link of links){if(link===current)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');}
       const cue=toc.querySelector('.toc-cue');
-      if (cue) cue.textContent = current?.textContent || (ko ? '이 문서의 내용' : 'On this page');
+      if(cue)cue.textContent=current?.querySelector('span:last-child')?.textContent||(ko?'이 문서의 내용':'On this page');
+      const count=toc.querySelector('.toc-position');if(count)count.textContent=links.length?`${links.indexOf(current)+1} / ${links.length}`:'';
     });
   }
   function apply() {
@@ -260,6 +258,9 @@
       for (let parent = target.parentElement; parent; parent = parent.parentElement) {
         if (parent.matches('details')) parent.open = true;
       }
+    }
+    if (navigationChanged && target?.matches('h2,h3')) {
+      target.focus({preventScroll:true});requestAnimationFrame(()=>target.scrollIntoView({block:'start'}));
     }
     const point = target?.closest('.source-point');
     document.body.dataset.sourceOpen=point?'true':'false';

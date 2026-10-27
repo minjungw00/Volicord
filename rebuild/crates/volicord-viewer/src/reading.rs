@@ -4,6 +4,7 @@ use crate::ViewerView;
 
 fn url(request: &ViewerRequest, view: &ViewerView) -> String {
     let mut fields = view.fields();
+    fields.push(("project", request.project_id.to_string()));
     fields.push(("locale", locale_key(request.locale).into()));
     fields.push(("language", request.requested_language.clone()));
     format!(
@@ -31,44 +32,6 @@ fn link(
         escape(label)
     ));
 }
-pub(super) fn navigation(html: &mut String, r: &ViewerRequest, snapshot: bool) {
-    html.push_str("<nav aria-label=\"Viewer\">");
-    for (view, label, id) in [
-        (
-            ViewerView::Overview,
-            text(r.locale, "Overview", "개요"),
-            "overview",
-        ),
-        (
-            ViewerView::RepositoryExplanation,
-            text(r.locale, "Repository explanation", "저장소 설명"),
-            "repository-explanation",
-        ),
-        (
-            ViewerView::Work { work: None },
-            text(r.locale, "Work", "작업"),
-            "works",
-        ),
-    ] {
-        let href = if snapshot {
-            format!("#{id}")
-        } else {
-            url(r, &view)
-        };
-        html.push_str(&format!(
-            "<a class=\"nav-link\" href=\"{}\"{}>{}</a>",
-            escape(&href),
-            if !snapshot && r.view.key() == view.key() {
-                " aria-current=\"page\""
-            } else {
-                ""
-            },
-            label
-        ));
-    }
-    html.push_str("</nav>");
-}
-
 pub(super) fn contextual_limits(
     html: &mut String,
     r: &ViewerRequest,
@@ -1054,9 +1017,10 @@ fn render_document_body(
             text(r.locale, "REPOSITORY DOCUMENT", "저장소 문서"),
         )
     };
-    html.push_str(&format!("<article class=\"doc\"{}><p class=\"breadcrumb\"><a href=\"{}\">{}</a></p><header class=\"doc-head\"><p class=\"eyebrow\">{} · {}</p>",
+    let article_start = html.len();
+    html.push_str(&format!("<article class=\"doc\"{}><p class=\"breadcrumb\"><a href=\"{}\">{}</a></p><header class=\"doc-head\">{}",
         work.map(|w|format!(" data-work-id=\"{}\" data-work-state=\"{}\"",w.work_item_id,understanding_work_state_key(w.state))).unwrap_or_default(),
-        if snapshot { format!("#{back_id}") } else { escape(&url(r, &back_view)) }, back_label, kind, text(r.locale,"interpretation and observations","해석과 관측")));
+        if snapshot { format!("#{back_id}") } else { escape(&url(r, &back_view)) }, back_label, if decision.is_some() {format!("<p class=\"eyebrow\">{kind} · {}</p>",text(r.locale,"interpretation and observations","해석과 관측"))} else {String::new()}));
     if current {
         if let Some(name) = answers
             .card_name()
@@ -1130,71 +1094,8 @@ fn render_document_body(
     html.push_str("</header>");
     opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
-    html.push_str(&format!("<details class=\"document-nav\"{}><summary>{}<span class=\"toc-cue\">{}</span></summary><nav aria-label=\"{}\"><ul class=\"toc-primary\">",
-        publication_scope(answers),text(r.locale,"TOC","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Document sections","문서 목차")));
-    let texts = answers
-        .prose
-        .iter()
-        .map(|u| u.text.as_str())
-        .collect::<Vec<_>>();
-    for diagram in &answers.diagrams {
-        html.push_str(&format!(
-            "<li><a class=\"toc-figure\" href=\"#{}\" lang=\"{}\">{}</a></li>",
-            diagram_namespace(answers, diagram),
-            escape(&content_language_tag(&answers.language)),
-            escape(volicord_projections::diagram_label(&diagram.title, &texts).unwrap_or(""))
-        ));
-    }
-    for section in answers.sections.iter().filter(|s| {
-        s.layer == volicord_projections::ArticleLayer::Article
-            && s.unit_indices
-                .iter()
-                .any(|&i| !answers.prose[i].text.trim().is_empty())
-    }) {
-        if let Some(index) = section.heading_index {
-            html.push_str(&format!(
-                "<li><a href=\"#{}\">{}</a></li>",
-                reader_claim_anchor(answers, index),
-                escape(&answers.prose[index].text)
-            ));
-        }
-    }
     html.push_str(&format!(
-        "</ul><details class=\"toc-more\"><summary>{}</summary><ul>",
-        text(r.locale, "Supporting details", "보조 자료")
-    ));
-    for (section, label) in [
-        ("choice", text(r.locale, "Recorded choice", "기록된 선택")),
-        (
-            "verification",
-            text(r.locale, "Verification report", "검증 보고"),
-        ),
-        ("limits", text(r.locale, "Limitations", "한계")),
-        (
-            "evidence-index",
-            text(r.locale, "Evidence index", "근거 색인"),
-        ),
-        (
-            "original",
-            text(r.locale, "Original instructions", "원래 지시"),
-        ),
-        ("audit", text(r.locale, "Inspect records", "기록 검사")),
-    ] {
-        if (section == "original" && work.is_none())
-            || (section == "verification" && !has_verification)
-            || (section == "limits" && !has_limits)
-            || (section == "choice" && decision.is_none())
-        {
-            continue;
-        }
-        html.push_str(&format!(
-            "<li><a href=\"#{}\">{}</a></li>",
-            document_anchor(answers, section),
-            label
-        ));
-    }
-    html.push_str(&format!(
-        "</ul></details></nav></details><div id=\"{}\" tabindex=\"-1\">",
+        "<div id=\"{}\" tabindex=\"-1\">",
         document_anchor(answers, "reading")
     ));
     if !current {
@@ -1345,6 +1246,7 @@ fn render_document_body(
     }
     html.push_str(records);
     html.push_str("</div></details></div></article>");
+    insert_contents(html, article_start, r, answers);
     // Every Source pane is a sibling of the reading article. On narrow
     // screens the article becomes inert while its selected pane is open.
     // This includes independently admitted summaries in the header or audit.
@@ -1352,6 +1254,71 @@ fn render_document_body(
         render_source_excerpts(html, r, &answers.publication(summary, "summary"), snapshot);
     }
     render_source_excerpts(html, r, answers, snapshot);
+}
+
+/// Reads the actual rendered heading sequence, retaining existing publication anchors.
+/// Escaped text is already safe HTML. No heading is omitted for length or count.
+fn insert_contents(
+    html: &mut String,
+    start: usize,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+) {
+    let mut article = html[start..].to_owned();
+    let mut entries = Vec::new();
+    let mut cursor = 0;
+    while let Some(relative) = article[cursor..].find("<h") {
+        let at = cursor + relative;
+        let level = article.as_bytes().get(at + 2).copied().unwrap_or(b'0');
+        if !matches!(level, b'2' | b'3') {
+            cursor = at + 2;
+            continue;
+        }
+        let Some(open_end) = article[at..].find('>').map(|n| at + n) else {
+            break;
+        };
+        let close = format!("</h{}>", char::from(level));
+        let Some(end) = article[open_end + 1..]
+            .find(&close)
+            .map(|n| open_end + 1 + n)
+        else {
+            break;
+        };
+        // Do not turn headings inside supporting disclosures or selected figure
+        // detail into a second index. Their visible summary is the navigation.
+        let prefix = &article[..at];
+        let in_details = prefix.matches("<details").count() > prefix.matches("</details>").count();
+        let selected = prefix
+            .rfind("<section class=\"diagram-claim\"")
+            .is_some_and(|n| n > prefix.rfind("</section>").unwrap_or(0));
+        if in_details || selected {
+            cursor = end + close.len();
+            continue;
+        }
+        let title = article[open_end + 1..end].to_owned();
+        let id = format!(
+            "{}-heading-{}",
+            document_anchor(answers, "contents"),
+            entries.len() + 1
+        );
+        let attributes = format!(" id=\"{id}\" tabindex=\"-1\"");
+        article.insert_str(at + 3, &attributes);
+        cursor = end + close.len() + attributes.len();
+        entries.push((id, title, level));
+    }
+    if entries.is_empty() {
+        return;
+    }
+    let mut contents = format!("<details class=\"document-nav\"{}><summary><span class=\"toc-label\">{}</span><span class=\"toc-cue\">{}</span><span class=\"toc-position\"></span><span aria-hidden=\"true\">⌄</span></summary><nav aria-label=\"{}\"><span class=\"toc-caption\">{}</span><ol class=\"toc-primary\">",publication_scope(answers),text(r.locale,"Contents","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Current document contents","현재 문서 목차"),text(r.locale,"This document","이 문서"));
+    for (number, (id, title, level)) in entries.into_iter().enumerate() {
+        contents.push_str(&format!("<li data-level=\"{}\"><a href=\"#{id}\"><span class=\"toc-number\">{:02}</span><span>{title}</span></a></li>",char::from(level),number+1));
+    }
+    contents.push_str("</ol></nav></details>");
+    if let Some(body) = article.find('>') {
+        article.insert_str(body + 1, &contents);
+    }
+    html.truncate(start);
+    html.push_str(&article);
 }
 
 fn render_evidence_index(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>) {
@@ -2115,7 +2082,8 @@ fn render_source_excerpts(
                 "이것은 작성자가 인용한 주장 범위입니다. 범위 연결만으로 각 문장이 이 코드에서 성립하는지 검증되지는 않습니다.")));
             if !snapshot {
                 let endpoint = format!(
-                    "/citation?subject={}&language={}&publication={}&realization={}&unit={}&citation={}&offset=0",
+                    "/citation?project={}&subject={}&language={}&publication={}&realization={}&unit={}&citation={}&offset=0",
+                    r.project_id,
                     percent_encode(&provenance.subject.key()),
                     percent_encode(&provenance.language),
                     percent_encode(provenance.publication_id.as_deref().unwrap_or("")),
@@ -2507,7 +2475,9 @@ pub(super) fn surface(
                 work_detail(html, r, p, w, false);
             }
         }
-        ViewerView::Work { work: None } | ViewerView::WorkPage { .. } => {
+        ViewerView::Work { work: None }
+        | ViewerView::WorkPage { .. }
+        | ViewerView::WorkFilter { .. } => {
             work_index(html, r, p, false);
         }
         ViewerView::RepositoryExplanation => repository_explanation(html, r, p, false),
@@ -2557,7 +2527,14 @@ fn work_index(html: &mut String, r: &ViewerRequest, p: &ProjectProjection, snaps
     }
     html.push_str("</div>");
     if !snapshot {
-        pagination(html, r, p.work_count, r.view.detail().work_page);
+        pagination(
+            html,
+            r,
+            r.view.detail().work_state.map_or(p.work_count, |s| {
+                p.work_state_counts.get(&s).copied().unwrap_or(0)
+            }),
+            r.view.detail().work_page,
+        );
     }
     html.push_str("</section>");
 }
@@ -2575,7 +2552,12 @@ fn pagination(html: &mut String, r: &ViewerRequest, count: usize, page: usize) {
         link(
             html,
             r,
-            ViewerView::WorkPage { page: next },
+            r.view
+                .detail()
+                .work_state
+                .map_or(ViewerView::WorkPage { page: next }, |state| {
+                    ViewerView::WorkFilter { state, page: next }
+                }),
             &format!("{} {}", text(r.locale, "Page", "페이지"), next + 1),
             None,
         );

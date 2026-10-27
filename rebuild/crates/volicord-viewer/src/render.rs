@@ -2,8 +2,11 @@
 mod presentation;
 #[path = "reading.rs"]
 mod reading;
+#[path = "shell.rs"]
+mod shell;
 pub(crate) use presentation::locale_key;
 use presentation::*;
+pub(crate) use shell::work_state_key;
 use std::{
     error::Error as StdError,
     fmt,
@@ -326,29 +329,14 @@ impl ViewerAdapter {
                 "snapshot"
             }
         ));
-        html.push_str(&format!("<a class=\"skip skip-link\" href=\"#viewer-content\">{}</a><header class=\"masthead viewer-header\"><div class=\"shell\"><a class=\"brand\" href=\"{}\">Volicord</a>", text(request.locale, "Skip to content", "본문으로 건너뛰기"), if snapshot { "#overview".into() } else { format!("/?view=overview&locale={}&language={}", locale_key(request.locale), percent_encode(&request.requested_language)) }));
-        if request.guarded_request.is_none() {
-            reading::navigation(&mut html, request, snapshot);
-        }
-        html.push_str("</div></header><main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">");
-        if request.guarded_request.is_none() {
-            html.push_str(&format!(
-                "<p class=\"surface-status\">{}</p>",
-                if snapshot {
-                    text(
-                        request.locale,
-                        "Read-only static publication",
-                        "읽기 전용 정적 문서",
-                    )
-                } else {
-                    text(
-                        request.locale,
-                        "Read-only reading surface",
-                        "이 읽기 화면은 읽기 전용입니다",
-                    )
-                }
-            ));
-        }
+        let choices = if snapshot {
+            Vec::new()
+        } else {
+            self.operations
+                .project_choices(0)
+                .map_err(|e| ViewerError::new(e.to_string()))?
+        };
+        shell::start(&mut html, request, &projection, &choices, snapshot);
         if snapshot {
             reading::snapshot(&mut html, request, &projection, &understanding);
             if let ViewerRenderMode::Snapshot { generated_at } = mode {
@@ -430,6 +418,30 @@ impl ViewerAdapter {
                 total: total_started.elapsed(),
             },
         ))
+    }
+
+    pub(crate) fn render_not_found(
+        &self,
+        request: &ViewerRequest,
+        authenticity: &str,
+    ) -> Result<ViewerPage, ViewerError> {
+        let mut parent = request.clone();
+        parent.view = crate::ViewerView::Work { work: None };
+        parent.guarded_request = None;
+        let mut page = self.render(&parent, authenticity)?;
+        let start = page
+            .html
+            .find("<main ")
+            .and_then(|n| page.html[n..].find('>').map(|i| n + i + 1))
+            .ok_or_else(|| ViewerError::new("missing reader main"))?;
+        let end = page.html[start..]
+            .find("</main>")
+            .map(|n| start + n)
+            .ok_or_else(|| ViewerError::new("missing reader end"))?;
+        page.html.replace_range(start..end,&format!("<section class=\"page-not-found\"><h1>{}</h1><p>{}</p></section>",text(request.locale,"Work unavailable","작업을 이용할 수 없습니다"),text(request.locale,"This identity is absent from this Project. Choose another Work from the project menu.","이 프로젝트에 해당 작업이 없습니다. 프로젝트 메뉴에서 다른 작업을 선택하세요.")));
+        page.explanations.clear();
+        page.verification_basis.clear();
+        Ok(page)
     }
 
     pub fn confirm_guarded(

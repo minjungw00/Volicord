@@ -980,6 +980,13 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("portable merge failed", error))
     }
 
+    /// Local Runtime Project identities only; no cross-Project content projection.
+    pub fn project_choices(&self, offset: usize) -> Result<Vec<volicord_context::Project>, Error> {
+        self.open_canonical_read_only()?
+            .project_choices(offset)
+            .map_err(|error| Error::with_source("Project navigation unavailable", error))
+    }
+
     pub fn canonical_basis(&self, project_id: ProjectId) -> Result<CanonicalReadBasis, Error> {
         // Inspection uses the existing read-only connection and bounded reader
         // contention policy. A writer's zero-wait durability initialization can

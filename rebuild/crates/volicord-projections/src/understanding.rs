@@ -52,7 +52,7 @@ pub struct UnderstandingWork {
     pub source_basis: Vec<SourceId>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum UnderstandingWorkState {
     Open,
     InProgress,
@@ -2178,6 +2178,7 @@ mod tests {
                 inspection: crate::ReadSectionState::Available,
             },
             work_count: 0,
+            work_state_counts: Default::default(),
             decision_count: 0,
             decision_catalog: Vec::new(),
             selected_decision: None,

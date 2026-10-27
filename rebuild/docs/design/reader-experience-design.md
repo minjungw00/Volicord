@@ -809,3 +809,37 @@ remain. New exports repeat these checks and exclude expired code even from hidde
 markup. Offline states describe export-time content, never continuing permission.
 Technical controls are routed by Projection's retained-publication mapping;
 R3 visual fidelity and human/native assistive acceptance remain independent.
+
+### Adopted project shell and document contents — accepted 2026-10-27
+
+The adopted sky-blue reference supersedes the earlier brand-left/top-destinations
+layout (D-04/28 and §5.1). One persistent project sidebar contains the current
+Project brand, explicit local Project selection, Overview / Repository explanation /
+Work, actual state-filtered Work shortcuts, and quiet read-only/basis information.
+Work detail keeps Work selected. Brand and Project selection return to the exact
+Project Overview; document fragments never change that parent destination.
+There is no duplicate destination bar. Local Project choices read at most 32 identity
+records, with explicit identity entry for further Projects; no Source/article read
+is required to select a Project. Equal display names retain distinct identities.
+Static exports contain their one Project and do not imply live Project switching.
+
+At <=980px the same sidebar becomes a 280px drawer (at most viewport minus 36px),
+opened from a 56px header. Scripted modal focus, inert background, outside/Escape/
+route close and desktop resize clearing supplement native disclosure navigation.
+Repository and Work documents alone have sticky top contents from actual rendered
+headings, with scoped stable anchors. At <730px available article width the complete
+list uses the compact current-title/position disclosure. Many or long headings use
+that same full-title pattern rather than clipping or dropping entries. Explicit
+activation focuses the heading below sticky surfaces; passive scrolling changes only
+the current-section cue, including the last short section. Native modifier links,
+fragments, history and script-free/export reads keep their ordinary meaning.
+
+| Requirement | Implementation owner | Direct control |
+| --- | --- | --- |
+| Same exact Project shell and active parent on all reader destinations | Viewer shell / Operations bounded canonical Project identities | Viewer navigation and shell browser controls |
+| Truthful state shortcuts and totals independent of materialized articles | Projection Work history index / Viewer selectors | Work history and multi-Project navigation controls |
+| Top contents from real headings, direct/history anchors and available width | Viewer semantic article / native disclosure plus local enhancement | Navigation, supporting disclosure, shell browser controls |
+
+The unchanged ignored reference package is design evidence, not Product records or
+admission. Catalogue query/scale completion, semantic quality and human/assistive
+acceptance remain separate from these shell/navigation controls.

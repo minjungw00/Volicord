@@ -331,10 +331,7 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     .split("<section class=\"snapshot-page\"")
                     .next()
                     .ok_or("end")?;
-                let opening = selected
-                    .split("class=\"document-nav\"")
-                    .next()
-                    .ok_or("opening")?;
+                let opening = selected.split("class=\"audit\"").next().ok_or("opening")?;
                 if let Some(summary) = summary_text {
                     assert!(opening.contains(summary));
                 }

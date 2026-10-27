@@ -58,6 +58,7 @@ pub struct ProjectReadSections {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProjectionDetail {
     pub work_page: usize,
+    pub work_state: Option<crate::UnderstandingWorkState>,
     pub decision_page: usize,
     pub decision: Option<DecisionId>,
     pub entity: Option<String>,
@@ -947,6 +948,7 @@ pub struct ProjectProjection {
     pub canonical_read_fingerprint: String,
     pub sections: ProjectReadSections,
     pub work_count: usize,
+    pub work_state_counts: BTreeMap<crate::UnderstandingWorkState, usize>,
     pub work_read_cost: WorkReadCost,
     pub decision_count: usize,
     pub decision_catalog: Vec<crate::UnderstandingDecision>,
@@ -1413,6 +1415,16 @@ pub fn build_project_projection(
     let work_index = crate::reading::WorkHistoryIndex::new(reading_canonical);
     let overview_selection = work_index.overview_selection(8);
     let work_count = work_index.0.len();
+    let mut work_state_counts = BTreeMap::new();
+    for group in work_index.0.values() {
+        let state = group
+            .checkpoints
+            .last()
+            .map_or(crate::UnderstandingWorkState::Open, |cp| {
+                cp.work_state.into()
+            });
+        *work_state_counts.entry(state).or_insert(0) += 1;
+    }
     let work_offset = inputs
         .detail
         .work_page
@@ -1420,7 +1432,19 @@ pub fn build_project_projection(
         .min(work_count);
     let page_ids = work_index
         .0
-        .keys()
+        .iter()
+        .filter(|(_, group)| {
+            inputs.detail.work_state.is_none_or(|state| {
+                group
+                    .checkpoints
+                    .last()
+                    .map_or(crate::UnderstandingWorkState::Open, |cp| {
+                        cp.work_state.into()
+                    })
+                    == state
+            })
+        })
+        .map(|(id, _)| id)
         .skip(work_offset)
         .take(limit)
         .copied()
@@ -1721,6 +1745,7 @@ pub fn build_project_projection(
             },
         },
         work_count,
+        work_state_counts,
         work_read_cost,
         decision_count,
         decision_catalog,

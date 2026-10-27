@@ -108,6 +108,7 @@ pub(super) const STYLE: &str = concat!(
     "<style>",
     include_str!("reader.css"),
     include_str!("presentation.css"),
+    include_str!("shell.css"),
     "</style>"
 );
 

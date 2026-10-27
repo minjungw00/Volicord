@@ -268,6 +268,25 @@ impl Store {
         })
     }
 
+    /// Identity-only local navigation. Bounded independently of Project contents.
+    pub fn project_choices(&self, offset: usize) -> Result<Vec<Project>, Error> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id FROM projects ORDER BY id LIMIT 32 OFFSET ?1")
+            .map_err(read_error)?;
+        let identities = statement
+            .query_map([offset.min(1_000_000) as i64], |row| {
+                row.get::<_, Vec<u8>>(0)
+            })
+            .map_err(read_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(read_error)?;
+        identities
+            .into_iter()
+            .map(|id| self.get_project(ProjectId::from_slice(&id)?))
+            .collect()
+    }
+
     pub fn get_project(&self, project_id: ProjectId) -> Result<Project, Error> {
         load_project(&self.connection, project_id)
     }
