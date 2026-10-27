@@ -189,6 +189,10 @@ remains distinct from preparing later campaigns on that already validated candid
   grounded history prefixes, public CLI lifecycle/document publication, both MCP
   reading consumers and exact Viewer result/state basis. Labeled test interpretations
   prove transport; the separate active-host browser run proves visible content.
+  V11 snapshot navigation compares the three destination names independently of
+  the Work count badge and ignores only the two hidden native-shell close
+  buttons. Visible controls, wrong destinations and duplicate fragments remain
+  rejection cases; this markup check does not establish human acceptance.
   V11 CLI, MCP and portable Work readback use the shared machine state
   `in_progress` and `source_ids`; the rehearsal and bounded archive contract
   reject retired Debug-derived `inprogress` text and the old Work-specific

@@ -491,6 +491,7 @@ class ViewerUnderstandingMarkup(HTMLParser):
         self.ids, self.links, self.nav, self.labels = [], [], 0, []
         self.in_nav = False
         self.in_link = False
+        self.in_count = False
         self.active = False
         self.retired = False
         self.reading = False
@@ -508,7 +509,14 @@ class ViewerUnderstandingMarkup(HTMLParser):
             self.in_link = self.in_nav
             if self.in_link:
                 self.labels.append("")
-        if tag in {"form", "script", "iframe", "input", "button"}:
+        if self.in_link and tag == "span" and "nav-count" in attrs.get("class", "").split():
+            self.in_count = True
+        # Native exports retain inert enhancement controls. A hidden close
+        # button is not a prerequisite for following the ordinary fragment links.
+        inert_close = (tag == "button" and "hidden" in attrs and
+                       attrs.get("class") in {"rail-close", "nav-backdrop"} and
+                       attrs.get("type") == "button")
+        if tag in {"form", "script", "iframe", "input", "button"} and not inert_close:
             self.active = True
         classes = attrs.get("class", "").split()
         if any(c in classes for c in ("tools-menu", "inspection-query", "document-preview")):
@@ -519,9 +527,10 @@ class ViewerUnderstandingMarkup(HTMLParser):
     def handle_endtag(self, tag):
         if tag == "nav": self.in_nav = False
         if tag == "a": self.in_link = False
+        if tag == "span": self.in_count = False
 
     def handle_data(self, data):
-        if self.in_link: self.labels[-1] += data
+        if self.in_link and not self.in_count: self.labels[-1] += data
 
 
 def viewer_project_understanding_evidence(snapshot, understanding):
@@ -542,7 +551,7 @@ def viewer_project_understanding_evidence(snapshot, understanding):
                  (understanding or {}).get("evidence",{}).get("snapshots",[]) if isinstance(v,dict)} - {None}
     checks = {
         "snapshot_available":True,
-        "three_destinations":surface.nav == 1 and surface.labels in
+        "three_destinations":surface.nav == 1 and [label.strip() for label in surface.labels] in
             (["Overview","Repository explanation","Work"],["개요","저장소 설명","작업"]),
         "independent_repository_and_work":all(v in surface.ids for v in
             ("overview","repository-explanation","works")),
@@ -564,8 +573,10 @@ def assert_viewer_reader_contract():
     with tempfile.TemporaryDirectory(prefix="volicord-reader-contract-") as directory:
         snapshot = Path(directory)/"reader.html"
         basis={"evidence":{"snapshots":[{"analysis_snapshot_id":"a"*64}]}}
-        positive=('<html><body><nav aria-label="Viewer"><a href="#overview">Overview</a>'
-            '<a href="#repository-explanation">Repository explanation</a><a href="#works">Work</a></nav>'
+        positive=('<html><body><button class="rail-close" type="button" hidden>Close project menu</button>'
+            '<nav aria-label="Viewer"><a href="#overview">Overview </a>'
+            '<a href="#repository-explanation">Repository explanation </a>'
+            '<a href="#works">Work<span class="nav-count">130</span> </a></nav>'
             '<section id="overview">Canonical Purpose</section><section id="repository-explanation">'
             '<article class="doc"><p data-statement-role="deterministic-derived">Current explanation availability.</p>'
             '</article></section><section id="works">No Work recorded</section>'
@@ -573,13 +584,15 @@ def assert_viewer_reader_contract():
         snapshot.write_text(positive)
         assert viewer_project_understanding_evidence(snapshot,basis)["status"]=="passed"
         for mutation in [positive.replace('href="#works"','href="http://127.0.0.1/"'),
-            positive.replace('id="works"','id="removed"'),positive.replace('>Work</a>','>Tools</a>'),
+            positive.replace('id="works"','id="removed"'),positive.replace('>Work<span','>Tools<span'),
             positive.replace('</body>','<section id="code">catalog</section></body>'),
             positive.replace('</body>','<form></form></body>'),positive.replace("a"*64,"b"*64),
-            positive.replace('</body>','<section id="works"></section></body>')]:
+            positive.replace('</body>','<section id="works"></section></body>'),
+            positive.replace('type="button" hidden','type="button"'),
+            positive.replace('class="rail-close"','class="unrelated"')]:
             snapshot.write_text(mutation)
             assert viewer_project_understanding_evidence(snapshot,basis)["status"]=="failed"
-    print("Viewer reader consumer: positive and 7 independent negative controls passed")
+    print("Viewer reader consumer: positive and 9 independent negative controls passed")
 
 
 def cli_json(
