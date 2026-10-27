@@ -1,3 +1,5 @@
+#[path = "catalogue.rs"]
+mod catalogue;
 #[path = "presentation.rs"]
 mod presentation;
 #[path = "reading.rs"]
@@ -281,22 +283,37 @@ impl ViewerAdapter {
             ));
         }
         let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
-        let (projection, projection_profile) = self
-            .operations
-            .project_projection_read_profiled(
+        let projection_result = if !snapshot {
+            if let Some(query) = request.view.catalogue_query() {
+                self.operations.project_catalogue_projection_profiled(
+                    request.project_id,
+                    &query,
+                    &request.requested_language,
+                )
+            } else {
+                self.operations.project_projection_read_profiled(
+                    request.project_id,
+                    request.view.selection(),
+                    request.view.detail(),
+                    read_requirements(&request.view),
+                )
+            }
+        } else {
+            self.operations.project_projection_read_profiled(
                 request.project_id,
                 request.view.selection(),
                 request.view.detail(),
                 volicord_projections::ProjectionReadRequirements {
-                    inspection: snapshot || read_requirements(&request.view).inspection,
+                    inspection: true,
                     ..read_requirements(&request.view)
                 },
             )
-            .map_err(|error| {
-                let mut result = ViewerError::new(format!("cannot build Project view: {error}"));
-                result.not_found = error.work_selection_cause().is_some();
-                result
-            })?;
+        };
+        let (projection, projection_profile) = projection_result.map_err(|error| {
+            let mut result = ViewerError::new(format!("cannot build Project view: {error}"));
+            result.not_found = error.work_selection_cause().is_some();
+            result
+        })?;
         let understanding_started = Instant::now();
         let understanding = build_project_understanding(
             &projection,
@@ -398,6 +415,13 @@ impl ViewerAdapter {
                             && e.state == volicord_projections::ExplanationState::Current
                     })
                     .filter_map(volicord_projections::ExplanationReading::provenance)
+                    .chain(
+                        projection
+                            .work_catalogue
+                            .iter()
+                            .flat_map(|c| c.entries.iter().chain(c.current.iter()))
+                            .flat_map(|e| e.publications.iter().cloned()),
+                    )
                     .collect(),
                 project_id: request.project_id,
                 html,

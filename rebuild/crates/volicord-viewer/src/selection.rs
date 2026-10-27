@@ -6,6 +6,9 @@ use volicord_projections::{ProjectionDetail, WorkSelector};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ViewerView {
     Overview,
+    WorkQuery {
+        query: volicord_projections::WorkCatalogueQuery,
+    },
     RepositoryExplanation,
     Work {
         work: Option<ContextItemId>,
@@ -41,7 +44,14 @@ impl ViewerView {
                 return Err(ViewerError::new("retired Viewer selector"));
             }
         }
-        if name != "work" && (value("work").is_some() || value("page").is_some()) {
+        if name != "work"
+            && (value("work").is_some()
+                || value("page").is_some()
+                || value("q").is_some()
+                || value("sort").is_some()
+                || value("basis").is_some()
+                || value("state").is_some())
+        {
             return Err(ViewerError::new("selector does not belong to this view"));
         }
         if let Some(id) = value("work") {
@@ -83,14 +93,44 @@ impl ViewerView {
             };
             view = Self::WorkFilter { state, page };
         }
+        if name == "work" && value("work").is_none() {
+            let mut query = view.catalogue_query().unwrap_or_default();
+            query.term = value("q").unwrap_or_default().to_owned();
+            query.order = match value("sort").unwrap_or("recent") {
+                "recent" => volicord_projections::WorkCatalogueOrder::Recent,
+                "oldest" => volicord_projections::WorkCatalogueOrder::Oldest,
+                "name" => volicord_projections::WorkCatalogueOrder::Name,
+                _ => return Err(ViewerError::new("unknown Work ordering")),
+            };
+            query.expected_basis = value("basis").map(str::to_owned);
+            query.validate().map_err(ViewerError::new)?;
+            view = Self::WorkQuery { query };
+        }
         Ok(view)
     }
     pub fn key(&self) -> &'static str {
         match self {
             Self::Overview => "overview",
             Self::RepositoryExplanation => "repository",
-            Self::Work { .. } | Self::WorkPage { .. } | Self::WorkFilter { .. } => "work",
+            Self::WorkQuery { .. }
+            | Self::Work { .. }
+            | Self::WorkPage { .. }
+            | Self::WorkFilter { .. } => "work",
         }
+    }
+    pub(crate) fn catalogue_query(&self) -> Option<volicord_projections::WorkCatalogueQuery> {
+        let mut query = volicord_projections::WorkCatalogueQuery::default();
+        match self {
+            Self::Overview | Self::Work { work: None } => {}
+            Self::WorkPage { page } => query.page = *page,
+            Self::WorkFilter { state, page } => {
+                query.state = Some(*state);
+                query.page = *page;
+            }
+            Self::WorkQuery { query } => return Some(query.clone()),
+            _ => return None,
+        }
+        Some(query)
     }
     pub(crate) fn selection(&self) -> WorkSelector {
         match self {
@@ -106,6 +146,7 @@ impl ViewerView {
                 _ => 0,
             },
             work_state: match self {
+                Self::WorkQuery { query } => query.state,
                 Self::WorkFilter { state, .. } => Some(*state),
                 _ => None,
             },
@@ -115,6 +156,25 @@ impl ViewerView {
     pub(crate) fn fields(&self) -> Vec<(&'static str, String)> {
         let mut fields = vec![("view", self.key().into())];
         match self {
+            Self::WorkQuery { query } => {
+                fields.push(("q", query.term.clone()));
+                fields.push(("page", query.page.to_string()));
+                fields.push((
+                    "sort",
+                    match query.order {
+                        volicord_projections::WorkCatalogueOrder::Recent => "recent",
+                        volicord_projections::WorkCatalogueOrder::Oldest => "oldest",
+                        volicord_projections::WorkCatalogueOrder::Name => "name",
+                    }
+                    .into(),
+                ));
+                if let Some(state) = query.state {
+                    fields.push(("state", super::render::work_state_key(state).into()));
+                }
+                if let Some(basis) = &query.expected_basis {
+                    fields.push(("basis", basis.clone()));
+                }
+            }
             Self::WorkPage { page } => fields.push(("page", page.to_string())),
             Self::WorkFilter { state, page } => {
                 fields.push(("page", page.to_string()));

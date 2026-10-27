@@ -662,3 +662,12 @@ explanation. Explanation v8's sole current writer/decoder, document metadata 11,
 canonical/privacy/Source-copy formats and all existing lifetimes remain unchanged.
 No current explanation is discarded or converted for this presentation. Authored
 headings/short labels still need fresh explicit compose/record from allowed Sources.
+
+### Ephemeral Work catalogue projections
+
+Project-scoped catalogue queries, page/basis selectors, metadata-only article
+availability and independent card reads are ephemeral. No canonical, Privacy,
+Source copy, explanation v8, bundle or generated-document metadata format changes.
+The selective Privacy SQL read does not rewrite existing envelopes or add a
+parallel decoder. Refresh fingerprints are request-local equality checks rather
+than durable compatibility tokens.

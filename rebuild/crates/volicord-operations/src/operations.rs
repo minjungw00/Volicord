@@ -2703,6 +2703,43 @@ impl LocalOperations {
         detail: volicord_projections::ProjectionDetail,
         requirements: volicord_projections::ProjectionReadRequirements,
     ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
+        self.project_reader_projection_profiled(project_id, selection, detail, requirements, None)
+    }
+
+    pub fn project_catalogue_projection_profiled(
+        &self,
+        project_id: ProjectId,
+        query: &volicord_projections::WorkCatalogueQuery,
+        language: &str,
+    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
+        query.validate().map_err(Error::new)?;
+        if language.is_empty() || language.len() > 128 {
+            return Err(Error::new("invalid content language"));
+        }
+        let _inspection = self.layout.acquire_health_lock()?;
+        self.project_reader_projection_profiled(
+            project_id,
+            volicord_projections::WorkSelector::LatestWork,
+            volicord_projections::ProjectionDetail {
+                catalogue_only: true,
+                ..Default::default()
+            },
+            volicord_projections::ProjectionReadRequirements {
+                code: false,
+                inspection: false,
+            },
+            Some((query, language)),
+        )
+    }
+
+    fn project_reader_projection_profiled(
+        &self,
+        project_id: ProjectId,
+        selection: volicord_projections::WorkSelector,
+        detail: volicord_projections::ProjectionDetail,
+        requirements: volicord_projections::ProjectionReadRequirements,
+        catalogue: Option<(&volicord_projections::WorkCatalogueQuery, &str)>,
+    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
         let total_started = Instant::now();
         let canonical_started = Instant::now();
         let canonical = self.canonical_basis(project_id)?;
@@ -2759,8 +2796,14 @@ impl LocalOperations {
         })
         .map_err(|error| Error::with_source("Work selection failed", error))?;
         self.attach_analysis_attempt(project_id, &mut projection.repository_analysis);
-        self.attach_work_verification(&canonical, &mut projection);
-        let explanation_basis_preparations = self.attach_explanations(&canonical, &mut projection);
+        let explanation_basis_preparations = if let Some((query, language)) = catalogue {
+            projection.work_catalogue =
+                Some(self.work_catalogue_from(&canonical, query, language)?);
+            0
+        } else {
+            self.attach_work_verification(&canonical, &mut projection);
+            self.attach_explanations(&canonical, &mut projection)
+        };
         let projection_build = projection_started.elapsed();
         let work_read_cost = projection.work_read_cost;
         Ok((
@@ -3937,7 +3980,7 @@ impl LocalOperations {
         Ok(store)
     }
 
-    fn incomplete_committed_invalidations(
+    pub(crate) fn incomplete_committed_invalidations(
         &self,
         project_id: ProjectId,
     ) -> Result<Vec<CanonicalInvalidation>, Error> {

@@ -94,6 +94,15 @@ pub(crate) fn context(
             );
         }
     }
+    for card in projection
+        .work_catalogue
+        .iter()
+        .flat_map(|c| c.entries.iter().chain(c.current.iter()))
+    {
+        for p in &card.publications {
+            subjects.insert(p.subject.key(), json!({"kind":match p.subject { volicord_projections::ExplanationSubject::WorkName(_)=>"work_name",_=>"work_summary" },"identity":card.id.to_string(),"state":"current","plan_fingerprint":p.fingerprint,"generated_at_unix_micros":p.generated_at_unix_micros,"realization_sha256":p.realization_fingerprint.strip_prefix("sha256:").unwrap_or(&p.realization_fingerprint)}));
+        }
+    }
     for d in projection
         .selected_work_decisions
         .iter()

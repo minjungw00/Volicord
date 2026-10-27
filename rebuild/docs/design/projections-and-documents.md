@@ -3075,3 +3075,55 @@ New exports still recheck availability under the mutation lock and omit expired 
 
 These technical observations do not substitute for independent semantic reading,
 reference fidelity comparison, native assistive testing or actual human acceptance.
+
+### Project Work catalogue queries
+
+`LocalOperations::query_work_catalogue` and the Viewer catalogue projection share
+one request-local canonical/Privacy basis under the existing inspection lock.
+Goal identity admits a Work; the latest same-Work `(recorded_at, identity)`
+Checkpoint supplies its exact state. No Checkpoint means Open. Project/sidebar
+totals count all such authorized Goals, independently of the active query.
+
+Search is a trimmed, Unicode-lowercased literal substring of the independently
+permitted name or summary in the exact requested content language, after current
+admission/retention/forgetting/integrity checks. It does not search Goal prose,
+article text, Source bodies, prototype tags or a hidden index. A missing name
+remains a neutral label plus its exact identity. No rendering fallback supplies
+searchable generated wording. A denied card publication cannot contribute text
+to search, ordering or the visible-basis token; its independently valid sibling
+and canonical Work identity remain usable.
+
+Ordering is recent update descending (default), oldest update ascending or
+Unicode-lowercased admitted name ascending, with canonical Work identity ascending
+as the final tie. Absent dates/names sort last. Update is the latest Checkpoint
+instant, or the original Goal creation event when there is no Checkpoint; absent
+original history stays unknown. Creation and latest Work record remain distinct
+in detail. Eight-item zero-based pages expose matched count and displayed range.
+The 128-byte term, bounded page integer and fixed state/order choices reject
+malformed input. Links carry a visible-basis fingerprint bound to Project, content
+language and query. Changed basis or out-of-range pages explicitly restart at
+page zero. This is refresh detection, not a retained snapshot or stable archive.
+Direct links without a basis select the current dataset.
+
+Privacy's catalogue read returns dependency metadata and name/summary envelopes;
+article and Source payloads are removed in SQLite before application decoding.
+All card scopes are validated before filtering, then only the page and one
+actual InProgress item are retained. This scans canonical/metadata/card records and revalidates card preparations,
+not a constant-time indexed service; SQLite still scans stored JSON rows.
+It prepares no articles, performs no currentness comparison and reads no Source
+bodies. Article metadata means only “recorded; checked on open”, not confirmed
+readability, review, completion or acceptance. Opening detail uses the existing
+exact publication and Source authority path.
+
+Overview uses the same recent ordering, at most five recent rows, the latest
+actual InProgress Work when available, and an explicitly recent fallback otherwise.
+It preserves missing Purpose and empty Work, and offers repository reading without
+inventing repository prose or current activity. Static exports remain the bounded
+script-free publication path, with their existing inclusion/omission notices; they
+do not claim a live searchable complete dataset.
+
+| Contract | Owner / consumer | Direct control |
+| --- | --- | --- |
+| Authorized dataset search, exact language, states, stable eight-item paging | Projection catalogue / Operations / live HTTP | Viewer `catalogue` actual recording/query/HTTP tests |
+| No article or Source payload in catalogue storage view | Privacy selective read / Operations query | `single_summaryless_work_missing_dates_and_large_article_storage_stay_separate`; catalogue cost counters |
+| Query refresh, deletion and foreign Project isolation | Operations authority / native GET controls | `replacement_deletion_foreign_scope_and_equal_names_reset_continuation_safely` |

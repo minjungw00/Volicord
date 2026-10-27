@@ -710,23 +710,50 @@ impl PrivacyStore {
         project_id: ProjectId,
         invalidations: &[CanonicalInvalidation],
     ) -> Result<ProjectPrivacyInspection, Error> {
-        let mut inspection = self.inspect_project(project_id)?;
-        for record in &mut inspection.managed_derived {
-            let related = invalidations.iter().any(|invalidation| {
-                invalidation.project_id == project_id
-                    && record
-                        .canonical_links
-                        .contains(&ManagedCanonicalLink::from_invalidation(invalidation))
-            });
-            if related && record.state != ManagedDerivedState::Deleted {
-                record.content = None;
-                record.state = ManagedDerivedState::Invalidated;
-                inspection.withheld_for_canonical_forgetting.push(record.id);
-            }
-        }
-        inspection.withheld_for_canonical_forgetting.sort();
-        inspection.withheld_for_canonical_forgetting.dedup();
-        Ok(inspection)
+        let inspection = self.inspect_project(project_id)?;
+        Ok(apply_read_invalidations(
+            inspection,
+            project_id,
+            invalidations,
+        ))
+    }
+
+    /// Work catalogue authority view: read all dependency metadata, but only
+    /// name/summary payloads. SQLite removes article/Source bodies before they
+    /// cross the storage boundary. No persistent cache or format change.
+    pub fn inspect_work_catalogue_with_invalidations(
+        &self,
+        project_id: ProjectId,
+        invalidations: &[CanonicalInvalidation],
+    ) -> Result<ProjectPrivacyInspection, Error> {
+        let current_opt_in = self.current_opt_in(project_id)?;
+        let configuration_state = match current_opt_in.as_ref().map(|event| event.state) {
+            None => ProviderConfigurationState::NeverEnabled,
+            Some(ProviderOptInState::Enabled) => ProviderConfigurationState::Enabled,
+            Some(ProviderOptInState::Disabled) => ProviderConfigurationState::Disabled,
+            Some(ProviderOptInState::Revoked) => ProviderConfigurationState::Revoked,
+        };
+        let managed_derived = read_json_rows(
+            &self.connection,
+            "SELECT CASE WHEN json_extract(record_json, '$.purpose') GLOB 'explanation:work_name:*'
+                         OR json_extract(record_json, '$.purpose') GLOB 'explanation:work_summary:*'
+                    THEN record_json ELSE json_set(record_json, '$.content', NULL) END
+             FROM managed_derived WHERE project_id = ?1 ORDER BY rowid",
+            project_id,
+        )?;
+        Ok(apply_read_invalidations(
+            ProjectPrivacyInspection {
+                project_id,
+                configuration_state,
+                current_opt_in,
+                authority_observations: Vec::new(),
+                requests: Vec::new(),
+                managed_derived,
+                withheld_for_canonical_forgetting: Vec::new(),
+            },
+            project_id,
+            invalidations,
+        ))
     }
 
     pub fn verify_canonical_forgetting(
@@ -966,6 +993,29 @@ impl PrivacyStore {
             project_id,
         )
     }
+}
+
+fn apply_read_invalidations(
+    mut inspection: ProjectPrivacyInspection,
+    project_id: ProjectId,
+    invalidations: &[CanonicalInvalidation],
+) -> ProjectPrivacyInspection {
+    for record in &mut inspection.managed_derived {
+        let related = invalidations.iter().any(|invalidation| {
+            invalidation.project_id == project_id
+                && record
+                    .canonical_links
+                    .contains(&ManagedCanonicalLink::from_invalidation(invalidation))
+        });
+        if related && record.state != ManagedDerivedState::Deleted {
+            record.content = None;
+            record.state = ManagedDerivedState::Invalidated;
+            inspection.withheld_for_canonical_forgetting.push(record.id);
+        }
+    }
+    inspection.withheld_for_canonical_forgetting.sort();
+    inspection.withheld_for_canonical_forgetting.dedup();
+    inspection
 }
 
 fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {

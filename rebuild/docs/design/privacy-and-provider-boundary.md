@@ -892,3 +892,17 @@ withdrawal/deletion/forgetting and publication integrity failure still remove al
 dependent meaning. No client body cache is durable or shared across publications.
 Export-time static content performs no later permission/currentness check and cannot
 revoke already distributed bytes. No provider/remote asset transmission is added.
+
+### Work catalogue authority
+
+The project-scoped Work catalogue is a reading destination, not the retired
+inspector. Operations applies the same permitted-publication barrier to each
+independent name/summary before literal search, counts, ordering and paging.
+Canonical Goal identities/state counts remain independent of denied derived text.
+The selective Privacy read carries all required dependency metadata and incomplete
+forgetting barriers, while SQL removes every article and Source payload. No cache,
+provider request, generation, Source refresh or lifetime extension is introduced.
+Article metadata is explicitly provisional until opened through the exact detail
+reader. Live GET forms preserve Host/Origin/fetch protections, no-store responses,
+fixed locale and separate content language. Projection owns query semantics and
+refresh tokens; tokens confer no authority and bind no hidden text.

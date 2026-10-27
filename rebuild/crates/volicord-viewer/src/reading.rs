@@ -2,7 +2,7 @@
 use super::*;
 use crate::ViewerView;
 
-fn url(request: &ViewerRequest, view: &ViewerView) -> String {
+pub(super) fn url(request: &ViewerRequest, view: &ViewerView) -> String {
     let mut fields = view.fields();
     fields.push(("project", request.project_id.to_string()));
     fields.push(("locale", locale_key(request.locale).into()));
@@ -90,6 +90,10 @@ fn overview(
     u: &ProjectUnderstanding,
     snapshot: bool,
 ) {
+    if let Some(catalogue) = &p.work_catalogue {
+        super::catalogue::overview(html, r, p, u, catalogue);
+        return;
+    }
     html.push_str("<section id=\"overview\" class=\"snapshot-page\"><p class=\"eyebrow\">PROJECT OVERVIEW</p>");
     heading(html, 1, &p.overview.project_name);
     if snapshot {
@@ -144,7 +148,7 @@ fn overview(
     }
     html.push_str("</div></section>");
 }
-fn project_purpose(html: &mut String, r: &ViewerRequest, u: &ProjectUnderstanding) {
+pub(super) fn project_purpose(html: &mut String, r: &ViewerRequest, u: &ProjectUnderstanding) {
     if u.project_purpose.is_empty() {
         html.push_str(&format!(
             "<p class=\"purpose-absence\">{}</p>",
@@ -2525,7 +2529,8 @@ pub(super) fn surface(
         }
         ViewerView::Work { work: None }
         | ViewerView::WorkPage { .. }
-        | ViewerView::WorkFilter { .. } => {
+        | ViewerView::WorkFilter { .. }
+        | ViewerView::WorkQuery { .. } => {
             work_index(html, r, p, false);
         }
         ViewerView::RepositoryExplanation => repository_explanation(html, r, p, false),
@@ -2556,6 +2561,10 @@ pub(super) fn snapshot(
     repository_explanation(html, r, &p.for_repository_reading(), true);
 }
 fn work_index(html: &mut String, r: &ViewerRequest, p: &ProjectProjection, snapshot: bool) {
+    if let Some(catalogue) = &p.work_catalogue {
+        super::catalogue::index(html, r, p, catalogue);
+        return;
+    }
     html.push_str(
         "<section class=\"snapshot-page\" id=\"works\"><p class=\"eyebrow\">VOLICORD / WORK</p>",
     );

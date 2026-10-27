@@ -30,6 +30,7 @@ mod provider;
 mod recall;
 mod repository_explanation;
 mod source_observations;
+mod work_catalogue;
 mod work_explanation;
 mod work_verification;
 pub use check_capture::{WorkCheckReceipt, WorkCheckRecording};

@@ -241,8 +241,10 @@ fn work_index_pages_reach_items_omitted_from_initial_lists(
     let second = exchange(&server, "/?view=work&page=1&locale=ko&language=fr-CA");
     assert!(first.contains("page=1"));
     assert!(first.contains("language=fr-CA"));
+    // Catalogue now uses recent recording order and eight-item pages.
     let omitted = goals
         .iter()
+        .rev()
         .find(|id| !first.contains(&format!("work={id}")))
         .ok_or("all unexpectedly included")?;
     assert!(second.contains(&format!("work={omitted}")));

@@ -57,6 +57,8 @@ pub struct ProjectReadSections {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProjectionDetail {
+    /// Catalogue reads select independent cards without materializing history.
+    pub catalogue_only: bool,
     pub work_page: usize,
     pub work_state: Option<crate::UnderstandingWorkState>,
     pub decision_page: usize,
@@ -937,6 +939,7 @@ pub struct RepositoryScopeMetadata {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectProjection {
+    pub work_catalogue: Option<crate::WorkCataloguePage>,
     pub repository_explanations: Vec<crate::ExplanationReading>,
     pub repository_analysis: crate::RepositoryAnalysisReading,
     pub repository_scope_metadata: RepositoryScopeMetadata,
@@ -1452,7 +1455,7 @@ pub fn build_project_projection(
     let resume_id = crate::WorkSelector::LatestWork
         .resolve(reading_canonical)?
         .work_item_id;
-    let required_ids = page_ids
+    let mut required_ids = page_ids
         .iter()
         .copied()
         .chain(
@@ -1463,6 +1466,9 @@ pub fn build_project_projection(
         .chain(selection.work_item_id)
         .chain(resume_id)
         .collect::<BTreeSet<_>>();
+    if inputs.detail.catalogue_only {
+        required_ids.clear();
+    }
     let work_read_cost = WorkReadCost {
         classified_works: work_count,
         indexed_checkpoints: work_index.0.values().map(|g| g.checkpoints.len()).sum(),
@@ -1722,6 +1728,7 @@ pub fn build_project_projection(
         health,
     };
     let mut projection = ProjectProjection {
+        work_catalogue: None,
         repository_explanations: Vec::new(),
         repository_analysis,
         repository_scope_metadata,

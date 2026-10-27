@@ -23,6 +23,8 @@ mod diagram;
 mod documents;
 mod explanation;
 pub use diagram::*;
+mod catalogue;
+pub use catalogue::*;
 mod project;
 mod reading;
 mod recall;

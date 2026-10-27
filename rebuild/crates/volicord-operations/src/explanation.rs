@@ -92,7 +92,7 @@ impl LocalOperations {
         Ok((canonical, retained, publication))
     }
 
-    fn permitted_publication_from(
+    pub(crate) fn permitted_publication_from(
         &self,
         canonical: &CanonicalReadBasis,
         records: &volicord_privacy::ProjectPrivacyInspection,

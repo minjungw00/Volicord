@@ -873,3 +873,17 @@ Requests still revalidate authority, exact identity and each contiguous code pag
 Loading hides the previous body. It never fetches current replacement code, renews
 retention, generates on read or treats a changed repository as publication deletion.
 Distributed static bytes retain their export-time basis and cannot later be revoked.
+
+### Accumulated Work catalogue and truthful Overview
+
+The adopted catalogue uses the common project shell, a name/summary search form,
+state links with Project-wide counts, recent/oldest/name order, query-result count
+and range, eight-item pages and compact rows. Canonical Open, Abandoned and
+Superseded are preserved alongside InProgress, Paused and Completed; no state is
+translated into acceptance or article availability. Rows show identity, separately
+admitted name/summary, actual record date/count and provisional article metadata.
+Unavailable wording stays absent; empty results retain usable controls. Native GET
+forms/links work without JavaScript and retain Project/UI/content-language scope.
+Overview's current card requires actual InProgress state. Its recent fallback is
+labelled recent, never active. Purpose absence and zero Work are ordinary states.
+Projection owns exact query/admission/order/refresh semantics.

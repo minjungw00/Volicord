@@ -314,8 +314,8 @@ impl ViewerServer {
         guarded_path: Option<ConfirmationRequestId>,
     ) -> Result<HttpResponse, HttpFailure> {
         query.require_only(&[
-            "project", "state", "page", "view", "work", "scope", "entity", "decision", "tool",
-            "locale", "language", "guarded",
+            "project", "q", "sort", "basis", "state", "page", "view", "work", "scope", "entity",
+            "decision", "tool", "locale", "language", "guarded",
         ])?;
         let project_id = query
             .optional("project")
@@ -599,8 +599,8 @@ impl FormData {
     fn return_location(&self) -> String {
         let mut fields = Vec::new();
         for key in [
-            "project", "state", "page", "view", "work", "scope", "entity", "decision", "tool",
-            "locale", "language", "guarded",
+            "project", "q", "sort", "basis", "state", "page", "view", "work", "scope", "entity",
+            "decision", "tool", "locale", "language", "guarded",
         ] {
             if let Some(value) = self.values.get(key).filter(|value| !value.is_empty()) {
                 fields.push(format!("{key}={}", percent_encode(value)));

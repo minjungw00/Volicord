@@ -1,8 +1,7 @@
 # Volicord local explanation reader
 
 The Viewer has precisely three reading destinations: **Overview / Repository
-explanation / Work**. The brand is left and the single primary navigation is
-right. Read-only status sits outside navigation. The maintained contract is
+explanation / Work**. The shared project sidebar contains the brand and the three destinations. Read-only status sits outside navigation. The maintained contract is
 [D-01–D-37 / AC-01–AC-35](../../docs/design/reader-experience-design.md).
 
 ```sh
@@ -120,3 +119,13 @@ deletion/forgetting/access withdrawal and damaged publication integrity still
 block all dependent meaning. New authoring keeps current-evidence admission.
 Export rechecks captured Source availability, so an older rendered page cannot
 publish code after its body expires. Static files cannot revoke distributed bytes.
+
+Live Work catalogue GET selectors are `view=work`, optional `project=ID`, `q=TERM`,
+`state=open|in_progress|paused|completed|abandoned|superseded`,
+`sort=recent|oldest|name`, and zero-based `page=N`. Fixed `locale=en|ko` and
+requested content `language` remain separate. Search is literal over independently
+permitted names/summaries in that content language. Pages contain eight entries;
+state/sidebar counts cover the Project, while result count/range cover the query.
+Native paging links carry `basis` for explicit refresh detection; changed data
+returns the first page with a notice. Article metadata is checked on opening,
+and catalogue reads prepare no articles or Source bodies.

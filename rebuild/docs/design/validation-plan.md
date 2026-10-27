@@ -4077,3 +4077,23 @@ exports and a restarted listener. `retained_originals` also accepts explicitly
 source-computed-deadline witnesses; actual cleanup and separate CLI reopening must
 preserve identical retained envelopes and exclude all cleaned Source bodies.
 No aggregate/gate/official V11, external provider run or human acceptance is implied.
+
+### Accumulated Work query and navigation controls
+
+Use focused checks only, preserving numeric exits and every failed attempt.
+Viewer `catalogue` records labelled synthetic controls through normal canonical
+and prepare/compose/record interfaces before Operations and actual HTTP reads.
+Independent expected identity sets exercise whole-dataset literal search, exact
+content language, state counts, ordering/ties, zero/one/many, page refresh,
+publication removal, canonical forgetting and foreign Projects. Counters separate
+card validation/storage metadata from article preparation and Source body reads.
+The ignored `seed_catalogue_browser` accepts a new exclusive output location via
+`VOLICORD_CATALOGUE_FIXTURE`; it never populates an ordinary user's Runtime.
+
+Browser controls compare the unchanged adopted reference at five widths and
+breakpoint transitions, native GET/no-JS forms, drawer, paging and actual detail/
+evidence/return. Keep synthetic scale inputs separate from genuine historical
+record reads and retain originals. Query measurements declare record/publication
+counts and scan limitations; no 48-entry or universal latency guarantee is implied.
+Scoped results are implementation self-review/technical evidence, not independent
+semantic evaluation, human/assistive acceptance or aggregate/gate/V11 qualification.

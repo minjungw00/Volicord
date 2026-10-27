@@ -2166,6 +2166,7 @@ mod tests {
             checkpoint: checkpoint.clone(),
         };
         ProjectProjection {
+            work_catalogue: None,
             repository_explanations: Vec::new(),
             repository_scope_metadata: crate::RepositoryScopeMetadata::default(),
             repository_analysis: crate::RepositoryAnalysisReading::absent(false),
