@@ -1505,3 +1505,20 @@ message order, including SVG transforms. Its negative controls change a par/stri
 header and move a message ahead of its predecessor. Existing hidden-label and
 line-through-text counterexamples remain separate controls; an ordinary edge
 crossing alone is not an error.
+
+`python3 -B rebuild/validation/shared/workspace_boundary.py --output <new-ignored-directory>
+[--context <ignored-untracked-file>]` is the maintained entry point for the auxiliary
+workspace-boundary diagnostic. It replaces historical scripts with fixed output
+paths. Like the existing measurement/browser drivers, it claims an absent directory
+before spawning a child or opening output, and uses exclusive file creation inside
+that attempt. Existing directories/files/symlinks, including successful and failed
+attempts, are refused without changing their contents. `metadata.stdout`,
+`metadata.stderr` and `boundary-result.json` retain actual numeric Cargo/wrapper exits;
+a fresh retry needs a new directory. Run its actual-entrypoint controls through
+`validate focused output-protection -- python3 -B
+rebuild/validation/shared/workspace_boundary_self_test.py`.
+
+The two previously overwritten diagnostics (`metadata.stdout` and
+`boundary-result.json`) remain an unresolved historical loss. Their prior bytes
+were not recovered; neither the historical scripts nor their outputs are edited.
+This is caller output protection, not a new evidence framework or qualification.
