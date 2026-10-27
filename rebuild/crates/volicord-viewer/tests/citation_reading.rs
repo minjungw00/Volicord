@@ -2737,6 +2737,38 @@ fn admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart(
 
 #[test]
 fn seed_retained_browser_runtime() -> Result<(), Box<dyn Error>> {
+    if let Some(path) = std::env::var_os("VOLICORD_RETAINED_CLEANUP_FIXTURE") {
+        // The browser supplies only its newly seeded disposable fixture. Use the
+        // ordinary system-clock cleanup, never an injected future timestamp.
+        let path = std::path::Path::new(&path);
+        let fixture: Value = serde_json::from_slice(&fs::read(path.join("fixture.json"))?)?;
+        let runtime = std::path::Path::new(fixture["runtime"].as_str().ok_or("runtime")?);
+        assert!(runtime.canonicalize()?.starts_with(path.canonicalize()?));
+        let id = fixture["project"].as_str().ok_or("project")?;
+        assert_eq!(id.len(), 32);
+        let bytes = (0..16)
+            .map(|i| u8::from_str_radix(&id[i * 2..i * 2 + 2], 16))
+            .collect::<Result<Vec<_>, _>>()?;
+        let project = ProjectId::from_slice(&bytes)?;
+        let mut privacy = volicord_privacy::PrivacyStore::open(runtime.join("privacy.sqlite3"))?;
+        let deleted = privacy.cleanup_expired(project)?;
+        assert!(!deleted.is_empty(), "a real expired body must be cleaned");
+        drop(privacy);
+        let reopened = LocalOperations::new(RuntimeLayout::new(runtime)?);
+        for record in reopened.privacy_status(project)?.managed_derived {
+            if deleted.contains(&record.id) {
+                assert!(record.expired_by_cleanup());
+                assert!(record.content.is_none());
+            }
+        }
+        let receipt = serde_json::json!({"clock":"system", "deleted":deleted});
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path.join("cleanup.json"))?;
+        serde_json::to_writer_pretty(file, &receipt)?;
+        return Ok(());
+    }
     let Some(output) = std::env::var_os("VOLICORD_RETAINED_REVIEW_ROOT") else {
         return Ok(());
     };
@@ -2766,6 +2798,7 @@ fn seed_retained_browser_runtime() -> Result<(), Box<dyn Error>> {
         serde_json::to_vec_pretty(&serde_json::json!({
         "runtime":f.ops.layout().root(),"project":f.project.to_string(),"analysis":f.analysis.to_string(),
         "repository":f.temp.path().join("repo"),"answers":answers,"originals":f.originals,"publication":retained.publication_id,"expires_at":expiry,
+        "format_version":EXPLANATION_VERSION,"document_metadata_version":GENERATED_DOCUMENT_METADATA_VERSION,
         "provenance":"authored polyglot lifetime control, not semantic or human approval"}))?,
     )?;
     let _ = f.temp.keep();

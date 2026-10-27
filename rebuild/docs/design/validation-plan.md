@@ -4185,3 +4185,15 @@ the two explicit inert shell-close exceptions. Exercise live controls and static
 absence through normal diagram publication, including all authored article layers,
 then recheck real exports, unique links, complete code and native return. Omission
 of inert live-only markup changes neither packaging nor admitted meaning.
+
+The maintained retained-reading browser preserves ordinary CLI reads and genuine
+script-free exports before and after one newly admitted publication's real TTL.
+Its seed command also supports `VOLICORD_RETAINED_CLEANUP_FIXTURE`: only that
+disposable fixture is cleaned by the normal PrivacyStore system-clock API, with
+an exclusive receipt and erased-body checks. No deadline is injected or renewed.
+The browser compares full provenance, prose and diagrams, then records matching
+publication/realization/meaning hashes, original Source deadlines, actual output
+hashes and executable identities after cleanup and a fresh listener. Payload,
+availability, comparison and HTML hashes may change; missing historical before
+bytes cannot be recreated by this new pair. Keep the separately authored current
+implementation note and wider repository/Work corpus distinct in delivery.

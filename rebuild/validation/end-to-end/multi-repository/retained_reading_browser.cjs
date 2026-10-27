@@ -3,11 +3,15 @@
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const {spawn, spawnSync} = require('node:child_process');
 const {pathToFileURL} = require('node:url');
+const crypto = require('node:crypto');
 const {createOutput} = require('../../viewer-design/product_review_controls.cjs');
 const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 createOutput(config.output);
 const write = (name, data) => fs.writeFileSync(path.join(config.output, name), data, {flag:'wx'});
 const result = {outcome:'failed', commands:[], external_requests:[], scope:'technical retained-reading controls; human/R3 acceptance separate'};
+const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+const fileIdentity = name => {const bytes=fs.readFileSync(path.join(config.output,name));return {path:name,bytes:bytes.length,sha256:hash(bytes)};};
+const meaning = answers => ({provenance:answers.provenance,prose:answers.prose,diagrams:answers.diagrams});
 let listener, browser, sequence = 0;
 function command(label, argv, env = {}) {
   const child = spawnSync(argv[0], argv.slice(1), {env:{...process.env, ...env}, maxBuffer:8*1024*1024, timeout:180000});
@@ -33,10 +37,20 @@ async function start(fixture) {
 }
 (async () => {
   try {
+    const candidate=command('candidate-before',['git','rev-parse','HEAD']).trim();
+    const diff=hash(command('diff-before',['git','diff','--binary','HEAD']));
+    const sourceStatus=command('status-before',['git','status','--porcelain']).trim()?'dirty preview':'clean committed candidate';
+    const executables=Object.fromEntries(['cli','viewer','mcp'].map(k=>[k,hash(fs.readFileSync(config[k]))]));
     const fixturePath = path.join(config.output,'fixture');
     command('seed', config.seed_command, {VOLICORD_RETAINED_REVIEW_ROOT:fixturePath});
     const f = JSON.parse(fs.readFileSync(path.join(fixturePath,'fixture.json'),'utf8'));
     const prefix=[config.cli,'--runtime',f.runtime,'--project',f.project];
+    const before=JSON.parse(command('before-read',[...prefix,'--json','repository','explain','read','--language','en']));
+    assert.equal(before.answers.provenance.publication_id,f.publication);
+    assert.ok(before.answers.source_excerpts.some(e=>e.text===f.originals[8]),'genuine pre-expiry body');
+    write('before-public.json',JSON.stringify(before));
+    command('before-export',[...prefix,'--json','viewer','export','--output',path.join(config.output,'before-expiry.html'),'--language','en']);
+    const baselineAt=Date.now();
     listener = await start(f);
     browser = await require(config.playwright).chromium.launch({executablePath:config.chromium,headless:true,args:['--no-sandbox'],
       env:{...process.env,...(config.fontconfig?{FONTCONFIG_FILE:config.fontconfig}:{})}});
@@ -57,6 +71,7 @@ async function start(fixture) {
     await page.screenshot({path:path.join(config.output,'before-expiry.png')});
     const wait=Math.max(0,Math.ceil(f.expires_at/1000-Date.now())+100);
     assert.ok(wait<60000,'seed must have sufficient remaining real TTL');
+    assert.ok(baselineAt*1000<f.expires_at,'baseline must precede the original Source deadline');
     await page.waitForTimeout(wait);
     // The typed original deadline clears every cached/hidden copy while idle;
     // this must precede a new request or a diagnostic flag.
@@ -88,7 +103,10 @@ async function start(fixture) {
       assert.equal(await page.locator('#repository-explanation .admitted-diagram').count(),diagrams);
       await page.screenshot({path:path.join(config.output,'same-page-comparison-unavailable.png')});
     } finally {fs.renameSync(f.repository+'.unavailable',f.repository);}
+    command('actual-expiry-cleanup',config.seed_command,{VOLICORD_RETAINED_CLEANUP_FIXTURE:fixturePath});
     const cli=JSON.parse(command('cli-read',[...prefix,'--json','repository','explain','read','--language','en']));
+    assert.deepEqual(meaning(cli.answers),meaning(before.answers),'same exact publication, authored meaning and admission basis');
+    write('after-public.json',JSON.stringify(cli));
     assert.equal(cli.answers.provenance.publication_id,f.publication);
     assert.deepEqual(cli.answers.prose,f.answers.prose);
     assert.ok(cli.answers.applicability.source_ranges.some(r=>r.limitation==='expired'));
@@ -123,6 +141,28 @@ async function start(fixture) {
       await native.screenshot({path:path.join(config.output,`offline-${width}.png`)});
     }
     await nojs.close();
+    assert.equal(command('candidate-after',['git','rev-parse','HEAD']).trim(),candidate,'candidate continuity');
+    assert.equal(hash(command('diff-after',['git','diff','--binary','HEAD'])),diff,'tracked source continuity');
+    assert.deepEqual(Object.fromEntries(['cli','viewer','mcp'].map(k=>[k,hash(fs.readFileSync(config[k]))])),executables,'executable continuity');
+    const renderers=[...new Set([...fs.readFileSync(offline,'utf8').matchAll(/data-renderer="([^"]+)"/g)].map(m=>m[1]))];
+    assert.equal(renderers.length,1,'actual exported renderer identity');
+    write('lifecycle.json',JSON.stringify({
+      classification:'new synthetic polyglot lifecycle; separate from current implementation and genuine Work corpus',
+      candidate,diff_sha256:diff,source_status:sourceStatus,executables,renderers,
+      format_version:f.format_version,document_metadata_version:f.document_metadata_version,
+      project:f.project,subject:before.answers.provenance.subject,publication:f.publication,
+      realization_fingerprint:before.answers.provenance.realization_fingerprint,
+      semantic_sha256:hash(JSON.stringify(meaning(before.answers))),
+      after_semantic_sha256:hash(JSON.stringify(meaning(cli.answers))),
+      baseline_at_unix_micros:baselineAt*1000,after_at_unix_micros:Date.now()*1000,
+      source_ranges:before.answers.applicability.source_ranges.map(r=>({...r,
+        source_id:before.answers.prose[r.unit_index].citations[r.citation_index].source_id,
+        range_sha256:before.answers.prose[r.unit_index].citations[r.citation_index].range_sha256})),
+      cleanup:JSON.parse(fs.readFileSync(path.join(fixturePath,'cleanup.json'))),restart:true,
+      before:fileIdentity('before-expiry.html'),after:fileIdentity('after-expiry.html'),
+      before_public:fileIdentity('before-public.json'),after_public:fileIdentity('after-public.json'),
+      expected_changes:'expired range payload removed; availability/comparison/check times and HTML hashes may change; permitted prose, diagrams, publication and realization stay identical'
+    },null,2));
     // Actual supported deletion, after testing independent lifetime/readability.
     // Revalidate an already open body so stale DOM/buffers cannot survive denial.
     const deniedContext=await browser.newContext();

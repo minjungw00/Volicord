@@ -578,7 +578,11 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         assert!(page.contains(
             "aria-label=\"Inspect The observed function returns the constant 5. · Observed file in selected snapshot · Source 1 ↗ · main.py:1–2\""
         ));
-        assert!(page.contains("<small class=\"source-label\">main.py:1–2</small>"));
+        assert!(page.contains("title=\"Observed file in selected snapshot · Source 1 ↗ · main.py:1–2\">Source 1 ↗</a>"));
+        assert!(!page.contains("<small class=\"source-label\">"));
+        // Exact code/path and full claim still belong to the evidence view;
+        // compact article actions change neither binding nor reading payload.
+        assert!(page.contains("class=\"source-path\""));
         assert!(page.contains("Observed file in selected snapshot"));
         assert_eq!(
             page.contains("Before: historical observation"),

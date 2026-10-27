@@ -432,7 +432,11 @@ fn reader_citation_actions(
             c.start_line,
             c.end_line
         );
-        html.push_str(&format!("<span class=\"evidence-choice\"><a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{} · {}\" title=\"{}\">{} ↗</a><small class=\"source-label\">{}:{}–{}</small>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&action),escape(&label),escape(&label),escape(&action),escape(&c.locator),c.start_line,c.end_line));
+        // The paragraph already states the claim. Keep its action subordinate;
+        // exact purpose/range remain accessible here and visible in the selected
+        // evidence, without repeating the sentence and path ahead of the map.
+        let visible_action = format!("{} {}", text(r.locale, "Source", "근거"), n + 1);
+        html.push_str(&format!("<span class=\"evidence-choice\"><a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{} · {}\" title=\"{}\">{} ↗</a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&action),escape(&label),escape(&label),escape(&visible_action)));
         source_window_omission(html, r, answers, c);
         html.push_str("</span>");
     }

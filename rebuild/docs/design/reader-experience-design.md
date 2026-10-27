@@ -860,6 +860,12 @@ authored and published with its actual direction, type and material conditions.
 Section numbers and quieter supporting paragraphs reflect actual document
 structure, without inventing helpers, changing heading roles or hiding limitations.
 
+Article citation actions use short, numbered Source links beside their own
+paragraph, so repeating a claim and full path does not displace the connected
+overview. Their accessible names retain the claim purpose and exact range; the
+selected evidence shows the complete claim, qualifications, path and code.
+Range unavailability/omission remains explicit beside the action.
+
 ### Adopted grounded figure and evidence hierarchy
 
 The adopted reference supersedes the earlier large connection-card annotations and
