@@ -2255,7 +2255,7 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
         ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
-        for html in [&live, &offline] {
+        for (html, snapshot) in [(&live, false), (&offline, true)] {
             assert!(!html.contains("data-initial-connection"));
             assert!(html.contains("<div class=\"diagram-full-view\">"));
             assert!(!html.contains("<details class=\"diagram-full-view\""));
@@ -2263,12 +2263,20 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
                 .find("class=\"unit diagram-caption\"")
                 .ok_or("caption")?;
             let map = html.find("class=\"diagram-full-view\"").ok_or("map")?;
-            let controls = html.find("class=\"diagram-controls\"").ok_or("controls")?;
             let detail = html.find("class=\"diagram-claims\"").ok_or("detail")?;
             assert!(
-                controls < map && map < caption && caption < detail,
+                map < caption && caption < detail,
                 "native reading order precedes detail"
             );
+            let controls = html.find("class=\"diagram-controls\"");
+            if snapshot {
+                assert!(
+                    controls.is_none(),
+                    "native static reading has no live toolbar"
+                );
+            } else {
+                assert!(controls.ok_or("live controls")? < map);
+            }
             assert!(html.contains("connection-navigation"));
             let id = if sequence { "answer" } else { "dependency" };
             let detail = html
