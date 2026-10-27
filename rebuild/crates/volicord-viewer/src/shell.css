@@ -65,6 +65,10 @@ main.shell.viewer-shell {box-sizing:border-box;margin:0 0 0 var(--rail-width);wi
 .doc .unit h3.unit-text {font-size:18px;color:var(--ink)}
 .doc .unit:has(h2) {margin:36px 0 14px}
 .article-section+.article-section {margin-top:32px}
+.doc {counter-reset:article-section}
+.article-section>.unit:has(h2) {position:relative;padding-left:39px;counter-increment:article-section}
+.article-section>.unit:has(h2)::before {content:counter(article-section,decimal-leading-zero);position:absolute;left:0;top:7px;width:23px;border-top:1px solid var(--accent);padding-top:3px;font:10px/1.6 "SFMono-Regular",Consolas,monospace;color:var(--accent)}
+.article-section>.unit:has(h2)+.unit:not(.diagram-caption) .unit-text {font-size:13px;line-height:1.85;color:var(--muted)}
 .article-section>.unit:has(h2):first-child {margin-top:0}
 .unit+.unit {margin-top:18px}
 .eyebrow {font-size:10px;letter-spacing:.08em;margin-bottom:15px}

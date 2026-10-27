@@ -844,6 +844,13 @@ The unchanged ignored reference package is design evidence, not Product records 
 admission. Catalogue query/scale completion, semantic quality and human/assistive
 acceptance remain separate from these shell/navigation controls.
 
+Grounded reader names precede exact identifiers where normal authorship supplies
+both. Explicit printable label line breaks express that hierarchy; no locale table
+or renderer inference translates code vocabulary. Specific relation wording is
+authored and published with its actual direction, type and material conditions.
+Section numbers and quieter supporting paragraphs reflect actual document
+structure, without inventing helpers, changing heading roles or hiding limitations.
+
 ### Adopted grounded figure and evidence hierarchy
 
 The adopted reference supersedes the earlier large connection-card annotations and

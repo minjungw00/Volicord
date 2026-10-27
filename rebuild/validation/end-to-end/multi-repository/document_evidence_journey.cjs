@@ -50,7 +50,7 @@ async function run(config){
     const key=prefix+'-'+d.id;await page.screenshot({path:path.join(config.output,key+'-initial.png')});
     const entry=await observeOverview(figure,d);write(key+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
-    const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/11');
+    const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/12');
     const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(key+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
     const m=d.meaning,semantic=(m.relations||m.groups?.flatMap(g=>g.messages)||m.nodes||m.participants)[0];
     const label=semantic.label,unit=publicAnswers.prose[label.unit];const citationIndex=unit.citations.findIndex(q=>q.claim_start_byte<=label.start_byte&&q.claim_end_byte>=label.end_byte);assert.ok(citationIndex>=0,'covering admitted Source');

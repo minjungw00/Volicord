@@ -64,6 +64,17 @@ async function inspectDiagram(svg, diagram, prose) {
     for(const node of nodes) {
       const name=expected.find(e=>e.id===node.id).text;
       if(nodes.filter(n=>expected.find(e=>e.id===n.id).text===name).length>1 && !visibleTexts(anchor(node.id)).some(t=>t.includes(node.id)))errors.push({kind:'missing-repeated-name-id',element:node.id});
+      if(name.includes('\u2028')) {
+        const label=pick(anchor(node.id),'.diagram-node-label');
+        const spans=[...label?.querySelectorAll('tspan')||[]].filter(rendered);
+        const split=spans.findIndex(t=>t.textContent.endsWith('\u2028'));
+        if(!label || label.textContent!==name || split<0 || split===spans.length-1)errors.push({kind:'label-hierarchy',element:node.id});
+        else for(const [i,t] of spans.entries()) {
+          const size=parseFloat(getComputedStyle(t).fontSize);
+          if(size!==(i<=split?16:12))errors.push({kind:'label-hierarchy',element:node.id,size});
+          if(i>split && bounds(t).y<=bounds(spans[split]).y)errors.push({kind:'label-hierarchy',element:node.id});
+        }
+      }
     }
     const tasks=[];
     for(const e of edges) {
@@ -122,7 +133,7 @@ async function inspectDiagram(svg, diagram, prose) {
       const r=box(bounds(t));const style=getComputedStyle(t);
       texts.push({text:t.textContent,element:t.closest('a')?.id,box:r,font:style.font,fontSize:parseFloat(style.fontSize)});
       if(r.x<view.x-1 || r.y<view.y-1 || r.x+r.width>view.x+view.width+1 || r.y+r.height>view.y+view.height+1)errors.push({kind:'clipped-text',text:t.textContent,box:r});
-      if(parseFloat(style.fontSize)<(t.closest('.diagram-node-kind')?12:t.closest('.relation-wording,.diagram-condition')?13:16))errors.push({kind:'small-text',text:t.textContent});
+      if(parseFloat(style.fontSize)<(t.closest('.diagram-node-kind,.diagram-label-support')?12:t.closest('.relation-wording,.diagram-condition')?13:16))errors.push({kind:'small-text',text:t.textContent});
     }
     for(let i=0;i<texts.length;i++)for(let j=i+1;j<texts.length;j++)if(intersects(texts[i].box,texts[j].box))errors.push({kind:'text-overlap',a:texts[i],b:texts[j]});
     for(const p of [...root.querySelectorAll('.relation-line,.participant-box')].filter(rendered)) {

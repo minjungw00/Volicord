@@ -665,6 +665,14 @@ canonical/privacy/Source-copy formats and all existing lifetimes remain unchange
 No current explanation is discarded or converted for this presentation. Authored
 headings/short labels still need fresh explicit compose/record from allowed Sources.
 
+Renderer 12 renders already permitted authored U+2028 label breaks as primary and
+supporting rows, preserves quiet mixed types after wrapping, and presents actual
+section ordinals. This is typography over the existing exact label span, not a
+new semantic field or label grammar required for admission. Explanation v8,
+generated-document metadata 11, preparation fingerprints, all retained content and
+independent short publications remain supported unchanged. New wording still
+requires normal preparation/composition/recording and complete Source grounding.
+
 ### Ephemeral Work catalogue projections
 
 Native diagram-evidence origin fragments and shared-payload return aliases are

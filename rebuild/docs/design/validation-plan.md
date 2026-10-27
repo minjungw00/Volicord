@@ -4136,3 +4136,17 @@ to exact native return/timeline checks. Live reader controls allow only the new
 GET search form; retired management forms and all snapshot forms stay absent.
 History consumers check the adopted live rows and the existing bounded export
 cards without weakening independent state, report or audit assertions.
+
+### Reader terminology and document hierarchy controls
+
+Extend the existing shell/reference check with independently declared primary
+names, exact supporting identifiers, specific directed relationships and authored
+section names. Inspect actual normal publications and unchanged reference HTML
+at equivalent viewport/font/locale before selection, then selected-code and exact
+returned states. Preserve legitimate record/count/content differences explicitly.
+Reject primary/type substitution, missing or promoted supporting names, generic
+relations, wrong endpoints and heading-role substitution. Geometry still checks
+complete guards, state ownership and sequence order; currentness/privacy and all
+original Source bindings remain separate controls. Use ordinary fresh authorship
+for changed wording, and the existing format for pure typography. No fixed SVG,
+fixture record in user Runtime, authoritative gate or human verdict follows.

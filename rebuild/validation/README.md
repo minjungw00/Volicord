@@ -1568,3 +1568,19 @@ the supported CLI in the disposable fixture Runtime, then revalidates the alread
 open reading point. The real denial response must remove publication prose/maps
 and all code copies from that open page. Previously distributed static exports
 retain their recorded basis; this control does not claim remote revocation.
+
+`project_shell_browser.cjs` accepts an independently declared `hierarchy` on a
+case with its ordinary public answer JSON: `diagram`, `nodes` (element ID to
+`[primary name, supporting identifier]`), `relations` (ID to complete wording),
+and `sections` (expected authored section names). Before disposable controls it
+captures the ordinary public page and checks primary/supporting rows, exact
+relations, actual heading roles, section ordinals and glyph/route geometry.
+Negative controls promote supporting text, shrink primary text, substitute a
+generic relation, change an endpoint and replace a heading. Reference comparison
+also records the unchanged reference's actual concept names/identifiers,
+relationships and section/helper wording. Expectations must come from independently
+inspected meaning/design, never be generated from the candidate. Actual-data count
+and content differences remain distinct from missing presentation. Selected-code
+and returned screenshots/bytes use `grounded_diagrams_browser.cjs` on those same
+publication identities. Capture catalogue/detail/evidence/list return through
+`work_catalogue_browser.cjs` with genuine records and separately labelled scale inputs.

@@ -449,7 +449,9 @@ fn graph(
         } else {
             small_writing(&mut out, lx, py, name, card.w - 12);
             if !kind.is_empty() {
+                out.push_str("<g class=\"diagram-node-kind\">");
                 small_writing(&mut out, lx, py + 20 * label_lines, kind, card.w - 12);
+                out.push_str("</g>");
             }
         }
         let context_y = py + 20 * (label_lines + kind_lines);
@@ -509,7 +511,7 @@ fn graph(
         let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
         let th = 24 * (lines(name, tw) + lines(&kind, tw) + lines(&owner, tw));
         let top = r.y + (r.h - th) / 2 + 16;
-        writing(&mut out, r.x + r.w / 2, top, name, tw);
+        super::node_text(&mut out, r.x + r.w / 2, top, name, tw);
         if !kind.is_empty() {
             out.push_str("<g class=\"diagram-node-kind\">");
             writing(
@@ -604,7 +606,7 @@ fn sequence(
             header,
             "participant-box",
         );
-        writing(
+        super::node_text(
             &mut out,
             x(i),
             34,

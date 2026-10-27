@@ -115,6 +115,8 @@ body:has(.diagram-expanded):not([data-source-open=true]) {overflow:hidden}
 
 .connected-overview .diagram-node-kind {font-size:12px;fill:var(--muted)}
 .connected-overview .diagram-node-kind text {fill:var(--muted)}
+.connected-overview .diagram-node-label {font-weight:650}
+.connected-overview .diagram-label-support {font:400 12px "SFMono-Regular",Consolas,"Liberation Mono",monospace;fill:var(--muted)}
 .doc-head h1 {white-space:pre-line}
 body[data-viewer-mode=snapshot]:not(:has(main :target)) .nav-link[data-destination=overview],
 body[data-viewer-mode=snapshot]:has(#overview:target,#overview :target) .nav-link[data-destination=overview],

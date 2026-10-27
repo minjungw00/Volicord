@@ -25,7 +25,7 @@ async function observeOverview(figure, diagram) {
     }
     const glyphs=[...svg?.querySelectorAll('text tspan')||[]].filter(visible);
     // getScreenCTM accounts for CSS/SVG transforms, including miniature maps.
-    for(const g of glyphs){const m=g.getScreenCTM();const size=parseFloat(getComputedStyle(g).fontSize)*Math.hypot(m.a,m.b);if(size<(g.closest('.diagram-node-kind')?11.9:g.closest('.relation-wording,.diagram-condition')?12.9:15.9))errors.push('essential text scaled below native reading size');}
+    for(const g of glyphs){const m=g.getScreenCTM();const size=parseFloat(getComputedStyle(g).fontSize)*Math.hypot(m.a,m.b);if(size<(g.closest('.diagram-node-kind,.diagram-label-support')?11.9:g.closest('.relation-wording,.diagram-condition')?12.9:15.9))errors.push('essential text scaled below native reading size');}
     if(!glyphs.length)errors.push('no rendered labels');
     const controls=figure.querySelector('.diagram-controls');
     const claims=[...figure.querySelectorAll('.diagram-claim')].filter(visible);

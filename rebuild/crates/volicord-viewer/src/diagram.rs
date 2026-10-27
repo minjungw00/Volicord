@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/11";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/12";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -14,35 +14,42 @@ fn esc(s: &str) -> String {
 fn measure_text(s: &str) -> usize {
     s.chars()
         .map(|ch| {
-            if !ch.is_ascii() || "MWmw@%&#".contains(ch) {
-                16
+            if ch == '\u{2028}' {
+                0
+            } else if !ch.is_ascii() || "MWmw@%&#".contains(ch) {
+                18
             } else if " iljft.,:;'!|()[]".contains(ch) {
                 6
             } else if ch.is_ascii_uppercase() {
-                11
+                13
             } else {
-                10
+                12
             }
         })
         .sum()
 }
 fn words(s: &str, limit: usize) -> Vec<String> {
-    // Native 16px text. Keep short standalone identifiers/words intact when
-    // the conservative estimate differs by at most the surrounding padding.
-    // Browser glyph checks verify the actual font, not this estimate.
+    // Reserve native 16px semibold glyph width. Every word must fit its own
+    // text rectangle, including narrow participant headers; using the box's
+    // padding as overflow space lets its border cut through the name.
     let mut result = Vec::new();
     let mut line = String::new();
     let mut used = 0;
     for token in s.split_inclusive(char::is_whitespace) {
         let size = measure_text(token);
-        let whole = token.trim_end_matches(char::is_whitespace);
         if used > 0 && used + size > limit {
             result.push(std::mem::take(&mut line));
             used = 0;
         }
-        if size <= limit || (whole.chars().count() <= 14 && measure_text(whole) <= limit + 12) {
+        if size <= limit {
             line.push_str(token);
             used += size;
+            // U+2028 is an authored printable line separator, already sealed
+            // with the label. Never infer a name/translation from its text.
+            if token.ends_with('\u{2028}') {
+                result.push(std::mem::take(&mut line));
+                used = 0;
+            }
             continue;
         }
         for ch in token.chars() {
@@ -53,12 +60,37 @@ fn words(s: &str, limit: usize) -> Vec<String> {
             }
             line.push(ch);
             used += size;
+            if ch == '\u{2028}' {
+                result.push(std::mem::take(&mut line));
+                used = 0;
+            }
         }
     }
     if !line.is_empty() {
         result.push(line)
     }
     result
+}
+
+fn node_text(out: &mut String, x: usize, y: usize, value: &str, width: usize) {
+    out.push_str(&format!(
+        "<text class=\"diagram-node-label\" x=\"{x}\" y=\"{y}\" text-anchor=\"middle\">"
+    ));
+    let mut supporting = false;
+    for (i, line) in words(value, width).iter().enumerate() {
+        out.push_str(&format!(
+            "<tspan{} x=\"{x}\" dy=\"{}\">{}</tspan>",
+            if supporting {
+                " class=\"diagram-label-support\""
+            } else {
+                ""
+            },
+            if i == 0 { 0 } else { 24 },
+            esc(line)
+        ));
+        supporting |= line.ends_with('\u{2028}');
+    }
+    out.push_str("</text>");
 }
 
 fn text(out: &mut String, x: usize, y: usize, value: &str, width: usize) {
@@ -313,6 +345,28 @@ pub(crate) fn element_caption(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn authored_line_separator_preserves_name_and_support_without_inference() {
+        let label = "진행 기록\u{2028}Checkpoint";
+        assert_eq!(words(label, 300), vec!["진행 기록\u{2028}", "Checkpoint"]);
+        let mut out = String::new();
+        node_text(&mut out, 100, 24, label, 300);
+        assert!(out.contains("dy=\"0\">진행 기록\u{2028}</tspan>"));
+        assert!(out.contains("class=\"diagram-label-support\" x=\"100\" dy=\"24\">Checkpoint"));
+        out.clear();
+        node_text(&mut out, 100, 24, "Checkpoint", 300);
+        assert!(!out.contains("diagram-label-support"));
+        assert!(!out.contains("진행 기록"));
+        let wrapped = words("긴 식별자\u{2028}VeryLongIdentifierThatMustWrap", 80);
+        assert_eq!(
+            wrapped.concat(),
+            "긴 식별자\u{2028}VeryLongIdentifierThatMustWrap"
+        );
+        assert!(wrapped.iter().any(|line| line.ends_with('\u{2028}')));
+        // A short native-size word may still exceed a narrow participant.
+        // Reserving padding for that overflow lets the border cross glyphs.
+        assert_eq!(words("동기화", 43), vec!["동기", "화"]);
+    }
     fn svg(
         d: &GroundedDiagram,
         texts: &[&str],

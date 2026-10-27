@@ -32,13 +32,25 @@ async function start(item,runtime){
    console.log('width',item.key,width);
    await page.setViewportSize({width,height:900});await page.goto(address());await page.evaluate(()=>document.fonts.ready);await frame(page);
    await page.screenshot({path:path.join(config.output,`${item.key}-${width}-initial.png`)});
+   if(item.hierarchy){
+    const publication=JSON.parse(fs.readFileSync(item.public));
+    const checks=await require('./reader_hierarchy.cjs').verify(page,item.hierarchy,publication,width===(config.widths||[1440])[0]);
+    write(`${item.key}-${width}-hierarchy.json`,JSON.stringify(checks));
+    await page.goto(address());await page.evaluate(()=>document.fonts.ready);await frame(page);
+   }
    const initial=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,rail:getComputedStyle(document.querySelector('.project-rail')).width,article:document.querySelector('.doc').clientWidth,nav:[...document.querySelectorAll('.project-navigation [aria-current=page]')].map(n=>n.dataset.destination),font:getComputedStyle(document.body).fontFamily,ink:getComputedStyle(document.body).color,toc:document.querySelector('.document-nav')?.getBoundingClientRect().toJSON(),contents:document.querySelector('.document-nav>summary')?.getClientRects().length}));
    if(config.reference){
     const ref=await browser.newContext({viewport:{width,height:900},locale:'ko-KR'});
     await ref.route('**/*',route=>new URL(route.request().url()).origin==='http://reference.invalid'?route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(config.reference,'repository.html'))}):route.abort());
     const oracle=await ref.newPage();await oracle.goto('http://reference.invalid/repository.html');await oracle.evaluate(()=>document.fonts.ready);await frame(oracle);
     const actual=await presentation(page),expected=await presentation(oracle,true);
-    write(`${item.key}-${width}-reference-comparison.json`,JSON.stringify({reference_sha256:hash(path.join(config.reference,'repository.html')),actual,expected}));
+    const hierarchy=await oracle.locator('#repo-document .desktop-map').first().evaluate(n=>({
+     nodes:[...n.querySelectorAll('.map-node')].map(n=>({name:n.querySelector('.node-name')?.textContent,identifier:n.querySelector('.node-code')?.textContent})),
+     relations:[...n.querySelectorAll('.edge-label')].map(n=>n.textContent),
+     section:n.closest('.article-section').querySelector('h2')?.textContent,
+     helper:n.closest('.article-section').querySelector('.section-heading p')?.textContent
+    }));
+    write(`${item.key}-${width}-reference-comparison.json`,JSON.stringify({reference_sha256:hash(path.join(config.reference,'repository.html')),actual,expected,reference_hierarchy:hierarchy,declared_expectation:item.hierarchy||null,comparison_scope:'dependent visual inspection; record/count/content differences are not fidelity failures'}));
     await oracle.screenshot({path:path.join(config.output,`${item.key}-${width}-reference.png`)});await ref.close();
     if(!config.reference_report_only){assert.deepEqual(actual,expected,'unchanged reference typography and rail');
      await page.locator('.project-rail').evaluate(n=>n.style.backgroundColor='purple');assert.notDeepEqual(await presentation(page),expected,'palette substitution must fail');await page.locator('.project-rail').evaluate(n=>n.style.removeProperty('background-color'));
