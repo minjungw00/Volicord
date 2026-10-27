@@ -2,8 +2,19 @@
 // never the expected design. Called on actual live Product output before controls.
 const assert=require('node:assert/strict');
 const {inspectDiagram}=require('./diagram_geometry.cjs');
+async function citationHierarchy(page) {
+ const actions=await page.locator('.unit .evidence-choice .evidence-link').evaluateAll(nodes=>nodes.map(n=>({
+  visible:n.textContent.trim(),purpose:n.getAttribute('aria-label'),
+  repeatedPath:!!n.parentElement.querySelector('.source-label')
+ })));
+ return actions.flatMap(a=>[
+  ...(/^(?:Source|근거) \d+ ↗$/.test(a.visible)?[]:['repeated article claim']),
+  ...(/^(?:Inspect|확인:) .+ · .+:\d+–\d+$/.test(a.purpose||'')?[]:['missing accessible claim/range']),
+  ...(a.repeatedPath?['repeated article path']:[])
+ ]);
+}
 async function inspect(page,expected) {
- const errors=[];
+ const errors=await citationHierarchy(page);
  const figure=page.locator(`.admitted-diagram[id$="-${expected.diagram}"]`);
  for(const [id,[primary,support]] of Object.entries(expected.nodes)) {
   const label=figure.locator(`a.diagram-element[id$="-${id}"] .diagram-node-label:visible`);
@@ -33,6 +44,16 @@ async function verify(page,expected,publication,negative=false) {
  const figure=page.locator(`.admitted-diagram[id$="-${expected.diagram}"]`),d=publication.diagrams.find(d=>d.id===expected.diagram);
  assert.deepEqual((await inspectDiagram(figure.locator('svg'),d,publication.prose)).errors,[]);
  if(!negative)return {hierarchy:true};
+ const action=page.locator('.unit .evidence-choice .evidence-link').first();
+ assert.ok(await action.count(),'real article citation action required');
+ const originalAction=await action.textContent();
+ await action.evaluate(n=>n.textContent=n.getAttribute('aria-label'));
+ assert.ok((await citationHierarchy(page)).includes('repeated article claim'),'a full claim repeated before the map fails');
+ await action.evaluate((n,s)=>n.textContent=s,originalAction);
+ const originalPurpose=await action.getAttribute('aria-label');
+ await action.evaluate(n=>n.removeAttribute('aria-label'));
+ assert.ok((await citationHierarchy(page)).includes('missing accessible claim/range'),'compact wording cannot remove exact accessible purpose');
+ await action.evaluate((n,s)=>n.setAttribute('aria-label',s),originalPurpose);
  const name=figure.locator('.diagram-node-label:visible').first(),saved=await name.innerHTML();
  await name.locator('tspan').first().evaluate(n=>n.style.fontSize='12px');
  assert.ok((await inspect(page,expected)).some(e=>e.startsWith('hierarchy')),'miniature primary fails');
@@ -51,6 +72,6 @@ async function verify(page,expected,publication,negative=false) {
  const heading=page.locator('.article-section>.unit h2').first(),tag=await heading.evaluate(n=>{const p=document.createElement('p');p.innerHTML=n.innerHTML;n.replaceWith(p);return p.outerHTML;});
  assert.ok((await inspect(page,expected)).includes('section meaning'),'heading/type substitution fails');
  // This is the end of disposable controls. Caller reloads the public route.
- return {miniaturePrimaryRejected:true,promotedSupportRejected:true,ambiguousRelationRejected:true,wrongEndpointRejected:true,headingSubstitutionRejected:!!tag};
+ return {repeatedClaimRejected:true,missingAccessiblePurposeRejected:true,miniaturePrimaryRejected:true,promotedSupportRejected:true,ambiguousRelationRejected:true,wrongEndpointRejected:true,headingSubstitutionRejected:!!tag};
 }
-module.exports={inspect,verify};
+module.exports={inspect,verify,citationHierarchy};

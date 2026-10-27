@@ -4197,3 +4197,10 @@ hashes and executable identities after cleanup and a fresh listener. Payload,
 availability, comparison and HTML hashes may change; missing historical before
 bytes cannot be recreated by this new pair. Keep the separately authored current
 implementation note and wider repository/Work corpus distinct in delivery.
+
+Whole-document browser consumers also reject repeated full claims/paths in
+paragraph citation actions and missing accessible purpose/range, across every
+declared language/publication. The existing hierarchy controls deliberately
+restore the repeated-claim defect and remove the accessible purpose independently;
+both must fail before the ordinary page is reloaded. Fixed English UI wording
+and authored English/Korean relationship wording remain independent expectations.

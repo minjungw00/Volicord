@@ -42,6 +42,8 @@ async function run(config){
    }
    await page.goto(live?address:pathToFileURL(c.offline).href+'#'+(c.work?'work-'+c.work:'repository-explanation'));if(page.readerNoScript)await delay(200);else await page.evaluate(()=>document.fonts.ready);await settled(page);
    const prefix=`${c.key}-${width}-${mode}`;await page.screenshot({path:path.join(config.output,prefix+'-article-initial.png')});
+   assert.deepEqual(await require('./reader_hierarchy.cjs').citationHierarchy(page),[],
+    'whole declared corpus keeps compact article actions and exact accessible purpose/range');
    if(live)assert.equal(await page.locator('.project-navigation a[aria-current=page]').getAttribute('data-destination'),c.work?'work':'repository');
    else assert.equal(await page.locator('.project-navigation a').count(),3);
    const figures=page.locator('.admitted-diagram');assert.equal(await figures.count(),publicAnswers.diagrams.length,'whole declared publication figures');
