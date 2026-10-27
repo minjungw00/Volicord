@@ -115,10 +115,14 @@ module.exports.criticalLink=criticalLink;
 module.exports.criticalPoint=criticalPoint;
 
 function citationResponse(page,task,offset) {
- const pending=page.waitForResponse(r=>{const u=new URL(r.url());return u.pathname==='/citation'&&u.searchParams.get('unit')===String(task.unit_index)&&u.searchParams.get('citation')===String(task.citation_index)&&u.searchParams.get('offset')===String(offset)&&u.searchParams.get('realization')===task.realization_fingerprint;});
- // Awaiters still reject. Handle the promise immediately so a failed preceding
- // UI action cannot crash Node before the driver preserves failure and teardown.
+ const matches=(r,n)=>{const u=new URL(r.url());return u.pathname==='/citation'&&u.searchParams.get('unit')===String(task.unit_index)&&u.searchParams.get('citation')===String(task.citation_index)&&u.searchParams.get('offset')===String(n)&&u.searchParams.get('realization')===task.realization_fingerprint;};
+ const responses=new Map();
+ const collect=r=>{const n=Number(new URL(r.url()).searchParams.get('offset'));if(matches(r,n))responses.set(n,r);};
+ page.on?.('response',collect);
+ const pending=page.waitForResponse(r=>matches(r,offset));
  pending.catch(()=>{});
+ pending.waitForOffset=n=>responses.has(n)?Promise.resolve(responses.get(n)):page.waitForResponse(r=>matches(r,n));
+ pending.dispose=()=>page.off?.('response',collect);
  return pending;
 }
 // Resolve only an exact native payload alias; expected text/hashes still come
@@ -169,7 +173,7 @@ async function criticalBytes(page,point,task,offline,pending) {
  }else{
    const inspection=point.locator('.citation-inspection');
    assert.equal(await inspection.getAttribute('data-realization'),task.realization_fingerprint);
-   const chunks=[];let offset=0;const target=await point.getAttribute('id');
+   const chunks=[];let offset=0;const target=await point.getAttribute('id');const stream=pending;
    while(true){
     const response=await pending;assert.equal(response.status(),200,'critical permitted read must succeed');
     const value=await response.json(),chunk=value.chunk;
@@ -177,12 +181,14 @@ async function criticalBytes(page,point,task,offline,pending) {
     assert.equal(chunk.displayed_start_byte,task.citation.start_byte+offset);
     assert.ok(Buffer.byteLength(chunk.text)>0&&Buffer.byteLength(chunk.text)<=4096);
     assert.equal(chunk.displayed_end_byte,chunk.displayed_start_byte+Buffer.byteLength(chunk.text));
-    await page.waitForFunction(({id,text})=>document.getElementById(id)?.querySelector('.citation-inspection code')?.textContent===text,{id:target,text:chunk.text});
     chunks.push(chunk.text);pages++;bytes+=Buffer.byteLength(chunk.text);
+    await page.waitForFunction(({id,text})=>document.getElementById(id)?.querySelector('.citation-inspection code')?.textContent.startsWith(text),{id:target,text:chunks.join('')});
     if(chunk.next_offset===null)break;
     assert.equal(chunk.next_offset,offset+Buffer.byteLength(chunk.text));offset=chunk.next_offset;
-    pending=citationResponse(page,task,offset);await inspection.locator('button.citation-read').click();
+    pending=stream.waitForOffset(offset);
    }
+   stream.dispose?.();
+   assert.equal(await inspection.locator('code').textContent(),chunks.join(''),'complete visible original range');
    assert.equal(bytes,task.citation.end_byte-task.citation.start_byte,'complete critical cited range');
    assert.equal('sha256:'+hash(Buffer.from(chunks.join(''))),task.citation.range_sha256,'complete critical Source hash');
 

@@ -25,13 +25,13 @@ async function observeOverview(figure, diagram) {
     }
     const glyphs=[...svg?.querySelectorAll('text tspan')||[]].filter(visible);
     // getScreenCTM accounts for CSS/SVG transforms, including miniature maps.
-    for(const g of glyphs){const m=g.getScreenCTM();const size=parseFloat(getComputedStyle(g).fontSize)*Math.hypot(m.a,m.b);if(size<15.9)errors.push('essential text scaled below native reading size');}
+    for(const g of glyphs){const m=g.getScreenCTM();const size=parseFloat(getComputedStyle(g).fontSize)*Math.hypot(m.a,m.b);if(size<(g.closest('.diagram-node-kind')?11.9:g.closest('.relation-wording,.diagram-condition')?12.9:15.9))errors.push('essential text scaled below native reading size');}
     if(!glyphs.length)errors.push('no rendered labels');
     const controls=figure.querySelector('.diagram-controls');
     const claims=[...figure.querySelectorAll('.diagram-claim')].filter(visible);
     if(claims.length)errors.push('detail selected before orientation');
     const b=svg?.getBoundingClientRect();
-    if(controls&&visible(controls)&&controls.getBoundingClientRect().top<b.bottom-1)errors.push('detail controls precede map');
+    if(controls&&visible(controls)){const c=controls.getBoundingClientRect();if(c.top<b.top&&c.bottom>b.top+1)errors.push('figure controls obscure the map');}
     return {errors,initialInteractions,nodes:nodes.length,renderedGlyphRuns:glyphs.length,canvas:b?{width:b.width,height:b.height}:null,scroll:{pageY:scrollY,left:viewport?.scrollLeft,top:viewport?.scrollTop},classification:'technical supporting observation; comprehension assessment remains separate'};
   },nodes);
 }
@@ -48,9 +48,9 @@ function entryObserver() {
     new MutationObserver(records=>{
       for(const record of records){const n=record.target;
         if((n.matches('details')&&record.attributeName==='open'&&n.closest('.admitted-diagram'))||
-           (n.matches('svg')&&['style','transform'].includes(record.attributeName)))window.__overviewEntryInteractions.push('figure disclosure/geometry changed');
+           (n.matches('.admitted-diagram')&&n.classList.contains('diagram-expanded')&&record.attributeName==='class'))window.__overviewEntryInteractions.push('figure disclosure/geometry changed');
       }
-    }).observe(document,{subtree:true,attributes:true,attributeFilter:['open','style','transform']});
+    }).observe(document,{subtree:true,attributes:true,attributeFilter:['open','class']});
 }
 async function installEntryObserver(page) {
   // Register before navigation so ordinary page scripts cannot perform the

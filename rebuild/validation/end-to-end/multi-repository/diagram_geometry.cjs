@@ -15,7 +15,7 @@ async function inspectDiagram(svg, diagram, prose) {
     expected.push({id:r.id,text:label(r.label)});
     if(owner)expected.push({id:r.id,text:owner});
     const endpoint=id=>{const n=m.nodes.find(n=>n.id===id);const name=label(n.label);return m.nodes.filter(n=>label(n.label)===name).length>1?`${name} [${id}]`:name;};
-    expected.push({id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`});
+    expected.push({id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`,accessibility:true});
     if(r.condition)expected.push({id:r.id+':condition',text:label(r.condition),prefix:true});
   }
   for(const [i,g] of (m.groups||[]).entries()) {
@@ -105,6 +105,7 @@ async function inspectDiagram(svg, diagram, prose) {
     }
     for(const e of expected) {
       const a=[...root.querySelectorAll('a.diagram-element')].find(a=>a.id===root.closest('figure').id+'-'+e.id);
+      if(e.accessibility){if(!a?.getAttribute('aria-label')?.includes(e.text))errors.push({kind:'missing-endpoint-binding',element:e.id,expected:e.text});continue;}
       const displayed=a && [...a.querySelectorAll('text')].find(t=>rendered(t)&&(e.prefix?t.textContent.endsWith(e.text):t.textContent===e.text));
       let visible=Boolean(displayed);
       if(displayed) {
@@ -120,7 +121,7 @@ async function inspectDiagram(svg, diagram, prose) {
       const r=box(bounds(t));const style=getComputedStyle(t);
       texts.push({text:t.textContent,element:t.closest('a')?.id,box:r,font:style.font,fontSize:parseFloat(style.fontSize)});
       if(r.x<view.x-1 || r.y<view.y-1 || r.x+r.width>view.x+view.width+1 || r.y+r.height>view.y+view.height+1)errors.push({kind:'clipped-text',text:t.textContent,box:r});
-      if(parseFloat(style.fontSize)<16)errors.push({kind:'small-text',text:t.textContent});
+      if(parseFloat(style.fontSize)<(t.closest('.diagram-node-kind')?12:t.closest('.relation-wording,.diagram-condition')?13:16))errors.push({kind:'small-text',text:t.textContent});
     }
     for(let i=0;i<texts.length;i++)for(let j=i+1;j<texts.length;j++)if(intersects(texts[i].box,texts[j].box))errors.push({kind:'text-overlap',a:texts[i],b:texts[j]});
     for(const p of [...root.querySelectorAll('.relation-line,.participant-box')].filter(rendered)) {

@@ -4050,3 +4050,30 @@ direct/history/native modifier anchors, many/long headings and drawer modal resi
 Keep unchanged reference screenshots and rejected attempts. New screenshots judge
 fidelity against the adopted reference, not freshly generated expected images.
 No aggregate/gate/official V11/provider run is part of this focused work.
+
+### Grounded document-reader and idle-expiry focused validation
+
+`grounded_diagrams_browser.cjs` accepts `document_reader: true` for the adopted
+normal reader journey through its existing actual local listener and declared
+publication corpus. Each case provides a normal public reading, Runtime, Project,
+repository, language, export and optional exact Work. Capture ordinary article and
+each figure before selection. Check the whole corpus at the requested widths in
+live/offline/no-JS modes, and bind selected labels/ranges to original file bytes,
+complete paged code, actual glyph/path geometry and visible element/focus return.
+Raw screens, original publications and failed attempts remain ignored and immutable.
+
+Relation/type text uses the adopted quiet hierarchy; geometry independently checks
+actual glyphs against native assigned sizes (nodes 16px, relation 13px, quiet type
+12px) and all routed endpoints/guards. The reference is a separate unchanged visual
+oracle. Responsive Product layout is ordinary rendering, not test assistance;
+observation must still reject prior element/disclosure/expansion interaction.
+
+`retained_reading_browser.cjs` additionally checks an idle open page after its actual
+60-second Source TTL, before another request. Expired bytes must already be absent
+from hidden code nodes while explanation identity/meaning and other ranges survive.
+Continue through uncited repository change, unavailable comparison, CLI/MCP, new
+exports and a restarted listener. `retained_originals` also accepts explicitly
+`lifetime_class: independent` frozen normal publications alongside the original
+source-computed-deadline witnesses; actual cleanup and separate CLI reopening must
+preserve identical retained envelopes and exclude all cleaned Source bodies.
+No aggregate/gate/official V11, external provider run or human acceptance is implied.

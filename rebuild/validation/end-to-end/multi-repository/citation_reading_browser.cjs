@@ -85,7 +85,7 @@ async function selectedCode(point, expected) {
  });
  assert.equal(data.range,expected,'DOM range preserves exact characters without gutter text');
  assert.equal(data.selected,data.plainSelected,'native selection/copy behaves exactly as the original plain Source pane');
- assert.ok(data.spans<=256);
+ assert.ok(data.spans<=256*Math.ceil(Buffer.byteLength(expected)/4096));
  const initial=point.locator(':scope > pre.code-region code');
  if(await initial.count() && await initial.textContent()===expected)
   assert.equal(data.html,await initial.innerHTML(),'equivalent exact chunks get identical static/live token markup');
@@ -220,7 +220,7 @@ async function syntaxContrast(page) {
    assert.equal(await page.evaluate(()=>document.activeElement.id),exactPoint);
    assert.equal(await page.locator('.doc').evaluate(n=>n.inert),width<900);
    assert.equal(await page.locator('.masthead').evaluate(n=>n.inert),width<900);
-   assert.equal(await point.locator('.citation-inspection pre').evaluate(n=>getComputedStyle(n).fontSize),width<=600?'12px':width<=900?'13px':'15px');
+   assert.equal(await point.locator('.citation-inspection pre').evaluate(n=>getComputedStyle(n).fontSize),width<=600?'12px':width<1200?'13px':'15px');
    assert.equal(await point.getAttribute('role'),width<900?'dialog':null);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
    const codePane=point.locator('.citation-inspection pre');

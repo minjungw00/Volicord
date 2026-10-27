@@ -1749,7 +1749,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             .and_then(|p| p.publication_id.as_deref())
             .ok_or("managed publication")?;
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/9\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/10\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
@@ -1761,7 +1761,6 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
                 "<figure class=\"admitted-diagram\"",
                 "<section class=\"source-point\"",
                 "<details class=\"reading-section evidence-index\"",
-                "<details class=\"document-nav\"",
             ] {
                 let regions = html.split(marker).skip(1).collect::<Vec<_>>();
                 assert!(!regions.is_empty(), "rendered consumer region {marker}");
@@ -1821,7 +1820,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/9\""));
+            .contains("data-renderer=\"volicord-static-svg/10\""));
     }
     Ok(())
 }
@@ -1980,7 +1979,7 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
-            assert!(text.contains("volicord-static-svg/9"));
+            assert!(text.contains("volicord-static-svg/10"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"
             } else {
@@ -1989,6 +1988,9 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             assert!(text.contains("calls verification"));
             if shape == "state" {
                 let svg = text
+                    .split("class=\"diagram-viewport\"")
+                    .nth(1)
+                    .ok_or("state viewport")?
                     .split("<svg ")
                     .nth(1)
                     .ok_or("state SVG")?
@@ -2105,6 +2107,47 @@ fn shared_diagram_caption_preserves_separate_elements_and_exact_origins(
 }
 
 #[test]
+fn first_covering_source_stays_direct_when_an_earlier_citation_covers_another_span(
+) -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let mut realization = diagram_control(&f, false)?;
+    // Source 1 covers only "Admission"; Sources 2 and 3 cover the relation.
+    realization.paragraphs[1].citations[0].claim_end_byte = 9;
+    realization.paragraphs[1].citations[0].claim_sha256 = explanation_text_hash("Admission");
+    seal_diagrams(&mut realization)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization,
+    )?;
+    let html = f.get("/?view=repository")?;
+    let relation = html
+        .split("-diagram-mechanism-dependency-claim\" tabindex=\"-1\" data-element=")
+        .nth(1)
+        .ok_or("selected relation")?
+        .split("</section>")
+        .next()
+        .ok_or("relation end")?;
+    let first_action = relation
+        .find("class=\"evidence-link\"")
+        .ok_or("direct source")?;
+    let others = relation
+        .find("class=\"other-claim-ranges\"")
+        .ok_or("other sources")?;
+    assert!(
+        first_action < others,
+        "first covering Source must be directly actionable"
+    );
+    assert!(
+        relation[first_action..others].contains("-c2\""),
+        "{}",
+        &relation[first_action..others]
+    );
+    Ok(())
+}
+
+#[test]
 fn complete_permission_windows_fit_without_changing_source_or_transport_bounds(
 ) -> Result<(), Box<dyn Error>> {
     // Eleven independent 4 KiB windows: too large for the prior 32 KiB total.
@@ -2188,7 +2231,7 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
             let controls = html.find("class=\"diagram-controls\"").ok_or("controls")?;
             let detail = html.find("class=\"diagram-claims\"").ok_or("detail")?;
             assert!(
-                caption < map && map < controls && controls < detail,
+                controls < map && map < caption && caption < detail,
                 "native reading order precedes detail"
             );
             assert!(html.contains("connection-navigation"));
@@ -2197,7 +2240,7 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
                 .split(&format!("data-connection=\"{id}\""))
                 .nth(1)
                 .ok_or("missing selected connection")?
-                .split("</div><div class=\"diagram-claim-context\">")
+                .split("</div><details class=\"diagram-claim-context\">")
                 .next()
                 .ok_or("detail")?;
             assert!(detail.contains("connection-endpoint diagram-text-link"));
@@ -2299,7 +2342,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
         .export_snapshot(&f.request(), &output)?;
     let html = fs::read_to_string(output)?;
-    assert!(html.contains("data-renderer=\"volicord-static-svg/9\""));
+    assert!(html.contains("data-renderer=\"volicord-static-svg/10\""));
     assert!(html.contains("&lt;image"));
     assert!(!html.contains("<image"));
     assert!(!html.contains("<script"));
@@ -2428,6 +2471,9 @@ fn diagram_ui_locale_preserves_authored_english_claims_and_publication_identity(
             ] {
                 let figure = page
                     .html
+                    .split("class=\"diagram-viewport\"")
+                    .nth(1)
+                    .ok_or("figure viewport")?
                     .split("<svg ")
                     .nth(1)
                     .ok_or("actual SVG")?
@@ -2447,7 +2493,7 @@ fn diagram_ui_locale_preserves_authored_english_claims_and_publication_identity(
                     };
                     assert_eq!(
                         figure.matches(common).count(),
-                        2,
+                        3,
                         "one type key per responsive geometry"
                     );
                     assert!(figure.contains("Admission → verification"));

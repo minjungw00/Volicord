@@ -653,3 +653,12 @@ dependency receipts; no timestamp is extended or rewritten. Independent publicat
 expiry still applies. Admission metadata can be validated on read without current
 Source bodies/repository; unavailable comparison is a separate notice. Already
 erased, unsupported or corrupted records are not converted, rebound or recovered.
+
+Renderer 10 implements the adopted Reader frame, routed label density and an
+intermediate geometry alongside wide/narrow variants. `expires_at_unix_micros` is
+an ephemeral available-Source range deadline supplied by the scoped reader; it is
+included in request-local availability equality, never written into the retained
+explanation. Explanation v8's sole current writer/decoder, document metadata 11,
+canonical/privacy/Source-copy formats and all existing lifetimes remain unchanged.
+No current explanation is discarded or converted for this presentation. Authored
+headings/short labels still need fresh explicit compose/record from allowed Sources.

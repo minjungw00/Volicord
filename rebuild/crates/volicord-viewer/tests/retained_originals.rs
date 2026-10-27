@@ -61,7 +61,15 @@ fn original_admitted_meaning_survives_real_cleanup_and_restart() -> Result<(), B
             .iter()
             .find(|r| r.id.to_string() == case["publication_id"].as_str().unwrap_or(""))
             .ok_or("publication")?;
-        assert!(publication.source_computed_explanation_deadline(&inspection.managed_derived));
+        if case["lifetime_class"] == "independent" {
+            assert_eq!(publication.kind, ManagedDerivedKind::CachedSummary);
+            assert!(
+                publication.retained_until.is_none(),
+                "normal independent publication has no Source-coupled deadline"
+            );
+        } else {
+            assert!(publication.source_computed_explanation_deadline(&inspection.managed_derived));
+        }
         let frozen_content = publication.content.as_deref().ok_or("original content")?;
         assert_eq!(
             explanation_text_hash(frozen_content),
@@ -188,5 +196,68 @@ fn original_admitted_meaning_survives_real_cleanup_and_restart() -> Result<(), B
         assert!(html.contains("data-range-state=\"expired\""));
         println!("original={} language={language} units={} diagrams={} erased_sources={} retained_bytes={} export_bytes={} cli_exit={:?} identity_preserved=true",case["publication_id"],original.paragraphs.len(),original.diagrams.len(),erased.len(),frozen_content.len(),html.len(),child.status.code());
     }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires frozen normal-publication manifest and exclusive profile output"]
+fn measure_normal_reader_projection_and_render_separately() -> Result<(), Box<dyn Error>> {
+    let manifest = std::env::var("VOLICORD_READER_PROFILE_INPUT")?;
+    let output = std::path::PathBuf::from(std::env::var("VOLICORD_READER_PROFILE_OUTPUT")?);
+    fs::create_dir(&output)?;
+    let cases: Vec<Value> = serde_json::from_slice(&fs::read(manifest)?)?;
+    let mut rows = Vec::new();
+    for (i, c) in cases
+        .into_iter()
+        .filter(|c| c["lifetime_class"] == "independent")
+        .enumerate()
+    {
+        let runtime = output.join(format!("runtime-{i}"));
+        copy_directory(Path::new(c["runtime"].as_str().ok_or("runtime")?), &runtime)?;
+        let hex = c["project_id"].as_str().ok_or("project")?;
+        let bytes = (0..16)
+            .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16))
+            .collect::<Result<Vec<_>, _>>()?;
+        let subject: ExplanationSubject = serde_json::from_value(c["subject"].clone())?;
+        let request = ViewerRequest {
+            project_id: ProjectId::from_slice(&bytes)?,
+            locale: if c["language"] == "ko" {
+                ViewerLocale::Korean
+            } else {
+                ViewerLocale::English
+            },
+            requested_language: c["language"].as_str().ok_or("language")?.into(),
+            view: match subject {
+                ExplanationSubject::Work(id) => ViewerView::Work { work: Some(id) },
+                _ => ViewerView::RepositoryExplanation,
+            },
+            guarded_request: None,
+        };
+        let adapter = ViewerAdapter::new(LocalOperations::new(RuntimeLayout::new(runtime)?));
+        for mode in ["live", "snapshot"] {
+            for repeat in 0..3 {
+                let (page, p) = if mode == "live" {
+                    adapter.render_profiled(&request, "profile-only")?
+                } else {
+                    adapter
+                        .render_snapshot_profiled(&request, TimestampMicros::from_unix_micros(1))?
+                };
+                assert!(
+                    page.explanations
+                        .iter()
+                        .any(|e| e.publication_id.as_deref() == c["publication_id"].as_str()),
+                    "measure the actual normal publication, never a missing fallback"
+                );
+                assert!(page.html.contains("<figure class=\"admitted-diagram\""));
+                rows.push(serde_json::json!({"case":i,"mode":mode,"repeat":repeat,"publication":c["publication_id"],"language":c["language"],"html_bytes":page.html.len(),"projection_passes":p.project_projection_passes,"projection_ms":p.projection.total.as_secs_f64()*1000.0,"html_render_ms":p.html_render.as_secs_f64()*1000.0,"total_ms":p.total.as_secs_f64()*1000.0}));
+            }
+        }
+    }
+    fs::write(
+        output.join("profiles.json"),
+        serde_json::to_vec_pretty(
+            &serde_json::json!({"scope":"three in-process samples; first is not OS-cache cold; no transport, file publication, human or qualification claim","samples":rows}),
+        )?,
+    )?;
     Ok(())
 }

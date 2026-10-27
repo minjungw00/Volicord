@@ -882,3 +882,13 @@ aggregate Project content, enumerate Sources, grant a foreign publication access
 transmit data, or carry Guarded mutation authority into another Project. Each
 page/citation names its exact Project; canonical subject/publication/range checks
 remain per request. Static exports expose only their selected Project.
+
+The live Reader receives an original available body deadline as typed ephemeral
+range metadata. It may conservatively erase a cached body at that deadline, including
+hidden aliases and its bounded client buffer. It cannot extend it or establish new
+access. Each request still verifies the exact publication/Source/claim/range and
+current authority. Expiry preserves independently permitted prose/maps; explicit
+withdrawal/deletion/forgetting and publication integrity failure still remove all
+dependent meaning. No client body cache is durable or shared across publications.
+Export-time static content performs no later permission/currentness check and cannot
+revoke already distributed bytes. No provider/remote asset transmission is added.

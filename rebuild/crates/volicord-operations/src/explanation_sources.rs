@@ -630,6 +630,14 @@ impl LocalOperations {
                 citation_index,
                 citation: citation.clone(),
                 available: failure.is_none(),
+                expires_at_unix_micros: if failure.is_none() {
+                    parse_identity(&citation.source_id)
+                        .ok()
+                        .and_then(|id| readings.get(&SourceId::from_bytes(id)))
+                        .and_then(|read| read["metadata"]["retained_until_unix_micros"].as_i64())
+                } else {
+                    None
+                },
                 limitation: failure,
             });
         }

@@ -1,5 +1,6 @@
 // Presentation and exact same-origin retained citation reads only. No writes.
 (() => {
+  document.body.dataset.readerEnhanced='true';
   const diagramReturns = new Map();
   const sourceReturns = new Map();
   const expandedReturns = new WeakMap();
@@ -21,6 +22,7 @@
   function closeExpansion(figure) {
     const prior = expandedReturns.get(figure);
     figure.classList.remove('diagram-expanded');
+    figure.removeAttribute('role');figure.removeAttribute('aria-modal');synchronizeModal(null);
     const control = figure.querySelector('[data-diagram-action=expand]');
     control.setAttribute('aria-expanded','false');
     control.textContent = ko ? '확대·이동 보기' : 'Zoom and pan view';
@@ -30,13 +32,15 @@
       control.focus({preventScroll:true}); window.scrollTo(0,prior.y);
     }
   }
-  const narrow = matchMedia('(max-width:900px)');
+  const narrow = matchMedia('(max-width:1199px)');
   let selected = null;
   let selectedReturnToken = null;
   let focusedHash = null;
   let lastAppliedHash = null;
   let pendingRead = null;
   const reads = new WeakMap();
+  const codeBuffers = new WeakMap();
+  const modalSiblings = new Map();
   const outlineScroll = new WeakMap();
   const ko = document.documentElement.lang === 'ko';
   const syntaxNames = {javascript:'JavaScript', typescript:'TypeScript', rust:'Rust', python:'Python', shell:'Shell', json:'JSON'};
@@ -49,7 +53,7 @@
     const boundary = i => i === 0 || i === source.length ||
       !(source.charCodeAt(i) >= 0xdc00 && source.charCodeAt(i) <= 0xdfff && source.charCodeAt(i-1) >= 0xd800 && source.charCodeAt(i-1) <= 0xdbff);
     let end = 0;
-    const valid = language !== 'plain' && Array.isArray(runs) && runs.length <= 256 && runs.every(run => {
+    const valid = language !== 'plain' && Array.isArray(runs) && runs.length <= 1024 && runs.every(run => {
       if (!Array.isArray(run) || run.length !== 3) return false;
       const [start, stop, kind] = run;
       if (!Number.isInteger(start) || !Number.isInteger(stop) || start < end || stop <= start || stop > source.length ||
@@ -70,7 +74,12 @@
   // native href remains script-free; only JS adds this bounded return selector.
   function fragment() {
     const [id, origin, extra] = location.hash.slice(1).split('!');
-    const target = document.getElementById(id);
+    let target = document.getElementById(id);
+    if(target?.matches('.shared-source-target')){
+      const selectedPoint=document.getElementById(target.dataset.selectedPoint);
+      if(!selectedPoint?.matches('.source-point')||selectedPoint.dataset.readerPublication!==target.closest('.source-point')?.dataset.readerPublication)return {target:null};
+      target=selectedPoint;
+    }
     if (extra !== undefined) return {target:null};
     if (origin !== undefined) {
       const claim = document.getElementById(origin);
@@ -82,9 +91,18 @@
   function withholdPublication(publication, reason) {
     // A citation failure invalidates all dependent meaning, not just its file.
     // Retain opaque return positions, but no hidden code, prose or alternatives.
+    // Return memories contain DOM references; release affected detached nodes
+    // as well as the visible regions and the original-code buffers below.
+    for(const memory of [diagramReturns,sourceReturns]){
+      for(const [token,prior] of memory){
+        if([prior.trigger,prior.figure,prior.viewport].some(node=>node?.closest?.('[data-reader-publication]')?.dataset.readerPublication===publication))memory.delete(token);
+      }
+    }
     for (const region of document.querySelectorAll('[data-reader-publication]')) {
       if (region.dataset.readerPublication !== publication || !region.isConnected) continue;
       region.classList.remove('diagram-expanded');
+      region.querySelectorAll('.source-point').forEach(n=>codeBuffers.delete(n));
+      if(region.matches('.source-point'))codeBuffers.delete(region);
       const ids=[...region.querySelectorAll('[id]')].map(n=>n.id);
       const back=region.matches('.source-point') ? region.querySelector('a.return')?.cloneNode(true) : null;
       const notice=document.createElement('p'); notice.setAttribute('role','status');
@@ -95,13 +113,73 @@
       region.dataset.unavailable='true';
     }
   }
+  function synchronizeModal(root) {
+    for(const [node,prior] of modalSiblings) if(node.isConnected)node.inert=prior;
+    modalSiblings.clear();
+    if(!root)return;
+    for(let child=root;child?.parentElement;child=child.parentElement){
+      for(const sibling of child.parentElement.children){
+        if(sibling===child||sibling.matches('script,.evidence-backdrop'))continue;
+        modalSiblings.set(sibling,sibling.inert);sibling.inert=true;
+      }
+      if(child.parentElement===document.body)break;
+    }
+  }
+  function sizeFigure(figure) {
+    const svg=figure.querySelector('svg.connected-overview');if(!svg)return;
+    const available=figure.querySelector('.diagram-viewport').clientWidth;
+    const variant=available>=760?'wide':available>=520?'medium':'narrow';
+    if(figure.dataset.variant===variant)return;
+    figure.dataset.variant=variant;
+    for(const name of ['width','height']){
+      const size=parseFloat(svg.style.getPropertyValue(`--map-${variant}-${name}`));
+      figure.dataset[name==='width'?'baseWidth':'baseHeight']=size;
+      svg.style[name]=(size*(Number(figure.dataset.scale)||1))+'px';
+    }
+  }
   for (const figure of document.querySelectorAll('.admitted-diagram')) {
-    const svg=figure.querySelector('svg');
-    if (!svg) continue;
-    const dimension = name => parseFloat(svg.style.getPropertyValue(`--map-${narrow.matches?'narrow':'wide'}-${name}`));
-    figure.dataset.baseWidth=dimension('width');
-    figure.dataset.baseHeight=dimension('height');
+    if(!figure.querySelector('svg'))continue;
     figure.dataset.scale='1';figure.querySelector('.diagram-controls').hidden=false;
+    new ResizeObserver(()=>sizeFigure(figure)).observe(figure.querySelector('.diagram-viewport'));
+    sizeFigure(figure);
+  }
+  function purgeBody(source,reason='expired') {
+    if(selected?.dataset.sourceId===source)pendingRead?.abort();
+    for(const point of document.querySelectorAll('.source-point')){
+      if(point.dataset.sourceId!==source)continue;
+      codeBuffers.delete(point);
+      point.querySelectorAll('pre.code-region,.code-caption,.initial-range-omission').forEach(n=>n.remove());
+      point.dataset.rangeState=reason;
+      let notice=point.querySelector('.range-unavailable');
+      if(!notice){notice=document.createElement('p');notice.className='source-note range-unavailable';point.querySelector('.source-path')?.after(notice);}
+      notice.dataset.rangeState=reason;
+      notice.textContent=reason==='expired'?(ko?'보존 기간이 만료되었습니다. 원래 코드를 제공할 수 없습니다.':'Retained evidence expired. The original code is unavailable.'):(ko?'이 원래 근거 범위를 이용할 수 없습니다.':'This original evidence range is unavailable.');
+      const status=point.querySelector('.citation-status');if(status)status.textContent=notice.textContent;
+    }
+  }
+  let expiryTimer;
+  function expireBodies(){
+    clearTimeout(expiryTimer);let earliest=Infinity;
+    for(const marker of document.querySelectorAll('.source-deadline[data-expires-at]')){
+      const deadline=Number(marker.dataset.expiresAt)/1000;
+      if(!Number.isFinite(deadline))continue;
+      if(deadline<=Date.now()){purgeBody(marker.closest('.source-point').dataset.sourceId);marker.remove();}
+      else earliest=Math.min(earliest,deadline);
+    }
+    if(Number.isFinite(earliest))expiryTimer=setTimeout(expireBodies,Math.min(2147483647,Math.max(1,earliest-Date.now()+1)));
+  }
+  function updateAvailability(publication,basis){
+    for(const availability of basis?.source_ranges||[]){
+      const point=[...document.querySelectorAll('.source-point')].find(point=>{
+        const c=point.querySelector('.citation-inspection');return c?.dataset.publicationId===publication&&Number(c.dataset.unit)===availability.unit_index&&Number(c.dataset.citation)===availability.citation_index;
+      });
+      if(!point)continue;
+      if(!availability.available){purgeBody(point.dataset.sourceId,availability.limitation||'unavailable');continue;}
+      if(Number.isSafeInteger(availability.expires_at_unix_micros)){
+        const marker=point.querySelector('.source-deadline');if(marker)marker.dataset.expiresAt=String(availability.expires_at_unix_micros);
+      }
+    }
+    expireBodies();
   }
   function updateComparison(publication, basis) {
     const labels = {
@@ -111,6 +189,10 @@
       not_checked: ko ? '현재 저장소 비교가 확립되지 않았습니다.' : 'No current repository comparison is established.'
     };
     if (!basis || !Object.hasOwn(labels,basis.repository_comparison)) return;
+    for(const point of document.querySelectorAll('.source-point')){
+      if(point.dataset.readerPublication!==publication)continue;
+      const note=point.querySelector('[data-evidence-comparison]');if(note)note.textContent=labels[basis.repository_comparison];
+    }
     for (const region of document.querySelectorAll('.applicability')) {
       if (region.dataset.readerPublication !== publication) continue;
       region.dataset.comparisonState = basis.repository_comparison;
@@ -124,6 +206,7 @@
     const control = point.querySelector('.citation-inspection');
     if (!control) return;
     pendingRead?.abort();
+    if(offset===0)codeBuffers.delete(point);
     const controller = new AbortController();
     pendingRead = controller;
     reads.set(control, controller);
@@ -169,6 +252,11 @@
           chunk.displayed_end_line - chunk.displayed_start_line + 1 !== chunk.text.split('\n').length - Number(chunk.text.endsWith('\n'))) throw Error('binding');
       if (controller.signal.aborted || reads.get(control) !== controller || selected !== point || !point.isConnected) return;
       updateComparison(control.dataset.publicationId,result.applicability);
+      updateAvailability(control.dataset.publicationId,result.applicability);
+      const originalDeadline=point.querySelector('.source-deadline');
+      if(point.dataset.rangeState==='expired'||(originalDeadline&&Number(originalDeadline.dataset.expiresAt)/1000<=Date.now())){
+        const error=Error('body expired during read');error.reason='expired';error.publicationReadable=true;throw error;
+      }
       point.querySelectorAll('pre.code-region,.code-caption,.initial-range-omission').forEach(n => n.hidden = true);
       let region = control.querySelector('pre');
       if (!region) {
@@ -181,26 +269,34 @@
         control.prepend(caption, region);
       }
       region.hidden = false;
-      const syntaxName = paintCode(region.querySelector('code'), chunk.text, result.highlight);
+      let buffer=codeBuffers.get(point);
+      if(offset===0)buffer={text:'',tokens:[],startLine:chunk.displayed_start_line,language:result.highlight?.language};
+      if(!buffer || new TextEncoder().encode(buffer.text).length!==offset || offset+textBytes>16384)throw Error('contiguous range');
+      const previousLength=buffer.text.length;
+      buffer.text+=chunk.text;
+      for(const token of result.highlight?.tokens||[])buffer.tokens.push([token[0]+previousLength,token[1]+previousLength,token[2]]);
+      codeBuffers.set(point,buffer);
+      const syntaxName = paintCode(region.querySelector('code'), buffer.text, {language:buffer.language,tokens:buffer.tokens});
       control.querySelector('.code-caption').textContent = `${syntaxName} · ${ko ? '관측된 인용 범위 · 구문 색상은 읽기 보조 표시' : 'Observed cited range · syntax colors are a reading aid'}`;
       control.querySelector('.code-caption').hidden = false;
       const numbers = region.querySelector('.source-line-numbers'); numbers.replaceChildren();
-      for (let line = chunk.displayed_start_line; line <= chunk.displayed_end_line; line++) {
+      for (let line = buffer.startLine; line <= chunk.displayed_end_line; line++) {
         const marker = document.createElement('span'); marker.dataset.line = line; numbers.append(marker);
       }
-      region.setAttribute('aria-label', `${chunk.citation.locator}:${chunk.displayed_start_line}–${chunk.displayed_end_line}`);
-      status.textContent = `${ko ? '표시 범위' : 'Displayed'}: ${chunk.displayed_start_line}–${chunk.displayed_end_line} · bytes ${chunk.displayed_start_byte}–${chunk.displayed_end_byte} · ${ko ? '생략된 UTF-8 바이트 (앞/뒤)' : 'omitted UTF-8 bytes (before/after)'}: ${chunk.omitted_before_utf8_bytes}/${chunk.omitted_after_utf8_bytes}`;
+      region.setAttribute('aria-label', `${chunk.citation.locator}:${buffer.startLine}–${chunk.displayed_end_line}`);
+      status.textContent = `${ko ? '표시 범위' : 'Displayed'}: ${buffer.startLine}–${chunk.displayed_end_line} · bytes ${chunk.citation.start_byte}–${chunk.displayed_end_byte} · ${ko ? '생략된 UTF-8 바이트 (앞/뒤)' : 'omitted UTF-8 bytes (before/after)'}: 0/${chunk.omitted_after_utf8_bytes}`;
       button.dataset.nextOffset = chunk.next_offset ?? 0;
       button.textContent = chunk.next_offset === null
         ? (ko ? '인용 범위 처음부터 다시 읽기' : 'Read cited range again from start')
-        : (ko ? '다음 인용 바이트 읽기 (최대 4,096)' : 'Read next cited bytes (up to 4,096)');
+        : (ko ? '전체 인용 범위 읽는 중…' : 'Reading the complete cited range…');
+      if(chunk.next_offset!==null)await readCitation(point,chunk.next_offset);
     } catch (error) {
       if (controller.signal.aborted || reads.get(control) !== controller || selected !== point || !point.isConnected) return;
       // Remove previously displayed bytes from this failed reading point.
       // A deleted shared Source must not leave an earlier claim's cached code.
       document.querySelectorAll('.source-point').forEach(other => {
-        if (other.dataset.readerPublication === control.dataset.publicationId &&
-            other.dataset.sourceId === point.dataset.sourceId) {
+        if (other.dataset.sourceId === point.dataset.sourceId) {
+          codeBuffers.delete(other);
           other.querySelectorAll('pre.code-region,.code-caption').forEach(n => n.remove());
           if (error.reason) other.dataset.rangeState = error.reason;
         }
@@ -272,11 +368,14 @@
       const claim=document.getElementById(returnId);
       if (claim?.matches('.diagram-claim')) claim.dataset.active='true';
     }
+    if(!point&&target?.matches('.diagram-claim'))target.dataset.active='true';
     updateCue();
-    const articles = document.querySelectorAll('.doc');
-    const header = document.querySelector('.masthead');
-    articles.forEach(article => article.inert = !!point && narrow.matches);
-    if (header) header.inert = !!point && narrow.matches;
+    const expanded=document.querySelector('.diagram-expanded');
+    synchronizeModal(point&&narrow.matches?point:!point?expanded:null);
+    if(expanded){expanded.setAttribute('role','dialog');expanded.setAttribute('aria-modal',String(!point));}
+    const backdrop=document.querySelector('.evidence-backdrop');if(backdrop)backdrop.hidden=!(point&&narrow.matches);
+    document.querySelectorAll('.diagram-element[data-selected]').forEach(n=>delete n.dataset.selected);
+    if(diagramOrigin){const element=document.getElementById(document.getElementById(diagramOrigin)?.dataset.element);if(element)element.dataset.selected='true';}
     if (selected && selected !== point) {
       pendingRead?.abort();
       selected.removeAttribute('role');
@@ -297,9 +396,11 @@
         point.removeAttribute('aria-modal');
       }
       const origin = document.getElementById(diagramOrigin || point.dataset.origin);
+      const title=point.querySelector('.evidence-claim');
+      if(title){const wording=origin?.querySelector('.diagram-selected-label')?.textContent;title.textContent=wording?`${origin.querySelector('h3').textContent}: ${wording}`:point.querySelector('.claim-quote')?.textContent||'';}
       if (changed) readCitation(point);
-      if (changed && !narrow.matches) origin?.scrollIntoView({block:'center'});
-      if (!point.contains(document.activeElement)) point.focus({preventScroll:true});
+      if (changed && !narrow.matches && !state().sourceReturn) origin?.scrollIntoView({block:'center'});
+      if (!point.contains(document.activeElement)) (point.querySelector('a.return')||point).focus({preventScroll:true});
     } else if (selected) {
       restoredSource = true;
       pendingRead?.abort();
@@ -309,7 +410,8 @@
         const sourceReturn = sourceReturns.get(selectedReturnToken || state().sourceBack || state().sourceReturn);
         selectedReturnToken = null;
         const trigger = sourceReturn?.claim === target.id ? sourceReturn.trigger : null;
-        const destination = trigger?.isConnected ? trigger : target;
+        const element=target.matches('.diagram-claim')?document.getElementById(target.dataset.element):null;
+        const destination = trigger?.isConnected ? trigger : element||target;
         const offset = sourceReturn?.claim === target.id ? sourceReturn.y : undefined;
         const hash = location.hash;
         const restore = () => {
@@ -319,14 +421,16 @@
           // event. Restore the activating Source button once more after that
           // navigation, without taking focus from another user-selected control.
           if (active !== target && active !== destination && active !== document.body) return;
+          if(sourceReturn?.figure?.isConnected){sourceReturn.figure.scrollLeft=sourceReturn.figureLeft;sourceReturn.figure.scrollTop=sourceReturn.figureTop;}
+          if(sourceReturn?.viewport?.isConnected){sourceReturn.viewport.scrollLeft=sourceReturn.left;sourceReturn.viewport.scrollTop=sourceReturn.top;}
           destination.focus({preventScroll:true});
-          if (offset !== undefined) window.scrollTo(0, offset);
-          else target.scrollIntoView({block:'center'});
+          if (offset !== undefined) {window.scrollTo(0, offset);if(sourceReturn.triggerTop!==undefined)window.scrollBy(0,destination.getBoundingClientRect().top-sourceReturn.triggerTop);}
+          else destination.scrollIntoView({block:'center'});
         };
         destination.focus({preventScroll:true});
         if (offset !== undefined) window.scrollTo(0, offset);
-        else target.scrollIntoView({block:'center'});
-        requestAnimationFrame(restore);
+        else destination.scrollIntoView({block:'center'});
+        requestAnimationFrame(()=>requestAnimationFrame(restore));
       }
     }
     if (!point && !restoredSource && navigationChanged && target?.matches('.diagram-claim')) {
@@ -360,6 +464,16 @@
     const element=event.target.closest?.('a.diagram-element');
     if(element && diagramReturns.get(state().diagramReturn)?.element !== element.id) element.scrollIntoView({block:'nearest',inline:'nearest'});
   });
+  function openEvidence(link, trigger=link, activation=null) {
+    document.querySelectorAll('.document-nav[open]').forEach(toc=>toc.open=false);
+    const figure=trigger.closest('.admitted-diagram'),viewport=figure?.querySelector('.diagram-viewport');
+    const token=remember(sourceReturns,{claim:link.dataset.origin,trigger,y:activation?.y??scrollY,triggerTop:activation?.triggerTop??trigger.getBoundingClientRect().top,figure,figureLeft:activation?.figureLeft??figure?.scrollLeft,figureTop:activation?.figureTop??figure?.scrollTop,viewport,left:activation?.left??viewport?.scrollLeft,top:activation?.top??viewport?.scrollTop});
+    const next={...state(),sourceReturn:token};
+    history.replaceState({...state(),sourceBack:token},'');
+    const hash=link.getAttribute('href')+(link.closest('.diagram-claim')?'!'+link.dataset.origin:'');
+    const repeated=location.hash===hash;navigate(hash,next);
+    if(repeated&&selected)readCitation(selected);
+  }
   document.addEventListener('click', event => {
     // Modified links belong to native navigation (new tab/window/download).
     // They must not select, close, focus or scroll this reading context.
@@ -376,6 +490,8 @@
           figure.classList.add('diagram-expanded');
           diagramControl.setAttribute('aria-expanded','true');
           diagramControl.textContent=ko?'개요로 돌아가기 (Esc)':'Return to overview (Esc)';
+          figure.setAttribute('role','dialog');figure.setAttribute('aria-modal','true');synchronizeModal(figure);
+          sizeFigure(figure);
         }
       } else {
         const old=Number(figure.dataset.scale);const next=action==='reset'?1:Math.min(2,Math.max(.75,old+(action==='in'?.25:-.25)));
@@ -402,6 +518,9 @@
         // this activation, even if a later activation uses the same element.
         history.replaceState({...state(),diagramBack:token},'');
         navigate(diagramLink.getAttribute('href'),next);
+        const chosen=document.getElementById(diagramLink.getAttribute('href').slice(1));
+        const evidence=chosen?.querySelector('a.evidence-link');
+        if(evidence)openEvidence(evidence,diagramLink.matches('.diagram-route')?element:diagramLink,diagramReturns.get(token));
       }
     }
     const diagramReturn=event.target.closest('a.diagram-return');
@@ -431,27 +550,27 @@
         if (target) { target.focus({preventScroll:true}); target.scrollIntoView({block:'start'}); }
       });
     }
+    const range=event.target.closest('.point-others a');
+    if(range&&plainLink){
+      event.preventDefault();range.closest('.range-selector')?.removeAttribute('open');
+      const claim=fragment().origin;const scope=claim&&document.getElementById(claim);
+      const bound=scope&&[...scope.querySelectorAll('a.evidence-link')].some(a=>a.getAttribute('href')===range.getAttribute('href'));
+      navigate(range.getAttribute('href')+(bound?'!'+claim:''));
+    }
     const codeReturn=event.target.closest('.source-point a.return');
     if (codeReturn && plainLink) {
       event.preventDefault();navigate(codeReturn.getAttribute('href'));
     }
     const link = event.target.closest('a.evidence-link');
     if (link && plainLink) {
-      document.querySelectorAll('.document-nav[open]').forEach(toc => toc.open = false);
-      event.preventDefault();
-      const token=remember(sourceReturns,{claim:link.dataset.origin,trigger:link,y:scrollY});
-      const next={...state(),sourceReturn:token};
-      history.replaceState({...state(),sourceBack:token},'');
-      const hash=link.getAttribute('href')+(link.closest('.diagram-claim')?'!'+link.dataset.origin:'');
-      const repeated=location.hash===hash;
-      navigate(hash,next);
-      if (repeated && selected) readCitation(selected);
+      event.preventDefault();openEvidence(link);
     }
   });
   document.addEventListener('keydown', event => {
     const point = fragment().target?.closest('.source-point') || selected;
     if (!point) {
       const figure=event.target.closest('.diagram-expanded');
+      if(event.key==='Tab'&&figure){const controls=[...figure.querySelectorAll('a[href],button:not(:disabled),summary,[tabindex="0"]')].filter(n=>n.getClientRects().length);const first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
       if (event.key==='Escape' && figure) {event.preventDefault();closeExpansion(figure);return;}
       const toc = event.target.closest('.document-nav[open]');
       if (event.key === 'Escape' && toc) {
@@ -482,17 +601,10 @@
   window.addEventListener('scroll', () => {
     if (!scheduled) { scheduled = true; requestAnimationFrame(() => { scheduled = false; updateCue(); }); }
   }, {passive:true});
-  narrow.addEventListener('change', () => {
-    for (const figure of document.querySelectorAll('.admitted-diagram')) {
-      const svg=figure.querySelector('.connected-overview');
-      if (!svg) continue;
-      for (const name of ['width','height']) {
-        const size=parseFloat(svg.style.getPropertyValue(`--map-${narrow.matches?'narrow':'wide'}-${name}`));
-        figure.dataset[name==='width'?'baseWidth':'baseHeight']=size;
-        svg.style[name]=(size*(Number(figure.dataset.scale)||1))+'px';
-      }
-    }
-    apply();
-  });
+  narrow.addEventListener('change', apply);
+  const evidenceBackdrop=document.createElement('button');evidenceBackdrop.className='evidence-backdrop';evidenceBackdrop.type='button';evidenceBackdrop.tabIndex=-1;evidenceBackdrop.hidden=true;evidenceBackdrop.setAttribute('aria-label',ko?'근거 닫기':'Close evidence');document.body.append(evidenceBackdrop);
+  evidenceBackdrop.addEventListener('click',()=>selected?.querySelector('a.return')?.click());
+  expireBodies();
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)expireBodies();});
   apply();
 })();

@@ -21,6 +21,23 @@ fn lines(value: &str, pixels: usize) -> usize {
 fn writing(out: &mut String, x: usize, y: usize, value: &str, pixels: usize) {
     text(out, x, y, value, pixels.max(16));
 }
+fn small_writing(out: &mut String, x: usize, y: usize, value: &str, pixels: usize) {
+    out.push_str(&format!(
+        "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\">"
+    ));
+    for (i, line) in words(value, pixels.max(16)).iter().enumerate() {
+        out.push_str(&format!(
+            "<tspan x=\"{x}\" dy=\"{}\">{}</tspan>",
+            if i == 0 { 0 } else { 20 },
+            esc(line)
+        ));
+    }
+    out.push_str("</text>");
+}
+fn inline_label(name: &str, kind: &str, width: usize) -> bool {
+    lines(name, width - 12) == 1
+        && (super::measure_text(name) * 13 / 16 + super::measure_text(kind) * 12 / 16 + 20) <= width
+}
 fn panel(out: &mut String, x: usize, y: usize, w: usize, h: usize, class: &str) {
     out.push_str(&format!(
         "<rect class=\"{class}\" x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\" rx=\"6\"/>"
@@ -86,20 +103,6 @@ fn graph(
         .iter()
         .map(|e| Ok((index(nodes, &e.from)?, index(nodes, &e.to)?)))
         .collect::<Result<Vec<_>, String>>()?;
-    let endpoint_name = |i: usize| -> Result<String, String> {
-        let name = label(&nodes[i].label)?;
-        Ok(
-            if nodes.iter().filter(|n| label(&n.label) == Ok(name)).count() > 1 {
-                format!("{name} [{}]", nodes[i].id)
-            } else {
-                name.into()
-            },
-        )
-    };
-    let associations = endpoints
-        .iter()
-        .map(|&(a, b)| Ok(format!("{} → {}", endpoint_name(a)?, endpoint_name(b)?)))
-        .collect::<Result<Vec<String>, String>>()?;
     let mut ranks = vec![usize::MAX; nodes.len()];
     ranks[0] = 0;
     let mut queue = std::collections::VecDeque::from([0]);
@@ -140,7 +143,7 @@ fn graph(
         width,
         ..Layout::default()
     };
-    let mut y = 20;
+    let mut y = 24;
     // A uniform type belongs to the whole figure. Mixed types remain attached
     // to their elements; no predicate, endpoint or semantic selection is elided.
     let uniform_nodes = nodes.len() > 1 && nodes.iter().all(|n| n.kind == nodes[0].kind);
@@ -185,7 +188,7 @@ fn graph(
             &value,
             width - 32,
         );
-        y += 20 * lines(&value, width - 32) + 12;
+        y += 24 * lines(&value, width - 32) + 12;
     }
     // State ownership retains its own selectable origin after the shared keys.
     if let DiagramMeaning::State { owner, .. } = &d.meaning {
@@ -196,7 +199,7 @@ fn graph(
         );
         let mut out = String::new();
         writing(&mut out, width / 2, y + 16, &value, width - 32);
-        y += 20 * lines(&value, width - 32) + 24;
+        y += 24 * lines(&value, width - 32) + 24;
         layout.elements.insert("state:owner".into(), out);
         layout.order.push("state:owner".into());
     }
@@ -221,9 +224,9 @@ fn graph(
                     cell - 8
                 };
                 let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
-                let h = (24 + 20 * (lines(label(&nodes[i].label)?, tw) + lines(&kind, tw)))
-                    + 20 * lines(&owner, tw);
-                let h = h.max(counts[i] * 20 + 24);
+                let h = (24 + 24 * (lines(label(&nodes[i].label)?, tw) + lines(&kind, tw)))
+                    + 24 * lines(&owner, tw);
+                let h = h.max(counts[i] * 24 + 24);
                 let h = if nodes[i].kind == DiagramNodeKind::Branch {
                     h * 2
                 } else {
@@ -236,7 +239,7 @@ fn graph(
                 row_h = row_h.max(h);
                 layout.order.push(nodes[i].id.clone());
             }
-            y += row_h + 28;
+            y += row_h + 20;
         }
         let edge_start = y;
         let mut col = 0;
@@ -249,7 +252,6 @@ fn graph(
             let guard = e.condition.as_ref().map(label).transpose()?;
             let needs_wide = width < 400
                 || std::iter::once(label(&e.label)?)
-                    .chain(std::iter::once(associations[i].as_str()))
                     .chain(guard)
                     .flat_map(str::split_whitespace)
                     .any(|word| super::measure_text(word) > cell);
@@ -269,12 +271,15 @@ fn graph(
             } else {
                 e.kind.localized_text(locale)
             };
-            let h = 24
-                + 20 * (lines(&associations[i], w - 12)
-                    + lines(label(&e.label)?, w - 12)
-                    + lines(kind, w - 12)
-                    + lines(&owner, w - 12))
-                + guard.map(|v| 20 * lines(v, w - 12) + 24).unwrap_or(0);
+            let label_lines = lines(label(&e.label)?, w - 12);
+            let kind_lines = if inline_label(label(&e.label)?, kind, w) {
+                0
+            } else {
+                lines(kind, w - 12)
+            };
+            let h = 12
+                + 20 * (label_lines + kind_lines + lines(&owner, w - 12))
+                + guard.map(|v| 20 * lines(v, w - 12) + 12).unwrap_or(0);
             edge_boxes[i] = Rect { x, y, w, h };
             layout.order.push(e.id.clone());
             if e.condition.is_some() {
@@ -341,7 +346,7 @@ fn graph(
             (card.x + card.w / 2, card.y + card.h + 8),
             (
                 to.x + to.w + 8,
-                to.y + to.h / 2 + incoming_port[b] * 20 - counts[b].saturating_sub(1) * 10,
+                to.y + to.h / 2 + incoming_port[b] * 24 - counts[b].saturating_sub(1) * 10,
             ),
         ]);
         incoming_port[b] += 1;
@@ -372,7 +377,7 @@ fn graph(
         let sx = from.x + from.w / 2;
         let ly = card.y;
         let lx = card.x + card.w / 2;
-        let ty = to.y + to.h / 2 + incoming[b] * 20 - counts[b].saturating_sub(1) * 10;
+        let ty = to.y + to.h / 2 + incoming[b] * 24 - counts[b].saturating_sub(1) * 10;
         incoming[b] += 1;
         let tx = to.x + to.w
             - if nodes[b].kind == DiagramNodeKind::Branch {
@@ -393,7 +398,14 @@ fn graph(
             &routes,
             nodes.len() + i,
         )
-        .map_err(|error| format!("{} output: {error}", e.id))?;
+        .map_err(|error| {
+            format!(
+                "{} output at {width}px from ({lx},{}) to ({},{ty}): {error}",
+                e.id,
+                cy + 8,
+                to.x + to.w + 8
+            )
+        })?;
         let mut output = vec![(lx, cy)];
         output.extend(second);
         output.push((tx, ty));
@@ -411,33 +423,48 @@ fn graph(
         layout.routes.insert(e.id.clone(), out);
         let mut out = String::new();
         panel(&mut out, card.x, card.y, card.w, card.h, "edge-key");
-        writing(&mut out, lx, card.y + 20, &associations[i], card.w - 12);
-        let py = card.y + 20 + 20 * lines(&associations[i], card.w - 12);
-        writing(&mut out, lx, py, label(&e.label)?, card.w - 12);
-        let ky = py + 20 * lines(label(&e.label)?, card.w - 12);
+        out.push_str("<g class=\"relation-wording\">");
+        let py = card.y + 20;
+        let name = label(&e.label)?;
         let kind = if uniform_edges {
             ""
         } else {
             e.kind.localized_text(locale)
         };
-        if !kind.is_empty() {
-            writing(&mut out, lx, ky, kind, card.w - 12);
+        let compact = inline_label(name, kind, card.w);
+        let label_lines = lines(name, card.w - 12);
+        let kind_lines = if compact { 0 } else { lines(kind, card.w - 12) };
+        if compact && !kind.is_empty() {
+            let nw = super::measure_text(name) * 13 / 16;
+            let kw = super::measure_text(kind) * 12 / 16;
+            let start = lx - (nw + kw + 8) / 2;
+            small_writing(&mut out, start + nw / 2, py, name, card.w - 12);
+            out.push_str("<g class=\"diagram-node-kind\">");
+            small_writing(&mut out, start + nw + 8 + kw / 2, py, kind, card.w - 12);
+            out.push_str("</g>");
+        } else {
+            small_writing(&mut out, lx, py, name, card.w - 12);
+            if !kind.is_empty() {
+                small_writing(&mut out, lx, py + 20 * label_lines, kind, card.w - 12);
+            }
         }
-        let context_y = ky + 20 * lines(kind, card.w - 12);
+        let context_y = py + 20 * (label_lines + kind_lines);
         if !owner.is_empty() {
-            writing(&mut out, lx, context_y, &owner, card.w - 12);
+            small_writing(&mut out, lx, context_y, &owner, card.w - 12);
         }
         if let Some(guard) = &e.condition {
-            let mut g = String::new();
-            writing(
+            let mut g = String::from("<g class=\"diagram-condition\">");
+            small_writing(
                 &mut g,
                 lx,
-                context_y + 20 * lines(&owner, card.w - 12) + 20,
+                context_y + 20 * lines(&owner, card.w - 12) + 8,
                 label(guard)?,
                 card.w - 12,
             );
+            g.push_str("</g>");
             layout.elements.insert(format!("{}:condition", e.id), g);
         }
+        out.push_str("</g>");
         layout.elements.insert(e.id.clone(), out);
     }
     for (i, node) in nodes.iter().enumerate() {
@@ -456,7 +483,18 @@ fn graph(
                 r.y + r.h / 2
             ));
         } else {
-            panel(&mut out, r.x, r.y, r.w, r.h, "participant-box");
+            panel(
+                &mut out,
+                r.x,
+                r.y,
+                r.w,
+                r.h,
+                if node.kind == DiagramNodeKind::ReadingGroup {
+                    "participant-box node-group"
+                } else {
+                    "participant-box"
+                },
+            );
         }
         let tw = if node.kind == DiagramNodeKind::Branch {
             r.w / 2 - 12
@@ -465,23 +503,25 @@ fn graph(
         };
         let name = label(&node.label)?;
         let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
-        let th = 20 * (lines(name, tw) + lines(&kind, tw) + lines(&owner, tw));
+        let th = 24 * (lines(name, tw) + lines(&kind, tw) + lines(&owner, tw));
         let top = r.y + (r.h - th) / 2 + 16;
         writing(&mut out, r.x + r.w / 2, top, name, tw);
         if !kind.is_empty() {
+            out.push_str("<g class=\"diagram-node-kind\">");
             writing(
                 &mut out,
                 r.x + r.w / 2,
-                top + 20 * lines(name, tw),
+                top + 24 * lines(name, tw),
                 &kind,
                 tw,
             );
+            out.push_str("</g>");
         }
         if !owner.is_empty() {
             writing(
                 &mut out,
                 r.x + r.w / 2,
-                top + 20 * (lines(name, tw) + lines(&kind, tw)),
+                top + 24 * (lines(name, tw) + lines(&kind, tw)),
                 &owner,
                 tw,
             );
@@ -531,7 +571,7 @@ fn sequence(
         .enumerate()
         .map(|(i, n)| {
             label(&n.label).map(|s| {
-                20 * (lines(s, (node_width - 4).max(16))
+                24 * (lines(s, (node_width - 4).max(16))
                     + if repeated[i] {
                         lines(&n.id, (node_width - 4).max(16)) + 1
                     } else {
@@ -571,7 +611,7 @@ fn sequence(
             writing(
                 &mut out,
                 x(i),
-                54 + 20 * lines(label(&node.label)?, (node_width - 4).max(16)),
+                54 + 24 * lines(label(&node.label)?, (node_width - 4).max(16)),
                 &node.id,
                 (node_width - 4).max(16),
             );
@@ -588,7 +628,7 @@ fn sequence(
             }
         };
         let heading = format!("{}. {order}", gi + 1);
-        let heading_height = 20 * lines(&heading, width - 32) + 12;
+        let heading_height = 24 * lines(&heading, width - 32) + 12;
         // Mask lifelines behind the complete group heading and guard, just as
         // behind message wording. A line through a condition changes its scope.
         let guard_text = group
@@ -601,7 +641,7 @@ fn sequence(
             .transpose()?;
         let guard_height = guard_text
             .as_ref()
-            .map_or(0, |s| 20 * lines(s, width - 32) + 16);
+            .map_or(0, |s| 24 * lines(s, width - 32) + 16);
         panel(
             &mut layout.background,
             8,
@@ -650,23 +690,23 @@ fn sequence(
                 order.to_owned()
             };
             let context = format!("{kind} · {context}");
-            let association_height = 20 * lines(&association, width - 48);
-            let h = 20 * (lines(name, width - 48) + lines(&context, width - 48))
+            let association_height = 24 * lines(&association, width - 48);
+            let h = 24 * (lines(name, width - 48) + lines(&context, width - 48))
                 + association_height
                 + 16;
             panel(&mut out, 16, y, width - 32, h, "message-label");
-            writing(&mut out, width / 2, y + 20, &association, width - 48);
+            writing(&mut out, width / 2, y + 24, &association, width - 48);
             writing(
                 &mut out,
                 width / 2,
-                y + 20 + association_height,
+                y + 24 + association_height,
                 name,
                 width - 48,
             );
             writing(
                 &mut out,
                 width / 2,
-                y + 20 + association_height + 20 * lines(name, width - 48),
+                y + 24 + association_height + 24 * lines(name, width - 48),
                 &context,
                 width - 48,
             );
@@ -696,7 +736,7 @@ fn sequence(
             width - 8,
             y - start
         ));
-        y += 20;
+        y += 24;
     }
     layout.height = y + 16;
     // Lifelines precede opaque labels; they never run through the visible text.
@@ -729,13 +769,15 @@ pub(super) fn svg(
         }
     };
     let wide = layout(760)?;
+    let medium = layout(520)?;
     let narrow = layout(272)?;
     let title = diagram_label(&d.title, texts)?;
     // No viewBox: each variant keeps native 16px text. CSS selects geometry,
     // never scales an overview to a miniature. The semantic anchors exist once.
-    let mut out=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" style=\"--map-wide-width:{}px;--map-wide-height:{}px;--map-narrow-width:{}px;--map-narrow-height:{}px\" class=\"connected-overview\" role=\"group\" aria-label=\"{}\" data-renderer=\"{RENDERER_ID}\"><defs><marker id=\"{marker}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0 0L10 5L0 10Z\"/></marker></defs><g class=\"diagram-content\"><g class=\"map-wide\">{}</g><g class=\"map-narrow\">{}</g>",wide.width,wide.height,wide.width,wide.height,narrow.width,narrow.height,esc(title),wide.background,narrow.background);
+    let mut out=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" style=\"--map-wide-width:{}px;--map-wide-height:{}px;--map-medium-width:{}px;--map-medium-height:{}px;--map-narrow-width:{}px;--map-narrow-height:{}px\" class=\"connected-overview\" role=\"group\" aria-label=\"{}\" data-renderer=\"{RENDERER_ID}\"><defs><marker id=\"{marker}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0 0L10 5L0 10Z\"/></marker></defs><g class=\"diagram-content\"><g class=\"map-wide\">{}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g>",wide.width,wide.height,wide.width,wide.height,medium.width,medium.height,narrow.width,narrow.height,esc(title),wide.background,medium.background,narrow.background);
     let labels = elements(d).into_iter().collect::<BTreeMap<_, _>>();
-    if wide.order.len() != labels.len() || wide.order != narrow.order {
+    if wide.order.len() != labels.len() || wide.order != narrow.order || wide.order != medium.order
+    {
         return Err("incomplete responsive elements".into());
     }
     for (id, route) in &wide.routes {
@@ -743,8 +785,8 @@ pub(super) fn svg(
         let name =
             super::element_caption(d, id, texts, locale) + ": " + diagram_label(label, texts)?;
         out.push_str(&format!(
-            "<a class=\"diagram-route diagram-text-link\" data-element=\"{}-{}\" href=\"#{}\" tabindex=\"-1\" aria-label=\"{}\"><g class=\"map-wide\">{route}</g><g class=\"map-narrow\">{}</g></a>",
-            esc(ns), esc(id), esc(&target(id, label)), esc(&name), narrow.routes.get(id).ok_or("missing narrow route")?
+            "<a class=\"diagram-route diagram-text-link\" data-element=\"{}-{}\" href=\"#{}\" tabindex=\"-1\" aria-label=\"{}\"><g class=\"map-wide\">{route}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g></a>",
+            esc(ns), esc(id), esc(&target(id, label)), esc(&name), medium.routes.get(id).ok_or("missing medium route")?, narrow.routes.get(id).ok_or("missing narrow route")?
         ));
     }
     for id in &wide.order {
@@ -753,8 +795,9 @@ pub(super) fn svg(
             super::element_caption(d, id, texts, locale) + ": " + diagram_label(label, texts)?;
         open(&mut out, ns, id, label, &name, target);
         out.push_str(&format!(
-            "<g class=\"map-wide\">{}</g><g class=\"map-narrow\">{}</g></a>",
+            "<g class=\"map-wide\">{}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g></a>",
             wide.elements.get(id).ok_or("missing wide element")?,
+            medium.elements.get(id).ok_or("missing medium element")?,
             narrow.elements.get(id).ok_or("missing narrow element")?
         ));
     }

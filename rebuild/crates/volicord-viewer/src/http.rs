@@ -325,7 +325,7 @@ impl ViewerServer {
             .unwrap_or(self.project_id);
         self.adapter
             .operations()
-            .canonical_basis(project_id)
+            .project_identity(project_id)
             .map_err(|_| HttpFailure::not_found())?;
         let view = self.view_parameters(&query.values)?;
         let guarded_query = query

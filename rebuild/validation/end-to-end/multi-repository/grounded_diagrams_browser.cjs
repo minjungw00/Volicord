@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const {spawn,execFileSync} = require('node:child_process');
 const assert = require('node:assert/strict');
 const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if(config.document_reader){require('./document_evidence_journey.cjs').run(config).catch(error=>{console.error(error);process.exitCode=1;});}else{
 if(config.complete_publications) assert(config.publications?.length,'whole-publication reading requires the independently declared public corpus');
 const coverage = require('./publication_coverage.cjs').publicationCoverage(config.cases,config.publications);
 if(config.complete_publications) assert(coverage.complete,'whole-publication reading omitted figures: '+JSON.stringify(coverage.publications.filter(p=>p.missing.length)));
@@ -108,7 +109,7 @@ async function nativeLinkNavigation(page, link, receipt) {
             assert(await figure.evaluate(n=>n===document.activeElement),'outline exact figure focus');
           }
           const svg=figure.locator('svg');assert.equal(await svg.count(),1);
-          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/9'));
+          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/10'));
           assert.equal(await page.locator('script').count()>0,mode==='live','live scripting versus script-free static export');
           if(mode==='live') await page.waitForFunction(id=>{
             const viewport=document.getElementById(id)?.querySelector('.diagram-viewport');
@@ -137,7 +138,7 @@ async function nativeLinkNavigation(page, link, receipt) {
           }
           const svg_bytes=await svg.evaluate(n=>new TextEncoder().encode(n.outerHTML).length);
           if(config.orientation_only) {
-            results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/9'),evidence_journey:'not_exercised'});
+            results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/10'),evidence_journey:'not_exercised'});
             await context.close();continue;
           }
           if(config.context_reading) {
@@ -351,7 +352,7 @@ async function nativeLinkNavigation(page, link, receipt) {
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({entry,visual_geometry,native_navigation,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/9')});
+          results.push({entry,visual_geometry,native_navigation,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/10')});
           await context.close();
         }
       } catch(error) {
@@ -369,3 +370,5 @@ async function nativeLinkNavigation(page, link, receipt) {
     process.stdout.write(JSON.stringify({status:'passed',observations:results.length})+'\n');
   } finally {await browser.close();}
 })().catch(e=>{fs.writeFileSync(path.join(output,'failure.txt'),e.stack,{flag:'wx'});console.error(e);process.exitCode=1;});
+
+}

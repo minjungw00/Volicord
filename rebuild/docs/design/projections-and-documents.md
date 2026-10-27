@@ -2608,7 +2608,7 @@ record and all original dependencies; ordinary reads generate nothing.
 Public CLI/MCP ordinary answers and complete publication pages include the exact
 semantics and seal. Human text includes endpoints, relation types, conditions and
 explicit parallel groups. Live and self-contained offline Viewer render the same
-meaning through in-tree `volicord-static-svg/9` plus a faithful linear alternative.
+meaning through in-tree `volicord-static-svg/10` plus a faithful linear alternative.
 Layout coordinates and SVG are presentation only. Relations show their exact admitted
 wording first; numbered keys and localized relationship kinds remain secondary.
 The visible label, accessible name, text representation and selected claim retain the
@@ -3041,3 +3041,37 @@ own selection/Source identity and do not become global navigation. Overview,
 catalogue and missing-identity pages have no invented document contents. This
 presentation and ephemeral list metadata change requires no retained-format,
 canonical schema, admission, fingerprint or generated-metadata revision.
+
+### Grounded reader presentation and original body deadlines
+
+Current local SVG presentation is `volicord-static-svg/10`. The adopted Reader
+replaces the earlier boxed endpoint-repeat annotations with connected, unboxed
+complete edge wording and attached quiet types. Each routed edge is checked against
+its actual admitted endpoint boxes; complete endpoint/type/guard identity remains
+in accessible captions, selected detail and the unchanged faithful text alternative.
+Repeated names carry admitted IDs. The bounded in-tree routing primitive now computes
+wide/intermediate/narrow geometry from actual available figure width, including a
+reduced article beside evidence. No external renderer, font service, subprocess,
+markup interpreter, new semantic field or retained-format conversion is introduced.
+Actual long/mixed labels and cyclic/bidirectional shapes still require glyph/path and
+public-consumer controls; the reference's hand-placed SVGs are never production data.
+
+Operations supplies `source_ranges[].expires_at_unix_micros` only from an available
+original scoped body read. It is ephemeral Source metadata, not an authored field or
+publication deadline. Availability fingerprints include it; retained v8 envelopes,
+semantic/preparation seals and generated metadata 11 remain unchanged. Viewer uses
+it to remove every cached original body at expiry without erasing retained prose/maps.
+Every live 4,096-byte page is still bound and revalidated before accumulating at most
+the existing 16,384-byte exact range. Unavailable/denied responses remove affected
+buffers/DOM; authority failure removes all publication meaning, including alternatives.
+New exports still recheck availability under the mutation lock and omit expired bytes.
+
+| Requirement | Maintained responsibility | Direct controls |
+| --- | --- | --- |
+| Normal document/figure/claim/complete code/visible return | shared Reader, SVG 10, exact citation endpoint | `grounded_diagrams_browser.cjs` document-reader mode and `citation_reading` |
+| Complete concept/component/flow/sequence/state semantics and hostile/varied inputs | admitted v8 diagrams / local renderer | Viewer diagram unit tests, `citation_reading`, glyph/path geometry controls |
+| Same publication after idle expiry/change, valid other ranges and no hidden old body | typed availability / original deadline / exact Source authority | `retained_reading_browser.cjs`, `citation_reading`, ordinary CLI/MCP and native exports |
+| Existing and new normal publications through cleanup/restart | Privacy lifetime and retained selection | `retained_originals` frozen original/source-coupled and independent-lifetime manifests |
+
+These technical observations do not substitute for independent semantic reading,
+reference fidelity comparison, native assistive testing or actual human acceptance.

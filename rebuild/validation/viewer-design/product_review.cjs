@@ -55,8 +55,8 @@ async function inspectSource(page,c,width,offline,article,link,task,destination,
  if(task)await criticalPoint(point,task);
  let bytes=0,pages=0;
  if(!offline){
-  await page.waitForFunction(({id,narrow})=>{const n=document.getElementById(id);return n&&document.activeElement===n&&n.getAttribute('role')===(narrow?'dialog':null);},{id:target,narrow:width<=900});
-  assert.equal(await article.evaluate(n=>n.inert),width<=900);
+  await page.waitForFunction(({id,narrow})=>{const n=document.getElementById(id);return n&&n.contains(document.activeElement)&&n.getAttribute('role')===(narrow?'dialog':null);},{id:target,narrow:width<1200});
+  assert.equal(await article.evaluate(n=>n.inert),width<1200);
   assert.equal(await point.evaluate(n=>Boolean(n.closest('[inert]'))),false,'Source controls must remain outside the inert article');
   await page.keyboard.press('Tab');assert.equal(await point.evaluate(n=>n.contains(document.activeElement)),true);
   if(task){
@@ -77,7 +77,7 @@ async function inspectSource(page,c,width,offline,article,link,task,destination,
    assert.equal(await point.locator('.citation-inspection').count(),0,'offline omission grants no live retrieval');
   }
  }
- if(!omitted)assert.equal(await (await embeddedCode(point)).evaluate(n=>getComputedStyle(n.parentElement).fontSize),width<=600?'12px':width<=900?'13px':'15px');
+ if(!omitted)assert.equal(await (await embeddedCode(point)).evaluate(n=>getComputedStyle(n.parentElement).fontSize),width<=600?'12px':width<1200?'13px':'15px');
  await capture(page,c,sourceCaptureName(destination,offline,task),width);
  const returnId=(await point.locator('.return').getAttribute('href')).slice(1);assert.equal(returnId,origin);
  if(!offline){await page.reload();await point.waitFor({state:'visible'});await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),returnId);
@@ -130,7 +130,7 @@ async function inspectSource(page,c,width,offline,article,link,task,destination,
    assert.equal(await page.locator('#overview .repository-entry,#overview .related-decisions').count(),0);
    assert.ok(!(await page.locator('#overview').textContent()).includes('RECENT WORK'));
    const geometry=await page.evaluate(()=>{const brand=document.querySelector('.brand').getBoundingClientRect(),nav=document.querySelector('.masthead nav').getBoundingClientRect(),shell=document.querySelector('.masthead>.shell').getBoundingClientRect();return {brand:brand.x,nav:nav.x,right:nav.right,shellRight:shell.right};});
-   assert.ok(Math.abs(geometry.right-(width-(width>1440?(width-1440)/2:0)-(width<=600?20:width<=900?28:48)))<2,'right aligned navigation');
+   assert.ok(Math.abs(geometry.right-(width-(width>1440?(width-1440)/2:0)-(width<=600?20:width<1200?28:48)))<2,'right aligned navigation');
    if(width>=768)assert.ok(geometry.nav>geometry.brand+100);
    row.navigation_geometry=geometry;
    if(c.normal_work){const card=page.locator(`.work-card[data-work-id="${c.normal_work}"]`);

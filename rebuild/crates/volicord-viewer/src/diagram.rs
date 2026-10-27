@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/9";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/10";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -68,7 +68,7 @@ fn text(out: &mut String, x: usize, y: usize, value: &str, width: usize) {
     for (i, line) in words(value, width).iter().enumerate() {
         out.push_str(&format!(
             "<tspan x=\"{x}\" dy=\"{}\">{}</tspan>",
-            if i == 0 { 0 } else { 20 },
+            if i == 0 { 0 } else { 24 },
             esc(line)
         ));
     }
@@ -221,11 +221,17 @@ pub(crate) fn element_caption(
 ) -> String {
     let label = |l: &DiagramLabel| diagram_label(l, texts).unwrap_or("");
     let node = |id: &str| {
-        d.nodes()
+        let name = d
+            .nodes()
             .iter()
             .find(|n| n.id == id)
             .map(|n| label(&n.label))
-            .unwrap_or("")
+            .unwrap_or("");
+        if d.nodes().iter().filter(|n| label(&n.label) == name).count() > 1 {
+            format!("{name} [{id}]")
+        } else {
+            name.to_owned()
+        }
     };
     let owner = if let DiagramMeaning::State { owner, .. } = &d.meaning {
         format!(
@@ -246,11 +252,7 @@ pub(crate) fn element_caption(
         }
     }
     if let Some(n) = d.nodes().iter().find(|n| n.id == id) {
-        return format!(
-            "{} · {}{owner}",
-            label(&n.label),
-            n.kind.localized_text(locale)
-        );
+        return format!("{} · {}{owner}", node(&n.id), n.kind.localized_text(locale));
     }
     match &d.meaning {
         DiagramMeaning::Concept { relations, .. }
@@ -534,7 +536,7 @@ mod tests {
             first
                 .matches("class=\"relation-line parallel-operand\"")
                 .count(),
-            2, // One geometric operand in each responsive layout.
+            3, // One geometric operand in each responsive layout.
         );
         assert!(first.contains("par · no relative order"));
         let mut sequential = d.clone();
@@ -671,12 +673,138 @@ mod tests {
             if let Some(root) = &root { std::fs::write(root.join(&file), &svg).map_err(|e|e.to_string())?; }
             fixtures.push(serde_json::json!({"id":ns,"ui_locale":ui,"file":file,"diagram":d,"prose":values.iter().map(|text|serde_json::json!({"text":text})).collect::<Vec<_>>(),"classification":"independent synthetic export task; no Source or real Work claim"}));
         }
+        // Different bounded synthetic topology: twelve components, forward and
+        // backward routes, and a larger guarded/parallel participant scene.
+        for (kind, count, edge_count) in [("many-components", 12, 20), ("many-participants", 8, 14)]
+        {
+            let values = [
+                "Payload 경로와 revision",
+                "조건: exact original revision remains available",
+            ];
+            let select = |unit: usize| DiagramLabel {
+                unit,
+                start_byte: 0,
+                end_byte: values[unit].len(),
+            };
+            let nodes = (0..count)
+                .map(|i| DiagramNode {
+                    id: format!("node-{i}"),
+                    kind: if kind == "many-components" {
+                        DiagramNodeKind::Component
+                    } else {
+                        DiagramNodeKind::Participant
+                    },
+                    label: select(0),
+                })
+                .collect::<Vec<_>>();
+            let meaning = if kind == "many-components" {
+                DiagramMeaning::Component {
+                    nodes,
+                    relations: (0..edge_count)
+                        .map(|i| DiagramRelation {
+                            id: format!("edge-{i}"),
+                            from: format!("node-{}", i % count),
+                            to: format!(
+                                "node-{}",
+                                if i < count {
+                                    (i + 1) % count
+                                } else {
+                                    (i + count - 1) % count
+                                }
+                            ),
+                            kind: DiagramRelationKind::DependsOn,
+                            label: select(0),
+                            condition: (i % 3 == 0).then(|| select(1)),
+                        })
+                        .collect(),
+                }
+            } else {
+                DiagramMeaning::Sequence {
+                    participants: nodes,
+                    groups: vec![DiagramGroup {
+                        order: DiagramOrder::Parallel,
+                        condition: Some(select(1)),
+                        messages: (0..edge_count)
+                            .map(|i| DiagramMessage {
+                                id: format!("message-{i}"),
+                                from: format!("node-{}", i % count),
+                                to: format!(
+                                    "node-{}",
+                                    if i % 3 == 0 {
+                                        i % count
+                                    } else {
+                                        (i + 1) % count
+                                    }
+                                ),
+                                kind: if i % 2 == 0 {
+                                    DiagramMessageKind::Await
+                                } else {
+                                    DiagramMessageKind::Return
+                                },
+                                label: select(0),
+                            })
+                            .collect(),
+                    }],
+                }
+            };
+            let d = GroundedDiagram {
+                id: kind.into(),
+                title: select(0),
+                caption_unit: 0,
+                semantic_fingerprint: String::new(),
+                meaning,
+            };
+            let output = super::svg(
+                &d,
+                &values,
+                kind,
+                &|id, _| format!("{id}-claim"),
+                FixedLocale::Korean,
+            )?;
+            assert!(output.len() <= 262144);
+            for i in 0..count {
+                assert!(output.contains(&format!("id=\"{kind}-node-{i}\"")));
+            }
+            if let Some(root) = &root {
+                std::fs::write(root.join(format!("{kind}.svg")), &output)
+                    .map_err(|e| e.to_string())?;
+            }
+            fixtures.push(serde_json::json!({"id":kind,"ui_locale":"ko","file":format!("{kind}.svg"),"diagram":d,"prose":values.iter().map(|text|serde_json::json!({"text":text})).collect::<Vec<_>>(),"classification":"synthetic many-node/participant topology; not Product records or semantic acceptance"}));
+        }
         if let Some(root) = &root {
             std::fs::write(
                 root.join("fixtures.json"),
                 serde_json::to_vec_pretty(&fixtures).map_err(|e| e.to_string())?,
             )
             .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+    #[test]
+    #[ignore = "explicit local admitted-publication renderer review"]
+    fn admitted_publication_renderer_review() -> Result<(), String> {
+        let input = std::env::var_os("VOLICORD_LAYOUT_PUBLICATION")
+            .ok_or("VOLICORD_LAYOUT_PUBLICATION is required")?;
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(input).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        let prose = value["prose"].as_array().ok_or("public prose")?;
+        let texts = prose
+            .iter()
+            .map(|p| p["text"].as_str().ok_or("public text"))
+            .collect::<Result<Vec<_>, _>>()?;
+        for raw in value["diagrams"].as_array().ok_or("public diagrams")? {
+            let d: GroundedDiagram =
+                serde_json::from_value(raw.clone()).map_err(|e| e.to_string())?;
+            let output = super::svg(
+                &d,
+                &texts,
+                "review-publication",
+                &|id, _| format!("{id}-claim"),
+                FixedLocale::English,
+            )
+            .map_err(|e| format!("{}: {e}", d.id))?;
+            assert!(output.contains("connected-overview"));
         }
         Ok(())
     }
@@ -731,8 +859,8 @@ mod tests {
             },
         };
         let output = svg(&d, &["state"], "geometry", &|id, _| format!("{id}-claim"))?;
-        assert_eq!(output.matches("All nodes: state").count(), 2);
-        assert_eq!(output.matches("All relations: transition").count(), 2);
+        assert_eq!(output.matches("All nodes: state").count(), 3);
+        assert_eq!(output.matches("All relations: transition").count(), 3);
         fn attribute<'a>(s: &'a str, key: &str) -> Result<&'a str, String> {
             s.split_once(&format!("{key}=\""))
                 .and_then(|(_, v)| v.split_once('"'))
@@ -753,14 +881,30 @@ mod tests {
         }
         // A side-entry line through a third state is rejected by this oracle.
         assert!(crosses((1008, 700), (370, 700), (410, 640, 220, 120)));
-        for hidden_variant in ["map-narrow", "map-wide"] {
-            // Each responsive geometry gets the same independent obstacle
-            // oracle. Hidden variants must not count as overlapping labels.
+        for visible_variant in ["map-wide", "map-medium", "map-narrow"] {
+            // Isolate each complete variant, including nested label groups.
             let mut output = output.clone();
-            let start = format!("<g class=\"{hidden_variant}\">");
-            while let Some(a) = output.find(&start) {
-                let b = output[a..].find("</g>").ok_or("variant close")? + a + 4;
-                output.replace_range(a..b, "");
+            for hidden in ["map-wide", "map-medium", "map-narrow"]
+                .into_iter()
+                .filter(|v| *v != visible_variant)
+            {
+                let start = format!("<g class=\"{hidden}\">");
+                while let Some(a) = output.find(&start) {
+                    let mut cursor = a + start.len();
+                    let mut depth = 1;
+                    while depth > 0 {
+                        let close = output[cursor..].find("</g>").ok_or("variant close")? + cursor;
+                        let open = output[cursor..].find("<g ").map(|n| cursor + n);
+                        if open.is_some_and(|n| n < close) {
+                            depth += 1;
+                            cursor = open.ok_or("group")? + 3;
+                        } else {
+                            depth -= 1;
+                            cursor = close + 4;
+                        }
+                    }
+                    output.replace_range(a..cursor, "");
+                }
             }
             let mut boxes = Vec::new();
             for name in names {

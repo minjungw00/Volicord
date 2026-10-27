@@ -43,6 +43,9 @@ pub struct SourceRangeAvailability {
     #[serde(skip)]
     pub citation: ExplanationCitation,
     pub available: bool,
+    /// Original body deadline; never a publication expiry or renewed lifetime.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at_unix_micros: Option<i64>,
     pub limitation: Option<ExplanationFailureReason>,
 }
 

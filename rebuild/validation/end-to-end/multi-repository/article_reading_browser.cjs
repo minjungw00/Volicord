@@ -75,8 +75,8 @@ async function inspect(page,c,qa,url,width,mode,language) {
     await criticalBytes(page,point,task,mode==='offline',pending);
     await page.screenshot({path:path.join(config.output,`${c.key}-${language}-${width}-${mode}-code.png`)});
     if(mode==='live') {
-      assert.equal(await doc.evaluate(n=>n.inert),width<=900);
-      assert.equal(await point.getAttribute('aria-modal'),width<=900?'true':null);
+      assert.equal(await doc.evaluate(n=>n.inert),width<1200);
+      assert.equal(await point.getAttribute('aria-modal'),width<1200?'true':null);
       await page.keyboard.press('Escape');
     } else {await point.locator('.return').focus();await page.keyboard.press('Enter');}
     await page.waitForURL(u=>u.hash==='#'+origin);

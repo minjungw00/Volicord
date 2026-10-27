@@ -58,6 +58,11 @@ async function start(fixture) {
     const wait=Math.max(0,Math.ceil(f.expires_at/1000-Date.now())+100);
     assert.ok(wait<60000,'seed must have sufficient remaining real TTL');
     await page.waitForTimeout(wait);
+    // The typed original deadline clears every cached/hidden copy while idle;
+    // this must precede a new request or a diagnostic flag.
+    assert.equal(await initial.locator('pre.code-region').count(),0);
+    assert.ok(!(await page.locator('code').allTextContents()).includes(f.originals[8]));
+    write('idle-expiry-dom.html',await page.content());
     await initial.locator('.citation-read').click();
     await initial.locator('.citation-status').filter({hasText:'expired'}).waitFor();
     assert.equal(await initial.locator('pre.code-region').count(),0);
@@ -74,12 +79,14 @@ async function start(fixture) {
     await point(1,1).locator('.citation-read').click();
     await page.locator('.applicability[data-comparison-state="changed"]').waitFor();
     assert.equal(await point(1,1).locator('.citation-inspection code').textContent(),f.originals[9]);
+    await page.screenshot({path:path.join(config.output,'same-page-repository-changed.png')});
     fs.renameSync(f.repository,f.repository+'.unavailable');
     try {
       await point(1,1).locator('.citation-read').click();
       await page.locator('.applicability[data-comparison-state="unavailable"]').waitFor();
       assert.equal(await point(1,1).locator('.citation-inspection code').textContent(),f.originals[9]);
       assert.equal(await page.locator('#repository-explanation .admitted-diagram').count(),diagrams);
+      await page.screenshot({path:path.join(config.output,'same-page-comparison-unavailable.png')});
     } finally {fs.renameSync(f.repository+'.unavailable',f.repository);}
     const cli=JSON.parse(command('cli-read',[...prefix,'--json','repository','explain','read','--language','en']));
     assert.equal(cli.answers.provenance.publication_id,f.publication);
@@ -115,7 +122,29 @@ async function start(fixture) {
       assert.ok(await native.locator('[data-range-state="expired"]').count());
       await native.screenshot({path:path.join(config.output,`offline-${width}.png`)});
     }
-    await nojs.close();assert.deepEqual(result.external_requests,[]);
+    await nojs.close();
+    // Actual supported deletion, after testing independent lifetime/readability.
+    // Revalidate an already open body so stale DOM/buffers cannot survive denial.
+    const deniedContext=await browser.newContext();
+    await deniedContext.route('**/*',route=>{
+      if(new URL(route.request().url()).origin===new URL(listener.base).origin)return route.continue();
+      result.external_requests.push(route.request().url());return route.abort();
+    });
+    const denied=await deniedContext.newPage();
+    await denied.goto(listener.base+'?view=repository#'+validId);
+    const permitted=denied.locator(`[id="${validId}"]`);
+    await permitted.locator('.citation-status').filter({hasText:'Displayed'}).waitFor();
+    assert.equal(await permitted.locator('.citation-inspection code').textContent(),f.originals[9]);
+    command('delete-source',[...prefix,'--json','repository','source','delete','--analysis',f.analysis,'--source',f.answers.prose[1].citations[1].source_id]);
+    await permitted.locator('.citation-read').click();
+    await permitted.locator('.publication-unavailable').waitFor();
+    assert.equal(await denied.locator('.admitted-diagram svg').count(),0);
+    assert.equal(await denied.locator('.source-point code').count(),0);
+    assert.equal(await denied.locator('#repository-explanation .unit-text').count(),0);
+    write('actual-deletion-dom.html',await denied.content());
+    await denied.screenshot({path:path.join(config.output,'actual-deletion.png')});
+    await deniedContext.close();result.actual_deletion_invalidated_open_publication=true;
+    assert.deepEqual(result.external_requests,[]);
     result.outcome='passed';result.publication=f.publication;result.real_ttl_expiry=true;result.same_page_meaning_preserved=true;result.restart=true;
   } catch(error) {result.error=error.stack;process.exitCode=1;}
   finally {if(browser)await browser.close();if(listener)await listener.stop();write('result.json',JSON.stringify(result,null,2));console.log(JSON.stringify(result));}

@@ -1424,3 +1424,22 @@ explained/omitted topics separately. Current CLI/MCP/live/offline agreement and 
 fit establish transport, not independent semantic or human acceptance. Larger-budget
 or scoped-publication conditions that were not run remain not_observed. See the
 [focused observations](../../validation/end-to-end/multi-repository/repository-explanation-breadth.md).
+
+### Adopted project-reader journey controls
+
+Scenario N uses the adopted shared project sidebar and document-only top contents,
+including the actual 730px available-article threshold and 980px project drawer.
+Normal admitted repository and Work publications must expose all declared figures
+before assisted selection, then the selected claim, exact independent range,
+complete original code and visible element/focus return across desktop, sheet,
+full screen, expansion, history, native modified links and resize. Caption/label/
+guard/type and text alternatives remain admitted meaning, without fixture SVGs.
+
+The same normally admitted publication remains intact through ordinary repository
+change and Source expiry/cleanup/restart. Typed original body deadlines clear hidden
+live code while idle; another valid range remains readable. New exports contain
+permitted explanation with unavailable-range notices. Explicit deletion, forgetting,
+foreign identity, replacement and integrity controls continue to block their actual
+scope. CLI/MCP/live/native/offline agreement is technical evidence; source-first
+meaning, isolated first visual reading, unchanged-reference comparison and human/
+assistive acceptance remain independent observations.

@@ -843,3 +843,33 @@ fragments, history and script-free/export reads keep their ordinary meaning.
 The unchanged ignored reference package is design evidence, not Product records or
 admission. Catalogue query/scale completion, semantic quality and human/assistive
 acceptance remain separate from these shell/navigation controls.
+
+### Adopted grounded figure and evidence hierarchy
+
+The adopted reference supersedes the earlier large connection-card annotations and
+post-map zoom toolbar. The connected map is visible in its figure frame with a
+quiet title and expansion action, complete routed labels/directions/guards, caption
+and selected claim strip. Original wording and exhaustive semantic alternatives are
+deliberate supporting reads. Types remain attached or stated in a shared uniform key;
+quiet relation/type text follows the reference density, with separate native node
+labels. A generated layout may reflow actual topology; it cannot invent groups,
+short labels, execution order or repository-specific coordinates. Short authored
+spans and headings require ordinary preparation/composition/recording from permitted
+original evidence. A reference's fictional records never enter the Runtime.
+
+Live node/relation/message/guard selection opens its own exact publication-bound
+claim and first covering Source. The strip remains selected. Range selection comes
+before complete code; the original claim/provenance is deliberately expandable.
+Native/no-JS links preserve the same claim -> evidence -> return meanings. At >=1200px
+code is a 464px nonmodal right panel; 761–1199px uses a modal sheet up to 540px; <=760px
+is full screen. Drawer, contents, figure expansion and evidence do not leave competing
+modal/inert states. Escape/close, history, native modified links, expansion and resize
+preserve the actual element and visible return position, not merely a saved scrollY.
+
+Source readability carries its original typed body deadline independently of the
+publication. A live page clears expired code from every dependent visible/hidden
+copy and its local range buffer even while idle; becoming visible rechecks deadlines.
+Requests still revalidate authority, exact identity and each contiguous code page.
+Loading hides the previous body. It never fetches current replacement code, renews
+retention, generates on read or treats a changed repository as publication deletion.
+Distributed static bytes retain their export-time basis and cannot later be revoked.

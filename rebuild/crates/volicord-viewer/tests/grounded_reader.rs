@@ -443,7 +443,8 @@ fn missing_checkpoint_direction_does_not_erase_goal_or_promote_advice() -> Resul
             answers.next_step_answer().ok_or("availability")?.question,
             "NextStepAvailability"
         );
-        assert_eq!(answers.prose.iter().any(|a| a.text == advice), !stale);
+        // Repository change does not erase independently retained host advice.
+        assert!(answers.prose.iter().any(|a| a.text == advice));
         for (locale, _gap, _heading) in [
             (
                 ViewerLocale::English,
@@ -486,8 +487,8 @@ fn missing_checkpoint_direction_does_not_erase_goal_or_promote_advice() -> Resul
             assert!(!overview.contains("<blockquote class=\"work-summary\""));
             assert!(detail.contains("Explain why value returns 5"));
             for page in [&detail, &snapshot] {
-                assert_eq!(page.contains(advice), !stale);
-                assert_eq!(page.contains("data-question=\"NextStep\""), !stale);
+                assert!(page.contains(advice));
+                assert!(page.contains("data-question=\"NextStep\""));
             }
         }
     }
@@ -617,9 +618,9 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             "def value():\n    return 6\n",
         )?;
         let stale = get(&f)?;
-        assert!(code_texts(&stale).is_empty());
-        assert!(stale
-            .contains("The explanation basis changed; the article cannot be shown as current."));
+        assert!(code_texts(&stale).iter().any(|s| s.contains("return 5")));
+        assert!(!code_texts(&stale).iter().any(|s| s.contains("return 6")));
+        assert!(stale.contains("data-comparison-state=\"changed\""));
     }
     Ok(())
 }
@@ -1214,9 +1215,11 @@ fn large_excerpt_reaches_cli_mcp_live_and_snapshot_without_surrounding_bytes(
             &[provenance],
             &[],
         )
-        .is_err());
-    assert!(!denied.exists());
-    assert!(code_texts(&get(&f)?).is_empty());
+        .is_ok());
+    assert!(denied.exists());
+    assert!(!get(&f)?.contains("# unretained"));
+    assert!(get(&f)?.contains("data-comparison-state=\"changed\""));
+    assert!(code_texts(&get(&f)?).iter().any(|s| s.contains("return 5")));
     Ok(())
 }
 
@@ -1621,7 +1624,7 @@ fn representative_production_code_preserves_grounding_across_public_readers(
     assert!(!old_publication.exists());
     assert_eq!(canonical, operations.canonical_basis(project(&f)?)?);
     let page = get(&f)?;
-    // An actual change outside either retained region invalidates publication.
+    // An uncited repository change changes correspondence, not retained permission.
     fs::write(
         temp.path()
             .join("repo")
@@ -1639,8 +1642,9 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             &[revised.provenance.ok_or("identity")?],
             &[],
         )
-        .is_err());
-    assert!(!denied.exists());
+        .is_ok());
+    assert!(denied.exists());
+    assert!(get(&f)?.contains("data-comparison-state=\"changed\""));
     Ok(())
 }
 
@@ -2429,7 +2433,10 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
         assert!(nav.contains("How the constant reaches the caller"));
         assert!(nav.contains("What this inspection establishes"));
         assert!(!nav.contains("Execution was not observed"));
-        assert!(!nav.contains("No downstream coverage"));
+        assert!(
+            nav.contains("No downstream coverage"),
+            "visible nested limit heading belongs in the full contents"
+        );
         let article = page
             .find("How the constant reaches the caller</h2>")
             .ok_or("authored topic")?;

@@ -1533,3 +1533,32 @@ attempt before reading. Default widths include both sides of 1200/980/760 and th
 730px available-article boundary. Initial screenshots precede scripted assistance.
 Use `validate focused`; technical controls and dependent screenshot comparison do
 not establish isolated first reading, screen-reader behavior or human acceptance.
+
+`grounded_diagrams_browser.cjs CONFIG` supports `document_reader: true` for
+the complete admitted-document journey. Each case additionally supplies `public`
+(the ordinary CLI public answer JSON), `offline` (the ordinary Viewer export),
+`repository` (the exact local cited source tree), and `publication`. It checks
+every declared figure before interaction, complete cited bytes, publication and
+claim identity, evidence modality, and visible element return. `modes` accepts
+`live`, `offline`, `no-js` (file export), and `live-no-js` (actual listener with
+JavaScript disabled). Optional `interactions: true` adds modifier/history/reload,
+resize, expansion, delayed real-response, shared-alias and foreign-fragment
+controls. Narrow full-screen evidence closes with Escape; sheet evidence also
+checks the exposed backdrop. Outputs and copied runtimes require a fresh attempt.
+
+The ignored Viewer library test `diagram::tests::admitted_publication_renderer_review`
+accepts `VOLICORD_LAYOUT_PUBLICATION` pointing to an ordinary public answer JSON.
+It exercises all actual admitted figures without requiring a browser. Synthetic
+stress output remains separately classified: `VOLICORD_LAYOUT_REVIEW_ROOT`
+captures long/mixed labels, repeated names, cycles, guarded/self messages, twelve
+components and eight participants. Geometry review uses the shipped Reader,
+shell and evidence styles together and the actual figure container; a renderer
+stress pass does not establish real-source or independent reading acceptance.
+
+`retained_reading_browser.cjs` additionally captures the same live page after a
+real uncited repository edit and unavailable local comparison. After expiry,
+CLI/MCP, restart and new-export checks, it deletes a still-readable Source through
+the supported CLI in the disposable fixture Runtime, then revalidates the already
+open reading point. The real denial response must remove publication prose/maps
+and all code copies from that open page. Previously distributed static exports
+retain their recorded basis; this control does not claim remote revocation.

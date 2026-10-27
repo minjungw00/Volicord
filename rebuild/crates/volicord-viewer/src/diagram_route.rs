@@ -124,8 +124,10 @@ pub(super) fn route(
     width: usize,
     height: usize,
 ) -> Result<Vec<Point>, String> {
-    let mut xs = vec![8, width - 8, start.0, end.0];
-    let mut ys = vec![8, height - 8, start.1, end.1];
+    // Include the outermost permitted lanes. Reserving an unused 8px inset
+    // stranded later backward routes after earlier routes occupied both gutters.
+    let mut xs = vec![4, 8, width - 8, width - 4, start.0, end.0];
+    let mut ys = vec![4, 8, height - 8, height - 4, start.1, end.1];
     for r in obstacles {
         xs.extend([r.x, r.x + r.w]);
         ys.extend([r.y, r.y + r.h]);
@@ -145,7 +147,10 @@ pub(super) fn route(
     ys.dedup();
     let nx = xs.len();
     let ny = ys.len();
-    if nx > 256 || ny > 256 {
+    // Tall, fully wrapped labels need more vertical visibility coordinates
+    // than wide maps. Bound the actual search allocation, rather than reject
+    // an otherwise smaller grid solely because one axis exceeds 256.
+    if nx > 1024 || ny > 1024 || nx.saturating_mul(ny) > 256 * 256 {
         return Err("local routing grid budget exceeded".into());
     }
     let source = ys.binary_search(&start.1).map_err(|_| "route source")? * nx

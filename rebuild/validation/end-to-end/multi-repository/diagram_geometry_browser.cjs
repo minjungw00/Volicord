@@ -15,7 +15,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
       const context=await browser.newContext({viewport:{width,height:1000}});const page=await context.newPage();const external=[];
       await page.route('**/*',r=>{external.push(r.request().url());return r.abort();});
       const svg=fs.readFileSync(path.join(config.fixtures,f.file),'utf8');
-      await page.setContent('<html lang="'+f.ui_locale+'"><style>'+fs.readFileSync(config.css,'utf8')+'</style><figure id="'+f.id+'"><div class="diagram-viewport">'+svg+'</div></figure></html>');
+      await page.setContent('<html lang="'+f.ui_locale+'"><style>'+fs.readFileSync(config.css,'utf8')+'</style><figure id="'+f.id+'"><div class="diagram-full-view"><div class="diagram-viewport">'+svg+'</div></div></figure></html>');
       await page.evaluate(()=>document.fonts.ready);
       const result=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);rows.push({fixture:f.id,width,...result});
       fs.writeFileSync(path.join(config.output,f.id+'-'+width+'.json'),JSON.stringify(result,null,2),{flag:'wx'});
@@ -50,6 +50,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         assert(wrongGroup.errors.some(e=>e.kind==='wrong-group-order'),'wrong par/strict meaning must fail');
         await header.evaluate((n,original)=>n.innerHTML=original,original);
         const sequential=f.diagram.meaning.groups.find(g=>g.order==='sequential');
+        if(sequential){
         const messageId=sequential.messages.at(-1).id;
         const previousId=sequential.messages.length>1?sequential.messages[0].id:f.diagram.meaning.groups[0].messages[0].id;
         const message=page.locator('svg a[id$="-'+messageId+'"]');
@@ -58,6 +59,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         assert(wrongOrder.errors.some(e=>e.kind==='wrong-message-order'),'transformed sequential message order must fail');
         await message.evaluate(n=>n.removeAttribute('transform'));
         fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-order-controls.json'),JSON.stringify({wrongGroup:wrongGroup.errors,wrongOrder:wrongOrder.errors},null,2),{flag:'wx'});
+        }
       }
       if(f.diagram.meaning.kind==='state') {
         const node=f.diagram.meaning.nodes[0];

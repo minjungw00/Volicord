@@ -980,6 +980,13 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("portable merge failed", error))
     }
 
+    /// Read a selected local identity without materializing canonical history.
+    pub fn project_identity(&self, project: ProjectId) -> Result<volicord_context::Project, Error> {
+        self.open_canonical_read_only()?
+            .get_project(project)
+            .map_err(|error| Error::with_source("Project identity unavailable", error))
+    }
+
     /// Local Runtime Project identities only; no cross-Project content projection.
     pub fn project_choices(&self, offset: usize) -> Result<Vec<volicord_context::Project>, Error> {
         self.open_canonical_read_only()?
