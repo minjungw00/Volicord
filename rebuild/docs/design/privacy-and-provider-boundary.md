@@ -893,6 +893,12 @@ dependent meaning. No client body cache is durable or shared across publications
 Export-time static content performs no later permission/currentness check and cannot
 revoke already distributed bytes. No provider/remote asset transmission is added.
 
+Publication-wide denial also clears generated accessible names, title attributes
+and heading references on retained DOM origins. A remaining evidence dialog uses
+fixed unavailable wording, not the former Source path. Opaque return identities
+do not retain a hidden presentation of denied publication metadata. Range-local
+body expiry remains distinct and preserves the permitted publication's identity.
+
 ### Work catalogue authority
 
 The project-scoped Work catalogue is a reading destination, not the retired

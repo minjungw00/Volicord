@@ -80,6 +80,21 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  assert.equal(await (await openEmbeddedCode(nativePoint)).textContent(),expectedNativeCode,'native evidence survives enhancement teardown');
  await context.unroute('**/citation?*');await page.reload();await complete(page);
  notes.push('teardown rejects a completed late response and releases modal state');
+ // Denial includes accessible names on the retained opaque panel, not only
+ // removed descendants. A narrow panel must not retain its old Source path.
+ await page.setViewportSize({width:390,height:900});await settle(page);
+ const publication=await point().getAttribute('data-reader-publication');
+ const oldPath=await point().locator('.source-path').textContent();
+ assert.ok((await point().getAttribute('aria-label')).includes(oldPath));
+ await context.route('**/citation?*',route=>route.fulfill({status:410,contentType:'application/json',body:JSON.stringify({reason:'deleted',publication_readable:false})}));
+ await point().locator('.citation-read').click();
+ await point().locator('.publication-unavailable').waitFor();
+ const names=await page.locator(`[data-reader-publication="${publication}"]`).evaluateAll(nodes=>nodes.map(n=>({label:n.getAttribute('aria-label')||'',title:n.getAttribute('title')||''})));
+ assert.ok(names.every(n=>!n.label.includes(oldPath)&&!n.title.includes(oldPath)),'denied Source path cannot survive in accessible attributes');
+ await context.unroute('**/citation?*');await page.setViewportSize({width,height:900});
+ await settle(page);assert.equal(await page.locator(`[data-reader-publication="${publication}"] svg`).count(),0,'resize cannot rebuild denied meaning');
+ notes.push('typed denial clears retained accessible Source labels');
+ await page.goto(address);await settle(page);
  return {width,sourceId,checks:notes};
 }
 module.exports={inspect};

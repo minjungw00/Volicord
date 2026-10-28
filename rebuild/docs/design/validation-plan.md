@@ -4318,3 +4318,9 @@ Keep framework trial equivalence, technical conformance, dependent R3 comparison
 and human/assistive observations separate. The selected embedded-assets path has
 no new external engine/runtime to package; do not create a dependency-only build
 commit in the absence of a demonstrated packaging gap.
+
+The actual-publication interaction control also creates a narrow evidence panel
+before a typed publication denial and inspects retained accessible attributes.
+Removing descendants alone must not leave the old Source path in `aria-label`
+or `title`. This controlled response is a frontend propagation check; actual
+Source deletion/forgetting and range-local expiry retain their separate owners.

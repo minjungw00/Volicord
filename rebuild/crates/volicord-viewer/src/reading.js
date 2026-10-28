@@ -67,6 +67,8 @@
       notice.textContent=reason+' '+(ko?'현재 문서를 다시 여세요.':'Reopen the current document.');
       const placeholders=ids.map(id=>{const n=document.createElement('span');n.id=id;n.tabIndex=-1;return n;});
       region.replaceChildren(...(back?[back]:[]),notice,...placeholders);
+      for(const attribute of ['aria-label','aria-labelledby','title'])region.removeAttribute(attribute);
+      if(region.matches('.source-point'))region.setAttribute('aria-label',ko?'출판물을 이용할 수 없습니다':'Publication unavailable');
       region.dataset.unavailable='true';
     }
   }
