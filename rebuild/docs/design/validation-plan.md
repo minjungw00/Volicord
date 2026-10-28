@@ -4204,3 +4204,10 @@ declared language/publication. The existing hierarchy controls deliberately
 restore the repeated-claim defect and remove the accessible purpose independently;
 both must fail before the ordinary page is reloaded. Fixed English UI wording
 and authored English/Korean relationship wording remain independent expectations.
+
+Full real exports must pass both `viewer_project_understanding_evidence` and
+`viewer_browser.snapshot_boundary`, not only the former's inert-control exception.
+Snapshots omit the two live-only shell close/backdrop buttons as well as figure
+toolbars; native disclosure and exact destination links remain. Live shell controls
+are still present and exercised. A small synthetic positive cannot stand in for
+these complete repository/Work exports, locale and retained-reading consumers.

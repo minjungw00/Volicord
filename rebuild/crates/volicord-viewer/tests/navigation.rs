@@ -58,8 +58,15 @@ fn native_snapshot_context_is_independent_of_the_export_request(
                 "a frozen request cannot select a native fragment destination"
             );
             assert!(!snapshot.contains("<script"));
+            assert!(
+                !snapshot.contains("<button"),
+                "native disclosure needs no live-only controls"
+            );
+            assert!(!snapshot.contains("<form"));
             assert!(snapshot.contains("<summary class=\"mobile-header\"><span class=\"menu-label\">"),"the summary's accessible name must include its visible Project and native location");
             let live = viewer.render(&request, "test")?.html;
+            assert!(live.contains("<button class=\"rail-close\""));
+            assert!(live.contains("<button class=\"nav-backdrop\""));
             assert!(
                 !live.contains("data-page-context=\""),
                 "live location remains request-owned"

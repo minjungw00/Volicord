@@ -79,7 +79,13 @@ pub(super) fn start(
     } else {
         page_label(r).into()
     };
-    html.push_str(&format!("<a class=\"skip skip-link\" href=\"#viewer-content\">{}</a><details class=\"project-shell\"><summary class=\"mobile-header\"><span class=\"menu-label\">{}</span><span class=\"menu-glyph\" aria-hidden=\"true\">☰</span><span class=\"mobile-project\">{name}</span><span class=\"mobile-location\">{location}</span></summary><aside class=\"project-rail\" aria-label=\"{}\"><div class=\"rail-top\"><div class=\"brand-line\"><a class=\"brand\" href=\"{}\"><span class=\"v-mark\" aria-hidden=\"true\">V</span>volicord</a><button class=\"rail-close\" type=\"button\" hidden aria-label=\"{}\">×</button></div><p class=\"rail-heading\">{}</p>",text(r.locale,"Skip to content","본문으로 건너뛰기"),text(r.locale,"Open project menu","프로젝트 메뉴 열기"),text(r.locale,"Project navigation","프로젝트 내 이동"),escape(&href(r,&ViewerView::Overview,snapshot)),text(r.locale,"Close project menu","프로젝트 메뉴 닫기"),text(r.locale,"Project","프로젝트")));
+    let close_label = text(r.locale, "Close project menu", "프로젝트 메뉴 닫기");
+    let rail_close = if snapshot {
+        String::new()
+    } else {
+        format!("<button class=\"rail-close\" type=\"button\" hidden aria-label=\"{close_label}\">×</button>")
+    };
+    html.push_str(&format!("<a class=\"skip skip-link\" href=\"#viewer-content\">{}</a><details class=\"project-shell\"><summary class=\"mobile-header\"><span class=\"menu-label\">{}</span><span class=\"menu-glyph\" aria-hidden=\"true\">☰</span><span class=\"mobile-project\">{name}</span><span class=\"mobile-location\">{location}</span></summary><aside class=\"project-rail\" aria-label=\"{}\"><div class=\"rail-top\"><div class=\"brand-line\"><a class=\"brand\" href=\"{}\"><span class=\"v-mark\" aria-hidden=\"true\">V</span>volicord</a>{rail_close}</div><p class=\"rail-heading\">{}</p>",text(r.locale,"Skip to content","본문으로 건너뛰기"),text(r.locale,"Open project menu","프로젝트 메뉴 열기"),text(r.locale,"Project navigation","프로젝트 내 이동"),escape(&href(r,&ViewerView::Overview,snapshot)),text(r.locale,"Project","프로젝트")));
     html.push_str(&format!("<details class=\"project-picker\"><summary><span class=\"project-mark\" aria-hidden=\"true\">{}</span><span>{name}<small>{}</small></span><span aria-hidden=\"true\">⌄</span></summary>",escape(&p.overview.project_name.chars().next().unwrap_or('V').to_string()),text(r.locale,"Retained local context","보존된 로컬 맥락")));
     if snapshot {
         html.push_str(&format!(
@@ -166,5 +172,10 @@ pub(super) fn start(
         let label = super::understanding_work_state_label(state, r.locale);
         html.push_str(&format!("<a class=\"status-side-link\" data-state=\"{}\" href=\"{}\"{}><span class=\"state-dot\" aria-hidden=\"true\"></span>{}<span class=\"nav-count\">{count}</span></a>",work_state_key(state),escape(&href(r,&ViewerView::WorkFilter {state,page:0},snapshot)),if r.view.detail().work_state==Some(state){" aria-current=\"true\""}else{""},escape(label)));
     }
-    html.push_str(&format!("</div></div><footer class=\"rail-bottom\"><p>{}</p><p>{}</p><small>{}: {}</small></footer></aside></details><button class=\"nav-backdrop\" hidden type=\"button\" tabindex=\"-1\" aria-label=\"{}\"></button><main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">",text(r.locale,"Read-only","읽기 전용"),if snapshot{text(r.locale,"Export-time local context","내보낸 시점의 로컬 맥락")}else{text(r.locale,"Retained local records","보존된 로컬 기록")},text(r.locale,"Canonical revision","정식 리비전"),p.overview.canonical_revision,text(r.locale,"Close project menu","프로젝트 메뉴 닫기")));
+    let backdrop = if snapshot {
+        String::new()
+    } else {
+        format!("<button class=\"nav-backdrop\" hidden type=\"button\" tabindex=\"-1\" aria-label=\"{close_label}\"></button>")
+    };
+    html.push_str(&format!("</div></div><footer class=\"rail-bottom\"><p>{}</p><p>{}</p><small>{}: {}</small></footer></aside></details>{backdrop}<main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">",text(r.locale,"Read-only","읽기 전용"),if snapshot{text(r.locale,"Export-time local context","내보낸 시점의 로컬 맥락")}else{text(r.locale,"Retained local records","보존된 로컬 기록")},text(r.locale,"Canonical revision","정식 리비전"),p.overview.canonical_revision));
 }

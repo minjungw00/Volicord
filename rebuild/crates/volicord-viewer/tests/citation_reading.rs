@@ -1753,8 +1753,8 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(!offline.contains("class=\"figure-bar\""));
         assert_eq!(
             offline.matches("<button").count(),
-            2,
-            "only the inert native shell close controls remain in a script-free export"
+            0,
+            "native exports omit live-only shell and diagram controls"
         );
         for html in [&live, &offline] {
             assert!(html.contains("data-renderer=\"volicord-static-svg/12\""));
