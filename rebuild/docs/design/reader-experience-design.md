@@ -929,3 +929,19 @@ review and acceptance. The historical Music Deck input retains its two reports
 of three VM cases, Paused state and unrequested review/acceptance. It is neither
 a new run nor six inferred distinct tests. Synthetic scale controls remain
 separate from that genuine historical reading.
+
+### Explicit display-role reading — accepted format replacement 2026-10-29
+
+The current Projection contract separates primary name, supporting exact identifier,
+concise action, mandatory condition and fuller explanatory claim. It supersedes the
+U+2028/prose-label convention without changing the adopted R3 hierarchy. Header,
+sequence endpoint, accessible name and selected detail consume the same admitted
+roles. Duplicate names remain visibly distinguishable. Identifier claims retain
+exact Source/return navigation of their own. Natural prose explains mechanisms,
+results and limits instead of defining aliases to supply diagram substrings.
+
+The complete replacement knowingly makes v8 Unsupported; preserved originals and
+new explicit campaign publications have distinct identities. Ordinary v9 Source
+expiry still preserves permitted narrative/maps and denies unavailable bodies.
+Matching role fields or font sizes alone is not R3 fidelity or human acceptance;
+initial/selected/code/return journeys and realistic topology/wording remain required.

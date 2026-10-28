@@ -18,6 +18,15 @@ struct Layout {
 fn lines(value: &str, pixels: usize) -> usize {
     words(value, pixels.max(16)).len()
 }
+fn header_lines(node: &DiagramNode, texts: &[&str], width: usize) -> Result<usize, String> {
+    Ok(lines(diagram_label(&node.label, texts)?, width)
+        + node
+            .identifier
+            .as_ref()
+            .map(|l| diagram_label(l, texts).map(|s| lines(s, width)))
+            .transpose()?
+            .unwrap_or(0))
+}
 fn writing(out: &mut String, x: usize, y: usize, value: &str, pixels: usize) {
     text(out, x, y, value, pixels.max(16));
 }
@@ -88,8 +97,8 @@ fn node_kind(
     })
 }
 // Breadth layers are presentation, never inferred execution or containment.
-fn graph(
-    d: &GroundedDiagram,
+fn graph<'a>(
+    d: &'a GroundedDiagram,
     texts: &[&str],
     width: usize,
     marker: &str,
@@ -98,7 +107,7 @@ fn graph(
     use routing::Rect;
     let nodes = d.nodes();
     let edges = relations(d);
-    let label = |l: &DiagramLabel| diagram_label(l, texts);
+    let label = |l: &'a DiagramLabel| diagram_label(l, texts);
     let endpoints = edges
         .iter()
         .map(|e| Ok((index(nodes, &e.from)?, index(nodes, &e.to)?)))
@@ -228,7 +237,7 @@ fn graph(
                     cell - 8
                 };
                 let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
-                let h = (24 + 24 * (lines(label(&nodes[i].label)?, tw) + lines(&kind, tw)))
+                let h = (24 + 24 * (header_lines(&nodes[i], texts, tw)? + lines(&kind, tw)))
                     + 24 * lines(&owner, tw);
                 let h = h.max(counts[i] * 24 + 24);
                 let h = if nodes[i].kind == DiagramNodeKind::Branch {
@@ -242,6 +251,9 @@ fn graph(
                 node_boxes[i] = Rect { x, y, w: cell, h };
                 row_h = row_h.max(h);
                 layout.order.push(nodes[i].id.clone());
+                if nodes[i].identifier.is_some() {
+                    layout.order.push(format!("{}:identifier", nodes[i].id));
+                }
             }
             y += row_h + 20;
         }
@@ -507,27 +519,34 @@ fn graph(
         } else {
             r.w - 8
         };
-        let name = label(&node.label)?;
         let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
-        let th = 24 * (lines(name, tw) + lines(&kind, tw) + lines(&owner, tw));
+        let name_lines = header_lines(node, texts, tw)?;
+        let th = 24 * (name_lines + lines(&kind, tw) + lines(&owner, tw));
         let top = r.y + (r.h - th) / 2 + 16;
-        super::node_text(&mut out, r.x + r.w / 2, top, name, tw);
-        if !kind.is_empty() {
-            out.push_str("<g class=\"diagram-node-kind\">");
-            writing(
-                &mut out,
+        super::node_header(&mut out, r.x + r.w / 2, top, node, texts, tw)?;
+        if let Some(identifier) = &node.identifier {
+            let mut support = String::new();
+            super::identifier_text(
+                &mut support,
                 r.x + r.w / 2,
-                top + 24 * lines(name, tw),
-                &kind,
+                top + 24 * lines(label(&node.label)?, tw),
+                label(identifier)?,
                 tw,
             );
+            layout
+                .elements
+                .insert(format!("{}:identifier", node.id), support);
+        }
+        if !kind.is_empty() {
+            out.push_str("<g class=\"diagram-node-kind\">");
+            writing(&mut out, r.x + r.w / 2, top + 24 * name_lines, &kind, tw);
             out.push_str("</g>");
         }
         if !owner.is_empty() {
             writing(
                 &mut out,
                 r.x + r.w / 2,
-                top + 24 * (lines(name, tw) + lines(&kind, tw)),
+                top + 24 * (name_lines + lines(&kind, tw)),
                 &owner,
                 tw,
             );
@@ -537,8 +556,8 @@ fn graph(
     Ok(layout)
 }
 
-fn sequence(
-    d: &GroundedDiagram,
+fn sequence<'a>(
+    d: &'a GroundedDiagram,
     texts: &[&str],
     width: usize,
     marker: &str,
@@ -551,13 +570,13 @@ fn sequence(
     else {
         return Err("sequence unavailable".into());
     };
-    let label = |l: &DiagramLabel| diagram_label(l, texts);
+    let label = |l: &'a DiagramLabel| diagram_label(l, texts);
     let n = nodes.len();
     let endpoint = |i: usize| -> Result<String, String> {
         let name = label(&nodes[i].label)?;
         Ok(
             if nodes.iter().filter(|n| label(&n.label) == Ok(name)).count() > 1 {
-                format!("{name} [{}]", nodes[i].id)
+                diagram_node_identity(&nodes[i], texts)?
             } else {
                 name.into()
             },
@@ -576,8 +595,8 @@ fn sequence(
         .iter()
         .enumerate()
         .map(|(i, n)| {
-            label(&n.label).map(|s| {
-                24 * (lines(s, (node_width - 4).max(16))
+            header_lines(n, texts, (node_width - 4).max(16)).map(|count| {
+                24 * (count
                     + if repeated[i] {
                         lines(&n.id, (node_width - 4).max(16)) + 1
                     } else {
@@ -597,6 +616,9 @@ fn sequence(
     let x = |i: usize| 12 + lane * i + lane / 2;
     for (i, node) in nodes.iter().enumerate() {
         layout.order.push(node.id.clone());
+        if node.identifier.is_some() {
+            layout.order.push(format!("{}:identifier", node.id));
+        }
         let mut out = String::new();
         panel(
             &mut out,
@@ -606,13 +628,20 @@ fn sequence(
             header,
             "participant-box",
         );
-        super::node_text(
-            &mut out,
-            x(i),
-            34,
-            label(&node.label)?,
-            (node_width - 4).max(16),
-        );
+        super::node_header(&mut out, x(i), 34, node, texts, (node_width - 4).max(16))?;
+        if let Some(identifier) = &node.identifier {
+            let mut support = String::new();
+            super::identifier_text(
+                &mut support,
+                x(i),
+                34 + 24 * lines(label(&node.label)?, (node_width - 4).max(16)),
+                label(identifier)?,
+                (node_width - 4).max(16),
+            );
+            layout
+                .elements
+                .insert(format!("{}:identifier", node.id), support);
+        }
         if repeated[i] {
             writing(
                 &mut out,

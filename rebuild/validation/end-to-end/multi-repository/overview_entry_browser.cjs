@@ -49,7 +49,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
     const edges=d.meaning.relations||d.meaning.groups.flatMap(g=>g.messages);const edge=edges.find(e=>e.from!==e.to);
     const anchor=figure.locator('a[id="'+await figure.getAttribute('id')+'-'+edge.id+'"]');
     if(control==='incomplete-label'){
-     const label=Buffer.from(pub.prose[edge.label.unit].text).subarray(edge.label.start_byte,edge.label.end_byte).toString('utf8');
+     const label=edge.label.text;
      await anchor.evaluate((n,label)=>{const t=[...n.querySelectorAll('text')].find(t=>t.textContent===label&&getComputedStyle(t.parentElement).display!=='none');t.replaceChildren(document.createTextNode('DOM snapshot을'));},label);
     }else if(control==='reversed-edge'){
      await anchor.evaluate(n=>{const p=[...n.querySelectorAll('.relation-line')].find(p=>getComputedStyle(p.parentElement).display!=='none');const a=p.getPointAtLength(0),b=p.getPointAtLength(p.getTotalLength());p.setAttribute('transform',`rotate(180 ${(a.x+b.x)/2} ${(a.y+b.y)/2})`);});

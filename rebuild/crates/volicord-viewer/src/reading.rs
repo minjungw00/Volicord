@@ -609,7 +609,8 @@ fn diagram_connection_detail(
     }
     let endpoint = |html: &mut String, node_id: &str| {
         if let Some(node) = d.nodes().iter().find(|n| n.id == node_id) {
-            html.push_str(&format!("<a class=\"connection-endpoint diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\"><span>{}</span><small>{} · {}</small></a>",escape(node_id),escape(node_id),escape(wording(&node.label)),escape(node_id),node.kind.localized_text(r.locale.fixed())));
+            let identifier = node.identifier.as_ref().map(&wording).unwrap_or(node_id);
+            html.push_str(&format!("<a class=\"connection-endpoint diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\"><span>{}</span><small>{} · {}</small></a>",escape(node_id),escape(node_id),escape(wording(&node.label)),escape(identifier),node.kind.localized_text(r.locale.fixed())));
         }
     };
     endpoint(html, from);

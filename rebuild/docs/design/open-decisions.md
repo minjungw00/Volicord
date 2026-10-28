@@ -555,3 +555,23 @@ clean install
   a precise body path, repository breadth is still task-sized, or current admission/
   budgets prevent a useful grounded explanation. Preserve originals and inspect
   the causal owner before proposing a contract change.
+
+## Explanation format replacement — accepted 2026-10-29
+
+- Status: `accepted` by the user's explicit request to replace v8 completely with
+  v9 and republish/review the existing campaign.
+- Scope: one exact-current explanation writer/decoder, including Repository,
+  Work article and independent name/summary publications. Existing v8 is
+  Unsupported before domain decoding. This knowingly supersedes preservation of
+  supported v8 reading across this format change; it does not delete originals.
+- Recover by explicit fresh prepare/compose/record from currently permitted
+  original evidence, with new publication IDs. No conversion, dual decoder,
+  same-ID rebinding, expiry renewal or recreation of unavailable bodies.
+- The known preflight corpus contains seven public cases and eleven publication
+  IDs including independent Work names/summaries. This is a bounded inventory,
+  not a claim to enumerate all user data. Preserve original records/receipts and
+  report any scope that cannot be republished from permitted evidence.
+- Revisit if meaningful roles cannot be grounded within existing budgets or
+  republication would require forbidden historical evidence recovery. Product
+  history, reported checks, acceptance and possible illustrative A/B order remain
+  unchanged. Publication creation is not a new Work execution.

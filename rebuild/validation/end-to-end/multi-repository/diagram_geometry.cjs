@@ -1,20 +1,20 @@
 // Actual browser glyph/path checks. Expected wording comes from the original
 // admitted publication, never renderer coordinates or generated SVG attributes.
 async function inspectDiagram(svg, diagram, prose) {
-  const label = l => Buffer.from(prose[l.unit].text).subarray(l.start_byte,l.end_byte).toString('utf8');
+  const label = l => l.text;
   const m=diagram.meaning;
   const ko=await svg.evaluate(n=>n.ownerDocument.documentElement.lang==='ko');
   const owner=m.owner && `${ko?'상태 소유자:':'State owner:'} ${label(m.owner)}`;
   // Types may be stated once for a homogeneous scope, but must remain attached
   // in a mixed scope. This oracle starts from admitted types, not SVG metadata.
   const kinds={record:['record','기록'],context_role:['context role','맥락 역할'],reading_group:['read grouping','읽기 묶음'],component:['component','구성요소'],participant:['participant','참여자'],process:['process','처리'],branch:['branch','분기'],initial:['initial','시작'],final:['final','종료'],state:['state','상태'],references:['references','참조'],groups:['groups','묶음'],role_of:['role of','역할'],depends_on:['depends on','의존'],produces:['produces','생성'],data_flow:['data flow','데이터 흐름'],control_flow:['control flow','제어 흐름'],transition:['transition','전이'],call:['call','호출'],return:['return','반환'],await:['await','대기'],state_change:['state change','상태 변경']};
-  const expected=(m.nodes||m.participants).map(n=>({id:n.id,text:label(n.label)}));
+  const expected=(m.nodes||m.participants).flatMap(n=>[{id:n.id,text:label(n.label)},...(n.identifier?[{id:n.id+':identifier',text:label(n.identifier)}]:[])]);
   if(m.owner)expected.push({id:'state:owner',text:label(m.owner),prefix:true});
   if(owner)expected.push(...m.nodes.map(n=>({id:n.id,text:owner})));
   for(const r of m.relations||[]) {
     expected.push({id:r.id,text:label(r.label)});
     if(owner)expected.push({id:r.id,text:owner});
-    const endpoint=id=>{const n=m.nodes.find(n=>n.id===id);const name=label(n.label);return m.nodes.filter(n=>label(n.label)===name).length>1?`${name} [${id}]`:name;};
+    const endpoint=id=>{const n=m.nodes.find(n=>n.id===id);const name=label(n.label);return n.identifier?`${name} (${label(n.identifier)})`:name;};
     expected.push({id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`,accessibility:true});
     if(r.condition)expected.push({id:r.id+':condition',text:label(r.condition),prefix:true});
   }
@@ -24,7 +24,7 @@ async function inspectDiagram(svg, diagram, prose) {
     expected.push(...g.messages.map(r=>({id:r.id,text:context,prefix:true})));
     if(g.condition)expected.push({id:'guard:'+(i+1),text:label(g.condition),prefix:true});
     expected.push(...g.messages.map(r=>({id:r.id,text:label(r.label)})));
-    const endpoint=id=>{const n=m.participants.find(n=>n.id===id);const name=label(n.label);return m.participants.filter(n=>label(n.label)===name).length>1?`${name} [${id}]`:name;};
+    const endpoint=id=>{const n=m.participants.find(n=>n.id===id);const name=label(n.label);return m.participants.filter(n=>label(n.label)===name).length>1?`${name} (${label(n.identifier)})`:name;};
     expected.push(...g.messages.map(r=>({id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`})));
   }
   const edges=m.relations || (m.groups||[]).flatMap(g=>g.messages);
@@ -63,18 +63,13 @@ async function inspectDiagram(svg, diagram, prose) {
     }
     for(const node of nodes) {
       const name=expected.find(e=>e.id===node.id).text;
-      if(nodes.filter(n=>expected.find(e=>e.id===n.id).text===name).length>1 && !visibleTexts(anchor(node.id)).some(t=>t.includes(node.id)))errors.push({kind:'missing-repeated-name-id',element:node.id});
-      if(name.includes('\u2028')) {
-        const label=pick(anchor(node.id),'.diagram-node-label');
-        const spans=[...label?.querySelectorAll('tspan')||[]].filter(rendered);
-        const split=spans.findIndex(t=>t.textContent.endsWith('\u2028'));
-        if(!label || label.textContent!==name || split<0 || split===spans.length-1)errors.push({kind:'label-hierarchy',element:node.id});
-        else for(const [i,t] of spans.entries()) {
-          const size=parseFloat(getComputedStyle(t).fontSize);
-          if(size!==(i<=split?16:12))errors.push({kind:'label-hierarchy',element:node.id,size});
-          if(i>split && bounds(t).y<=bounds(spans[split]).y)errors.push({kind:'label-hierarchy',element:node.id});
-        }
+      const primary=pick(anchor(node.id),'.diagram-node-label');
+      if(!primary || primary.textContent!==name || parseFloat(getComputedStyle(primary).fontSize)!==16)errors.push({kind:'label-hierarchy',element:node.id});
+      if(node.identifier){
+        const support=pick(anchor(node.id+':identifier'),'.diagram-label-support text');
+        if(!support || support.textContent!==node.identifier.text || parseFloat(getComputedStyle(support).fontSize)!==12 || bounds(support).y<=bounds(primary).y)errors.push({kind:'identifier-hierarchy',element:node.id});
       }
+
     }
     const tasks=[];
     for(const e of edges) {

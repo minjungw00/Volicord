@@ -49,12 +49,17 @@ async function run(config){
    const figures=page.locator('.admitted-diagram');assert.equal(await figures.count(),publicAnswers.diagrams.length,'whole declared publication figures');
    for(const d of publicAnswers.diagrams){
     const figure=page.locator(`.admitted-diagram[data-semantic-fingerprint="${d.semantic_fingerprint}"]`);await figure.scrollIntoViewIfNeeded();await settled(page);
-    const key=prefix+'-'+d.id;await page.screenshot({path:path.join(config.output,key+'-initial.png')});
-    const entry=await observeOverview(figure,d);write(key+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
+    const baseKey=prefix+'-'+d.id;await page.screenshot({path:path.join(config.output,baseKey+'-initial.png')});
+    const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
     const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/12');
-    const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(key+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
-    const m=d.meaning,semantic=(m.relations||m.groups?.flatMap(g=>g.messages)||m.nodes||m.participants)[0];
+    const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(baseKey+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
+    const m=d.meaning,defaultElement=(m.relations||m.groups?.flatMap(g=>g.messages)||m.nodes||m.participants)[0];
+    const inventory=[...(m.nodes||m.participants),...(m.relations||m.groups?.flatMap(g=>g.messages)||[]),...(m.nodes||m.participants).filter(n=>n.identifier).map(n=>({id:n.id+':identifier',label:n.identifier}))];
+    const tasks=c.elements?.[d.id]||[defaultElement.id];assert.ok(tasks.length,'explicit evidence tasks cannot be empty');
+    for(const [taskIndex,elementId] of tasks.entries()) {
+    const semantic=inventory.find(e=>e.id===elementId);assert.ok(semantic,'declared exact element exists');
+    const key=baseKey+(taskIndex?'-'+elementId:'');
     const label=semantic.label,unit=publicAnswers.prose[label.unit];const citationIndex=unit.citations.findIndex(q=>q.claim_start_byte<=label.start_byte&&q.claim_end_byte>=label.end_byte);assert.ok(citationIndex>=0,'covering admitted Source');
     const citation=unit.citations[citationIndex],expected=fs.readFileSync(path.join(c.repository,citation.locator)).subarray(citation.start_byte,citation.end_byte).toString('utf8');assert.equal('sha256:'+crypto.createHash('sha256').update(expected).digest('hex'),citation.range_sha256);
     const figureId=await figure.getAttribute('id'),element=figure.locator(`a.diagram-element[id="${figureId}-${semantic.id}"]`),claimId=(await element.getAttribute('href')).slice(1),claim=page.locator(`[id="${claimId}"]`);
@@ -106,7 +111,8 @@ async function run(config){
     if(config.interactions&&scripted&&d===publicAnswers.diagrams[0]){
       const interaction=await require('./evidence_interactions.cjs').inspect(page,context,{address,figureId,elementId:figureId+'-'+semantic.id,claimId,sourceId:pointId,width});write(key+'-interactions.json',JSON.stringify(interaction,null,2));
     }
-    result.checks.push({case:c.key,diagram:d.id,width,mode,publication:c.publication,unit:label.unit,citation:citationIndex,code_bytes:Buffer.byteLength(expected),entry,geometry_errors:geometry.errors});
+    result.checks.push({case:c.key,diagram:d.id,element:semantic.id,width,mode,publication:c.publication,unit:label.unit,citation:citationIndex,code_bytes:Buffer.byteLength(expected),entry,geometry_errors:geometry.errors});
+    }
     // Restore ordinary entry before observing the next declared figure.
     await page.goto(live?address:pathToFileURL(c.offline).href+'#'+(c.work?'work-'+c.work:'repository-explanation'));await page.reload();await settled(page);
    }

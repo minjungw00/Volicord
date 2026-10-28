@@ -20,9 +20,10 @@ async function inspect(page,expected) {
   const label=figure.locator(`a.diagram-element[id$="-${id}"] .diagram-node-label:visible`);
   if(await label.count()!==1){errors.push('node '+id);continue;}
   const spans=label.locator('tspan');
-  if(await label.textContent()!==primary+'\u2028'+support)errors.push('wording '+id);
+  const identifier=figure.locator(`a.diagram-element[id$="-${id}:identifier"] .diagram-label-support text:visible`);
+  if(await label.textContent()!==primary || await identifier.count()!==1 || await identifier.textContent()!==support)errors.push('wording '+id);
   const style=n=>({size:parseFloat(getComputedStyle(n).fontSize),y:n.getBoundingClientRect().y,visible:getComputedStyle(n).visibility});
-  const first=await spans.first().evaluate(style),last=await spans.last().evaluate(style);
+  const first=await spans.first().evaluate(style),last=await identifier.evaluate(style);
   if(first.size!==16||last.size!==12||last.y<=first.y||first.visible!=='visible'||last.visible!=='visible')errors.push('hierarchy '+id);
  }
  for(const [id,word] of Object.entries(expected.relations)) {
@@ -58,9 +59,10 @@ async function verify(page,expected,publication,negative=false) {
  await name.locator('tspan').first().evaluate(n=>n.style.fontSize='12px');
  assert.ok((await inspect(page,expected)).some(e=>e.startsWith('hierarchy')),'miniature primary fails');
  await name.evaluate((n,s)=>n.innerHTML=s,saved);
- await name.locator('tspan').last().evaluate(n=>n.style.fontSize='16px');
+ const support=figure.locator('.diagram-label-support text:visible').first(),supportStyle=await support.getAttribute('style');
+ await support.evaluate(n=>n.style.fontSize='16px');
  assert.ok((await inspect(page,expected)).some(e=>e.startsWith('hierarchy')),'support cannot replace primary');
- await name.evaluate((n,s)=>n.innerHTML=s,saved);
+ await support.evaluate((n,s)=>s===null?n.removeAttribute('style'):n.setAttribute('style',s),supportStyle);
  const id=Object.keys(expected.relations)[0],label=figure.locator(`a.diagram-element[id$="-${id}"] .relation-wording>text:visible`).first(),html=await label.innerHTML();
  await label.evaluate(n=>n.textContent='묶습니다');
  assert.ok((await inspect(page,expected)).includes('relation '+id),'ambiguous generic relation fails');

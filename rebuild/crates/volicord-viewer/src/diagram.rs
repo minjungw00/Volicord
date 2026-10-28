@@ -76,21 +76,32 @@ fn node_text(out: &mut String, x: usize, y: usize, value: &str, width: usize) {
     out.push_str(&format!(
         "<text class=\"diagram-node-label\" x=\"{x}\" y=\"{y}\" text-anchor=\"middle\">"
     ));
-    let mut supporting = false;
     for (i, line) in words(value, width).iter().enumerate() {
         out.push_str(&format!(
-            "<tspan{} x=\"{x}\" dy=\"{}\">{}</tspan>",
-            if supporting {
-                " class=\"diagram-label-support\""
-            } else {
-                ""
-            },
+            "<tspan x=\"{x}\" dy=\"{}\">{}</tspan>",
             if i == 0 { 0 } else { 24 },
             esc(line)
         ));
-        supporting |= line.ends_with('\u{2028}');
     }
     out.push_str("</text>");
+}
+
+fn node_header(
+    out: &mut String,
+    x: usize,
+    y: usize,
+    node: &DiagramNode,
+    texts: &[&str],
+    width: usize,
+) -> Result<(), String> {
+    let name = diagram_label(&node.label, texts)?;
+    node_text(out, x, y, name, width);
+    Ok(())
+}
+fn identifier_text(out: &mut String, x: usize, y: usize, value: &str, width: usize) {
+    out.push_str("<g class=\"diagram-label-support\">");
+    text(out, x, y, value, width);
+    out.push_str("</g>");
 }
 
 fn text(out: &mut String, x: usize, y: usize, value: &str, width: usize) {
@@ -140,6 +151,14 @@ fn bounded_input(d: &GroundedDiagram, texts: &[&str], ns: &str) -> Result<(), St
     }
     if d.nodes().is_empty() || d.nodes().len() > 12 || texts.len() > 32 {
         return Err("unsupported local SVG input budget".into());
+    }
+    if texts.iter().any(|s| {
+        s.chars()
+            .take(EXPLANATION_PARAGRAPH_CHARACTER_LIMIT + 1)
+            .count()
+            > EXPLANATION_PARAGRAPH_CHARACTER_LIMIT
+    }) {
+        return Err("unsupported local SVG claim budget".into());
     }
     match &d.meaning {
         DiagramMeaning::Sequence { groups, .. } => {
@@ -219,6 +238,11 @@ pub(crate) fn elements(d: &GroundedDiagram) -> Vec<(String, &DiagramLabel)> {
         .iter()
         .map(|n| (n.id.clone(), &n.label))
         .collect::<Vec<_>>();
+    for node in d.nodes() {
+        if let Some(identifier) = &node.identifier {
+            result.push((format!("{}:identifier", node.id), identifier));
+        }
+    }
     if let DiagramMeaning::State { owner, .. } = &d.meaning {
         result.push(("state:owner".into(), owner));
     }
@@ -245,25 +269,21 @@ pub(crate) fn elements(d: &GroundedDiagram) -> Vec<(String, &DiagramLabel)> {
     }
     result
 }
-pub(crate) fn element_caption(
-    d: &GroundedDiagram,
+pub(crate) fn element_caption<'a>(
+    d: &'a GroundedDiagram,
     id: &str,
     texts: &[&str],
     locale: FixedLocale,
 ) -> String {
-    let label = |l: &DiagramLabel| diagram_label(l, texts).unwrap_or("");
+    let label = |l: &'a DiagramLabel| diagram_label(l, texts).unwrap_or("");
     let node = |id: &str| {
         let name = d
             .nodes()
             .iter()
             .find(|n| n.id == id)
-            .map(|n| label(&n.label))
-            .unwrap_or("");
-        if d.nodes().iter().filter(|n| label(&n.label) == name).count() > 1 {
-            format!("{name} [{id}]")
-        } else {
-            name.to_owned()
-        }
+            .and_then(|n| diagram_node_identity(n, texts).ok())
+            .unwrap_or_default();
+        name
     };
     let owner = if let DiagramMeaning::State { owner, .. } = &d.meaning {
         format!(
@@ -285,6 +305,17 @@ pub(crate) fn element_caption(
     }
     if let Some(n) = d.nodes().iter().find(|n| n.id == id) {
         return format!("{} · {}{owner}", node(&n.id), n.kind.localized_text(locale));
+    }
+    if let Some(n) = d
+        .nodes()
+        .iter()
+        .find(|n| format!("{}:identifier", n.id) == id)
+    {
+        return format!(
+            "{} · {}",
+            node(&n.id),
+            diagram_ui(locale, "Identifier", "식별자")
+        );
     }
     match &d.meaning {
         DiagramMeaning::Concept { relations, .. }
@@ -346,25 +377,14 @@ pub(crate) fn element_caption(
 mod tests {
     use super::*;
     #[test]
-    fn authored_line_separator_preserves_name_and_support_without_inference() {
-        let label = "진행 기록\u{2028}Checkpoint";
-        assert_eq!(words(label, 300), vec!["진행 기록\u{2028}", "Checkpoint"]);
+    fn explicit_identifier_uses_supporting_typography_without_prose_or_separator_inference() {
         let mut out = String::new();
-        node_text(&mut out, 100, 24, label, 300);
-        assert!(out.contains("dy=\"0\">진행 기록\u{2028}</tspan>"));
-        assert!(out.contains("class=\"diagram-label-support\" x=\"100\" dy=\"24\">Checkpoint"));
-        out.clear();
-        node_text(&mut out, 100, 24, "Checkpoint", 300);
-        assert!(!out.contains("diagram-label-support"));
-        assert!(!out.contains("진행 기록"));
-        let wrapped = words("긴 식별자\u{2028}VeryLongIdentifierThatMustWrap", 80);
-        assert_eq!(
-            wrapped.concat(),
-            "긴 식별자\u{2028}VeryLongIdentifierThatMustWrap"
-        );
-        assert!(wrapped.iter().any(|line| line.ends_with('\u{2028}')));
-        // A short native-size word may still exceed a narrow participant.
-        // Reserving padding for that overflow lets the border cross glyphs.
+        node_text(&mut out, 100, 24, "진행 기록", 300);
+        identifier_text(&mut out, 100, 48, "Checkpoint", 300);
+        assert!(out.contains("diagram-node-label"));
+        assert!(out.contains("<g class=\"diagram-label-support\">"));
+        assert!(out.contains(">Checkpoint</tspan>"));
+        assert!(!out.contains('\u{2028}'));
         assert_eq!(words("동기화", 43), vec!["동기", "화"]);
     }
     fn svg(
@@ -398,6 +418,7 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(unit, s)| DiagramLabel {
+                text: (*s).to_owned(),
                 unit,
                 start_byte: 0,
                 end_byte: s.len(),
@@ -425,6 +446,7 @@ mod tests {
                     .iter()
                     .enumerate()
                     .map(|(i, id)| DiagramNode {
+                        identifier: None,
                         id: (*id).into(),
                         kind: DiagramNodeKind::Component,
                         label: labels[i].clone(),
@@ -477,6 +499,7 @@ mod tests {
     #[test]
     fn renderer_refuses_excess_work_and_markup_namespaces_before_layout() {
         let label = DiagramLabel {
+            text: "value".into(),
             unit: 0,
             start_byte: 0,
             end_byte: 5,
@@ -488,6 +511,7 @@ mod tests {
             semantic_fingerprint: String::new(),
             meaning: DiagramMeaning::Sequence {
                 participants: vec![DiagramNode {
+                    identifier: None,
                     id: "actor".into(),
                     kind: DiagramNodeKind::Participant,
                     label: label.clone(),
@@ -552,6 +576,7 @@ mod tests {
         // Renderer-only hostile-text control, not an admitted semantic publication.
         let text = "<script>alert(1)</script>";
         let label = DiagramLabel {
+            text: text.to_owned(),
             unit: 0,
             start_byte: 0,
             end_byte: text.len(),
@@ -563,6 +588,7 @@ mod tests {
             semantic_fingerprint: String::new(),
             meaning: DiagramMeaning::Sequence {
                 participants: vec![DiagramNode {
+                    identifier: None,
                     id: "guard-1".into(),
                     kind: DiagramNodeKind::Participant,
                     label: label.clone(),
@@ -626,6 +652,7 @@ mod tests {
         // Layout/resource control only; no semantic admission or human observation.
         let name = "가나다라마바사아".repeat(12); // Exactly 96 Unicode scalars.
         let label = DiagramLabel {
+            text: name.clone(),
             unit: 0,
             start_byte: 0,
             end_byte: name.len(),
@@ -638,6 +665,7 @@ mod tests {
             meaning: DiagramMeaning::State {
                 owner: label.clone(),
                 nodes: vec![DiagramNode {
+                    identifier: None,
                     id: "state".into(),
                     kind: DiagramNodeKind::State,
                     label: label.clone(),
@@ -676,13 +704,13 @@ mod tests {
         let mut fixtures = Vec::new();
         for (script,value) in [("ko","긴 조건과 반환 경로를 확인하는 설명입니다 ".repeat(6)),("en","Long conditional return paths keep every authored word and repeated participant name exact. ".repeat(2)),("dense-en","p".repeat(96))] {
             let value=value.chars().take(96).collect::<String>();
-            let label=DiagramLabel{unit:0,start_byte:0,end_byte:value.len()};
-            let nodes=["first","second","third"].iter().map(|id|DiagramNode{id:(*id).into(),kind:DiagramNodeKind::Participant,label:label.clone()}).collect::<Vec<_>>();
+            let label=DiagramLabel{ text: value.clone(),unit:0,start_byte:0,end_byte:value.len()};
+            let nodes=["first","second","third"].iter().map(|id|DiagramNode{ identifier: None,id:(*id).into(),kind:DiagramNodeKind::Participant,label:label.clone()}).collect::<Vec<_>>();
             let messages=[("self","first","first",DiagramMessageKind::Call),("cross","first","third",DiagramMessageKind::Await),("last-self","third","third",DiagramMessageKind::Return)].iter().map(|(id,from,to,kind)|DiagramMessage{id:(*id).into(),from:(*from).into(),to:(*to).into(),kind:*kind,label:label.clone()}).collect::<Vec<_>>();
             let sequential_messages=messages.iter().cloned().map(|mut m|{m.id=format!("{}-sequential",m.id);m}).collect();
             let sequence=GroundedDiagram{id:"long-sequence".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Sequence{participants:nodes,groups:vec![DiagramGroup{order:DiagramOrder::Parallel,condition:Some(label.clone()),messages:messages.clone()},DiagramGroup{order:DiagramOrder::Sequential,condition:None,messages:sequential_messages}]}};
-            let state=GroundedDiagram{id:"long-state".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::State{owner:label.clone(),nodes:vec![DiagramNode{id:"only".into(),kind:DiagramNodeKind::State,label:label.clone()}],relations:vec![DiagramRelation{id:"self".into(),from:"only".into(),to:"only".into(),kind:DiagramRelationKind::Transition,label:label.clone(),condition:Some(label.clone())}]}};
-            let flow=GroundedDiagram{id:"long-flow".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Flowchart{nodes:[("branch",DiagramNodeKind::Branch),("left",DiagramNodeKind::Process),("right",DiagramNodeKind::Process)].iter().map(|(id,kind)|DiagramNode{id:(*id).into(),kind:*kind,label:label.clone()}).collect(),relations:["left","right"].iter().map(|id|DiagramRelation{id:format!("to-{id}"),from:"branch".into(),to:(*id).into(),kind:DiagramRelationKind::ControlFlow,label:label.clone(),condition:Some(label.clone())}).collect()}};
+            let state=GroundedDiagram{id:"long-state".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::State{owner:label.clone(),nodes:vec![DiagramNode{ identifier: None,id:"only".into(),kind:DiagramNodeKind::State,label:label.clone()}],relations:vec![DiagramRelation{id:"self".into(),from:"only".into(),to:"only".into(),kind:DiagramRelationKind::Transition,label:label.clone(),condition:Some(label.clone())}]}};
+            let flow=GroundedDiagram{id:"long-flow".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Flowchart{nodes:[("branch",DiagramNodeKind::Branch),("left",DiagramNodeKind::Process),("right",DiagramNodeKind::Process)].iter().map(|(id,kind)|DiagramNode{ identifier: None,id:(*id).into(),kind:*kind,label:label.clone()}).collect(),relations:["left","right"].iter().map(|id|DiagramRelation{id:format!("to-{id}"),from:"branch".into(),to:(*id).into(),kind:DiagramRelationKind::ControlFlow,label:label.clone(),condition:Some(label.clone())}).collect()}};
             for (kind,d) in [("sequence",sequence),("state",state),("flow",flow)] {
                 for (ui,locale) in [("en",FixedLocale::English),("ko",FixedLocale::Korean)] {
                     let ns=format!("fixture-{kind}-{script}-{ui}");
@@ -703,13 +731,13 @@ mod tests {
             ("en", FixedLocale::English, ["Export coordinator", "Export worker", "Two independent exports", "when both exports have been requested and their original revisions remain available", "returns the complete document with its exact revision", "checks both captured revisions before publishing either result"]),
             ("ko", FixedLocale::Korean, ["내보내기 조정", "내보내기 워커", "독립된 두 내보내기", "두 내보내기를 요청했고 원래 revision을 모두 읽을 수 있는 경우", "정확한 revision과 완전한 문서를 반환합니다", "어느 결과든 발행하기 전에 캡처한 두 revision을 검사합니다"]),
         ] {
-            let select = |unit: usize| DiagramLabel { unit, start_byte: 0, end_byte: values[unit].len() };
+            let select = |unit: usize| DiagramLabel { text: values[unit].to_owned(), unit, start_byte: 0, end_byte: values[unit].len() };
             let d = GroundedDiagram {
                 id: "independent-exports".into(), title: select(2), caption_unit: 2,
                 semantic_fingerprint: String::new(),
                 meaning: DiagramMeaning::Sequence {
                     participants: ["coordinator", "first-worker", "second-worker"].iter().enumerate()
-                        .map(|(i,id)| DiagramNode { id: (*id).into(), kind: DiagramNodeKind::Participant, label: select(usize::from(i > 0)) }).collect(),
+                        .map(|(i,id)| DiagramNode { identifier: None, id: (*id).into(), kind: DiagramNodeKind::Participant, label: select(usize::from(i > 0)) }).collect(),
                     groups: vec![
                         DiagramGroup { order: DiagramOrder::Parallel, condition: Some(select(3)),
                             messages: ["first-worker", "second-worker"].iter().enumerate().map(|(i,id)| DiagramMessage {
@@ -736,12 +764,14 @@ mod tests {
                 "조건: exact original revision remains available",
             ];
             let select = |unit: usize| DiagramLabel {
+                text: values[unit].to_owned(),
                 unit,
                 start_byte: 0,
                 end_byte: values[unit].len(),
             };
             let nodes = (0..count)
                 .map(|i| DiagramNode {
+                    identifier: None,
                     id: format!("node-{i}"),
                     kind: if kind == "many-components" {
                         DiagramNodeKind::Component
@@ -867,6 +897,7 @@ mod tests {
         // Independent geometry invariant for the Source-derived request topology:
         // queued -> delivered; each can finish in success, failure or expiry.
         let label = DiagramLabel {
+            text: "value".into(),
             unit: 0,
             start_byte: 0,
             end_byte: 5,
@@ -893,6 +924,7 @@ mod tests {
                 nodes: names
                     .iter()
                     .map(|id| DiagramNode {
+                        identifier: None,
                         id: (*id).into(),
                         kind: DiagramNodeKind::State,
                         label: label.clone(),

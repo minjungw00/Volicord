@@ -1,10 +1,10 @@
 // Reading-position checks follow ordinary entry and precede selection/Source.
 // Expected identities/scope come from admitted meaning, never SVG coordinates.
 async function inspectReadingContext(page, figure, diagram, prose, screenshot) {
-  const label=l=>Buffer.from(prose[l.unit].text).subarray(l.start_byte,l.end_byte).toString('utf8');
+  const label=l=>l.text;
   const ko=await page.evaluate(()=>document.documentElement.lang==='ko');
   const m=diagram.meaning,nodes=m.nodes||m.participants,items=[];
-  const name=id=>{const n=nodes.find(n=>n.id===id),text=label(n.label);return nodes.filter(n=>label(n.label)===text).length>1?`${text} [${id}]`:text;};
+  const name=id=>{const n=nodes.find(n=>n.id===id),text=label(n.label);return nodes.filter(n=>label(n.label)===text).length>1?`${text} (${label(n.identifier)})`:text;};
   for(const [gi,g] of (m.groups||[]).entries()) for(const r of g.messages) {
     const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
     items.push({id:r.id,label:label(r.label),expected:[`${name(r.from)} → ${name(r.to)}`,order+(g.condition?` · opt · ${ko?'조건:':'condition:'} ${label(g.condition)}`:'')],group:gi+1});

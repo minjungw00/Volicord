@@ -787,3 +787,13 @@ Adapters explicitly observe/read Sources and submit active-host interpretation.
 This path uses existing Kernel Source identities and managed Derived retention; it
 creates no Goal, Checkpoint, canonical Purpose, new truth store or provider dispatch.
 Ordinary reading/publication validates dependencies and never generates or renews.
+
+### Grounded presentation and layout boundary
+
+Projections owns the framework-neutral admitted display-role/claim boundary under
+its current explanation contract. Host producers author role wording and ordinary
+claims; Operations binds and admits exact Source evidence. Adapters cannot derive
+new names or causal meaning. Viewer layout consumes those admitted roles and
+returns bounded geometry and native origins; geometry is not authored meaning.
+Canonical Context, repository analysis and Privacy authority remain unchanged.
+CLI/MCP, accessible/text and installed live/offline consumers share that boundary.

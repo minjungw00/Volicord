@@ -946,6 +946,7 @@ mod size_tests {
         corrupt.realization.diagrams.push(GroundedDiagram {
             id: "invalid".into(),
             title: DiagramLabel {
+                text: "x".into(),
                 unit: 0,
                 start_byte: 0,
                 end_byte: 1,

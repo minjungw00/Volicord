@@ -122,7 +122,7 @@ async function scrolledOutline(page, toc, js, capture) {
  if(await figureLinks.count()) assert(publicAnswers,'figure navigation requires independently declared complete public answers');
  if(publicAnswers){
   assert.equal(await doc.locator('.admitted-diagram').count(),publicAnswers.diagrams.length,'every admitted figure remains navigable');
-  const label=l=>Buffer.from(publicAnswers.prose[l.unit].text).subarray(l.start_byte,l.end_byte).toString('utf8');
+  const label=l=>l.text;
   assert.deepEqual(await figureLinks.allTextContents(),publicAnswers.diagrams.map(d=>label(d.title)),'figure titles come from the complete admitted publication');
   for(const d of publicAnswers.diagrams){
    const figure=doc.locator('.admitted-diagram[data-semantic-fingerprint="'+d.semantic_fingerprint+'"]');assert.equal(await figure.count(),1);

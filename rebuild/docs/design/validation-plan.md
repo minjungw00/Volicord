@@ -4211,3 +4211,31 @@ Snapshots omit the two live-only shell close/backdrop buttons as well as figure
 toolbars; native disclosure and exact destination links remain. Live shell controls
 are still present and exercised. A small synthetic positive cannot stand in for
 these complete repository/Work exports, locale and retained-reading consumers.
+
+### Display-role format replacement and campaign republication
+
+Use scoped focused checks only for this replacement; do not run Final, the
+repository-wide aggregate, authoritative gate or official V11 in this task.
+Preserve the immutable R3 and source-first questions captured before selection.
+The known existing corpus has seven public cases/eleven managed publications;
+republish articles and independent short scopes from their own permitted originals,
+with actual prepare/compose/record receipts and new IDs. Keep old unsupported
+records and all failed attempts untouched. Record current Source availability;
+expired evidence cannot silently become new-admission authority.
+
+Direct checks cover role wording absent from prose, every identifier/claim binding,
+unknown/hidden fields, separators, duplicate names, altered seals, missing coverage,
+wrong Project/language/publication and non-current rejection. Consumer controls must
+use admitted `label.text`, not treat its supporting claim as display wording.
+Exercise actual complete CLI/MCP, installed live and freshly generated script-free
+output, full permitted evidence and return, plus expiry/change and denial controls.
+Capture 1440/1024/768/390/320 before assistance; retain actual fonts, panel widths,
+long bilingual wording, self-calls, guards, concurrency and varied topology.
+
+Compare old constrained routing and a materially different local policy on the
+same admitted meaning before selection. Keep source-derived meaning and legitimately
+reauthored prose separate from geometry-only comparisons. Measure complete role
+admission/retained bytes and layout/render/export/public-read costs without changing
+budgets. Dependent technical/visual review is separate from independent first reading,
+assistive observations and actual human acceptance. Deliver the exact final committed
+candidate's review index/archive; historical qualification is not a new pass.

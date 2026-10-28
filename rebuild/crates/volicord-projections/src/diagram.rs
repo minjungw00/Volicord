@@ -1,5 +1,5 @@
 //! Admitted diagram meaning. Coordinates and renderer state never enter this model.
-//! Every authored label is a UTF-8 selection of an ordinary grounded reader unit.
+//! Authored display text is bound to an exact Source-grounded explanatory claim.
 use crate::{explanation_text_hash, ExplanationRealization, ExplanationSubject};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -7,6 +7,9 @@ use std::collections::BTreeSet;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DiagramLabel {
+    /// Display wording, independent of the wording of its supporting claim.
+    pub text: String,
+    /// Exact explanatory claim, not an implicit label dictionary or geometry.
     pub unit: usize,
     pub start_byte: usize,
     pub end_byte: usize,
@@ -31,6 +34,8 @@ pub struct DiagramNode {
     pub id: String,
     pub kind: DiagramNodeKind,
     pub label: DiagramLabel,
+    /// Exact authored identifier; the label is always the primary reader name.
+    pub identifier: Option<DiagramLabel>,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -228,7 +233,10 @@ impl GroundedDiagram {
     /// Exhaustive semantic selections; no captions/guards/alternative labels escape.
     pub fn labels(&self) -> Vec<&DiagramLabel> {
         let mut labels = vec![&self.title];
-        labels.extend(self.nodes().iter().map(|n| &n.label));
+        for node in self.nodes() {
+            labels.push(&node.label);
+            labels.extend(node.identifier.as_ref());
+        }
         match &self.meaning {
             DiagramMeaning::Concept { relations, .. }
             | DiagramMeaning::Component { relations, .. }
@@ -291,11 +299,22 @@ pub fn seal_diagrams(response: &mut ExplanationRealization) -> Result<(), String
     }
     Ok(())
 }
-pub fn diagram_label<'a>(label: &DiagramLabel, texts: &[&'a str]) -> Result<&'a str, String> {
+pub fn diagram_label<'a>(label: &'a DiagramLabel, texts: &[&str]) -> Result<&'a str, String> {
     texts
         .get(label.unit)
         .and_then(|s| s.get(label.start_byte..label.end_byte))
-        .ok_or_else(|| "diagram label unavailable".into())
+        .map(|_| label.text.as_str())
+        .ok_or_else(|| "diagram supporting claim unavailable".into())
+}
+
+/// Full identity for text, accessibility and deliberate detail. Compact scene
+/// endpoints may use the primary name, with the identifier for equal names.
+pub fn diagram_node_identity(node: &DiagramNode, texts: &[&str]) -> Result<String, String> {
+    let name = diagram_label(&node.label, texts)?;
+    Ok(match &node.identifier {
+        Some(identifier) => format!("{name} ({})", diagram_label(identifier, texts)?),
+        None => name.to_owned(),
+    })
 }
 /// Faithful linear alternative, including endpoints, kind, guard and concurrency.
 /// CLI text and Viewer derive it from exactly the same admitted meaning as SVG.
@@ -303,18 +322,18 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
     diagram_text_localized(d, texts, crate::FixedLocale::English)
 }
 /// Same admitted meaning with localized explanatory vocabulary for Reader UI.
-pub fn diagram_text_localized(
-    d: &GroundedDiagram,
+pub fn diagram_text_localized<'a>(
+    d: &'a GroundedDiagram,
     texts: &[&str],
     locale: crate::FixedLocale,
 ) -> Result<String, String> {
-    let label = |l: &DiagramLabel| diagram_label(l, texts);
+    let label = |l: &'a DiagramLabel| diagram_label(l, texts);
     let node = |id: &str| {
         d.nodes()
             .iter()
             .find(|n| n.id == id)
             .ok_or_else(|| "diagram endpoint unavailable".to_owned())
-            .and_then(|n| label(&n.label))
+            .and_then(|n| diagram_node_identity(n, texts))
     };
     let mut lines = vec![
         format!("{} [diagram={}]", label(&d.title)?, d.id),
@@ -326,7 +345,7 @@ pub fn diagram_text_localized(
     for n in d.nodes() {
         lines.push(format!(
             "{} [{}; node={}]",
-            label(&n.label)?,
+            diagram_node_identity(n, texts)?,
             n.kind.localized_text(locale),
             n.id
         ));
@@ -436,6 +455,23 @@ pub fn validate_diagrams(
         for n in d.nodes() {
             if !identity(&n.id) || !elements.insert(n.id.clone()) {
                 return Err("invalid/duplicate element identity".into());
+            }
+        }
+        for node in d.nodes() {
+            let repeated = d
+                .nodes()
+                .iter()
+                .any(|other| other.id != node.id && other.label.text == node.label.text);
+            if repeated
+                && (node.identifier.is_none()
+                    || d.nodes().iter().any(|other| {
+                        other.id != node.id
+                            && other.label.text == node.label.text
+                            && other.identifier.as_ref().map(|l| &l.text)
+                                == node.identifier.as_ref().map(|l| &l.text)
+                    }))
+            {
+                return Err("equal primary names require distinct grounded identifiers".into());
             }
         }
         let nodes = elements.clone();
@@ -578,12 +614,17 @@ pub fn validate_diagrams(
                 .paragraphs
                 .get(label.unit)
                 .ok_or("diagram unit missing")?;
-            let text = p
-                .text
+            p.text
                 .get(label.start_byte..label.end_byte)
                 .filter(|s| !s.trim().is_empty())
-                .ok_or("invalid diagram label UTF-8 span")?;
-            if text.chars().count() > 96 || text.chars().any(char::is_control) {
+                .ok_or("invalid diagram claim UTF-8 span")?;
+            let text = &label.text;
+            if text.trim().is_empty()
+                || text.chars().count() > 96
+                || text
+                    .chars()
+                    .any(|c| c.is_control() || c == '\u{2028}' || c == '\u{2029}')
+            {
                 return Err("diagram label must be at most 96 printable characters".into());
             }
             if !p.citations.iter().any(|c| {
@@ -618,4 +659,154 @@ pub fn validate_diagrams(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+    use crate::*;
+
+    // Mechanical grounding control, not an assertion of Source entailment.
+    fn fixture() -> ExplanationRealization {
+        let prose = "Submitted requests settle before the conditional notification attempt.";
+        let citation = ExplanationCitation {
+            source_id: "01".repeat(16),
+            source_revision: 1,
+            observation_fingerprint: "observation".into(),
+            analysis_snapshot_id: "snapshot".into(),
+            repository_snapshot_id: "repository".into(),
+            repository_source_id: "02".repeat(16),
+            locator: "worker.js".into(),
+            start_line: 1,
+            end_line: 3,
+            field: "body".into(),
+            start_byte: 0,
+            end_byte: 100,
+            range_sha256: explanation_text_hash("source control"),
+            claim_start_byte: 0,
+            claim_end_byte: prose.len(),
+            claim_sha256: explanation_text_hash(prose),
+            use_kind: ExplanationSourceUse::CurrentCode,
+        };
+        let label = |text: &str| DiagramLabel {
+            text: text.into(),
+            unit: 0,
+            start_byte: 0,
+            end_byte: prose.len(),
+        };
+        ExplanationRealization {
+            format_kind: EXPLANATION_KIND.into(),
+            format_version: EXPLANATION_VERSION,
+            plan_fingerprint: "preparation".into(),
+            language: "en".into(),
+            generator: ExplanationGenerator {
+                host: "control".into(),
+                session: "control".into(),
+                agent: None,
+                model: None,
+            },
+            paragraphs: vec![ExplanationParagraph {
+                question: ExplanationQuestion::Narrative,
+                text: prose.into(),
+                evidence_keys: vec!["source".into()],
+                citations: vec![citation],
+            }],
+            diagrams: vec![GroundedDiagram {
+                id: "requests".into(),
+                title: label("Submission and notification"),
+                caption_unit: 0,
+                semantic_fingerprint: String::new(),
+                meaning: DiagramMeaning::Sequence {
+                    participants: vec![DiagramNode {
+                        id: "worker".into(),
+                        kind: DiagramNodeKind::Participant,
+                        label: label("Sync service"),
+                        identifier: Some(label("createPlayerSyncService")),
+                    }],
+                    groups: vec![DiagramGroup {
+                        order: DiagramOrder::Sequential,
+                        condition: Some(label("paired token exists")),
+                        messages: vec![DiagramMessage {
+                            id: "notify".into(),
+                            from: "worker".into(),
+                            to: "worker".into(),
+                            kind: DiagramMessageKind::Call,
+                            label: label("attempt notification"),
+                        }],
+                    }],
+                },
+            }],
+        }
+    }
+    fn subject() -> ExplanationSubject {
+        ExplanationSubject::Work(volicord_context::ContextItemId::from_bytes([1; 16]))
+    }
+    #[test]
+    fn roles_are_grounded_without_being_substrings_and_change_the_semantic_seal(
+    ) -> Result<(), String> {
+        let mut r = fixture();
+        assert!(!r.paragraphs[0].text.contains("Sync service"));
+        seal_diagrams(&mut r)?;
+        validate_diagrams(subject(), &r)?;
+        let seal = r.diagrams[0].semantic_fingerprint.clone();
+        if let DiagramMeaning::Sequence { participants, .. } = &mut r.diagrams[0].meaning {
+            participants[0]
+                .identifier
+                .as_mut()
+                .ok_or("identifier")?
+                .text = "Worker.create".into();
+        }
+        assert!(validate_diagrams(subject(), &r).is_err());
+        seal_diagrams(&mut r)?;
+        assert_ne!(seal, r.diagrams[0].semantic_fingerprint);
+        validate_diagrams(subject(), &r)?;
+        let texts = r
+            .paragraphs
+            .iter()
+            .map(|p| p.text.as_str())
+            .collect::<Vec<_>>();
+        let alternative = diagram_text(&r.diagrams[0], &texts)?;
+        for expected in [
+            "Sync service",
+            "Worker.create",
+            "attempt notification",
+            "paired token exists",
+        ] {
+            assert!(alternative.contains(expected));
+            assert!(r.generated_texts().any(|text| text == expected));
+        }
+        Ok(())
+    }
+    #[test]
+    fn every_authored_role_requires_a_valid_covering_claim_and_printable_bounded_text(
+    ) -> Result<(), String> {
+        for variant in 0..7 {
+            let mut r = fixture();
+            if let DiagramMeaning::Sequence { participants, .. } = &mut r.diagrams[0].meaning {
+                let l = participants[0].identifier.as_mut().ok_or("identifier")?;
+                match variant {
+                    0 => l.unit = 99,
+                    1 => l.end_byte = usize::MAX,
+                    2 => l.text.clear(),
+                    3 => l.text = "x".repeat(97),
+                    4 => l.text = "name\u{2028}identifier".into(),
+                    5 => l.text = "hidden\0text".into(),
+                    _ => r.paragraphs[0].citations[0].claim_end_byte = 1,
+                }
+            }
+            // Invalid references can fail sealing before admission; neither can
+            // turn an ungrounded identifier into admitted content.
+            if seal_diagrams(&mut r).is_ok() {
+                assert!(
+                    validate_diagrams(subject(), &r).is_err(),
+                    "variant {variant}"
+                );
+            }
+        }
+        let mut value = serde_json::to_value(fixture()).map_err(|e| e.to_string())?;
+        value["diagrams"][0]["meaning"]["participants"][0]["hidden_label"] =
+            serde_json::json!("untraversed");
+        assert!(serde_json::from_value::<ExplanationRealization>(value).is_err());
+        Ok(())
+    }
 }

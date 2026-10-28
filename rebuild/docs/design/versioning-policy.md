@@ -705,3 +705,28 @@ Source format, publication, fingerprint, lifetime or admission rule. Live contex
 remains request-owned; static context follows the owning fragment page.
 The citation-window control follows the shared validator's crate-visible signature
 without changing the observed function or Source-reading limits.
+
+### Independently authored display roles — current format 9
+
+The explicit 2026-10-29 replacement decision in `open-decisions.md` supersedes the
+current-v8 statements above. The sole writer/decoder uses exact-current `volicord_explanation` version 9.
+Older and newer formats are Unsupported before domain decode; there is no v8
+fallback, nested compatibility format or migration. Original retained bytes,
+receipts and exports are not rewritten. The existing seven-case/eleven-publication
+campaign must be explicitly republished with new IDs from permitted original
+Goal/progress/code evidence, including independent name/summary scopes. Missing or
+expired admission evidence is a reported obstacle, never a grant to recover bodies.
+
+Each diagram label now stores its own authored `text` and exact explanatory claim
+`unit/start_byte/end_byte`. Node `label` is the primary name; nullable `identifier`
+is separately grounded supporting identity. The claim's covering citations provide
+Source provenance, dependencies and lifecycle; display text need not occur as a
+substring in prose. All role text and claim links participate in semantic and
+realization seals and complete byte accounting. Role/claim edits require normal
+publication; geometry does not change admitted facts or publication identity.
+
+Canonical schema, Source-copy, Privacy, Analysis and bundle formats remain unchanged.
+Generated-document metadata remains 11: its existing realization fingerprint seals
+all new role wording/bindings; no metadata field is added. CLI/MCP complete reads,
+text, live and offline diagrams carry the same v9 meaning. Unsupported v8 is never
+partially decoded to extract a name, summary or diagram.

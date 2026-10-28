@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionId};
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
-pub const EXPLANATION_VERSION: u32 = 8;
+pub const EXPLANATION_VERSION: u32 = 9;
 /// Complete claim bindings and prose share this limit; retention stays independent.
 pub const EXPLANATION_BYTE_LIMIT: usize = 53_248;
 /// Preserve the response space guaranteed before citation metadata grew.
@@ -211,6 +211,17 @@ impl ExplanationRealization {
     /// text/grounding/citation envelope; there are no unvalidated display strings.
     pub fn generated_units(&self) -> impl Iterator<Item = &ExplanationParagraph> {
         self.paragraphs.iter()
+    }
+    /// Every authored string: narrative and independently worded display roles.
+    /// Display roles inherit their exact claim's citations, dependencies and TTL;
+    /// validate_diagrams checks each binding and seals every role's own wording.
+    pub fn generated_texts(&self) -> impl Iterator<Item = &str> {
+        self.paragraphs.iter().map(|p| p.text.as_str()).chain(
+            self.diagrams
+                .iter()
+                .flat_map(|d| d.labels())
+                .map(|l| l.text.as_str()),
+        )
     }
     pub fn citations(&self) -> impl Iterator<Item = &ExplanationCitation> {
         self.generated_units().flat_map(|unit| &unit.citations)
@@ -832,7 +843,7 @@ fn finish_plan(
         subject,
         ExplanationSubject::Work(_) | ExplanationSubject::Repository(_)
     ) {
-        plan.instructions.push_str(" Diagrams: grounded concept/component/flow/state/sequence. Author short standalone node names and complete relationship predicates in cited prose; select their UTF-8 spans, never grammatical fragments. Purpose and connected scope precede selected detail. Distinguish execution locations, owned state and illustrative order. Compose seals meaning.");
+        plan.instructions.push_str(" Diagrams: grounded concept/component/flow/state/sequence. Each label has independently authored text and an exact explanatory claim (unit/start_byte/end_byte) covered by Source citations. Prose explains mechanisms and limitations; never add alias definitions just to supply a label substring. Node label is the primary reader name; identifier is a separately grounded supporting label or null. Equal names require distinct identifiers. Relationship/message text expresses the concise action; conditions retain material guards. No U+2028/U+2029 role grammar. Inspect the Source for each role/claim association: bindings are not entailment. Purpose and connected scope precede selected detail. Distinguish execution locations, owned state and illustrative order. Compose seals every text, role, claim and topology; geometry is not admitted meaning.");
     }
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage
@@ -980,6 +991,9 @@ pub fn validate_explanation(
     }
     crate::article_sections(response.generated_units().map(|p| p.question))?;
     crate::validate_diagrams(plan.subject, response)?;
+    if response.generated_texts().any(|s| s.contains('\0')) {
+        return Err("generated content contains NUL".into());
+    }
     if matches!(
         plan.subject,
         ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)

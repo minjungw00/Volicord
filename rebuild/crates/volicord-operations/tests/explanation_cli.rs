@@ -402,6 +402,7 @@ fn human_cli_diagram_case(controls: bool) -> Result<(), Box<dyn std::error::Erro
     let label = |s: &str| -> Result<DiagramLabel, Box<dyn std::error::Error>> {
         let start = text.find(s).ok_or("label")?;
         Ok(DiagramLabel {
+            text: (*s).to_owned(),
             unit: 0,
             start_byte: start,
             end_byte: start + s.len(),
@@ -421,6 +422,10 @@ fn human_cli_diagram_case(controls: bool) -> Result<(), Box<dyn std::error::Erro
             .into_iter()
             .map(|(id, name)| {
                 Ok(DiagramNode {
+                    identifier: Some(DiagramLabel {
+                        text: id.into(),
+                        ..label(name)?
+                    }),
                     id: id.into(),
                     kind: DiagramNodeKind::Participant,
                     label: label(name)?,
@@ -532,7 +537,7 @@ fn human_cli_diagram_case(controls: bool) -> Result<(), Box<dyn std::error::Erro
     assert!(korean.status.success());
     let korean = String::from_utf8(korean.stdout)?;
     assert!(korean.contains("병렬 (상대 순서 없음) [조건: enabled]"));
-    assert!(korean.contains("Scheduler → Worker · 호출: starts Worker calls"));
+    assert!(korean.contains("Scheduler (scheduler) → Worker (first) · 호출: starts Worker calls"));
     assert!(korean.contains("[message=first-call; from=scheduler; to=first]"));
     assert!(korean.contains(
         retained

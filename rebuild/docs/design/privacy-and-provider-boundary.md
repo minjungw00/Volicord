@@ -915,3 +915,13 @@ Native browser restoration of a cached catalogue triggers a fresh read. Detail
 requests are ordinary scoped document navigation; obsolete responses cannot
 update a different Project's DOM. Existing citation cancellation and exact
 publication/range checks still apply.
+
+### Display-role claim provenance
+
+Independently authored diagram wording inherits only the exact explanatory claim's
+covering Source authority. A new name/identifier/action/condition is not a new Source
+grant. Complete role traversal and semantic seals preserve existing deletion,
+withdrawal, forgetting and publication-integrity propagation. An unavailable body
+cannot be recovered from role text, prose or a current repository during reading.
+Explicit campaign republication uses permitted evidence and fresh publication IDs;
+format replacement does not renew any Source deadline or authorize transmission.

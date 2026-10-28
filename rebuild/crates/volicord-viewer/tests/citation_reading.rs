@@ -1593,6 +1593,7 @@ fn diagram_control(f: &Fixture, sequence: bool) -> Result<ExplanationRealization
             .find(needle)
             .ok_or("label")?;
         Ok(DiagramLabel {
+            text: needle.to_owned(),
             unit,
             start_byte,
             end_byte: start_byte + needle.len(),
@@ -1610,6 +1611,7 @@ fn diagram_control(f: &Fixture, sequence: bool) -> Result<ExplanationRealization
     };
     let nodes = vec![
         DiagramNode {
+            identifier: None,
             id: "admit".into(),
             kind: if sequence {
                 DiagramNodeKind::Participant
@@ -1619,6 +1621,7 @@ fn diagram_control(f: &Fixture, sequence: bool) -> Result<ExplanationRealization
             label: label("Admission")?,
         },
         DiagramNode {
+            identifier: None,
             id: "verify".into(),
             kind: if sequence {
                 DiagramNodeKind::Participant
@@ -2310,6 +2313,7 @@ fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<d
     // The first unit has eight large, genuinely retained inventory Sources.
     // Only some fit. Selecting its grounded wording must disclose that locally.
     let label = DiagramLabel {
+        text: realization.paragraphs[0].text[..14].to_owned(),
         unit: 0,
         start_byte: 0,
         end_byte: 14,
@@ -2319,6 +2323,7 @@ fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<d
     d.title = label.clone();
     if let DiagramMeaning::Concept { nodes, relations } = &mut d.meaning {
         for n in nodes {
+            n.identifier = Some(n.label.clone());
             n.label = label.clone();
         }
         relations[0].label = label;
@@ -2359,6 +2364,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
         citation.claim_sha256 = explanation_text_hash(hostile);
     }
     let label = DiagramLabel {
+        text: hostile.to_owned(),
         unit: 1,
         start_byte: 0,
         end_byte: hostile.len(),
@@ -2367,6 +2373,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
     d.title = label.clone();
     if let DiagramMeaning::Concept { nodes, relations } = &mut d.meaning {
         for n in nodes {
+            n.identifier = Some(n.label.clone());
             n.label = label.clone();
         }
         for r in relations {

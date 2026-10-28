@@ -2913,23 +2913,24 @@ fn file_byte_range_schema() -> Value {
 fn grounded_diagrams_schema() -> Value {
     let mut label = object_schema(
         vec![
+            ("text", text_schema("Authored display wording, independently grounded by the supporting claim; at most 96 printable characters, no separator-based role grammar", 1, 384)),
             ("unit", unsigned_schema("Original grounded unit index", 0)),
             (
                 "start_byte",
-                unsigned_schema("Inclusive UTF-8 label offset in that unit", 0),
+                unsigned_schema("Inclusive UTF-8 supporting claim offset in that unit", 0),
             ),
             (
                 "end_byte",
                 unsigned_schema(
-                    "Exclusive UTF-8 label offset; up to 96 printable characters",
+                    "Exclusive UTF-8 supporting claim offset; requires a covering Source citation",
                     1,
                 ),
             ),
         ],
-        &["unit", "start_byte", "end_byte"],
+        &["text", "unit", "start_byte", "end_byte"],
     );
     label["description"] =
-        json!("Exact UTF-8 selection in a grounded unit; never independent prose or markup");
+        json!("Display wording with an exact Source-grounded explanatory claim. Prose need not repeat the display wording. Compose seals both; bindings do not establish entailment.");
     let condition = json!({"oneOf":[label.clone(), {"type":"null"}], "description":"Grounded condition, or unconditional"});
     let id = || {
         text_schema(
@@ -2960,8 +2961,12 @@ fn grounded_diagrams_schema() -> Value {
                 ),
             ),
             ("label", label.clone()),
+            (
+                "identifier",
+                json!({"oneOf":[label.clone(),{"type":"null"}],"description":"Exact supporting identifier; label is the primary reader name. Equal names require distinct grounded identifiers."}),
+            ),
         ],
-        &["id", "kind", "label"],
+        &["id", "kind", "label", "identifier"],
     );
     let edge = |sequence: bool| {
         let mut fields = vec![
@@ -3024,7 +3029,7 @@ fn grounded_diagrams_schema() -> Value {
         object_schema(vec![("kind",enum_schema("Concept relationship figure", &["concept"])), ("nodes",json!({"type":"array","minItems":1,"maxItems":12,"description":"Distinct typed nodes; relation endpoints reference their figure-local IDs","items":node.clone()})), ("relations",json!({"type":"array","minItems":1,"maxItems":20,"description":"Directed semantic relations between declared nodes; array order is not an execution trace","items":edge(false)}))], &["kind","nodes","relations"]),
         object_schema(vec![("kind",enum_schema("UML implementation sequence; execution requires separate evidence", &["sequence"])), ("participants",json!({"type":"array","minItems":1,"maxItems":12,"description":"Distinct sequence participants; equal labels do not merge their identities","items":node})), ("groups",json!({"type":"array","minItems":1,"maxItems":12,"description":"Sequence groups in vector order, each with sequential or parallel messages","items":group}))], &["kind","participants","groups"])
     ]});
-    json!({"type":"array","maxItems":4,"description":"Admitted diagram semantics, not markup. Whole-publication byte budget applies. All authored text selects grounded units. Compose seals semantic_fingerprint; omit/empty only in a draft.","items":object_schema(vec![
+    json!({"type":"array","maxItems":4,"description":"Admitted diagram semantics, not markup. Whole-publication byte budget applies. Every display text binds an exact grounded claim. Compose seals semantic_fingerprint; omit/empty only in a draft.","items":object_schema(vec![
         ("id",id()),("title",label),("caption_unit",unsigned_schema("Complete grounded scope/uncertainty unit",0)),("semantic_fingerprint",text_schema("Product-computed seal; empty in new drafts",0,71)),("meaning",meaning)
     ], &["id","title","caption_unit","meaning"])})
 }

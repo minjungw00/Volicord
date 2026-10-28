@@ -855,6 +855,7 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
             .find(needle)
             .ok_or("diagram claim")?;
         Ok(DiagramLabel {
+            text: needle.to_owned(),
             unit: 1,
             start_byte,
             end_byte: start_byte + needle.len(),
@@ -868,11 +869,13 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
         meaning: DiagramMeaning::Concept {
             nodes: vec![
                 DiagramNode {
+                    identifier: None,
                     id: "function".into(),
                     kind: DiagramNodeKind::Component,
                     label: select("function")?,
                 },
                 DiagramNode {
+                    identifier: None,
                     id: "result".into(),
                     kind: DiagramNodeKind::Component,
                     label: select("constant 7")?,

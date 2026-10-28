@@ -186,7 +186,7 @@ async function nativeLinkNavigation(page, link, receipt) {
             const edge=(d.meaning.relations||d.meaning.groups.flatMap(g=>g.messages)).find(e=>e.id===c.element);
             if(edge) {
               const detail=claim.locator('.diagram-connection');
-              const label=l=>Buffer.from(pub.prose[l.unit].text).subarray(l.start_byte,l.end_byte).toString('utf8');
+              const label=l=>l.text;
               const nodes=d.meaning.nodes||d.meaning.participants;
               assert.deepEqual(await detail.locator('.connection-endpoint > span').allTextContents(),[edge.from,edge.to].map(id=>label(nodes.find(n=>n.id===id).label)),'independently admitted directed endpoints');
               assert.equal(await detail.locator('.connection-wording').evaluate(n=>n.firstChild.textContent),label(edge.label));

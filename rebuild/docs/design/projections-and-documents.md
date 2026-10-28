@@ -2568,8 +2568,9 @@ that rule or budget/publication constraints; hiding a link removes no dependency
 
 ### Grounded concept and sequence publications
 
-The sole writer and decoder use exact-current `volicord_explanation` version 8.
-It adds `diagrams` to the exact admitted
+The sole writer and decoder use exact-current `volicord_explanation` version 9.
+The current grounded-display contract below supersedes the historical prose-span
+label representation described in this section. The earlier v8 added `diagrams` to the exact admitted
 publication, supporting concept relationships, components, guarded flowcharts, owned states and UML implementation sequences.
 The earlier flat `flow_step` admission and v6 no-diagram disposition are historical;
 ordered prose alone does not satisfy the required visual understanding outcome.
@@ -3199,3 +3200,39 @@ executed tests; passing reports never imply completion or acceptance. The existi
 creation/latest-work-record distinction remains in the header. Its real heading
 participates in the same document contents as ordinary article headings. Static
 exports use the same canonical timeline and their existing bounded public reads.
+
+### Grounded display wording independent of narrative — current contract
+
+This section supersedes prose-substring and U+2028 role conventions above, under
+the accepted complete explanation-format replacement of 2026-10-29. DiagramLabel
+contains authored `text` plus the exact supporting explanatory claim's
+`unit/start_byte/end_byte`. The supporting claim must be a nonempty UTF-8 span
+covered by a permitted Source citation. It can explain the mechanism without
+repeating its concise display wording. Source-first semantic assessment must check
+that the role is actually supported: a covering citation or matching hash is not
+an entailment test. No renderer invents a translation, short name or identifier.
+
+Node `label` is the primary reader name and `identifier` is an optional, separately
+bound exact identifier. Equal primary names require distinct grounded identifiers.
+Relation/message `label.text` is the concise action; existing conditions, kinds,
+endpoints, state owner and ordered/parallel groups retain their explicit meanings.
+Fuller claims remain ordinary explanatory units. There is no semantic sidecar or
+repository-specific label dictionary, and U+2028/U+2029 is refused in display fields.
+
+`labels()` exhausts every display role including identifiers. `generated_texts()`
+exhausts narrative and role wording; `generated_units()`/`citations()` retain the
+ordinary claim/evidence traversal. Each role binding is checked in admission and
+retained decode, sealed with the complete claim and citations, and included in
+whole-publication byte limits. Every dependency remains subject to the existing
+new-admission, deletion, forgetting and retained-reading boundaries. Source expiry
+keeps a permitted v9 diagram readable while denying its unavailable original body.
+
+Public JSON and complete MCP pages carry all role fields. Text alternatives and
+accessible/selected details carry full names and identifiers. Each identifier has
+its own claim/evidence/return origin. Scene endpoints use primary names, adding
+exact identifiers when names repeat. Live and script-free output use the same
+admitted roles; layout, ports, wrapping and selection remain Derived state.
+Limits remain 32 explanatory units, four figures, 12 nodes, 20 relations/messages,
+12 sequence groups, 96 printable characters per display field and the existing
+53,248/163,840 response/retained bytes. Independent role text does not add evidence
+authority, an extra retention store or a second decoder.
