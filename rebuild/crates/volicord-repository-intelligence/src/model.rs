@@ -1189,4 +1189,20 @@ mod tests {
         assert_eq!(decoded, (project, source));
         Ok(())
     }
+
+    #[test]
+    fn canonical_reference_hex_rejects_signed_pairs_without_aliasing() {
+        let valid = serde_json::json!({"identity":"01".repeat(16)});
+        assert!(serde_json::from_value::<CanonicalProjectRef>(valid.clone()).is_ok());
+        let mut invalid = valid;
+        invalid["identity"] = serde_json::json!("+1".repeat(16));
+        assert!(serde_json::from_value::<CanonicalProjectRef>(invalid).is_err());
+        let mut source = serde_json::json!({
+            "project":"01".repeat(16), "identity":"01".repeat(16),
+            "basis":{"kind":"not_applicable"}
+        });
+        assert!(serde_json::from_value::<CanonicalSourceRef>(source.clone()).is_ok());
+        source["identity"] = serde_json::json!("+1".repeat(16));
+        assert!(serde_json::from_value::<CanonicalSourceRef>(source).is_err());
+    }
 }

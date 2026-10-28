@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 use std::fmt;
 
@@ -43,7 +43,9 @@ macro_rules! digest_identity {
             where
                 S: Serializer,
             {
-                serializer.collect_str(self)
+                let encoded = encode_hex(&self.0);
+                let value = std::str::from_utf8(&encoded).map_err(serde::ser::Error::custom)?;
+                serializer.serialize_str(value)
             }
         }
 
@@ -52,8 +54,19 @@ macro_rules! digest_identity {
             where
                 D: Deserializer<'de>,
             {
-                let value = String::deserialize(deserializer)?;
-                Self::from_hex(&value).map_err(serde::de::Error::custom)
+                struct IdentityVisitor;
+                impl Visitor<'_> for IdentityVisitor {
+                    type Value = $name;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        formatter.write_str("a 64-digit hexadecimal identity")
+                    }
+
+                    fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<$name, E> {
+                        $name::from_hex(value).map_err(E::custom)
+                    }
+                }
+                deserializer.deserialize_str(IdentityVisitor)
             }
         }
     };
@@ -71,19 +84,35 @@ pub(crate) fn decode_hex<const N: usize>(value: &str) -> Result<[u8; N], String>
     }
     let mut bytes = [0_u8; N];
     for (slot, pair) in bytes.iter_mut().zip(value.as_bytes().chunks_exact(2)) {
-        let pair = std::str::from_utf8(pair)
-            .map_err(|_| "identity contains a non-hexadecimal digit".to_owned())?;
-        *slot = u8::from_str_radix(pair, 16)
-            .map_err(|_| "identity contains a non-hexadecimal digit".to_owned())?;
+        let high = hex_digit(pair[0])?;
+        let low = hex_digit(pair[1])?;
+        *slot = (high << 4) | low;
     }
     Ok(bytes)
 }
 
-pub(crate) fn write_hex(bytes: &[u8], formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-    for byte in bytes {
-        write!(formatter, "{byte:02x}")?;
+fn hex_digit(value: u8) -> Result<u8, String> {
+    match value {
+        b'0'..=b'9' => Ok(value - b'0'),
+        b'a'..=b'f' => Ok(value - b'a' + 10),
+        b'A'..=b'F' => Ok(value - b'A' + 10),
+        _ => Err("identity contains a non-hexadecimal digit".into()),
     }
-    Ok(())
+}
+
+fn encode_hex(bytes: &[u8; 32]) -> [u8; 64] {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = [0; 64];
+    for (value, pair) in bytes.iter().zip(encoded.chunks_exact_mut(2)) {
+        pair[0] = HEX[usize::from(value >> 4)];
+        pair[1] = HEX[usize::from(value & 15)];
+    }
+    encoded
+}
+
+pub(crate) fn write_hex(bytes: &[u8; 32], formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let encoded = encode_hex(bytes);
+    formatter.write_str(std::str::from_utf8(&encoded).map_err(|_| fmt::Error)?)
 }
 
 #[cfg(test)]
@@ -124,5 +153,48 @@ mod tests {
         let uppercase = "AB".repeat(32);
         let identity = AnalysisSnapshotId::from_hex(&uppercase).expect("uppercase hexadecimal");
         assert_eq!(identity.to_string(), uppercase.to_lowercase());
+    }
+
+    #[test]
+    fn identity_codecs_preserve_every_byte_and_exact_json_strings() {
+        for seed in 0..=u8::MAX {
+            let bytes: [u8; 32] = std::array::from_fn(|index| seed.wrapping_add(index as u8));
+            let text = bytes
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>();
+            let identity = AnalysisSnapshotId::from_hex(&text).expect("hexadecimal bytes");
+            assert_eq!(identity.as_bytes(), &bytes);
+            assert_eq!(identity.to_string(), text);
+            assert_eq!(format!("{identity:?}"), text);
+            let expected_json = format!("\"{text}\"");
+            assert_eq!(
+                serde_json::to_string(&identity).expect("JSON"),
+                expected_json
+            );
+            assert_eq!(
+                serde_json::from_str::<AnalysisSnapshotId>(&expected_json).expect("JSON"),
+                identity
+            );
+            assert_eq!(
+                AnalysisSnapshotId::from_hex(&text.to_uppercase()).expect("uppercase"),
+                identity
+            );
+        }
+    }
+
+    #[test]
+    fn signed_pairs_cannot_alias_hexadecimal_identities() {
+        for byte in [b'+', b'-', b' ', b'_', 0] {
+            for index in 0..64 {
+                let mut text = vec![b'1'; 64];
+                text[index] = byte;
+                let text = String::from_utf8(text).expect("ASCII");
+                assert!(AnalysisSnapshotId::from_hex(&text).is_err());
+                assert!(RepositorySnapshotId::from_hex(&text).is_err());
+                let json = serde_json::to_string(&text).expect("JSON string");
+                assert!(serde_json::from_str::<AnalysisSnapshotId>(&json).is_err());
+            }
+        }
     }
 }

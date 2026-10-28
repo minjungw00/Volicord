@@ -617,6 +617,14 @@ Delta 계산용 decoded base는 competing complete 표현의 압축 전에 해�
 Scalar 참조는 little-endian byte allocation을 최종 value stream으로 재사용하고
 symbol prefix를 앞에 채운다. 복원 JSON/scalar 순서와 모든 identity는 그대로 유지한다.
 
+Snapshot digest identity는 32-byte value를 같은 lowercase 64-digit hexadecimal
+string으로 직렬화한다. Bounded stack buffer와 borrowed string decoding으로 반복
+formatting/임시 allocation을 줄여도 JSON 및 MessagePack bytes, identity와 scalar
+순서는 유지한다. Reader는 uppercase hexadecimal도 같은 identity로 읽지만 부호,
+공백, non-ASCII 또는 non-hexadecimal 문자를 digit으로 허용하지 않는다. Normalizer는
+string 안의 quote/escape 없는 fragment를 한 번에 복사할 수 있으며 임의의 write
+분할에서도 escapes, UTF-8, exact token stream과 corruption 검사를 보존해야 한다.
+
 Bounded work의 Materiality Review/revision, executable scope와 Checkpoint가 이미 읽은
 baseline은 structural refresh의 previous input으로 재사용한다. 현재 inventory와 content/
 build/adapter/dependency invalidation 검사는 계속 수행하고 semantic resolution도 현재

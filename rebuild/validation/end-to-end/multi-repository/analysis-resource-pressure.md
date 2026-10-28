@@ -6,7 +6,7 @@ Final, official V11 or provider transmission is part of these commands.
 
 ## Retained failure and restoration
 
-The candidate is `792f791fcbd141891e856cd9e262d313fd9899cf`. Its V11 result
+The historical candidate is `792f791fcbd141891e856cd9e262d313fd9899cf`. Its V11 result
 SHA-256 is `fafa43a303394e1528b0cbb81396e253716a85329118907f667877221ac0cf40`;
 the per-call record SHA-256 is
 `b99240ce1772cc2f3a386e450d3f2be669fe6ffa3695afc549e0e5af1121c95d`.
@@ -448,3 +448,103 @@ external replay. A later separately authorized verification must retain all targ
 journeys and original ceilings, and inspect long-lived Review/Checkpoint peaks,
 health/repair CPU/RSS and the narrow storage-growth bound. The local improvements
 do not establish that the 953.4-second/4-GiB failure has been fully corrected.
+
+## Identity codec and normalization duration repair
+
+The later exact candidate `967fd5906d88b2f8b1cd93132f378ff47f50238f` passed
+Final, local rehearsal, bounded provider validation and all 55 V11 functional
+leaves, but its authoritative gate remained blocked: duration 916,063.229 ms
+exceeded 900,000. Peak MCP RSS was 4,194,492,416 bytes against 4,294,967,296;
+post-warmup growth was 531,735,204 against 536,870,912. Measurement was complete
+with zero sampling errors, 505 calls and 15 snapshots. That gate and its archive
+remain unchanged. Slow health/repair subprocesses and repeated analysis/Work
+calls motivated investigation; overlapping subprocess and RPC times are not
+added or treated as isolated Product CPU attribution.
+
+The maintained large resource-roundtrip diagnostic was run on one unchanged
+1,261,523,931-byte logical graph from that failure. Test-only phase clocks showed
+normalization around 4.8 seconds, and typed decoding was substantially larger
+than shape unpacking. A plain-fragment-copy-only variant gave only a small
+single-sample change (4,828.442 → 4,653.101 ms); it was not accepted as sufficient
+evidence. Inspection found repeated per-byte digest formatting and temporary
+`String` allocation during every digest read. Bounded stack-buffer hex encoding
+and direct borrowed-string decoding improved the isolated normalization sample
+to 3,856.067 ms. Combined with copying quote/escape-free string fragments, the
+sample reached 3,120.672 ms. These exploratory samples select a mechanism;
+compilation time is excluded and they are not a performance distribution.
+
+Before/after release test executables were then frozen and alternated AB, BA,
+AB on the exact same immutable input. No build or other task-owned benchmark
+ran during the six samples. Every exit was 0; exact full-graph roundtrips,
+corruption rejection, manifest/value/metadata hashes and 4,533 shape chunks
+matched. Observed wall times were:
+
+| Order | Side | Native test wall ms | User CPU seconds | System CPU seconds |
+| --- | --- | ---: | ---: | ---: |
+| 1 | before | 41,697.194 | 39.255 | 4.916 |
+| 2 | after | 33,192.025 | 30.445 | 4.631 |
+| 3 | after | 33,068.348 | 30.472 | 4.616 |
+| 4 | before | 41,644.063 | 39.124 | 4.911 |
+| 5 | before | 41,176.646 | 39.031 | 4.506 |
+| 6 | after | 32,621.710 | 29.906 | 4.751 |
+
+Median wall time decreased 20.59%; median normalization was 4,912.196 →
+3,162.812 ms, and complete encoding 7,554.822 → 5,811.238 ms. This diagnostic
+deliberately holds paired complete graphs and repeats verification. Its peak
+RSS ranges were 4,774,120–4,775,148 KiB before and 4,778,580–4,779,112 KiB
+after: no memory reduction is established, and these are not V11 process RSS
+measurements. OS caches remain uncontrolled; three pairs establish neither p95
+nor an extrapolated whole-journey saving.
+
+The immutable manifest hash is
+`98d1706a9bfc726d507519d99b9852d849614e55fedadc6507764cf9cf0bc914`;
+value hash `da52364eb5a0f3c2e3f941baaa01bf272dc6916e3812c72cf1ee6ceb2493ecc3`;
+metadata hash `2ed2b6e03127f24f47b214d24a545ac20976a8dd965c36fd05d606178ba115ae`.
+The valid wire remains lowercase hexadecimal strings in JSON and MessagePack;
+uppercase input retains the same identity. Strict digit decoding also rejects
+signed pairs such as `+1`, which the previous integer parser incorrectly accepted
+as an alias of `01`. This invalid-input correction adds no compatibility decoder,
+schema, migration, graph reduction or language restriction. Chunk-boundary tests
+exercise single bytes through large fragments, quotes/escapes, UTF-8, nested
+values and long strings; independent JSON and MessagePack expectations pin the
+valid wire. Diagnostic clocks are test-only and absent from Product binaries.
+
+The maintained seven-call public CLI/MCP diagnostic was also alternated AB,
+BA, AB using frozen uninstrumented Product binaries and fresh disposable
+clones of exact revision `967fd5906d88b2f8b1cd93132f378ff47f50238f`.
+All six attempts exited 0 with zero sampling errors and retained three snapshots.
+No builds or other task-owned performance work ran concurrently. The unchanged
+analysis contract fingerprint was
+`b1f18a03e607180b5c06b3bb77337df2921d4d35acdce63ac5e02134e5d73680`:
+1,865 inventory entries, 37,332 entities, 535,518 relations, 60,548,512 scalars,
+and identical capability/diagnostic counts. The original CLI analysis setup
+remains separately timed and retained; MCP lifetime excludes that setup.
+
+| Order | Side | MCP lifetime ms | Materiality Review ms | MCP peak RSS bytes |
+| --- | --- | ---: | ---: | ---: |
+| 1 | before | 62,758.833 | 23,734.947 | 4,137,254,912 |
+| 2 | after | 56,111.915 | 20,820.130 | 4,168,761,344 |
+| 3 | after | 55,377.281 | 20,479.489 | 4,168,458,240 |
+| 4 | before | 64,110.698 | 24,180.869 | 4,168,749,056 |
+| 5 | before | 62,123.115 | 23,070.377 | 4,168,794,112 |
+| 6 | after | 54,698.896 | 20,164.241 | 4,137,095,168 |
+
+MCP lifetime medians decreased 11.76%, and Review medians 13.72%. Own-process
+CPU (user + system) was 65.24/66.55/64.57 seconds before and 57.71/57.12/56.61
+after; child CPU and I/O remain separately recorded. Whole-process RSS ranges
+overlap, so no memory reduction is claimed. Logical storage ranges also overlap:
+217,849,162–218,140,904 bytes before and 217,743,425–218,235,771 after.
+Separate fresh Source/time identities legitimately yield different compressed
+storage bytes. The fixed-input diagnostic above establishes exact wire equality.
+All supplied executable hashes, per-call records, driver sampling overhead and
+wrapper/setup exits remain in the receipts. These public comparisons are local
+supporting evidence, not a smaller official workload or qualification substitute.
+
+Raw exploratory attempts, six frozen executable samples, phase logs, complete
+numeric exits, exact bytes and compiler-cache reclamation receipts remain under
+ignored `rebuild/.local/duration-repair-20261028/` and focused validation outputs.
+Only inactive, rebuildable Rust incremental compiler caches were reclaimed;
+previous gates, runtimes, executables, archives and review materials were retained.
+These measurements support the repair mechanism; qualification still requires
+the maintained gate on its exact clean committed candidate with unchanged
+workload, limits, collection and external-transmission scope.

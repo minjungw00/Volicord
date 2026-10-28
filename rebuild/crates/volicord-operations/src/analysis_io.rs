@@ -88,6 +88,8 @@ pub(crate) fn encode_analysis(
     analysis: &AnalysisSnapshot,
     base_values: Option<PackedAnalysisValues>,
 ) -> Result<EncodedAnalysis, Error> {
+    #[cfg(test)]
+    trace_analysis_memory("encode_start");
     let mut encoder = match &base_values {
         Some(base) => NormalizingWriter::with_base_symbols(&unpack_blob(&base.packed)?)?,
         None => NormalizingWriter::default(),
@@ -188,13 +190,18 @@ fn pack_analysis_values(
 #[cfg(test)]
 fn trace_analysis_memory(stage: &str) {
     if std::env::var_os("VOLICORD_ANALYSIS_RESOURCE_MANIFEST").is_some() {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let elapsed = START.get_or_init(std::time::Instant::now).elapsed();
         if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
             let values = status
                 .lines()
                 .filter(|line| line.starts_with("VmRSS:") || line.starts_with("VmHWM:"))
                 .collect::<Vec<_>>()
                 .join(" ");
-            eprintln!("analysis_resource stage={stage} {values}");
+            eprintln!(
+                "analysis_resource stage={stage} elapsed_ms={:.3} {values}",
+                elapsed.as_secs_f64() * 1000.0
+            );
         }
     }
 }
@@ -256,6 +263,8 @@ fn read_analysis_from_manifest(
     manifest: AnalysisManifest,
     mode: AnalysisReadMode,
 ) -> Result<AnalysisSnapshot, Error> {
+    #[cfg(test)]
+    trace_analysis_memory("read_start");
     read_metadata(path, &manifest)?;
     let blobs = blob_dir(path)?;
     if manifest.shape_blobs.is_empty() {
@@ -266,6 +275,8 @@ fn read_analysis_from_manifest(
         let packed = read_verified_blob(&blobs.join(format!("{hash}.shape")), hash)?;
         shape.extend_from_slice(&unpack_blob(&packed)?);
     }
+    #[cfg(test)]
+    trace_analysis_memory("shape_unpacked");
     // Packed input and a decoded delta are reconstruction scratch, not part
     // of the reader. Release them before JSON and the typed graph coexist.
     let values = {
@@ -286,6 +297,8 @@ fn read_analysis_from_manifest(
         }
     };
     let reader = DenormalizingReader::new(shape, values, manifest.scalar_count)?;
+    #[cfg(test)]
+    trace_analysis_memory("values_reconstructed");
     let snapshot: AnalysisSnapshot = match mode {
         // Work readers may already retain a full baseline graph. Avoid a second
         // complete JSON allocation while constructing the requested graph.
@@ -299,6 +312,8 @@ fn read_analysis_from_manifest(
             decode_normalized_json(reader, manifest.logical_json_bytes)?
         }
     };
+    #[cfg(test)]
+    trace_analysis_memory("read_decoded");
     if snapshot.identity != manifest.identity
         || snapshot.project != manifest.project
         || snapshot.generated_at_unix_micros != manifest.generated_at_unix_micros
@@ -965,6 +980,13 @@ struct NormalizingWriter {
 impl Write for NormalizingWriter {
     fn write(&mut self, input: &[u8]) -> std::io::Result<usize> {
         self.logical_bytes = self.logical_bytes.saturating_add(input.len() as u64);
+        // The serializer supplies complete plain fragments separately from
+        // quotes/escapes. In particular, formatted identities arrive in one
+        // bounded span. Keep the scalar bytes and first-seen order unchanged.
+        if self.in_string && !self.escaped && !input.contains(&b'"') && !input.contains(&b'\\') {
+            self.token.extend_from_slice(input);
+            return Ok(input.len());
+        }
         for &byte in input {
             if self.in_string {
                 self.token.push(byte);
@@ -1578,6 +1600,27 @@ mod tests {
     }
 
     #[test]
+    fn analysis_identity_keeps_messagepack_cache_wire_bytes(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let text = "a1".repeat(32);
+        let identity = AnalysisSnapshotId::from_hex(&text.to_uppercase())?;
+        let mut expected = vec![0xd9, 64];
+        expected.extend_from_slice(text.as_bytes());
+        assert_eq!(rmp_serde::to_vec(&identity)?, expected);
+        assert_eq!(
+            rmp_serde::from_slice::<AnalysisSnapshotId>(&expected)?,
+            identity
+        );
+        let mut cache = Vec::new();
+        write_analysis_cache_value(&mut cache, &identity)?;
+        assert_eq!(
+            read_analysis_cache_value::<AnalysisSnapshotId>(cache.as_slice())?,
+            identity
+        );
+        Ok(())
+    }
+
+    #[test]
     fn analysis_cache_reuses_distant_repeated_sections_without_losing_values() -> Result<(), Error>
     {
         let mut state = 1_u64;
@@ -1732,21 +1775,27 @@ mod tests {
         });
         let original = serde_json::to_vec(&value)
             .map_err(|error| Error::with_source("cannot encode scalar reuse fixture", error))?;
-        let mut writer = NormalizingWriter::default();
-        // Cross scalar and UTF-8 boundaries independently of serializer writes.
-        for chunk in original.chunks(7) {
-            writer.write_all(chunk).map_err(|error| {
-                Error::with_source("cannot normalize scalar reuse fixture", error)
+        // Cross quotes, escapes and UTF-8 boundaries independently of serializer
+        // fragments, including single bytes and large plain spans.
+        for size in [1, 2, 3, 7, 31, 64, 257, original.len()] {
+            let mut writer = NormalizingWriter::default();
+            for chunk in original.chunks(size) {
+                writer.write_all(chunk).map_err(|error| {
+                    Error::with_source("cannot normalize scalar reuse fixture", error)
+                })?;
+            }
+            let normalized = writer.finish()?;
+            let mut reader = DenormalizingReader::new(
+                normalized.shape,
+                normalized.values,
+                normalized.scalar_count,
+            )?;
+            let mut decoded = Vec::new();
+            reader.read_to_end(&mut decoded).map_err(|error| {
+                Error::with_source("cannot reconstruct scalar reuse fixture", error)
             })?;
+            assert_eq!(decoded, original);
         }
-        let normalized = writer.finish()?;
-        let mut reader =
-            DenormalizingReader::new(normalized.shape, normalized.values, normalized.scalar_count)?;
-        let mut decoded = Vec::new();
-        reader.read_to_end(&mut decoded).map_err(|error| {
-            Error::with_source("cannot reconstruct scalar reuse fixture", error)
-        })?;
-        assert_eq!(decoded, original);
         Ok(())
     }
 
