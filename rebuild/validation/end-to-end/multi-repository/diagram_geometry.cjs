@@ -62,6 +62,7 @@ async function inspectDiagram(svg, diagram, prose) {
       }
     }
     for(const node of nodes) {
+      if(sequence){const header=pick(anchor(node.id),'.participant-box');if(!header||bounds(header).width<124)errors.push({kind:'unreadable-participant-width',element:node.id});}
       const name=expected.find(e=>e.id===node.id).text;
       const primary=pick(anchor(node.id),'.diagram-node-label');
       if(!primary || primary.textContent!==name || parseFloat(getComputedStyle(primary).fontSize)!==16)errors.push({kind:'label-hierarchy',element:node.id});

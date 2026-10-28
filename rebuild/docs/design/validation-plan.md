@@ -4324,3 +4324,10 @@ before a typed publication denial and inspects retained accessible attributes.
 Removing descendants alone must not leave the old Source path in `aria-label`
 or `title`. This controlled response is a frontend propagation check; actual
 Source deletion/forgetting and range-local expiry retain their separate owners.
+
+Sequence visual review additionally challenges long/duplicate participant names
+in a newly admitted post-install publication. Glyph containment alone is
+insufficient: participant headers retain at least 124px native reading width and
+the larger temporal canvas pans, while message wrapping remains article-bound.
+The direct Rust control checks both responsive widths and separate callout width;
+actual-font geometry and live/native/export journeys validate its consumers.

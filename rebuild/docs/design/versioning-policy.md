@@ -737,3 +737,9 @@ remain exact-current: no durable shape, semantic fingerprint, original body,
 publication identity, independent name/summary or retention deadline changes.
 Existing authorized publications are rendered directly; no conversion or fresh
 lookalike publication substitutes for their history.
+
+Renderer 15 adds a minimum native sequence lane width with horizontal panning and
+article-width message wrapping. This is Derived geometry only: explanation 9,
+document metadata 11, every semantic seal and retained publication identity remain
+unchanged. Live/no-JS/export use the same runtime policy; no republishing or
+source-dependent history conversion is required.

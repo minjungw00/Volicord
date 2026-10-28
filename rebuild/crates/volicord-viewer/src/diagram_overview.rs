@@ -69,6 +69,11 @@ fn sequence<'a>(
     let label = |l: &'a DiagramLabel| diagram_label(l, texts);
     let count = |s: &str, w: usize, px: usize| words_at(s, w.max(16), px).len();
     let n = nodes.len();
+    // A narrow article pans the temporal scene instead of squeezing participant
+    // names into one-glyph columns. Message wording still uses the article's
+    // reading width; expanding the canvas must not create unreadable wide bands.
+    let message_width = (width - 32).min(400);
+    let width = width.max(24 + n * 128);
     let endpoint = |i: usize| -> Result<String, String> {
         let name = label(&nodes[i].label)?;
         Ok(
@@ -218,7 +223,7 @@ fn sequence<'a>(
             );
             // Action first. Endpoint names and order/guard remain locally visible
             // with subordinate styles; full identifiers live in headers/detail.
-            let w = (width - 32).min(400);
+            let w = message_width;
             let center = ((x(a) + x(b)) / 2).clamp(w / 2 + 16, width - w / 2 - 16);
             let h = 24 * count(name, w - 16, 16)
                 + 18 * count(&association, w - 16, 12)

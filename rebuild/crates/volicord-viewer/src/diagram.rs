@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/14";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/15";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -272,6 +272,66 @@ pub(crate) fn element_caption(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn narrow_sequence_pans_readable_headers_but_keeps_message_reading_width() -> Result<(), String>
+    {
+        // Renderer control, not evidence that these requests were executed.
+        let text = "Submitted synchronization request";
+        let label = DiagramLabel {
+            text: text.into(),
+            unit: 0,
+            start_byte: 0,
+            end_byte: text.len(),
+        };
+        let nodes = ['a', 'b', 'c', 'd', 'e']
+            .into_iter()
+            .map(|id| DiagramNode {
+                id: id.to_string(),
+                kind: DiagramNodeKind::Participant,
+                label: label.clone(),
+                identifier: Some(DiagramLabel {
+                    text: id.to_string(),
+                    ..label.clone()
+                }),
+            })
+            .collect();
+        let diagram = GroundedDiagram {
+            id: "requests".into(),
+            title: label.clone(),
+            caption_unit: 0,
+            semantic_fingerprint: String::new(),
+            meaning: DiagramMeaning::Sequence {
+                participants: nodes,
+                groups: vec![DiagramGroup {
+                    order: DiagramOrder::Sequential,
+                    condition: None,
+                    messages: vec![DiagramMessage {
+                        id: "submit".into(),
+                        from: "a".into(),
+                        to: "e".into(),
+                        kind: DiagramMessageKind::Call,
+                        label,
+                    }],
+                }],
+            },
+        };
+        let output = svg(&diagram, &[text], "readable-lanes", &|id, _| {
+            format!("{id}-claim")
+        })?;
+        assert!(output.contains("--map-wide-width:760px"));
+        assert!(output.contains("--map-medium-width:664px"));
+        assert!(output.contains("--map-narrow-width:664px"));
+        assert_eq!(
+            output.matches("width=\"124\"").count(),
+            10,
+            "five readable headers in both panning variants"
+        );
+        assert!(
+            output.contains("width=\"240\""),
+            "narrow message wraps to the input article, not the enlarged canvas"
+        );
+        Ok(())
+    }
     #[test]
     fn explicit_identifier_uses_supporting_typography_without_prose_or_separator_inference() {
         let mut out = String::new();

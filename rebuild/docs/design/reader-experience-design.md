@@ -1066,3 +1066,16 @@ There is no persisted geometry cache. Each request renders against its exact
 publication/semantics, fixed locale, bundled font-fallback policy, bounded viewport
 variants and renderer version. Adding a persistent cache would require all these
 dimensions plus current authorization, rather than reusing a prior rendered body.
+
+### Narrow temporal reading width
+
+Actual script-free long/duplicate-name review exposed participant headers reduced
+to two/three-letter columns despite passing glyph containment. Renderer 15 gives
+each sequence lane at least 128px (124px header) and pans the complete scene when
+the article cannot contain it. Message callouts still wrap to the article's input
+width, not the enlarged canvas. This preserves local action/endpoint/guard/order
+reading without widening every message to an offscreen band. Short five-participant
+wide scenes retain their prior geometry. No participant, message, identifier,
+condition, Source or prose is removed; graph policy and admitted v9 meaning stay
+unchanged. Browser geometry controls now reject unreadably narrow participant
+headers in addition to checking glyph containment and exact identity.

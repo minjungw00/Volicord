@@ -2,7 +2,7 @@
 // questions or an isolated/human reading. Call only after the initial screenshot.
 async function observeOverview(figure, diagram) {
   const nodes=(diagram.meaning.nodes||diagram.meaning.participants).map(n=>n.id);
-  return figure.evaluate((figure,nodes)=>{
+  return figure.evaluate((figure,{nodes,sequence})=>{
     const errors=[];
     const initialInteractions=window.__overviewEntryInteractions||[];
     if(initialInteractions.length)errors.push('orientation was assisted before its initial observation');
@@ -17,7 +17,11 @@ async function observeOverview(figure, diagram) {
     };
     const svg=figure.querySelector('svg');const viewport=svg?.closest('.diagram-viewport');
     if(!visible(svg))errors.push('connected map hidden or absent');
-    if(viewport&&viewport.scrollWidth>viewport.clientWidth+1)errors.push('overview requires horizontal discovery');
+    if(viewport&&viewport.scrollWidth>viewport.clientWidth+1){
+      const view=viewport.getBoundingClientRect();
+      const initialHeader=nodes.some(id=>{const anchor=document.getElementById(figure.id+'-'+id);const header=anchor&&[...anchor.querySelectorAll('.participant-box')].find(visible);if(!header)return false;const b=header.getBoundingClientRect();return b.left>=view.left-1&&b.right<=view.right+1;});
+      if(!sequence||!initialHeader||viewport.tabIndex!==0||!['auto','scroll'].includes(getComputedStyle(viewport).overflowX))errors.push('panning overview lacks a readable initial header or native keyboard access');
+    }
     if(viewport&&viewport.scrollHeight>viewport.clientHeight+1)errors.push('overview requires internal vertical discovery');
     for(const id of nodes){
       const anchor=document.getElementById(figure.id+'-'+id);
@@ -33,7 +37,7 @@ async function observeOverview(figure, diagram) {
     const b=svg?.getBoundingClientRect();
     if(controls&&visible(controls)){const c=controls.getBoundingClientRect();if(c.top<b.top&&c.bottom>b.top+1)errors.push('figure controls obscure the map');}
     return {errors,initialInteractions,nodes:nodes.length,renderedGlyphRuns:glyphs.length,canvas:b?{width:b.width,height:b.height}:null,scroll:{pageY:scrollY,left:viewport?.scrollLeft,top:viewport?.scrollTop},classification:'technical supporting observation; comprehension assessment remains separate'};
-  },nodes);
+  },{nodes,sequence:diagram.meaning.kind==='sequence'});
 }
 module.exports={observeOverview};
 
