@@ -4331,3 +4331,17 @@ insufficient: participant headers retain at least 124px native reading width and
 the larger temporal canvas pans, while message wrapping remains article-bound.
 The direct Rust control checks both responsive widths and separate callout width;
 actual-font geometry and live/native/export journeys validate its consumers.
+
+### Integrated relationship and temporal-context regression controls
+
+The actual installed renderer-15 baseline fails native label/guard-to-route focus
+and narrow sequence group-context visibility. `diagram_focus.cjs` checks the exact
+public relation ID/claim alias and native stroke emphasis after initial capture;
+`diagram_geometry.cjs` checks group order/guard bounds against actual article width,
+independently of enlarged participant canvas size. `document_evidence_journey.cjs`
+runs both checks with ordinary live and script-free publication/Source/return reads.
+These controls retain original publication semantics and do not prepare initial
+selection, pan or expanded state. Frozen source/design questions and actual human
+observation remain separate from technical success. The current task authorizes
+the maintained exact-clean-candidate gate, superseding the earlier scoped-only
+execution restriction for the format-replacement task above.

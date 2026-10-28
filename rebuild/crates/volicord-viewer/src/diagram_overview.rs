@@ -72,7 +72,8 @@ fn sequence<'a>(
     // A narrow article pans the temporal scene instead of squeezing participant
     // names into one-glyph columns. Message wording still uses the article's
     // reading width; expanding the canvas must not create unreadable wide bands.
-    let message_width = (width - 32).min(400);
+    let reading_width = width - 32;
+    let message_width = reading_width.min(400);
     let width = width.max(24 + n * 128);
     let endpoint = |i: usize| -> Result<String, String> {
         let name = label(&nodes[i].label)?;
@@ -171,10 +172,14 @@ fn sequence<'a>(
                 label(g).map(|s| format!("opt · {} {s}", diagram_ui(locale, "condition:", "조건:")))
             })
             .transpose()?;
-        let hh = 18 * count(&heading, width - 40, 12) + 12;
+        // Group context belongs to the article reading column, independently
+        // of the wider panning participant canvas.
+        let context_width = reading_width - 8;
+        let context_center = 16 + reading_width / 2;
+        let hh = 18 * count(&heading, context_width, 12) + 12;
         let gh = guard
             .as_ref()
-            .map_or(0, |s| 20 * count(s, width - 40, 13) + 12);
+            .map_or(0, |s| 20 * count(s, context_width, 13) + 12);
         panel(
             &mut layout.background,
             8,
@@ -188,10 +193,10 @@ fn sequence<'a>(
             .push_str("<g class=\"diagram-node-kind\">");
         sized_text(
             &mut layout.background,
-            width / 2,
+            context_center,
             y + 16,
             &heading,
-            width - 40,
+            context_width,
             12,
             18,
         );
@@ -199,7 +204,15 @@ fn sequence<'a>(
         y += hh;
         if let Some(value) = &guard {
             let mut out = String::from("<g class=\"diagram-condition\">");
-            sized_text(&mut out, width / 2, y + 16, value, width - 40, 13, 20);
+            sized_text(
+                &mut out,
+                context_center,
+                y + 16,
+                value,
+                context_width,
+                13,
+                20,
+            );
             out.push_str("</g>");
             layout.elements.insert(format!("guard:{}", gi + 1), out);
             layout.order.push(format!("guard:{}", gi + 1));
@@ -314,19 +327,25 @@ pub(super) fn svg(
     {
         return Err("incomplete responsive elements".into());
     }
-    for (id, route) in &wide.routes {
-        let label = labels.get(id).ok_or("missing route label")?;
-        let name =
-            super::element_caption(d, id, texts, locale) + ": " + diagram_label(label, texts)?;
-        out.push_str(&format!(
-            "<a class=\"diagram-route diagram-text-link\" data-element=\"{}-{}\" href=\"#{}\" tabindex=\"-1\" aria-label=\"{}\"><g class=\"map-wide\">{route}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g></a>",
-            esc(ns), esc(id), esc(&target(id, label)), esc(&name), medium.routes.get(id).ok_or("missing medium route")?, narrow.routes.get(id).ok_or("missing narrow route")?
-        ));
-    }
+    let mut relationship: Option<&str> = None;
     for id in &wide.order {
+        if relationship.is_some_and(|r| id != &format!("{r}:condition")) {
+            out.push_str("</g>");
+            relationship = None;
+        }
         let label = labels.get(id).ok_or("missing element label")?;
         let name =
             super::element_caption(d, id, texts, locale) + ": " + diagram_label(label, texts)?;
+        if let Some(route) = wide.routes.get(id) {
+            // One native relationship scope connects its label, optional guard
+            // and pointer alias. CSS focus/selection works without scripting.
+            out.push_str("<g class=\"diagram-relationship\">");
+            relationship = Some(id);
+            out.push_str(&format!(
+                "<a class=\"diagram-route diagram-text-link\" data-element=\"{}-{}\" href=\"#{}\" tabindex=\"-1\" aria-label=\"{}\"><g class=\"map-wide\">{route}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g></a>",
+                esc(ns), esc(id), esc(&target(id, label)), esc(&name), medium.routes.get(id).ok_or("missing medium route")?, narrow.routes.get(id).ok_or("missing narrow route")?
+            ));
+        }
         open(&mut out, ns, id, label, &name, target);
         out.push_str(&format!(
             "<g class=\"map-wide\">{}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g></a>",
@@ -334,6 +353,9 @@ pub(super) fn svg(
             medium.elements.get(id).ok_or("missing medium element")?,
             narrow.elements.get(id).ok_or("missing narrow element")?
         ));
+    }
+    if relationship.is_some() {
+        out.push_str("</g>");
     }
     out.push_str("</g></svg>");
     if out.len() > 262144 {

@@ -98,6 +98,11 @@ async function inspectDiagram(svg, diagram, prose) {
         const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
         const header=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===`${gi+1}. ${order}`);
         if(!header)errors.push({kind:'wrong-group-order',group:gi+1,expected:order});
+        // Panning participant lanes must not pan the local order/guard heading
+        // out of the initial article reading column.
+        const viewport=root.closest('.diagram-viewport');
+        if(header && bounds(header).x+bounds(header).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1});
+        if(g.condition){const guard=pick(anchor('guard:'+(gi+1)),'text');if(guard && bounds(guard).x+bounds(guard).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1,role:'condition'});}
         for(const message of g.messages) {
           if(!visibleTexts(anchor(message.id)).some(t=>t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
         }

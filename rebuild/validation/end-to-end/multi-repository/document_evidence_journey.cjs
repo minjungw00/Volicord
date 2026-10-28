@@ -54,8 +54,9 @@ async function run(config){
     await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
-    const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/15');
+    const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/16');
     const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(baseKey+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
+    const routeFocus=await require('./diagram_focus.cjs').inspectRelationFocus(figure,d);write(baseKey+'-route-focus.json',JSON.stringify(routeFocus,null,2));assert.deepEqual(routeFocus.errors,[],'native relationship/condition focus identifies its exact route');
     const m=d.meaning,defaultElement=(m.relations||m.groups?.flatMap(g=>g.messages)||m.nodes||m.participants)[0];
     // Enumerate independently from the public semantic record, including roles
     // that have no standalone admitted element token (guards, owner, identifier).

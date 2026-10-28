@@ -29,3 +29,29 @@ async function inspectTextOriginFocus(figure) {
   };
 }
 module.exports = {inspectTextOriginFocus};
+
+// A relationship's name and stroke must remain one reading target. Inspect
+// native focus too: a client-only hover handler cannot repair the export.
+async function inspectRelationFocus(figure, diagram) {
+  const observations=[];
+  for(const relation of diagram.meaning.relations||[]) {
+    for(const id of [relation.id,...(relation.condition?[relation.id+':condition']:[])]) {
+      const origin=figure.locator(`a.diagram-element[id="${await figure.getAttribute('id')}-${id}"]`);
+      await origin.focus();
+      observations.push(await origin.evaluate((origin,relationId)=>{
+        const route=[...origin.closest('svg').querySelectorAll('a.diagram-route')].find(a=>a.dataset.element===origin.closest('figure').id+'-'+relationId);
+        const lines=[...route?.querySelectorAll('.relation-line')||[]].filter(p=>p.getBoundingClientRect().height>0||p.getBoundingClientRect().width>0);
+        return {id:origin.id,focused:document.activeElement===origin,
+          exactRoute:route?.dataset.element===origin.closest('figure').id+'-'+relationId,
+          sameClaim:idWithoutCondition(origin,relationId,route),
+          widths:lines.map(p=>parseFloat(getComputedStyle(p).strokeWidth))};
+        function idWithoutCondition(origin,id,route){
+          const primary=document.getElementById(origin.closest('figure').id+'-'+id);
+          return primary?.getAttribute('href')===route?.getAttribute('href');
+        }
+      },relation.id));
+    }
+  }
+  return {observations,errors:observations.filter(o=>!o.focused||!o.exactRoute||!o.sameClaim||!o.widths.length||o.widths.some(w=>w<2)).map(o=>'relationship focus does not identify its exact route: '+o.id)};
+}
+module.exports.inspectRelationFocus=inspectRelationFocus;

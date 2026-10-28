@@ -1079,3 +1079,19 @@ wide scenes retain their prior geometry. No participant, message, identifier,
 condition, Source or prose is removed; graph policy and admitted v9 meaning stay
 unchanged. Browser geometry controls now reject unreadably narrow participant
 headers in addition to checking glyph containment and exact identity.
+
+### Relationship route association and narrow group context
+
+Renderer 16 keeps a graph relationship's visible label, guard and exact route alias
+in one native SVG scope. Focus, hover and selected state emphasize only that
+relationship's directed path and its dotted annotation leader. The leader is
+visually distinct from a semantic edge at ordinary entry. Native keyboard focus
+provides the same association without a client handler; full endpoint/claim/Source
+identity and existing route-return memories remain unchanged. This addresses the
+observed detached-label focus ambiguity, not a claim that every topology is optimal.
+
+Sequence group order and condition wrap within the input article reading column
+while participant lanes retain their readable panning width. Centering these
+headings on the enlarged canvas previously hid scope at initial narrow entry.
+Message-local conditions/order and primary action remain complete. No new wording,
+prose definition, canonical fact, frontend runtime or stored layout is introduced.

@@ -743,3 +743,10 @@ article-width message wrapping. This is Derived geometry only: explanation 9,
 document metadata 11, every semantic seal and retained publication identity remain
 unchanged. Live/no-JS/export use the same runtime policy; no republishing or
 source-dependent history conversion is required.
+
+Renderer 16 groups graph label/guard/route association and wraps temporal group
+context to the article input width. These are native Derived presentation changes;
+explanation 9, generated-document metadata 11, original publication IDs, admitted
+role wording/bindings, seals and body deadlines remain unchanged. Existing permitted
+publications render directly, including script-free export, with no reauthoring
+or parallel decoder.
