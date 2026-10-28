@@ -807,3 +807,11 @@ publication's admitted facts or identity. The selected implementation has no
 additional runtime dependency, browser layout authority or client-owned semantic
 copy. Reader owns the bounded policy, rejected alternatives and visual acceptance;
 Privacy remains the authority for every subsequent Source request.
+
+Projection's borrowed `DiagramElement` roles now own the complete selectable
+inventory and qualified captions for every admitted diagram kind. Viewer layout,
+native origins, accessible names and selected detail consume that inventory rather
+than reconstructing role identities separately. Relation conditions and state
+owners, and message-local group/order/condition context remain explicit even when
+the selected role is a guard. This is a read-side view of existing meaning, not a
+new durable format, authoring authority or geometry store.

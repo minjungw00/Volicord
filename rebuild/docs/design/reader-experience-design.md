@@ -990,3 +990,16 @@ claim origins and return; live enhancement owns only its established selection
 and panel transitions. Replacing that ownership would add static/native parity
 work without evidence of a required capability here. This is a scoped architecture
 choice, not a measured framework productivity comparison.
+
+### Complete selectable presentation roles
+
+All five supported diagram kinds expose one typed, borrowed role inventory from
+Projection. Names, identifiers, relations, relation guards, state owners, group
+guards and messages keep their original claim bindings and stable origin IDs.
+Full selected/accessibility captions preserve endpoints, the material condition,
+state owner and the message's scoped ordinal/order. Selecting a guard retains its
+relationship context, rather than presenting an isolated condition. SVG renderer
+14 shares this boundary with live and script-free output; existing graph/sequence
+geometry and natural authored prose are unchanged. CLI/MCP retain the admitted
+roles and complete linear meaning. No explanation-format replacement or historical
+republication is needed for these Derived captions.

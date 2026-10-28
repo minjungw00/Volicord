@@ -1760,7 +1760,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             "native exports omit live-only shell and diagram controls"
         );
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/13\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/14\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
@@ -1858,7 +1858,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/13\""));
+            .contains("data-renderer=\"volicord-static-svg/14\""));
     }
     Ok(())
 }
@@ -2011,13 +2011,34 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .record_explanation(f.project, subject, "en", r.clone())?;
         let a = f.answers()?;
         assert_eq!(a.diagrams, r.diagrams);
+        let texts = a
+            .prose
+            .iter()
+            .map(|unit| unit.text.as_str())
+            .collect::<Vec<_>>();
+        let elements = a.diagrams[0].presentation_elements();
+        let relation = elements
+            .iter()
+            .find(|e| e.id() == "dependency")
+            .ok_or("relation role")?;
+        let guard = elements
+            .iter()
+            .find(|e| e.id() == "dependency:condition")
+            .ok_or("guard role")?;
+        let caption = relation.caption(&a.diagrams[0], &texts, FixedLocale::English)?;
+        assert!(caption.contains("Admission → verification"));
+        assert!(caption.contains("condition: acceptance"));
+        assert_eq!(
+            caption,
+            guard.caption(&a.diagrams[0], &texts, FixedLocale::English)?
+        );
         let html = f.get("/?view=repository")?;
         let destination = f.temp.path().join(format!("{shape}.html"));
         ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
-            assert!(text.contains("volicord-static-svg/13"));
+            assert!(text.contains("volicord-static-svg/14"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"
             } else {
@@ -2398,7 +2419,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
         .export_snapshot(&f.request(), &output)?;
     let html = fs::read_to_string(output)?;
-    assert!(html.contains("data-renderer=\"volicord-static-svg/13\""));
+    assert!(html.contains("data-renderer=\"volicord-static-svg/14\""));
     assert!(html.contains("&lt;image"));
     assert!(!html.contains("<image"));
     assert!(!html.contains("<script"));

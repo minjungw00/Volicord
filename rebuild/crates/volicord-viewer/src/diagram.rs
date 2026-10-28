@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/13";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/14";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -251,143 +251,21 @@ fn bounded_input(d: &GroundedDiagram, texts: &[&str], ns: &str) -> Result<(), St
 /// Read-side identities for every selectable semantic element, including guards.
 /// ':' separates renderer-owned guard IDs from admitted ASCII element tokens.
 pub(crate) fn elements(d: &GroundedDiagram) -> Vec<(String, &DiagramLabel)> {
-    let mut result = d
-        .nodes()
-        .iter()
-        .map(|n| (n.id.clone(), &n.label))
-        .collect::<Vec<_>>();
-    for node in d.nodes() {
-        if let Some(identifier) = &node.identifier {
-            result.push((format!("{}:identifier", node.id), identifier));
-        }
-    }
-    if let DiagramMeaning::State { owner, .. } = &d.meaning {
-        result.push(("state:owner".into(), owner));
-    }
-    match &d.meaning {
-        DiagramMeaning::Concept { relations, .. }
-        | DiagramMeaning::Component { relations, .. }
-        | DiagramMeaning::Flowchart { relations, .. }
-        | DiagramMeaning::State { relations, .. } => {
-            for r in relations {
-                result.push((r.id.clone(), &r.label));
-                if let Some(l) = &r.condition {
-                    result.push((format!("{}:condition", r.id), l));
-                }
-            }
-        }
-        DiagramMeaning::Sequence { groups, .. } => {
-            for (i, g) in groups.iter().enumerate() {
-                if let Some(l) = &g.condition {
-                    result.push((format!("guard:{}", i + 1), l));
-                }
-                result.extend(g.messages.iter().map(|m| (m.id.clone(), &m.label)));
-            }
-        }
-    }
-    result
+    d.presentation_elements()
+        .into_iter()
+        .filter_map(|element| element.label().map(|label| (element.id(), label)))
+        .collect()
 }
-pub(crate) fn element_caption<'a>(
-    d: &'a GroundedDiagram,
+pub(crate) fn element_caption(
+    d: &GroundedDiagram,
     id: &str,
     texts: &[&str],
     locale: FixedLocale,
 ) -> String {
-    let label = |l: &'a DiagramLabel| diagram_label(l, texts).unwrap_or("");
-    let node = |id: &str| {
-        let name = d
-            .nodes()
-            .iter()
-            .find(|n| n.id == id)
-            .and_then(|n| diagram_node_identity(n, texts).ok())
-            .unwrap_or_default();
-        name
-    };
-    let owner = if let DiagramMeaning::State { owner, .. } = &d.meaning {
-        format!(
-            " · {} {}",
-            diagram_ui(locale, "State owner:", "상태 소유자:"),
-            label(owner)
-        )
-    } else {
-        String::new()
-    };
-    if id == "state:owner" {
-        if let DiagramMeaning::State { owner, .. } = &d.meaning {
-            return format!(
-                "{} {}",
-                diagram_ui(locale, "State owner:", "상태 소유자:"),
-                label(owner)
-            );
-        }
-    }
-    if let Some(n) = d.nodes().iter().find(|n| n.id == id) {
-        return format!("{} · {}{owner}", node(&n.id), n.kind.localized_text(locale));
-    }
-    if let Some(n) = d
-        .nodes()
-        .iter()
-        .find(|n| format!("{}:identifier", n.id) == id)
-    {
-        return format!(
-            "{} · {}",
-            node(&n.id),
-            diagram_ui(locale, "Identifier", "식별자")
-        );
-    }
-    match &d.meaning {
-        DiagramMeaning::Concept { relations, .. }
-        | DiagramMeaning::Component { relations, .. }
-        | DiagramMeaning::Flowchart { relations, .. }
-        | DiagramMeaning::State { relations, .. } => {
-            for r in relations {
-                if r.id == id {
-                    return format!(
-                        "{} → {} · {}{owner}",
-                        node(&r.from),
-                        node(&r.to),
-                        r.kind.localized_text(locale)
-                    );
-                }
-            }
-        }
-        DiagramMeaning::Sequence { groups, .. } => {
-            for (i, g) in groups.iter().enumerate() {
-                for m in &g.messages {
-                    if m.id == id {
-                        return format!(
-                            "{}. {} → {} · {} · {}{}",
-                            i + 1,
-                            node(&m.from),
-                            node(&m.to),
-                            m.kind.localized_text(locale),
-                            match g.order {
-                                DiagramOrder::Sequential =>
-                                    diagram_ui(locale, "strict · sequential", "strict · 순차"),
-                                DiagramOrder::Parallel => diagram_ui(
-                                    locale,
-                                    "par · no relative order",
-                                    "par · 상대 순서 없음"
-                                ),
-                            },
-                            g.condition
-                                .as_ref()
-                                .map(|guard| format!(
-                                    " · opt · {} {}",
-                                    diagram_ui(locale, "condition:", "조건:"),
-                                    label(guard)
-                                ))
-                                .unwrap_or_default()
-                        );
-                    }
-                }
-            }
-        }
-    }
-    elements(d)
+    d.presentation_elements()
         .into_iter()
-        .find(|(key, _)| key == id)
-        .map(|(_, l)| format!("{} {}", diagram_ui(locale, "if", "조건:"), label(l)))
+        .find(|element| element.id() == id)
+        .and_then(|element| element.caption(d, texts, locale).ok())
         .unwrap_or_default()
 }
 

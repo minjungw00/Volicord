@@ -53,11 +53,17 @@ async function run(config){
     await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
-    const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/13');
+    const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/14');
     const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(baseKey+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
     const m=d.meaning,defaultElement=(m.relations||m.groups?.flatMap(g=>g.messages)||m.nodes||m.participants)[0];
-    const inventory=[...(m.nodes||m.participants),...(m.relations||m.groups?.flatMap(g=>g.messages)||[]),...(m.nodes||m.participants).filter(n=>n.identifier).map(n=>({id:n.id+':identifier',label:n.identifier}))];
-    const tasks=c.elements?.[d.id]||[defaultElement.id];assert.ok(tasks.length,'explicit evidence tasks cannot be empty');
+    // Enumerate independently from the public semantic record, including roles
+    // that have no standalone admitted element token (guards, owner, identifier).
+    const inventory=[...(m.nodes||m.participants),...(m.relations||m.groups?.flatMap(g=>g.messages)||[]),
+     ...(m.nodes||m.participants).filter(n=>n.identifier).map(n=>({id:n.id+':identifier',label:n.identifier})),
+     ...(m.relations||[]).filter(r=>r.condition).map(r=>({id:r.id+':condition',label:r.condition})),
+     ...(m.groups||[]).flatMap((g,i)=>g.condition?[{id:'guard:'+(i+1),label:g.condition}]:[]),
+     ...(m.owner?[{id:'state:owner',label:m.owner}]:[])];
+    const tasks=config.all_elements?inventory.map(e=>e.id):(c.elements?.[d.id]||[defaultElement.id]);assert.ok(tasks.length,'explicit evidence tasks cannot be empty');
     for(const [taskIndex,elementId] of tasks.entries()) {
     const semantic=inventory.find(e=>e.id===elementId);assert.ok(semantic,'declared exact element exists');
     const key=baseKey+(taskIndex?'-'+elementId:'');

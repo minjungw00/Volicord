@@ -3236,3 +3236,11 @@ Limits remain 32 explanatory units, four figures, 12 nodes, 20 relations/message
 12 sequence groups, 96 printable characters per display field and the existing
 53,248/163,840 response/retained bytes. Independent role text does not add evidence
 authority, an extra retention store or a second decoder.
+
+The read-side `DiagramElement` inventory binds every selectable role to its
+original `DiagramLabel`. Exhaustive `labels()` traversal and Viewer origins use
+this same typed inventory. Qualified captions carry full endpoint identities and
+relation conditions/state ownership or message-local ordinal/order/guard. They
+derive only fixed UI vocabulary and existing admitted meaning. Diagram text,
+complete JSON, geometry and source authorization retain their existing owners.
+There is no new serialized field, publication identity or authored wording.

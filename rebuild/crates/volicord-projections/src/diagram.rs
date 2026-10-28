@@ -232,32 +232,13 @@ impl GroundedDiagram {
     }
     /// Exhaustive semantic selections; no captions/guards/alternative labels escape.
     pub fn labels(&self) -> Vec<&DiagramLabel> {
-        let mut labels = vec![&self.title];
-        for node in self.nodes() {
-            labels.push(&node.label);
-            labels.extend(node.identifier.as_ref());
-        }
-        match &self.meaning {
-            DiagramMeaning::Concept { relations, .. }
-            | DiagramMeaning::Component { relations, .. }
-            | DiagramMeaning::Flowchart { relations, .. }
-            | DiagramMeaning::State { relations, .. } => {
-                if let DiagramMeaning::State { owner, .. } = &self.meaning {
-                    labels.push(owner);
-                }
-                for r in relations {
-                    labels.push(&r.label);
-                    labels.extend(r.condition.as_ref());
-                }
-            }
-            DiagramMeaning::Sequence { groups, .. } => {
-                for g in groups {
-                    labels.extend(g.condition.as_ref());
-                    labels.extend(g.messages.iter().map(|m| &m.label));
-                }
-            }
-        }
-        labels
+        std::iter::once(&self.title)
+            .chain(
+                self.presentation_elements()
+                    .into_iter()
+                    .filter_map(|e| e.label()),
+            )
+            .collect()
     }
     pub fn fingerprint(&self, response: &ExplanationRealization) -> Result<String, String> {
         let mut meaning = self.clone();

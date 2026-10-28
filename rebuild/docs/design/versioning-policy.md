@@ -730,3 +730,10 @@ Generated-document metadata remains 11: its existing realization fingerprint sea
 all new role wording/bindings; no metadata field is added. CLI/MCP complete reads,
 text, live and offline diagrams carry the same v9 meaning. Unsupported v8 is never
 partially decoded to extract a name, summary or diagram.
+
+Renderer 14 centralizes Derived selectable-role captions/inventory, including
+relation guards and message ordinals. Explanation 9 and document metadata 11
+remain exact-current: no durable shape, semantic fingerprint, original body,
+publication identity, independent name/summary or retention deadline changes.
+Existing authorized publications are rendered directly; no conversion or fresh
+lookalike publication substitutes for their history.

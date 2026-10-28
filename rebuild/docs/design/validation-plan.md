@@ -4291,3 +4291,17 @@ stay in ignored attempt directories. Scoped tests, local installation and a
 candidate-bound delivery are technical evidence only: no aggregate, gate,
 official V11, independent first reading, screen-reader observation or human
 acceptance was supplied by this task.
+
+### Complete presentation-role and interaction controls
+
+The shared borrowed presentation inventory covers concept/component/flow/state/
+sequence names, identifiers, relations, conditions, state owners, group guards
+and message ordinals. Scoped citation integration checks admitted records through
+public answers, live HTML and fresh script-free exports; wrong role/endpoints,
+missing owner/guard, edited seals and original-body loss remain negative cases.
+`document_evidence_journey.cjs` can enumerate `all_elements` independently from
+the public semantic records, including renderer-owned guard/identifier/owner
+origins. Whole-corpus membership is separate from selected representative widths.
+Use the maintained focused wrapper and preserve every failed attempt. Neither
+these checks nor a current installed review constitutes Final/gate/V11, independent
+first reading or actual user/assistive acceptance.
