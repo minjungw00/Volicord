@@ -1616,3 +1616,12 @@ only the two named inert native shell close buttons are exempt. Static figure
 rendering must omit the live toolbar, retaining exact maps, captions, native
 claim/code/return links and complete permitted Source bytes. The direct diagram
 publication test checks both live controls and their absence from static exports.
+
+Whole-result document journeys set `whole_result: true` and `reading_contract` to
+`fixtures/viewer-reading/grounded-reading-obligations.json`. That independently
+maintained seven-case contract requires complete language/figure membership and
+necessary source-derived mechanisms. It rejects label-only dictionaries and known
+alias padding separately from grounding/geometry. It is a necessary-content
+control, not an automated semantic or natural-language quality verdict. Initial
+observations reject preparatory figure panning. Sequence geometry rejects extra
+identifier bands; native relationship focus identifies the exact route and claim.

@@ -4345,3 +4345,18 @@ selection, pan or expanded state. Frozen source/design questions and actual huma
 observation remain separate from technical success. The current task authorizes
 the maintained exact-clean-candidate gate, superseding the earlier scoped-only
 execution restriction for the format-replacement task above.
+
+Whole-result journeys also consume the independently maintained grounded-reading
+fixture: seven named cases, exact languages and seventeen concept/component/flow/
+state/sequence figures, with source-derived necessary mechanisms. Missing cases,
+wrong diagram kinds, label dictionaries, the known redundant alias prose and extra
+message identifier bands are negative controls. The oracle never derives expected
+membership or explanatory requirements from generated SVG/public answers. Exact
+public answers remain the binding/Source oracle. Necessary-content checks cannot
+establish entailment, natural prose quality, R3 adoption or human comprehension.
+
+Initial figure captures use ordinary vertical alignment at the beginning of a tall
+figure, after the untouched article-entry capture. Playwright's former automatic
+if-needed alignment could capture the middle of a long sequence as initial. Neither
+path may preselect an element, expand details or pan the canvas. Preserved middle,
+selected-code and returned captures remain distinct observations.

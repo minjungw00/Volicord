@@ -21,6 +21,7 @@ async function run(config){
  const fonts=execFileSync('fc-list',['--format','%{file}\n',':lang=ko'],{env:{...process.env,FONTCONFIG_FILE:config.fontconfig},encoding:'utf8'}).trim().split('\n').filter(Boolean);assert.ok(fonts.length,'Korean fonts required');result.fonts=[...new Set(fonts)].map(p=>({path:p,sha256:hash(p)}));
  let browser,server,activePage;
  try{
+ if(config.whole_result){assert.ok(config.reading_contract,'independent reading contract required');require('./reader_hierarchy.cjs').corpusObligations(config.cases,JSON.parse(fs.readFileSync(config.reading_contract)));}
  browser=await require(config.playwright).chromium.launch({executablePath:config.chromium,args:['--no-sandbox'],env:{...process.env,FONTCONFIG_FILE:config.fontconfig}});
  for(const c of config.cases){
   const publicAnswers=JSON.parse(fs.readFileSync(c.public)),runtime=path.join(config.output,c.key+'-runtime');fs.cpSync(c.runtime,runtime,{recursive:true,errorOnExist:true,force:false});server=await listener(config,c,runtime,write);
@@ -43,13 +44,17 @@ async function run(config){
    }
    await page.goto(live?address:pathToFileURL(c.offline).href+'#'+(c.work?'work-'+c.work:'repository-explanation'));if(page.readerNoScript)await delay(200);else await page.evaluate(()=>document.fonts.ready);await settled(page);
    const prefix=`${c.key}-${width}-${mode}`;await page.screenshot({path:path.join(config.output,prefix+'-article-initial.png')});
+   if(config.whole_result){const expected=JSON.parse(fs.readFileSync(config.reading_contract)).cases[c.key];assert.deepEqual(require('./reader_hierarchy.cjs').explanatoryObligations(await page.locator('.doc .unit-text').allTextContents(),expected),[],'actual document preserves source-derived explanatory mechanisms');}
    assert.deepEqual(await require('./reader_hierarchy.cjs').citationHierarchy(page),[],
     'whole declared corpus keeps compact article actions and exact accessible purpose/range');
    if(live)assert.equal(await page.locator('.project-navigation a[aria-current=page]').getAttribute('data-destination'),c.work?'work':'repository');
    else assert.equal(await page.locator('.project-navigation a').count(),3);
    const figures=page.locator('.admitted-diagram');assert.equal(await figures.count(),publicAnswers.diagrams.length,'whole declared publication figures');
    for(const d of publicAnswers.diagrams){
-    const figure=page.locator(`.admitted-diagram[data-semantic-fingerprint="${d.semantic_fingerprint}"]`);await figure.scrollIntoViewIfNeeded();await settled(page);
+    // A tall figure's automatic "if needed" alignment centers its middle.
+    // Ordinary vertical reading starts at its beginning; do not select, expand
+    // or pan the canvas to manufacture a complete initial overview.
+    const figure=page.locator(`.admitted-diagram[data-semantic-fingerprint="${d.semantic_fingerprint}"]`);await figure.evaluate(n=>n.scrollIntoView({block:'start'}));await settled(page);
     const baseKey=prefix+'-'+d.id;await page.screenshot({path:path.join(config.output,baseKey+'-initial.png')});
     await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');

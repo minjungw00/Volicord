@@ -77,3 +77,24 @@ async function verify(page,expected,publication,negative=false) {
  return {repeatedClaimRejected:true,missingAccessiblePurposeRejected:true,miniaturePrimaryRejected:true,promotedSupportRejected:true,ambiguousRelationRejected:true,wrongEndpointRejected:true,headingSubstitutionRejected:!!tag};
 }
 module.exports={inspect,verify,citationHierarchy};
+
+// Necessary source-derived mechanisms are independent of candidate prose and
+// seals. This intentionally does not purport to judge natural-language entailment.
+function explanatoryObligations(texts, expected) {
+ const errors=[];
+ for(const words of expected.mechanisms)if(!texts.some(t=>words.every(w=>t.includes(w))))errors.push('missing explanatory mechanism: '+words.join(' / '));
+ for(const padding of expected.forbidden)if(texts.some(t=>t.includes(padding)))errors.push('label-dictionary padding: '+padding);
+ return errors;
+}
+function corpusObligations(cases, contract) {
+ assert.deepEqual(cases.map(c=>c.key).sort(),Object.keys(contract.cases).sort(),'independent complete corpus membership');
+ for(const c of cases){
+  const expected=contract.cases[c.key],p=JSON.parse(require('node:fs').readFileSync(c.public));
+  assert.equal(c.language,expected.language);
+  const membership=p.diagrams.map(d=>[d.meaning.kind,d.id]).sort();
+  assert.deepEqual(membership,Object.entries(expected.figures).flatMap(([kind,ids])=>ids.map(id=>[kind,id])).sort(),'independent figure/language membership');
+  assert.deepEqual(explanatoryObligations(p.prose.map(p=>p.text),expected),[],'source-derived necessary prose; bindings alone do not establish explanatory content');
+ }
+}
+module.exports.explanatoryObligations=explanatoryObligations;
+module.exports.corpusObligations=corpusObligations;

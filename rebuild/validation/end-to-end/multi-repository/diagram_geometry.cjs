@@ -105,6 +105,9 @@ async function inspectDiagram(svg, diagram, prose) {
         if(g.condition){const guard=pick(anchor('guard:'+(gi+1)),'text');if(guard && bounds(guard).x+bounds(guard).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1,role:'condition'});}
         for(const message of g.messages) {
           if(!visibleTexts(anchor(message.id)).some(t=>t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
+          // The primary action, concise endpoints and local scope are the whole
+          // scene text. An extra identifier/type band cannot silently return.
+          if(visibleTexts(anchor(message.id)).length!==3)errors.push({kind:'repeated-message-identity',element:message.id});
         }
         let last=previousGroupBottom;
         const positions=g.messages.flatMap(m=>{const p=edgePath(m.id);return p?[{id:m.id,box:bounds(p)}]:[];});

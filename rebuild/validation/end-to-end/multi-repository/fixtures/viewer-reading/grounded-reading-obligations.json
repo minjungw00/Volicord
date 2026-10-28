@@ -1,0 +1,250 @@
+{
+  "classification": "Independent necessary-content and corpus controls; not a semantic, R3 or human verdict",
+  "basis": {
+    "design_zip_sha256": "a30e6e4297b74eee30cfcb0c6315cd2b5192e8aa6e7133956d4a8d858039f4e9",
+    "meaning": [
+      "e6da693a:rebuild/docs/design/domain-model.md and architecture.md; work joins in projections/src/reading.rs",
+      "acc07330 and 74304b69:chrome-extension/background/player-sync-service.js, bridge-client.js and plugin command/player state owners"
+    ],
+    "scope": "Seven supported campaign cases. Implementation memo remains a bounded note; not repository breadth."
+  },
+  "cases": {
+    "volicord-en": {
+      "language": "en",
+      "figures": {
+        "concept": [
+          "context-and-work"
+        ],
+        "component": [
+          "responsibilities"
+        ],
+        "flowchart": [
+          "investigation-publication"
+        ]
+      },
+      "mechanisms": [
+        [
+          "Goal",
+          "ContextItem",
+          "Purpose"
+        ],
+        [
+          "Work",
+          "work_item_id",
+          "Checkpoint"
+        ],
+        [
+          "WorkItem",
+          "applied_decisions",
+          "Decision"
+        ],
+        [
+          "project_id",
+          "source_basis"
+        ],
+        [
+          "Compose",
+          "claim"
+        ],
+        [
+          "Record",
+          "mutation lock"
+        ]
+      ],
+      "forbidden": [
+        "Goal is the task role; Project Purpose is the project-purpose role.",
+        "The basis goal and progress records use these explicit joins.",
+        "Related decisions and the question revision use these explicit references."
+      ]
+    },
+    "musicdeck-en": {
+      "language": "en",
+      "figures": {
+        "component": [
+          "execution-locations"
+        ],
+        "sequence": [
+          "overlap-close",
+          "close-effects"
+        ],
+        "state": [
+          "browser-request-states"
+        ]
+      },
+      "mechanisms": [
+        [
+          "allSettled",
+          "[A,B]",
+          "rejection"
+        ],
+        [
+          "token",
+          "/player-closed"
+        ],
+        [
+          "removePlayer",
+          "queue"
+        ]
+      ],
+      "forbidden": [
+        "Sync service is Sync service",
+        "Sync service means Sync service"
+      ]
+    },
+    "musicdeck-work-en": {
+      "language": "en",
+      "figures": {
+        "sequence": [
+          "overlap-close"
+        ]
+      },
+      "mechanisms": [
+        [
+          "allSettled",
+          "[A,B]",
+          "rejection"
+        ],
+        [
+          "token",
+          "/player-closed"
+        ],
+        [
+          "removePlayer",
+          "queue"
+        ],
+        [
+          "Paused",
+          "NotRequested"
+        ]
+      ],
+      "forbidden": [
+        "Sync service is Sync service",
+        "Sync service means Sync service"
+      ]
+    },
+    "volicord-ko": {
+      "language": "ko",
+      "figures": {
+        "concept": [
+          "context-and-work"
+        ],
+        "component": [
+          "responsibilities"
+        ],
+        "flowchart": [
+          "investigation-publication"
+        ]
+      },
+      "mechanisms": [
+        [
+          "Goal",
+          "ContextItem",
+          "Purpose"
+        ],
+        [
+          "Work",
+          "work_item_id",
+          "Checkpoint"
+        ],
+        [
+          "WorkItem",
+          "applied_decisions",
+          "Decision"
+        ],
+        [
+          "project_id",
+          "source_basis"
+        ],
+        [
+          "Compose",
+          "claim"
+        ],
+        [
+          "Record",
+          "mutation lock"
+        ]
+      ],
+      "forbidden": []
+    },
+    "musicdeck-ko": {
+      "language": "ko",
+      "figures": {
+        "component": [
+          "execution-locations"
+        ],
+        "sequence": [
+          "overlap-close",
+          "close-effects"
+        ],
+        "state": [
+          "browser-request-states"
+        ]
+      },
+      "mechanisms": [
+        [
+          "allSettled",
+          "[A,B]",
+          "거부"
+        ],
+        [
+          "token",
+          "/player-closed"
+        ],
+        [
+          "removePlayer",
+          "queue"
+        ]
+      ],
+      "forbidden": [
+        "Sync service is Sync service",
+        "Sync service means Sync service"
+      ]
+    },
+    "musicdeck-work-ko": {
+      "language": "ko",
+      "figures": {
+        "sequence": [
+          "overlap-close"
+        ]
+      },
+      "mechanisms": [
+        [
+          "allSettled",
+          "[A,B]",
+          "거부"
+        ],
+        [
+          "token",
+          "/player-closed"
+        ],
+        [
+          "removePlayer",
+          "queue"
+        ],
+        [
+          "Paused",
+          "NotRequested"
+        ]
+      ],
+      "forbidden": [
+        "Sync service is Sync service",
+        "Sync service means Sync service"
+      ]
+    },
+    "current-reader-ko": {
+      "language": "ko",
+      "figures": {
+        "flowchart": [
+          "article-evidence"
+        ]
+      },
+      "mechanisms": [
+        [
+          "Source",
+          "본문"
+        ]
+      ],
+      "forbidden": []
+    }
+  }
+}

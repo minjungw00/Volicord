@@ -16,6 +16,7 @@ async function observeOverview(figure, diagram) {
       const b=n.getBoundingClientRect();return b.width>0&&b.height>0;
     };
     const svg=figure.querySelector('svg');const viewport=svg?.closest('.diagram-viewport');
+    if(viewport&&(viewport.scrollLeft!==0||viewport.scrollTop!==0))errors.push('orientation was panned before its initial observation');
     if(!visible(svg))errors.push('connected map hidden or absent');
     if(viewport&&viewport.scrollWidth>viewport.clientWidth+1){
       const view=viewport.getBoundingClientRect();

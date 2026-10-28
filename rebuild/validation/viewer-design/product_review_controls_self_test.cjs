@@ -1,6 +1,27 @@
 const {test} = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const {createOutput,publication} = require('./product_review_controls.cjs');
+test('label dictionaries and known alias padding cannot replace necessary explanation',()=>{
+ const {explanatoryObligations}=require('../end-to-end/multi-repository/reader_hierarchy.cjs');
+ const expected={mechanisms:[['submitted','allSettled','rejection'],['token','/player-closed']],forbidden:['Sync service is Sync service']};
+ assert.deepEqual(explanatoryObligations(['Removal captures submitted promises and awaits allSettled; rejection settles too.','With a token, attempt POST /player-closed.'],expected),[]);
+ assert.equal(explanatoryObligations(['Sync service; Sync A; Sync B; Token; Closed'],expected).length,2);
+ assert(explanatoryObligations(['Removal captures submitted promises and awaits allSettled; rejection settles too.','With a token, attempt POST /player-closed.','Sync service is Sync service'],expected).some(e=>e.startsWith('label-dictionary')));
+});
+test('complete reading requires independently declared case, language and figure membership',()=>{
+ const {corpusObligations}=require('../end-to-end/multi-repository/reader_hierarchy.cjs');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'reading-corpus-'));
+ try{
+  const file=path.join(root,'public.json'),c={key:'example',public:file,language:'en'};
+  fs.writeFileSync(file,JSON.stringify({diagrams:[{id:'flow',meaning:{kind:'flowchart'}}],prose:[{text:'input leads to output'}]}));
+  const expected={cases:{example:{language:'en',figures:{flowchart:['flow']},mechanisms:[['input','output']],forbidden:[]}}};
+  corpusObligations([c],expected);
+  for(const candidates of [[],[{...c,language:'ko'}],[c,{...c,key:'extra'}]])assert.throws(()=>corpusObligations(candidates,expected));
+  for(const diagrams of [[],[{id:'flow',meaning:{kind:'sequence'}}]]){
+   fs.writeFileSync(file,JSON.stringify({diagrams,prose:[{text:'input leads to output'}]}));assert.throws(()=>corpusObligations([c],expected));
+  }
+ }finally{fs.rmSync(root,{recursive:true});}
+});
 test('same Source coordinates in Repository and Work retain separate live/offline captures',()=>{
   const {sourceCaptureName}=require('./product_review_controls.cjs');
   const names=[];

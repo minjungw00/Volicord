@@ -37,6 +37,11 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
       }
       if(f.diagram.meaning.kind==='sequence') {
         const m=f.diagram.meaning;
+        const first=page.locator('svg a[id$="-'+m.groups[0].messages[0].id+'"]');
+        await first.evaluate(n=>{const t=document.createElementNS('http://www.w3.org/2000/svg','text');t.id='extra-identifier-band';t.textContent='Unnecessary full participant identifier';n.append(t);});
+        const repeated=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
+        assert(repeated.errors.some(e=>e.kind==='repeated-message-identity'),'extra supporting identifier bands cannot replace action hierarchy');
+        await page.locator('#extra-identifier-band').evaluate(n=>n.remove());
         // Local context must qualify this message, even when an earlier guard
         // is no longer on screen. Injecting an earlier group's meaning fails.
         const last=m.groups.at(-1).messages.at(-1);
