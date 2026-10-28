@@ -815,3 +815,12 @@ than reconstructing role identities separately. Relation conditions and state
 owners, and message-local group/order/condition context remain explicit even when
 the selected role is a guard. This is a read-side view of existing meaning, not a
 new durable format, authoring authority or geometry store.
+
+Reader enhancement has one page lifetime and modal coordinator. Navigation owns
+the selected publication-bound fragment and return memories; citation reading
+owns original-code buffers/requests/expiry; figures own geometry/expansion;
+contents own heading/disclosure/width state; the shell owns its project drawer.
+They communicate through explicit injected operations. Only the modal coordinator
+sets inert/dialog state and traps modal keys. All listeners, frames and resize
+observers belong to the page lifetime. These local modules enhance the server's
+native HTML; no client renderer becomes a second semantic or permission authority.

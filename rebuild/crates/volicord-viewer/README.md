@@ -141,3 +141,12 @@ has a Project-list return. Missing/deleted detail keeps that return, while chang
 query data explicitly restarts paging. Work detail and fresh static exports show
 actual recorded Checkpoint history independently of article availability. Reported
 checks, Work state, review and acceptance remain separate.
+
+Reader enhancement uses local scoped modules over the same server-rendered HTML.
+One lifetime controls listeners/observers/requests, and one coordinator owns modal
+focus and inert state. Navigation, code reading, figures, contents and the project
+drawer have explicit owners. Native links remain usable when JavaScript or required
+enhancement primitives are unavailable. Back-forward restoration revalidates
+selected evidence. All CSS/JavaScript and runtime diagram rendering are embedded
+in installed executables; later publications/export need no frontend build or
+remote asset. See the Reader owner for the bounded framework decision and limits.

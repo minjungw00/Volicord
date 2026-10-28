@@ -4305,3 +4305,16 @@ origins. Whole-corpus membership is separate from selected representative widths
 Use the maintained focused wrapper and preserve every failed attempt. Neither
 these checks nor a current installed review constitutes Final/gate/V11, independent
 first reading or actual user/assistive acceptance.
+
+`reader_ownership_self_test.cjs` directly challenges lifetime cancellation,
+idempotent disposal, observer/frame release and modal-owner handoff without
+indiscriminate inert reset. The actual-publication evidence interaction driver
+adds persisted-page authority refresh and teardown after a real response has
+already arrived. `live-unenhanced` disables ResizeObserver before Product startup
+and consumes the native document/evidence/return path; ordinary no-JS exports
+remain a separate consumer. Run affected catalogue/navigation/native-context,
+retained-original, executable HTTP, citation, format/locale and installer checks.
+Keep framework trial equivalence, technical conformance, dependent R3 comparison
+and human/assistive observations separate. The selected embedded-assets path has
+no new external engine/runtime to package; do not create a dependency-only build
+commit in the absence of a demonstrated packaging gap.

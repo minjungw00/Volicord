@@ -1,11 +1,21 @@
 //! Bounded browser presentation. The transport permits only this exact script.
 use sha2::{Digest, Sha256};
 pub(crate) const SCRIPT: &str = concat!(
-    include_str!("reading.js"),
+    "(() => {\nif (typeof AbortController !== 'function' || typeof ResizeObserver !== 'function' || typeof matchMedia !== 'function' || !document.fonts) return;\n",
+    include_str!("reader_runtime.js"),
+    "\n",
+    include_str!("reader_citations.js"),
+    "\n",
+    include_str!("reader_figures.js"),
+    "\n",
+    include_str!("reader_outline.js"),
     "\n",
     include_str!("shell.js"),
     "\n",
-    include_str!("catalogue_navigation.js")
+    include_str!("reading.js"),
+    "\n",
+    include_str!("catalogue_navigation.js"),
+    "\n})();"
 );
 pub(crate) fn csp_source() -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

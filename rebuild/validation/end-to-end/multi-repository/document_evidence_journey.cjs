@@ -26,9 +26,10 @@ async function run(config){
   const publicAnswers=JSON.parse(fs.readFileSync(c.public)),runtime=path.join(config.output,c.key+'-runtime');fs.cpSync(c.runtime,runtime,{recursive:true,errorOnExist:true,force:false});server=await listener(config,c,runtime,write);
   const address=server.base+`?project=${c.project}&view=${c.work?'work&work='+c.work:'repository'}&locale=${c.locale||c.language}&language=${c.language}`;
   for(const width of c.widths||config.widths||[1440,1024,768,390,320])for(const mode of config.modes||['live','offline','no-js']){
-   const live=mode==='live'||mode==='live-no-js',scripted=mode==='live';
+   const live=['live','live-no-js','live-unenhanced'].includes(mode),scripted=mode==='live';
    console.log(c.key,width,mode);const context=await browser.newContext({viewport:{width,height:900},javaScriptEnabled:!mode.includes('no-js')});context.setDefaultTimeout(15000);context.setDefaultNavigationTimeout(15000);
    const page=await context.newPage();page.readerNoScript=mode.includes('no-js');activePage=page;const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+   if(mode==='live-unenhanced')await context.addInitScript(()=>{window.ResizeObserver=undefined;});
    await context.route('**/*',route=>{const u=route.request().url();if(u.startsWith(server.base)||u.startsWith('file:')||u.startsWith('data:'))return route.continue();result.external.push(u);return route.abort();});
    await installEntryObserver(page);
    if(scripted&&!c.work&&width===(config.widths||[1440])[0]){

@@ -103,10 +103,10 @@ impl Fixture {
                 ),
                 (
                     9,
-                    "reading.js",
-                    include_str!("../src/reading.js"),
+                    "reader_citations.js",
+                    include_str!("../src/reader_citations.js"),
                     "  async function readCitation(",
-                    "  const fragmentNotice =",
+                    "  function forgetPublication(",
                 ),
                 (
                     10,

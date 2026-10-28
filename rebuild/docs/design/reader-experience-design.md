@@ -1003,3 +1003,66 @@ relationship context, rather than presenting an isolated condition. SVG renderer
 geometry and natural authored prose are unchanged. CLI/MCP retain the admitted
 roles and complete linear meaning. No explanation-format replacement or historical
 republication is needed for these Derived captions.
+
+### Reader interaction ownership and bounded FE decision
+
+The selected implementation is scoped native modules. `reading.js` owns fragment
+selection, history and exact return memories. `reader_citations.js` owns code DOM,
+bounded buffers, request cancellation, binding checks and original-body expiry.
+`reader_figures.js` owns responsive figure geometry and expansion;
+`reader_outline.js` owns contents, cues and available-width policy; `shell.js`
+owns the project drawer. The latter requests contents closure through its owner.
+`reader_runtime.js` owns the common lifetime and modal coordinator: controllers
+request modal ownership rather than independently resetting inert state, trapping
+Tab or responding twice to Escape. Ending one modal cannot release another's
+background. Original inert state is restored rather than cleared globally.
+
+Page destruction aborts pending reads, removes listeners/cancels frames, disconnects
+observers and releases modal state. A persisted-page return rechecks original
+deadlines and requests fresh permission for selected evidence. Typed denial removes
+all dependent meaning and disconnects affected figure observers; a later resize
+cannot revive denied content. Missing enhancement primitives skip enhancement
+before changing native markup. There is no hydration rewrite or client semantic
+cache. Existing bounded code buffers belong to exact publication-bound DOM points;
+every request still revalidates the entire citation binding and current authority.
+Teardown restores native fragment/code-reference visibility and removes fetched
+code and enhancement-only state. Original visibility is tracked with weak DOM
+keys, so detached denied bodies are not retained as an unmount snapshot.
+
+The bounded alternative is a Preact **10.27.2** layout-effect host for the same
+Reader modules, real admitted document, selected claim, evidence and return path.
+This credible narrow integration uses component unmount for lifetime cleanup while
+leaving native document subtrees with their explicit owners; it does not pretend
+that copying native markup into a virtual tree is an adopted solution. Exact-tag
+[package metadata](https://github.com/preactjs/preact/blob/10.27.2/package.json),
+[MIT license](https://github.com/preactjs/preact/blob/10.27.2/LICENSE),
+[hook cleanup implementation](https://github.com/preactjs/preact/blob/10.27.2/hooks/src/index.js)
+and the official [hydration API](https://preactjs.com/guide/v10/api-reference/)
+were inspected. The isolated pinned package/lock, local UMD assets, first failed
+trial inputs and corrected trial observations remain ignored experiment evidence.
+The first paired trial failed because the harness replaced only bare script tags
+and changed CSP while leaving the Product's attributed tag; it establishes no
+framework limitation. No package scripts or external Source transmission are used.
+Both corrected hosts passed the same real-publication claim/code/return,
+history/resize/late-response and lifetime transition checks. This establishes
+bounded equivalence for that interaction, not a whole-framework qualification.
+
+A component lifecycle does not replace exact-citation authorization, native
+fragment/history ownership or shared modal coordination. A VDOM-owned panel would
+also require a matching native initial tree and exclusive subtree ownership;
+neither framework installation nor hydration alone supplies that contract. The
+effect-host trial adds 15,437 uncompressed bytes (local core/hooks and mounting
+adapter) while retaining those same explicit responsibilities. The working native
+boundary therefore remains selected. This is a bounded capability/deployment
+decision, not a claim that frameworks cannot improve other interfaces or that
+team productivity was measured. A future independently justified mutable Reader
+subtree may reopen it with the same native/permission/return acceptance criteria.
+
+All selected rendering assets remain embedded in the installed Rust executables
+and exact CSP hash. Publications created later use the same runtime Rust graph/
+sequence rules for live HTML and script-free export; no development tree/server,
+CDN, Node runtime, new license payload or build-time example rendering is required.
+There is no persisted geometry cache. Each request renders against its exact
+publication/semantics, fixed locale, bundled font-fallback policy, bounded viewport
+variants and renderer version. Adding a persistent cache would require all these
+dimensions plus current authorization, rather than reusing a prior rendered body.

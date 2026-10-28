@@ -1,5 +1,5 @@
 // Ephemeral UI coordinates only. Content and authority always come from GET.
-(() => {
+((lifetime) => {
  const catalogue=document.querySelector('#works[data-catalogue-route]');
  if(!catalogue)return;
  const route=new URL(catalogue.dataset.catalogueRoute,location.href).href;
@@ -14,7 +14,7 @@
   history.replaceState({...state(),workListPosition:position},'');
   try{const saved=positions().filter(p=>p.route!==route);saved.push(position);sessionStorage.setItem(storageKey,JSON.stringify(saved.slice(-24)));}catch{}
  }
- catalogue.addEventListener('click',event=>{
+ lifetime.on(catalogue,'click',event=>{
   const row=event.target.closest('a.work-row');
   if(row&&event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey)save(row);
  });
@@ -30,13 +30,13 @@
    window.scrollBy(0,row.getBoundingClientRect().top-saved.top);
    row.focus({preventScroll:true});row.dataset.returnSelected='true';
   };
-  Promise.resolve(document.fonts?.ready).then(()=>requestAnimationFrame(()=>requestAnimationFrame(apply)));
+  Promise.resolve(document.fonts?.ready).then(()=>lifetime.frame(()=>lifetime.frame(apply)));
  }
- window.addEventListener('pageshow',event=>{
+ lifetime.on(window,'pageshow',event=>{
   // Revalidate authority instead of reviving a previous page's cached summaries.
   if(event.persisted){location.reload();return;}
   restore();
  });
  // Fragment history within a restored list keeps its scoped selected row.
- window.addEventListener('popstate',restore);
-})();
+ lifetime.on(window,'popstate',restore);
+})(readerLifetime);

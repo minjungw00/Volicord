@@ -33,6 +33,17 @@ failure and its bounded, unresolved investigation.
 
 ## Commands
 
+`node rebuild/validation/end-to-end/multi-repository/reader_ownership_self_test.cjs`
+checks the shared Reader
+lifetime and modal handoff directly. Run through `validate focused`. Actual
+publication journeys remain separate: the document evidence driver accepts
+`all_elements: true` to enumerate every admitted role, including identifiers,
+relation/group guards and state owner. `live-unenhanced` removes ResizeObserver
+before startup and tests native consumption with JavaScript still enabled. The
+interaction driver verifies restoration's fresh permission read and teardown's
+late-response rejection/native fallback. These are scoped controls, not the
+authoritative aggregate or human/assistive acceptance.
+
 `node rebuild/validation/end-to-end/multi-repository/article_reading_browser.cjs
 <private-config.json>` checks exact current Work articles in live and script-free
 offline readers at five widths in en/ko. Configuration names local viewer/CLI,

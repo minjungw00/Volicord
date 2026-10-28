@@ -48,6 +48,38 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  await page.goto(address+native);await complete(page);assert.equal(await point().getAttribute('id'),sourceId,'native origin resolves its exact Source');
  await page.keyboard.press('Escape');await settle(page);assert.equal(await element.evaluate(n=>n===document.activeElement),true,'native deep entry returns to its exact element');
  await page.goto(address+native+'!foreign-claim');await settle(page);assert.equal(await page.locator('.source-point[data-selected]').count(),0);assert.equal(await page.locator('.fragment-unavailable').isVisible(),true);notes.push('native origin and foreign claim refusal');
+ // A restored page revalidates selected evidence. A destroyed enhancement
+ // aborts pending reads and releases inert/observers/listeners, even when a
+ // response was already obtained before teardown.
+ await page.goto(address+native+'!'+claimId);await complete(page);
+ const expectedNativeCode=await point().locator('.citation-inspection code').textContent();
+ let resumedRequests=0;const count=()=>resumedRequests++;
+ page.on('request',count);
+ await page.evaluate(()=>{
+  window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+  window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}));
+ });
+ await complete(page);page.off('request',count);
+ assert.ok(resumedRequests>0,'restored selected evidence must request current permission');
+ notes.push('restoration revalidates authority');
+ let release,arrived;
+ const heldResponse=new Promise(r=>arrived=r),released=new Promise(r=>release=r);
+ await context.route('**/citation?*',async route=>{
+  const response=await route.fetch();arrived();await released;
+  await route.fulfill({response}).catch(()=>{});
+ });
+ await point().locator('.citation-read').click();await heldResponse;
+ await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:false})));
+ release();await pause(300);
+ assert.equal(await page.locator('[data-fetched-code]').count(),0,'late bytes cannot paint after teardown');
+ assert.equal(await page.locator('[aria-modal=true]').count(),0,'teardown releases modal ownership');
+ assert.equal(await page.locator('.project-shell').evaluate(n=>n.inert),false,'teardown restores background');
+ assert.equal(await page.locator('body').getAttribute('data-reader-enhanced'),null,'teardown restores native fragment consumption');
+ const nativePoint=page.locator(`[id="${sourceId}"]`);
+ const {openEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
+ assert.equal(await (await openEmbeddedCode(nativePoint)).textContent(),expectedNativeCode,'native evidence survives enhancement teardown');
+ await context.unroute('**/citation?*');await page.reload();await complete(page);
+ notes.push('teardown rejects a completed late response and releases modal state');
  return {width,sourceId,checks:notes};
 }
 module.exports={inspect};
