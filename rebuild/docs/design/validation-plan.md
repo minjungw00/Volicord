@@ -4360,3 +4360,13 @@ figure, after the untouched article-entry capture. Playwright's former automatic
 if-needed alignment could capture the middle of a long sequence as initial. Neither
 path may preselect an element, expand details or pan the canvas. Preserved middle,
 selected-code and returned captures remain distinct observations.
+
+The first integrated gate at e50c25b8 passed admission/support and metadata/fmt/
+Clippy, then failed the unchanged `near_read_limit` Work/Decision CLI workload:
+preparation was 131,405 bytes against 131,072. Its failure/archive remain preserved;
+V11/provider stages were not run. The owned repair compacts equivalent fixed
+guidance only for previously refused preparations, preserving all evidence and
+already-admissible historical fingerprints. `explanation_budgets` retains the
+same near-read input, 39,450-byte response, actual CLI roundtrip and atomic negative
+cases; both guidance policies exercise the true final one-byte boundary. Current
+original publication reads must remain identical before requalification.

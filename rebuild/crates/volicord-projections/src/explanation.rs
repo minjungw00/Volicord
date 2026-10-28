@@ -24,6 +24,8 @@ const GENERATOR_IDENTITY_STATUS: &str = "self_reported_not_independently_verifie
 /// It applies to shared claims in every language, never to translation by reference.
 const EFFECT_REVIEW: &str = "Freeze Source-first conditions, state objects, effects/non-effects and static/reported/observed scope before drafting; include implementations and required callees/callbacks. Check headings/synopsis/body in each language/revision against that basis; an earlier language is never the expected answer. Changed Source/scope requires reassessment. Maintained effect_review.py seals originals/receipts, inputs/first verdicts and rejects missing implementing ranges. Keep presentation-first inputs answer-free; absent isolation label dependent. Bindings prove no entailment.";
 
+const CONCISE_EFFECT_REVIEW: &str = "Freeze Source-first conditions/state/effects/non-effects and static/reported/observed scope; inspect implementations and required callees/callbacks. Check headings/synopsis/body per language/revision; an earlier language is never the expected answer. Reassess changed Source/scope. effect_review.py seals originals/receipts/inputs/first verdicts, rejects missing implementing ranges. Presentation-first inputs stay answer-free; absent isolation is dependent. Bindings prove no entailment.";
+
 /// One authoring contract for CLI/MCP preparation, independent of transport.
 /// These are investigation obligations, never prewritten subject answers.
 const ARTICLE_AUTHORING: &str = "Lead with the actual question, investigation/change, reported result and state; show the investigation before supporting architecture. Move evaluation rules/field history to provenance. Split effects: conditions -> implementation -> consequence. Use substantive section_heading only. Separate static, recorded and executed evidence; unknown history stays unknown. Invent no patch/retry/test/Decision. Localize limits; review claims before compose. Admission is neither semantic nor human approval.";
@@ -31,6 +33,12 @@ const ARTICLE_AUTHORING: &str = "Lead with the actual question, investigation/ch
 /// Repository investigation is independent of a Work and precedes authoring.
 /// Inventory commitments are discovery inputs, not an architectural answer key.
 const REPOSITORY_AUTHORING: &str = "Investigate repository-wide before authoring. First inspect exact analysis evidence, README/configuration and entry points; independently identify material responsibilities and explanatory questions from the actual repository, not a recent Work or inventory counts. Within existing source authority explicitly observe/read selected implementations, callers/callees, storage/transport boundaries and relevant tests across those responsibilities. Follow important cross-boundary relations until their mechanism and failure/exit paths are supported or explicitly unknown; do not stop after the first well-explained subsystem. Distinguish inventory coverage, analyzed topology, actually investigated Sources, explained topics and unknown/omitted areas. Then author a structure-first overview with a brief purpose/basis, visible grounded concept/component/flow/state or sequence figures as appropriate, representative flows before detailed mechanisms and supporting provenance: what system this is, who does what, how responsibilities cooperate and why their boundaries matter where evidence supports it. Explain at least two materially distinct end-to-end operations when repository complexity warrants them; a genuinely single-purpose small repository need not invent a second flow. Use complete supported diagram semantics and accompanying concise narrative for flows; no fixed section names/count, file catalog or mandatory empty sections. Detail demonstrates the broader account rather than defining the repository by one operation. Keep short truthful scope and material unresolved failures near the opening; put routine inventory/provenance in supporting inspection. Use section_heading followed by substantive content at actual topic changes. Review every technical claim, including assertive headings/synopsis, against relevant exact Sources; a matching hash or a heading role proves no entailment. State unsupported responsibilities and missing causal bridges rather than fabricate topology, execution, rationale, Work or canonical Project Purpose. Before compose review breadth and causal coverage separately from bytes; preserve necessary citations. If a necessary explanation cannot fit, report the exact unrepresentable obligation and measured preparation/response/retained pressure; do not silently omit it or raise limits. Admission is not semantic or human approval.";
+
+// Preserve already-admissible preparation bytes/fingerprints. Concise guidance
+// is selected only when the complete ordinary plan would be refused. Shared
+// article/effect guidance still requires mechanism/limits and no entailment claim.
+const DIAGRAM_AUTHORING: &str = " Diagrams: grounded concept/component/flow/state/sequence. Each label has independently authored text and an exact explanatory claim (unit/start_byte/end_byte) covered by Source citations. Prose explains mechanisms and limitations; never add alias definitions just to supply a label substring. Node label is the primary reader name; identifier is a separately grounded supporting label or null. Equal names require distinct identifiers. Relationship/message text expresses the concise action; conditions retain material guards. No U+2028/U+2029 role grammar. Inspect the Source for each role/claim association: bindings are not entailment. Purpose and connected scope precede selected detail. Distinguish execution locations, owned state and illustrative order. Compose seals every text, role, claim and topology; geometry is not admitted meaning.";
+const CONCISE_DIAGRAM_AUTHORING: &str = " Diagrams: grounded concept/component/flow/state/sequence. Label:text independent of its Source-cited claim(unit/start_byte/end_byte). Node:primary name, separately grounded identifier/null; distinct identifiers for equal names. Relation/message:concise action/material guard. No alias padding or U+2028/U+2029 grammar. Inspect role/claim Sources. Connected purpose/scope before detail. Separate execution locations/owned state/illustrative order. Compose seals text/roles/claims/topology; geometry is Derived.";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -843,13 +851,28 @@ fn finish_plan(
         subject,
         ExplanationSubject::Work(_) | ExplanationSubject::Repository(_)
     ) {
-        plan.instructions.push_str(" Diagrams: grounded concept/component/flow/state/sequence. Each label has independently authored text and an exact explanatory claim (unit/start_byte/end_byte) covered by Source citations. Prose explains mechanisms and limitations; never add alias definitions just to supply a label substring. Node label is the primary reader name; identifier is a separately grounded supporting label or null. Equal names require distinct identifiers. Relationship/message text expresses the concise action; conditions retain material guards. No U+2028/U+2029 role grammar. Inspect the Source for each role/claim association: bindings are not entailment. Purpose and connected scope precede selected detail. Distinguish execution locations, owned state and illustrative order. Compose seals every text, role, claim and topology; geometry is not admitted meaning.");
+        plan.instructions.push_str(DIAGRAM_AUTHORING);
     }
     plan.retention_budget = explanation_retention_budget(&plan)?;
     // Admission includes the final fingerprint, even though the hash preimage
     // itself has an empty fingerprint. A plan exactly at the limit stays valid.
-    let bytes = serde_json::to_vec(&plan).map_err(|e| e.to_string())?;
-    let size = bytes.len() + "sha256:".len() + 64;
+    let mut bytes = serde_json::to_vec(&plan).map_err(|e| e.to_string())?;
+    let fingerprint_bytes = "sha256:".len() + 64;
+    if bytes.len() + fingerprint_bytes > EXPLANATION_PLAN_BYTE_LIMIT
+        && plan.instructions.ends_with(DIAGRAM_AUTHORING)
+    {
+        // Full evidence, grounding and budgets stay identical. This basis had
+        // no admissible publication with ordinary guidance, so no supported
+        // historical preparation is rebound or decoded through a second path.
+        plan.instructions
+            .truncate(plan.instructions.len() - DIAGRAM_AUTHORING.len());
+        plan.instructions.push_str(CONCISE_DIAGRAM_AUTHORING);
+        plan.instructions = plan
+            .instructions
+            .replace(EFFECT_REVIEW, CONCISE_EFFECT_REVIEW);
+        bytes = serde_json::to_vec(&plan).map_err(|e| e.to_string())?;
+    }
+    let size = bytes.len() + fingerprint_bytes;
     if size > EXPLANATION_PLAN_BYTE_LIMIT {
         return Err(format!("explanation preparation JSON is {size} bytes; limit {EXPLANATION_PLAN_BYTE_LIMIT}; evidence cannot be represented without truncation; seek Product support for this evidence shape before generation"));
     }

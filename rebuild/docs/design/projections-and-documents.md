@@ -3244,3 +3244,24 @@ relation conditions/state ownership or message-local ordinal/order/guard. They
 derive only fixed UI vocabulary and existing admitted meaning. Diagram text,
 complete JSON, geometry and source authorization retain their existing owners.
 There is no new serialized field, publication identity or authored wording.
+
+### Bounded preparation guidance without publication rebinding
+
+The complete ordinary preparation, including every evidence field and final
+fingerprint, still uses the 131,072-byte JSON bound. A format-9 integration run
+exposed a previously representable metadata-heavy Work shape refused after display
+role guidance grew: 131,405 bytes with the unchanged full evidence/workload.
+When the complete ordinary plan exceeds that bound, the current producer uses
+concise equivalent diagram/effect guidance before checking the same final wire
+bound and hashing the actual plan. Conditions, state/effects/non-effects, per-role
+Source/claim review, independent labels, identifiers, guards, geometry distinction,
+source-first/presentation-first separation and admission limits remain required.
+Evidence, claims, response capacity and retained limits are never pruned or raised.
+
+Already-admissible ordinary preparations retain their exact instruction bytes and
+fingerprints. Concise guidance is selected deterministically only for a basis that
+could not previously produce a publication. Existing permitted format-9 publications
+therefore keep their IDs, preparation seals and retained-reading validation. This
+is one current producer/decoder with a bounded guidance policy, not a compatibility
+decoder, rewritten original or new format. Both guidance policies are checked at
+actual final JSON sizes of 131,071/131,072 and refusal at 131,073 bytes.

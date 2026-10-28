@@ -750,3 +750,9 @@ explanation 9, generated-document metadata 11, original publication IDs, admitte
 role wording/bindings, seals and body deadlines remain unchanged. Existing permitted
 publications render directly, including script-free export, with no reauthoring
 or parallel decoder.
+
+Preparation guidance compaction applies only when the full ordinary plan is above
+the unchanged 131,072-byte bound. Existing admissible format-9 preparations retain
+exact bytes/fingerprints; no supported publication is rebound. Newly representable
+preparations hash their actual complete concise JSON. Explanation 9, metadata 11,
+retained bytes, canonical/Source/privacy formats and lifetimes stay unchanged.

@@ -437,7 +437,7 @@ fn preparation_checks_final_json_and_impossible_metadata_before_generation(
     let canonical = f.operations.canonical_basis(f.project)?;
     let base = prepare_explanation(&canonical, subject, "ko")?;
     let original_size = serde_json::to_vec(&base)?.len();
-    for target in [131071, 131072, 131073] {
+    for target in [131071, 131072] {
         let mut c = canonical.clone();
         let goal = c
             .context_items
@@ -454,6 +454,38 @@ fn preparation_checks_final_json_and_impossible_metadata_before_generation(
                 error.contains("preparation JSON")
                     && error.contains("131073")
                     && error.contains("131072"),
+                "{error}"
+            );
+        }
+    }
+    // A previously unrepresentable basis can now fit with equivalent concise
+    // guidance. Check its actual final JSON boundary, without shrinking facts,
+    // response workload or the unchanged 128KiB limit.
+    let mut concise_basis = canonical.clone();
+    let goal = concise_basis
+        .context_items
+        .iter_mut()
+        .find(|c| c.id == f.goals["relay"])
+        .ok_or("goal")?;
+    goal.statement.push_str(&"x".repeat(131073 - original_size));
+    let concise = prepare_explanation(&concise_basis, subject, "ko")?;
+    let concise_size = serde_json::to_vec(&concise)?.len();
+    assert!(concise_size < 131073);
+    for target in [131071, 131072, 131073] {
+        let mut c = concise_basis.clone();
+        let goal = c
+            .context_items
+            .iter_mut()
+            .find(|c| c.id == f.goals["relay"])
+            .ok_or("goal")?;
+        goal.statement.push_str(&"x".repeat(target - concise_size));
+        let out = prepare_explanation(&c, subject, "ko");
+        if target <= 131072 {
+            assert_eq!(serde_json::to_vec(&out?)?.len(), target);
+        } else {
+            let error = out.err().ok_or("oversize accepted")?;
+            assert!(
+                error.contains("131073") && error.contains("131072"),
                 "{error}"
             );
         }
