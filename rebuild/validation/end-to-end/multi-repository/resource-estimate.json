@@ -1,7 +1,7 @@
 {
-  "basis": "One candidate clone, two fixture work areas, the current release-build footprint, and bounded retained operation evidence for the three-target V11 journey.",
+  "basis": "Two candidate copies, two fixture work areas, and at least 32 GiB for the fresh full-workspace debug/test and release builds plus bounded retained operation evidence. Preserved gate targets occupy 23–24 GiB before other journey evidence; an empty ordinary target does not reduce this cold-build floor. A larger ordinary target raises the estimate, with 20 percent additional free-space headroom.",
   "candidate_copy_count": 2,
   "fixture_copy_count": 2,
-  "minimum_build_and_evidence_bytes": 8589934592,
+  "minimum_build_and_evidence_bytes": 34359738368,
   "free_space_headroom_percent": 20
 }

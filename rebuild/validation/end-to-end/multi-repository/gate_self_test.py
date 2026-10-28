@@ -10,6 +10,8 @@ import copy
 import shutil
 import sys
 import tempfile
+from types import SimpleNamespace
+from unittest.mock import patch
 from typing import Any, Sequence
 
 
@@ -633,9 +635,61 @@ def assert_rehearsal_controls(root):
         raise AssertionError('duplicate rehearsal invocation accepted')
 
 
+def assert_cold_build_resource_admission(root: Path) -> None:
+    """A cleaned diagnostic cache must not admit an underfunded fresh build."""
+    workspace = root / "rebuild"
+    workspace.mkdir(parents=True)
+    source = workspace / "Cargo.toml"
+    source.write_bytes(b"[workspace]\n")
+    here = workspace / "validation/end-to-end/multi-repository"
+    fixtures = (
+        workspace / "validation/repository-intelligence/polyglot-structural/fixtures/python/main.py",
+        here / "fixtures/polyglot-medium/main.ts",
+    )
+    for fixture in fixtures:
+        fixture.parent.mkdir(parents=True, exist_ok=True)
+        fixture.write_bytes(b"bounded fixture\n")
+    estimate = json.loads(gate.RESOURCE_ESTIMATE.read_text())
+    floor = int(estimate["minimum_build_and_evidence_bytes"])
+    # Actual preserved full-workspace targets already exceed the former 8 GiB.
+    assert floor >= 32 * 1024**3
+    base = (source.stat().st_size * int(estimate["candidate_copy_count"])
+            + sum(p.stat().st_size for p in fixtures) * int(estimate["fixture_copy_count"]) + floor)
+    required = base * (100 + int(estimate["free_space_headroom_percent"])) // 100
+    tracked = gate.subprocess.CompletedProcess([], 0, "rebuild/Cargo.toml\0", "")
+    with patch.object(gate, "ROOT", root), patch.object(gate, "REBUILD_ROOT", workspace), \
+            patch.object(gate, "HERE", here), \
+            patch.object(gate, "git_output", return_value=tracked), \
+            patch.object(gate.shutil, "disk_usage") as usage:
+        # No target, a freshly created empty target, and a tiny diagnostic cache
+        # must all require the same independently maintained cold-build budget.
+        for target_state in ("absent", "empty", "small"):
+            target = workspace / "target"
+            if target_state != "absent":
+                target.mkdir(exist_ok=True)
+            if target_state == "small":
+                (target / "cache-marker").write_bytes(b"diagnostic cache\n")
+            usage.return_value = SimpleNamespace(free=required - 1)
+            refused = gate.resource_check(root)
+            assert refused["status"] == "environment_blocked", refused
+            assert refused["details"]["required_bytes"] == required, refused
+            usage.return_value = SimpleNamespace(free=required)
+            admitted = gate.resource_check(root)
+            assert admitted["status"] == "passed", admitted
+            assert admitted["details"]["required_bytes"] == required, admitted
+        # A larger diagnostic target remains a conservative upper input, never
+        # a cache reused or removed by admission. No large file is allocated.
+        with patch.object(gate, "directory_bytes", side_effect=lambda p: floor * 2 if p == target else 0):
+            refused = gate.resource_check(root)
+            assert refused["status"] == "environment_blocked", refused
+            assert refused["details"]["required_bytes"] > required
+        assert (target / "cache-marker").read_bytes() == b"diagnostic cache\n"
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="volicord-gate-self-test-") as directory:
         root = Path(directory)
+        assert_cold_build_resource_admission(root / "cold-build-resources")
         assert_rehearsal_controls(root / "rehearsal-controls")
         assert_support_scheduling(root / "support-scheduling")
         assert_contract_execution(root / "contract-execution")
@@ -1014,7 +1068,7 @@ def main() -> int:
 
     print(json.dumps({
         "status": "passed",
-        "scenarios": 19,
+        "scenarios": 20,
         "real_synthetic_result_contract_parity": "passed",
         "real_final_invocations": 0,
         "official_v11_invocations": 0,

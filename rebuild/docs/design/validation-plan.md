@@ -4370,3 +4370,26 @@ already-admissible historical fingerprints. `explanation_budgets` retains the
 same near-read input, 39,450-byte response, actual CLI roundtrip and atomic negative
 cases; both guidance policies exercise the true final one-byte boundary. Current
 original publication reads must remain identical before requalification.
+
+### Cold-build capacity and preserved evidence
+
+The gate owns a fresh target; cleaning an ordinary development target cannot
+reduce its cold-build requirement. The maintained resource estimate reserves at
+least 32 GiB for full-workspace debug/test and release output plus bounded journey
+evidence, then adds candidate/fixture copies and 20 percent headroom. Preserved
+gate targets measured 23–24 GiB; the former 8 GiB floor based on an ordinary
+release target underestimated this workload. A larger ordinary target may raise
+the estimate but is never reused. `gate-self-test` rejects one byte below the
+required budget for absent, empty and small ordinary targets, accepts the exact
+boundary, and checks that a larger target raises the requirement without mutation.
+This admission estimate does not change Product resource ceilings or qualify V11.
+
+When storage blocks qualification, preserve original sources, runtimes, review/
+gate output, executable identities and explicitly retained forensic targets.
+Ordinary ignored development-build incremental caches and intermediate library/
+object files can be regenerated; identify exact cache paths, record cleanup and
+verify retained executables before removing them. Never automatically prune old
+gate attempts to make admission pass. Fresh gate output remains isolated and
+retained even after failure. Low-space linker termination is not a failed test;
+retain its streams and distinguish a likely output-allocation failure from a
+confirmed compiler or Product defect.
