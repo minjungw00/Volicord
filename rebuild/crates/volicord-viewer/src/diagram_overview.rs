@@ -1,6 +1,6 @@
 //! Responsive connected maps. Meaning and origins are shared across both layouts.
 //! All coordinates are computed from admitted topology and exact label lengths.
-use super::{elements, esc, open, text, words, RENDERER_ID};
+use super::{elements, esc, open, RENDERER_ID};
 use std::collections::BTreeMap;
 #[path = "diagram_route.rs"]
 mod routing;
@@ -15,46 +15,14 @@ struct Layout {
     elements: BTreeMap<String, String>,
     routes: BTreeMap<String, String>,
 }
-fn lines(value: &str, pixels: usize) -> usize {
-    words(value, pixels.max(16)).len()
-}
-fn header_lines(node: &DiagramNode, texts: &[&str], width: usize) -> Result<usize, String> {
-    Ok(lines(diagram_label(&node.label, texts)?, width)
-        + node
-            .identifier
-            .as_ref()
-            .map(|l| diagram_label(l, texts).map(|s| lines(s, width)))
-            .transpose()?
-            .unwrap_or(0))
-}
-fn writing(out: &mut String, x: usize, y: usize, value: &str, pixels: usize) {
-    text(out, x, y, value, pixels.max(16));
-}
-fn small_writing(out: &mut String, x: usize, y: usize, value: &str, pixels: usize) {
-    out.push_str(&format!(
-        "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\">"
-    ));
-    for (i, line) in words(value, pixels.max(16)).iter().enumerate() {
-        out.push_str(&format!(
-            "<tspan x=\"{x}\" dy=\"{}\">{}</tspan>",
-            if i == 0 { 0 } else { 20 },
-            esc(line)
-        ));
-    }
-    out.push_str("</text>");
-}
-fn inline_label(name: &str, kind: &str, width: usize) -> bool {
-    lines(name, width - 12) == 1
-        && (super::measure_text(name) * 13 / 16 + super::measure_text(kind) * 12 / 16 + 20) <= width
-}
 fn panel(out: &mut String, x: usize, y: usize, w: usize, h: usize, class: &str) {
     out.push_str(&format!(
         "<rect class=\"{class}\" x=\"{x}\" y=\"{y}\" width=\"{w}\" height=\"{h}\" rx=\"6\"/>"
     ));
 }
 fn path(out: &mut String, route: &str, marker: &str, dashed: bool) {
-    // A white/foreground bridge distinguishes crossings from joins. Complete
-    // endpoint names in each relation annotation also identify its direction.
+    // A foreground bridge distinguishes crossings from joins; arrowheads retain
+    // direction independently of the authored action and its quiet label leader.
     out.push_str(&format!("<path class=\"route-bridge\" d=\"{route}\"/><path class=\"relation-line\" d=\"{route}\" marker-end=\"url(#{marker})\"{} />",if dashed {" stroke-dasharray=\"6 4\""}else{""}));
 }
 fn index(nodes: &[DiagramNode], id: &str) -> Result<usize, String> {
@@ -72,489 +40,16 @@ fn relations(d: &GroundedDiagram) -> &[DiagramRelation] {
         DiagramMeaning::Sequence { .. } => &[],
     }
 }
-fn node_kind(
-    nodes: &[DiagramNode],
-    i: usize,
-    texts: &[&str],
-    locale: FixedLocale,
-    common_type: bool,
-) -> Result<String, String> {
-    let name = diagram_label(&nodes[i].label, texts)?;
-    let repeated = nodes
-        .iter()
-        .filter(|n| diagram_label(&n.label, texts) == Ok(name))
-        .count()
-        > 1;
-    let kind = if common_type {
-        ""
-    } else {
-        nodes[i].kind.localized_text(locale)
-    };
-    Ok(if repeated {
-        format!("{kind} [{}]", nodes[i].id).trim_start().into()
-    } else {
-        kind.into()
-    })
-}
-// Breadth layers are presentation, never inferred execution or containment.
-fn graph<'a>(
-    d: &'a GroundedDiagram,
-    texts: &[&str],
-    width: usize,
-    marker: &str,
-    locale: FixedLocale,
-) -> Result<Layout, String> {
-    use routing::Rect;
-    let nodes = d.nodes();
-    let edges = relations(d);
-    let label = |l: &'a DiagramLabel| diagram_label(l, texts);
-    let endpoints = edges
-        .iter()
-        .map(|e| Ok((index(nodes, &e.from)?, index(nodes, &e.to)?)))
-        .collect::<Result<Vec<_>, String>>()?;
-    let mut ranks = vec![usize::MAX; nodes.len()];
-    ranks[0] = 0;
-    let mut queue = std::collections::VecDeque::from([0]);
-    while let Some(a) = queue.pop_front() {
-        for &(from, to) in &endpoints {
-            if from == a && ranks[to] == usize::MAX {
-                ranks[to] = ranks[a] + 1;
-                queue.push_back(to);
-            }
-        }
-    }
-    while ranks.contains(&usize::MAX) {
-        let mut changed = false;
-        for &(a, b) in &endpoints {
-            if ranks[a] != usize::MAX && ranks[b] == usize::MAX {
-                ranks[b] = ranks[a] + 1;
-                changed = true;
-            } else if ranks[b] != usize::MAX && ranks[a] == usize::MAX {
-                ranks[a] = ranks[b] + 1;
-                changed = true;
-            }
-        }
-        if !changed {
-            if let Some(i) = ranks.iter().position(|r| *r == usize::MAX) {
-                ranks[i] = 0;
-            }
-        }
-    }
-    let cols = if width < 400 { 2 } else { 3 };
-    let margin = 24;
-    let gap = 16;
-    let content = width - margin * 2;
-    let cell = (content - gap * (cols - 1)) / cols;
-    let counts = (0..nodes.len())
-        .map(|b| endpoints.iter().filter(|(_, to)| *to == b).count())
-        .collect::<Vec<_>>();
-    let mut layout = Layout {
-        width,
-        ..Layout::default()
-    };
-    let mut y = 24;
-    // A uniform type belongs to the whole figure. Mixed types remain attached
-    // to their elements; no predicate, endpoint or semantic selection is elided.
-    let uniform_nodes = nodes.len() > 1 && nodes.iter().all(|n| n.kind == nodes[0].kind);
-    let uniform_edges = edges
-        .first()
-        .map(|first| edges.len() > 1 && edges.iter().all(|e| e.kind == first.kind))
-        .unwrap_or(false);
-    // Local reminders repeat the admitted owner, never infer it from topology.
-    // They also work in static exports after the selectable owner scrolls away.
-    let owner = if let DiagramMeaning::State { owner, .. } = &d.meaning {
-        format!(
-            "{} {}",
-            diagram_ui(locale, "State owner:", "상태 소유자:"),
-            label(owner)?
-        )
-    } else {
+fn node_kind(node: &DiagramNode, locale: FixedLocale, common_type: bool) -> String {
+    if common_type {
         String::new()
-    };
-    for value in [
-        uniform_nodes.then(|| {
-            format!(
-                "{} {}",
-                diagram_ui(locale, "All nodes:", "모든 노드:"),
-                nodes[0].kind.localized_text(locale)
-            )
-        }),
-        uniform_edges.then(|| {
-            format!(
-                "{} {}",
-                diagram_ui(locale, "All relations:", "모든 관계:"),
-                edges[0].kind.localized_text(locale)
-            )
-        }),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        layout
-            .background
-            .push_str("<g class=\"diagram-type-key diagram-node-kind\">");
-        writing(
-            &mut layout.background,
-            width / 2,
-            y + 16,
-            &value,
-            width - 32,
-        );
-        layout.background.push_str("</g>");
-        y += 24 * lines(&value, width - 32) + 12;
+    } else {
+        node.kind.localized_text(locale).into()
     }
-    // State ownership retains its own selectable origin after the shared keys.
-    if let DiagramMeaning::State { owner, .. } = &d.meaning {
-        let value = format!(
-            "{} {}",
-            diagram_ui(locale, "State owner:", "상태 소유자:"),
-            label(owner)?
-        );
-        let mut out = String::new();
-        writing(&mut out, width / 2, y + 16, &value, width - 32);
-        y += 24 * lines(&value, width - 32) + 24;
-        layout.elements.insert("state:owner".into(), out);
-        layout.order.push("state:owner".into());
-    }
-    let blank = Rect {
-        x: 0,
-        y: 0,
-        w: 0,
-        h: 0,
-    };
-    let mut node_boxes = vec![blank; nodes.len()];
-    let mut edge_boxes = vec![blank; edges.len()];
-    for rank in 0..=*ranks.iter().max().unwrap_or(&0) {
-        let group = (0..nodes.len())
-            .filter(|i| ranks[*i] == rank)
-            .collect::<Vec<_>>();
-        for row in group.chunks(cols) {
-            let mut row_h = 0;
-            for (col, &i) in row.iter().enumerate() {
-                let tw = if nodes[i].kind == DiagramNodeKind::Branch {
-                    cell / 2 - 12
-                } else {
-                    cell - 8
-                };
-                let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
-                let h = (24 + 24 * (header_lines(&nodes[i], texts, tw)? + lines(&kind, tw)))
-                    + 24 * lines(&owner, tw);
-                let h = h.max(counts[i] * 24 + 24);
-                let h = if nodes[i].kind == DiagramNodeKind::Branch {
-                    h * 2
-                } else {
-                    h
-                };
-                let x = margin
-                    + (content - (row.len() * cell + (row.len() - 1) * gap)) / 2
-                    + col * (cell + gap);
-                node_boxes[i] = Rect { x, y, w: cell, h };
-                row_h = row_h.max(h);
-                layout.order.push(nodes[i].id.clone());
-                if nodes[i].identifier.is_some() {
-                    layout.order.push(format!("{}:identifier", nodes[i].id));
-                }
-            }
-            y += row_h + 20;
-        }
-        let edge_start = y;
-        let mut col = 0;
-        let mut row_h = 0;
-        for (i, e) in edges
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| group.contains(&index(nodes, &e.from).unwrap_or(usize::MAX)))
-        {
-            let guard = e.condition.as_ref().map(label).transpose()?;
-            let needs_wide = width < 400
-                || std::iter::once(label(&e.label)?)
-                    .chain(guard)
-                    .flat_map(str::split_whitespace)
-                    .any(|word| super::measure_text(word) > cell);
-            if needs_wide && col > 0 {
-                y += row_h + 24;
-                row_h = 0;
-                col = 0;
-            }
-            let w = if needs_wide { content } else { cell };
-            let x = if needs_wide {
-                margin
-            } else {
-                margin + col * (cell + gap)
-            };
-            let kind = if uniform_edges {
-                ""
-            } else {
-                e.kind.localized_text(locale)
-            };
-            let label_lines = lines(label(&e.label)?, w - 12);
-            let kind_lines = if inline_label(label(&e.label)?, kind, w) {
-                0
-            } else {
-                lines(kind, w - 12)
-            };
-            let h = 12
-                + 20 * (label_lines + kind_lines + lines(&owner, w - 12))
-                + guard.map(|v| 20 * lines(v, w - 12) + 12).unwrap_or(0);
-            edge_boxes[i] = Rect { x, y, w, h };
-            layout.order.push(e.id.clone());
-            if e.condition.is_some() {
-                layout.order.push(format!("{}:condition", e.id));
-            }
-            row_h = row_h.max(h);
-            col += 1;
-            if needs_wide || col == cols {
-                y += row_h + 24;
-                col = 0;
-                row_h = 0;
-            }
-        }
-        if col > 0 {
-            y += row_h + 24;
-        }
-        // Compare outgoing routes beneath their own source column. This is
-        // geometric proximity only: shared nodes, direction and full endpoint
-        // names remain, and no column becomes an execution/ownership boundary.
-        // Full-width labels and narrow layouts retain full reading width.
-        let outgoing = endpoints
-            .iter()
-            .enumerate()
-            .filter(|(_, (a, _))| group.contains(a))
-            .map(|(i, _)| i)
-            .collect::<Vec<_>>();
-        if width >= 400
-            && group.len() > 1
-            && group.len() <= cols
-            && outgoing.iter().all(|i| edge_boxes[*i].w == cell)
-        {
-            let mut bottoms = vec![edge_start; nodes.len()];
-            for i in outgoing {
-                let a = endpoints[i].0;
-                edge_boxes[i].x = node_boxes[a].x;
-                edge_boxes[i].y = bottoms[a];
-                bottoms[a] += edge_boxes[i].h + 24;
-            }
-            y = group
-                .iter()
-                .map(|a| bottoms[*a])
-                .max()
-                .unwrap_or(edge_start);
-        }
-        y += 16;
-    }
-    layout.height = y + 16;
-    let obstacles = node_boxes
-        .iter()
-        .chain(&edge_boxes)
-        .map(|r| r.padded())
-        .collect::<Vec<_>>();
-    // Reserve every future connector port. Otherwise a previous crossing can
-    // land exactly on a later start, leaving no distinct direction to escape.
-    let mut ports = Vec::new();
-    let mut incoming_port = vec![0; nodes.len()];
-    for (i, &(a, b)) in endpoints.iter().enumerate() {
-        let from = node_boxes[a];
-        let to = node_boxes[b];
-        let card = edge_boxes[i];
-        ports.extend([
-            (from.x + from.w / 2, from.y + from.h + 8),
-            (card.x + card.w / 2, card.y - 8),
-            (card.x + card.w / 2, card.y + card.h + 8),
-            (
-                to.x + to.w + 8,
-                to.y + to.h / 2 + incoming_port[b] * 24 - counts[b].saturating_sub(1) * 10,
-            ),
-        ]);
-        incoming_port[b] += 1;
-    }
-    let route = |start, end, old: &[routing::Segment], group| {
-        let mut protected = obstacles.clone();
-        protected.extend(
-            ports
-                .iter()
-                .filter(|p| **p != start && **p != end)
-                .map(|p| Rect {
-                    x: p.0 - 2,
-                    y: p.1 - 2,
-                    w: 4,
-                    h: 4,
-                }),
-        );
-        routing::route(start, end, &protected, old, group, width, layout.height)
-    };
-    let mut routes = Vec::new();
-    let mut incoming = vec![0; nodes.len()];
-    for (i, e) in edges.iter().enumerate() {
-        let (a, b) = endpoints[i];
-        let from = node_boxes[a];
-        let to = node_boxes[b];
-        let card = edge_boxes[i];
-        let sy = from.y + from.h;
-        let sx = from.x + from.w / 2;
-        let ly = card.y;
-        let lx = card.x + card.w / 2;
-        let ty = to.y + to.h / 2 + incoming[b] * 24 - counts[b].saturating_sub(1) * 10;
-        incoming[b] += 1;
-        let tx = to.x + to.w
-            - if nodes[b].kind == DiagramNodeKind::Branch {
-                ty.abs_diff(to.y + to.h / 2) * to.w / to.h
-            } else {
-                0
-            };
-        let first = route((sx, sy + 8), (lx, ly - 8), &routes, a)
-            .map_err(|error| format!("{} input: {error}", e.id))?;
-        let mut input = vec![(sx, sy)];
-        input.extend(first);
-        input.push((lx, ly));
-        routing::remember(&input, a, &mut routes);
-        let cy = card.y + card.h;
-        let second = route(
-            (lx, cy + 8),
-            (to.x + to.w + 8, ty),
-            &routes,
-            nodes.len() + i,
-        )
-        .map_err(|error| {
-            format!(
-                "{} output at {width}px from ({lx},{}) to ({},{ty}): {error}",
-                e.id,
-                cy + 8,
-                to.x + to.w + 8
-            )
-        })?;
-        let mut output = vec![(lx, cy)];
-        output.extend(second);
-        output.push((tx, ty));
-        routing::remember(&output, nodes.len() + i, &mut routes);
-        let mut out = String::new();
-        path(
-            &mut out,
-            &(routing::path(&input) + " " + &routing::path(&output)),
-            marker,
-            e.kind == DiagramRelationKind::DataFlow,
-        );
-        // The native fragment belongs to the readable annotation. Including
-        // a long backward route in its bounds can land a narrow reader above
-        // the actual wording. The route remains an alias to the same claim.
-        layout.routes.insert(e.id.clone(), out);
-        let mut out = String::new();
-        panel(&mut out, card.x, card.y, card.w, card.h, "edge-key");
-        out.push_str("<g class=\"relation-wording\">");
-        let py = card.y + 20;
-        let name = label(&e.label)?;
-        let kind = if uniform_edges {
-            ""
-        } else {
-            e.kind.localized_text(locale)
-        };
-        let compact = inline_label(name, kind, card.w);
-        let label_lines = lines(name, card.w - 12);
-        let kind_lines = if compact { 0 } else { lines(kind, card.w - 12) };
-        if compact && !kind.is_empty() {
-            let nw = super::measure_text(name) * 13 / 16;
-            let kw = super::measure_text(kind) * 12 / 16;
-            let start = lx - (nw + kw + 8) / 2;
-            small_writing(&mut out, start + nw / 2, py, name, card.w - 12);
-            out.push_str("<g class=\"diagram-node-kind\">");
-            small_writing(&mut out, start + nw + 8 + kw / 2, py, kind, card.w - 12);
-            out.push_str("</g>");
-        } else {
-            small_writing(&mut out, lx, py, name, card.w - 12);
-            if !kind.is_empty() {
-                out.push_str("<g class=\"diagram-node-kind\">");
-                small_writing(&mut out, lx, py + 20 * label_lines, kind, card.w - 12);
-                out.push_str("</g>");
-            }
-        }
-        let context_y = py + 20 * (label_lines + kind_lines);
-        if !owner.is_empty() {
-            small_writing(&mut out, lx, context_y, &owner, card.w - 12);
-        }
-        if let Some(guard) = &e.condition {
-            let mut g = String::from("<g class=\"diagram-condition\">");
-            small_writing(
-                &mut g,
-                lx,
-                context_y + 20 * lines(&owner, card.w - 12) + 8,
-                label(guard)?,
-                card.w - 12,
-            );
-            g.push_str("</g>");
-            layout.elements.insert(format!("{}:condition", e.id), g);
-        }
-        out.push_str("</g>");
-        layout.elements.insert(e.id.clone(), out);
-    }
-    for (i, node) in nodes.iter().enumerate() {
-        let r = node_boxes[i];
-        let mut out = String::new();
-        if node.kind == DiagramNodeKind::Branch {
-            out.push_str(&format!(
-                "<polygon class=\"participant-box\" points=\"{},{} {},{} {},{} {},{}\"/>",
-                r.x + r.w / 2,
-                r.y,
-                r.x + r.w,
-                r.y + r.h / 2,
-                r.x + r.w / 2,
-                r.y + r.h,
-                r.x,
-                r.y + r.h / 2
-            ));
-        } else {
-            panel(
-                &mut out,
-                r.x,
-                r.y,
-                r.w,
-                r.h,
-                if node.kind == DiagramNodeKind::ReadingGroup {
-                    "participant-box node-group"
-                } else {
-                    "participant-box"
-                },
-            );
-        }
-        let tw = if node.kind == DiagramNodeKind::Branch {
-            r.w / 2 - 12
-        } else {
-            r.w - 8
-        };
-        let kind = node_kind(nodes, i, texts, locale, uniform_nodes)?;
-        let name_lines = header_lines(node, texts, tw)?;
-        let th = 24 * (name_lines + lines(&kind, tw) + lines(&owner, tw));
-        let top = r.y + (r.h - th) / 2 + 16;
-        super::node_header(&mut out, r.x + r.w / 2, top, node, texts, tw)?;
-        if let Some(identifier) = &node.identifier {
-            let mut support = String::new();
-            super::identifier_text(
-                &mut support,
-                r.x + r.w / 2,
-                top + 24 * lines(label(&node.label)?, tw),
-                label(identifier)?,
-                tw,
-            );
-            layout
-                .elements
-                .insert(format!("{}:identifier", node.id), support);
-        }
-        if !kind.is_empty() {
-            out.push_str("<g class=\"diagram-node-kind\">");
-            writing(&mut out, r.x + r.w / 2, top + 24 * name_lines, &kind, tw);
-            out.push_str("</g>");
-        }
-        if !owner.is_empty() {
-            writing(
-                &mut out,
-                r.x + r.w / 2,
-                top + 24 * (name_lines + lines(&kind, tw)),
-                &owner,
-                tw,
-            );
-        }
-        layout.elements.insert(node.id.clone(), out);
-    }
-    Ok(layout)
 }
+#[path = "diagram_graph.rs"]
+mod graph_layout;
+use graph_layout::graph;
 
 fn sequence<'a>(
     d: &'a GroundedDiagram,
@@ -563,6 +58,7 @@ fn sequence<'a>(
     marker: &str,
     locale: FixedLocale,
 ) -> Result<Layout, String> {
+    use super::{sized_text, words_at};
     let DiagramMeaning::Sequence {
         participants: nodes,
         groups,
@@ -571,6 +67,7 @@ fn sequence<'a>(
         return Err("sequence unavailable".into());
     };
     let label = |l: &'a DiagramLabel| diagram_label(l, texts);
+    let count = |s: &str, w: usize, px: usize| words_at(s, w.max(16), px).len();
     let n = nodes.len();
     let endpoint = |i: usize| -> Result<String, String> {
         let name = label(&nodes[i].label)?;
@@ -583,29 +80,28 @@ fn sequence<'a>(
         )
     };
     let lane = (width - 24) / n;
-    let node_width = lane - 2;
-    let repeated = nodes
-        .iter()
-        .map(|node| {
-            label(&node.label)
-                .map(|name| nodes.iter().filter(|n| label(&n.label) == Ok(name)).count() > 1)
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let node_width = lane.saturating_sub(4).max(16);
+    let x = |i: usize| 12 + lane * i + lane / 2;
     let header = nodes
         .iter()
-        .enumerate()
-        .map(|(i, n)| {
-            header_lines(n, texts, (node_width - 4).max(16)).map(|count| {
-                24 * (count
-                    + if repeated[i] {
-                        lines(&n.id, (node_width - 4).max(16)) + 1
-                    } else {
-                        0
+        .map(|node| {
+            Ok(24
+                * count(
+                    label(&node.label)?,
+                    node_width.saturating_sub(8).max(16),
+                    16,
+                )
+                + node
+                    .identifier
+                    .as_ref()
+                    .map(|l| {
+                        label(l).map(|s| 18 * count(s, node_width.saturating_sub(8).max(16), 12))
                     })
-                    + 24
-            })
+                    .transpose()?
+                    .unwrap_or(0)
+                + 24)
         })
-        .collect::<Result<Vec<_>, _>>()?
+        .collect::<Result<Vec<usize>, String>>()?
         .into_iter()
         .max()
         .unwrap_or(48);
@@ -613,12 +109,7 @@ fn sequence<'a>(
         width,
         ..Layout::default()
     };
-    let x = |i: usize| 12 + lane * i + lane / 2;
     for (i, node) in nodes.iter().enumerate() {
-        layout.order.push(node.id.clone());
-        if node.identifier.is_some() {
-            layout.order.push(format!("{}:identifier", node.id));
-        }
         let mut out = String::new();
         panel(
             &mut out,
@@ -628,30 +119,35 @@ fn sequence<'a>(
             header,
             "participant-box",
         );
-        super::node_header(&mut out, x(i), 34, node, texts, (node_width - 4).max(16))?;
+        super::node_header(
+            &mut out,
+            x(i),
+            36,
+            node,
+            texts,
+            node_width.saturating_sub(8).max(16),
+        )?;
+        layout.order.push(node.id.clone());
+        layout.elements.insert(node.id.clone(), out);
         if let Some(identifier) = &node.identifier {
             let mut support = String::new();
             super::identifier_text(
                 &mut support,
                 x(i),
-                34 + 24 * lines(label(&node.label)?, (node_width - 4).max(16)),
+                36 + 24
+                    * count(
+                        label(&node.label)?,
+                        node_width.saturating_sub(8).max(16),
+                        16,
+                    ),
                 label(identifier)?,
-                (node_width - 4).max(16),
+                node_width.saturating_sub(8).max(16),
             );
             layout
                 .elements
                 .insert(format!("{}:identifier", node.id), support);
+            layout.order.push(format!("{}:identifier", node.id));
         }
-        if repeated[i] {
-            writing(
-                &mut out,
-                x(i),
-                54 + 24 * lines(label(&node.label)?, (node_width - 4).max(16)),
-                &node.id,
-                (node_width - 4).max(16),
-            );
-        }
-        layout.elements.insert(node.id.clone(), out);
     }
     let mut y = header + 36;
     for (gi, group) in groups.iter().enumerate() {
@@ -663,93 +159,91 @@ fn sequence<'a>(
             }
         };
         let heading = format!("{}. {order}", gi + 1);
-        let heading_height = 24 * lines(&heading, width - 32) + 12;
-        // Mask lifelines behind the complete group heading and guard, just as
-        // behind message wording. A line through a condition changes its scope.
-        let guard_text = group
+        let guard = group
             .condition
             .as_ref()
-            .map(|guard| {
-                label(guard)
-                    .map(|s| format!("opt · {} {s}", diagram_ui(locale, "condition:", "조건:")))
+            .map(|g| {
+                label(g).map(|s| format!("opt · {} {s}", diagram_ui(locale, "condition:", "조건:")))
             })
             .transpose()?;
-        let guard_height = guard_text
+        let hh = 18 * count(&heading, width - 40, 12) + 12;
+        let gh = guard
             .as_ref()
-            .map_or(0, |s| 24 * lines(s, width - 32) + 16);
+            .map_or(0, |s| 20 * count(s, width - 40, 13) + 12);
         panel(
             &mut layout.background,
             8,
             y,
             width - 16,
-            heading_height + guard_height,
+            hh + gh,
             "message-label",
         );
-        writing(
+        layout
+            .background
+            .push_str("<g class=\"diagram-node-kind\">");
+        sized_text(
             &mut layout.background,
             width / 2,
-            y + 18,
+            y + 16,
             &heading,
-            width - 32,
+            width - 40,
+            12,
+            18,
         );
-        y += heading_height;
-        if let Some(value) = &guard_text {
-            layout.order.push(format!("guard:{}", gi + 1));
-            let mut out = String::new();
-            writing(&mut out, width / 2, y + 18, value, width - 32);
-            y += guard_height;
+        layout.background.push_str("</g>");
+        y += hh;
+        if let Some(value) = &guard {
+            let mut out = String::from("<g class=\"diagram-condition\">");
+            sized_text(&mut out, width / 2, y + 16, value, width - 40, 13, 20);
+            out.push_str("</g>");
             layout.elements.insert(format!("guard:{}", gi + 1), out);
+            layout.order.push(format!("guard:{}", gi + 1));
+            y += gh;
         }
         for (mi, message) in group.messages.iter().enumerate() {
-            layout.order.push(message.id.clone());
             let a = index(nodes, &message.from)?;
             let b = index(nodes, &message.to)?;
-            let mut out = String::new();
             let name = label(&message.label)?;
-            // Long scenes must remain readable after the participant headers
-            // scroll away. These names repeat sealed endpoints; no new label or
-            // ordering is inferred. Equal names keep their admitted identities.
             let association = format!("{} → {}", endpoint(a)?, endpoint(b)?);
-            let kind = format!(
-                "{}.{} · {}",
+            let context = format!(
+                "{}.{} · {} · {}{}",
                 gi + 1,
                 mi + 1,
-                message.kind.localized_text(locale)
+                message.kind.localized_text(locale),
+                order,
+                guard
+                    .as_ref()
+                    .map(|s| format!(" · {s}"))
+                    .unwrap_or_default()
             );
-            // A group ordinal alone cannot recover strict/par/opt meaning
-            // when the header is outside the reading viewport. Repeat only
-            // this message's sealed scope; never carry a previous guard forward.
-            let context = if let Some(guard) = &guard_text {
-                format!("{order} · {guard}")
-            } else {
-                order.to_owned()
-            };
-            let context = format!("{kind} · {context}");
-            let association_height = 24 * lines(&association, width - 48);
-            let h = 24 * (lines(name, width - 48) + lines(&context, width - 48))
-                + association_height
+            // Action first. Endpoint names and order/guard remain locally visible
+            // with subordinate styles; full identifiers live in headers/detail.
+            let w = (width - 32).min(400);
+            let center = ((x(a) + x(b)) / 2).clamp(w / 2 + 16, width - w / 2 - 16);
+            let h = 24 * count(name, w - 16, 16)
+                + 18 * count(&association, w - 16, 12)
+                + 20 * count(&context, w - 16, 13)
                 + 16;
-            panel(&mut out, 16, y, width - 32, h, "message-label");
-            writing(&mut out, width / 2, y + 24, &association, width - 48);
-            writing(
-                &mut out,
-                width / 2,
-                y + 24 + association_height,
-                name,
-                width - 48,
-            );
-            writing(
-                &mut out,
-                width / 2,
-                y + 24 + association_height + 24 * lines(name, width - 48),
-                &context,
-                width - 48,
-            );
-            let baseline = y + h + 16;
+            let mut out = String::new();
+            panel(&mut out, center - w / 2, y, w, h, "message-label");
+            let mut ty = y + 24;
+            sized_text(&mut out, center, ty, name, w - 16, 16, 24);
+            ty += 24 * count(name, w - 16, 16);
+            out.push_str("<g class=\"diagram-node-kind sequence-endpoints\">");
+            sized_text(&mut out, center, ty, &association, w - 16, 12, 18);
+            out.push_str("</g>");
+            ty += 18 * count(&association, w - 16, 12);
+            out.push_str("<g class=\"diagram-condition sequence-context\">");
+            sized_text(&mut out, center, ty, &context, w - 16, 13, 20);
+            out.push_str("</g>");
+            let baseline = y + h + 12;
             let route = if a == b {
-                // The last participant's loop turns left, staying in bounds.
-                let loop_x = if a + 1 == n { x(a) - 18 } else { x(a) + 18 };
-                format!("M{} {baseline}H{loop_x}V{}H{}", x(a), baseline + 18, x(a))
+                let turn = if a + 1 == n {
+                    x(a).saturating_sub(18)
+                } else {
+                    x(a) + 18
+                };
+                format!("M{} {baseline}H{turn}V{}H{}", x(a), baseline + 18, x(a))
             } else {
                 format!("M{} {baseline}H{}", x(a), x(b))
             };
@@ -760,10 +254,11 @@ fn sequence<'a>(
                 message.kind == DiagramMessageKind::Return,
             );
             layout.elements.insert(message.id.clone(), out);
-            y = baseline + 38;
+            layout.order.push(message.id.clone());
+            y = baseline + 36;
             if group.order == DiagramOrder::Parallel && mi + 1 < group.messages.len() {
                 layout.background.push_str(&format!("<path class=\"relation-line parallel-operand\" d=\"M8 {y}H{}\" stroke-dasharray=\"3 5\"/>",width-8));
-                y += 16;
+                y += 12;
             }
         }
         layout.background.push_str(&format!(
@@ -771,10 +266,9 @@ fn sequence<'a>(
             width - 8,
             y - start
         ));
-        y += 24;
+        y += 20;
     }
     layout.height = y + 16;
-    // Lifelines precede opaque labels; they never run through the visible text.
     let mut lifelines = String::new();
     for i in 0..n {
         lifelines.push_str(&format!(

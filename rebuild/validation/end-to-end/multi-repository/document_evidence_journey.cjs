@@ -25,7 +25,7 @@ async function run(config){
  for(const c of config.cases){
   const publicAnswers=JSON.parse(fs.readFileSync(c.public)),runtime=path.join(config.output,c.key+'-runtime');fs.cpSync(c.runtime,runtime,{recursive:true,errorOnExist:true,force:false});server=await listener(config,c,runtime,write);
   const address=server.base+`?project=${c.project}&view=${c.work?'work&work='+c.work:'repository'}&locale=${c.locale||c.language}&language=${c.language}`;
-  for(const width of config.widths||[1440,1024,768,390,320])for(const mode of config.modes||['live','offline','no-js']){
+  for(const width of c.widths||config.widths||[1440,1024,768,390,320])for(const mode of config.modes||['live','offline','no-js']){
    const live=mode==='live'||mode==='live-no-js',scripted=mode==='live';
    console.log(c.key,width,mode);const context=await browser.newContext({viewport:{width,height:900},javaScriptEnabled:!mode.includes('no-js')});context.setDefaultTimeout(15000);context.setDefaultNavigationTimeout(15000);
    const page=await context.newPage();page.readerNoScript=mode.includes('no-js');activePage=page;const errors=[];page.on('pageerror',e=>errors.push(String(e)));
@@ -50,9 +50,10 @@ async function run(config){
    for(const d of publicAnswers.diagrams){
     const figure=page.locator(`.admitted-diagram[data-semantic-fingerprint="${d.semantic_fingerprint}"]`);await figure.scrollIntoViewIfNeeded();await settled(page);
     const baseKey=prefix+'-'+d.id;await page.screenshot({path:path.join(config.output,baseKey+'-initial.png')});
+    await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
-    const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),'volicord-static-svg/12');
+    const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/13');
     const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(baseKey+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
     const m=d.meaning,defaultElement=(m.relations||m.groups?.flatMap(g=>g.messages)||m.nodes||m.participants)[0];
     const inventory=[...(m.nodes||m.participants),...(m.relations||m.groups?.flatMap(g=>g.messages)||[]),...(m.nodes||m.participants).filter(n=>n.identifier).map(n=>({id:n.id+':identifier',label:n.identifier}))];

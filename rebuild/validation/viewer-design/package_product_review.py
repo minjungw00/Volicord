@@ -206,6 +206,11 @@ def main():
     for p in sorted((output / 'product').glob('*.png')):
         name = p.relative_to(output).as_posix()
         technical += f'<p><a href="{html.escape(name)}">{html.escape(p.name)}</a></p>'
+    if args.baseline:
+        technical += '<p>Matched comparison captures: filenames distinguish the unchanged design reference, historical Product and current Product. These dependent visual observations are not human acceptance.</p>'
+        for p in sorted((output / 'comparison').glob('*.png')):
+            name = p.relative_to(output).as_posix()
+            technical += f'<p><a href="{html.escape(name)}">{html.escape(p.name)}</a></p>'
     boundary.write_new(output, 'technical.html', technical.encode())
     manifest = {'candidate': head, 'classification': 'current Product consumer review; per-case origin limits apply',
         'human_acceptance': 'pending', 'independent_review': 'not_attested_by_packager', 'source_first_answer_keys': 'excluded',

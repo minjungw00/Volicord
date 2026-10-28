@@ -77,7 +77,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-owner-control.json'),JSON.stringify(wrongOwner.errors,null,2),{flag:'wx'});
       }
       if(rows.length===1) {
-        const text=page.locator('svg a.diagram-element').first().locator('text:visible').first();
+        const text=await page.locator('svg a.diagram-element').first().locator('text:visible').first().elementHandle();
         const old=await text.getAttribute('style');await text.evaluate(n=>n.style.display='none');
         const hidden=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
         assert(hidden.errors.some(e=>e.kind==='missing-visible-meaning'),'hidden semantic wording must fail');
@@ -85,8 +85,11 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         await text.evaluate(n=>{const b=n.querySelector('tspan').getBBox();const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.id='injected-collision';p.setAttribute('class','relation-line');p.setAttribute('d',`M${b.x-4} ${b.y+b.height/2}H${b.x+b.width+4}`);n.ownerSVGElement.append(p);});
         const collision=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
         assert(collision.errors.some(e=>e.kind==='path-through-text'),'crossed glyphs must fail');
+        await page.locator('#injected-collision').evaluate(n=>n.setAttribute('class','relation-leader'));
+        const leaderCollision=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
+        assert(leaderCollision.errors.some(e=>e.kind==='path-through-text'),'quiet leaders crossing glyphs must also fail');
         await page.locator('#injected-collision').evaluate(n=>n.remove());
-        fs.writeFileSync(path.join(config.output,'negative-controls.json'),JSON.stringify({hiddenLabelRejected:true,crossedTextRejected:true}),{flag:'wx'});
+        fs.writeFileSync(path.join(config.output,'negative-controls.json'),JSON.stringify({hiddenLabelRejected:true,crossedTextRejected:true,crossedLeaderRejected:true}),{flag:'wx'});
       }
       await context.close();
     }

@@ -4239,3 +4239,55 @@ admission/retained bytes and layout/render/export/public-read costs without chan
 budgets. Dependent technical/visual review is separate from independent first reading,
 assistive observations and actual human acceptance. Deliver the exact final committed
 candidate's review index/archive; historical qualification is not a new pass.
+
+#### Scoped role/layout evidence — 2026-10-29
+
+The complete v9 replacement was exercised on the bounded seven-case campaign,
+including four independently admitted Work name/summary publications: eleven
+new managed publications in total. Original records and failed attempts remain
+preserved. Natural prose and explicit roles were submitted through normal
+prepare/compose/record; neither historical VM cases nor Work transitions were
+executed again. The current Reader note uses fresh observations of exactly three
+Viewer files and is not the broader repository example.
+
+Installed CLI/full MCP/fresh export readbacks preserve exact recorded prose,
+diagrams, provenance and permitted code. The actual corpus produced 224 successful
+element/Source/return journeys, with both proving cases at 1440/1024/768/390/320
+and all cases in live, offline, live-no-JS and script-free modes. Separate controls
+exercise expansion, focus, history/reload, modality breakpoint transitions, late
+responses and foreign fragments. Eleven shell/reference widths retain independent
+name/identifier/relation/section expectations and their negative controls. The
+unchanged R3 initial/code/return captures are a dependent design comparison;
+fictional prototype data is never an admitted Product record.
+
+Renderer controls include 44 actual-font fixture/width observations, long English
+and Korean names, distinct identifiers, cycles, branches, owned states, many nodes,
+self-calls and temporal/parallel scopes. Hidden/promoted role text, wrong types,
+endpoints/order/owners and crossed glyphs (including quiet leaders) are rejected.
+All thirty citation integration controls pass. A separate normally admitted
+polyglot fixture crosses its real TTL: idle code clears, permitted meaning/maps
+remain, changed/absent repositories remain distinct, restart/new export retain
+the denial, and explicit Source deletion invalidates dependent meaning. That
+controlled lifecycle observation does not renew the historical campaign's TTL.
+
+Same-v9-input diagnostic comparison uses the frozen former renderer and the new
+renderer, with the same unoptimized profile and five serial alternating export
+samples per example. Volicord export median changes from 2465.37 to 2569.30ms;
+Music Deck Work from 1215.29 to 1219.60ms. HTML grows 1,868 and 3,941 bytes
+respectively. The selected graph therefore has a measured cost, not a speedup.
+New pure rendering medians, including all three responsive variants with admitted
+Korean wording and English fixed UI, are 41.77ms
+(concept), 241.26ms (responsibilities), 15.03ms (publication flow) and 1.06ms
+(closure sequence); SVG sizes are 36,270/45,717/22,962/42,258 bytes. These local
+samples do not isolate OS caches or establish tail latency or a release SLA.
+Admission receipts preserve each actual binary/profile and duration separately;
+mixed-profile authorship timings are not a comparative benchmark.
+
+Existing limits remain unchanged. The largest response is 53,147/53,248 bytes;
+the largest retained publication is 162,665/163,840 bytes. This small headroom is
+a remaining authoring risk, not permission to omit claims or code. All raw
+samples, rejected routing candidates and stale-export/fixture/driver failures
+stay in ignored attempt directories. Scoped tests, local installation and a
+candidate-bound delivery are technical evidence only: no aggregate, gate,
+official V11, independent first reading, screen-reader observation or human
+acceptance was supplied by this task.

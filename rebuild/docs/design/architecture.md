@@ -797,3 +797,13 @@ new names or causal meaning. Viewer layout consumes those admitted roles and
 returns bounded geometry and native origins; geometry is not authored meaning.
 Canonical Context, repository analysis and Privacy authority remain unchanged.
 CLI/MCP, accessible/text and installed live/offline consumers share that boundary.
+
+The Viewer implements separate local graph and sequence layout policies beneath
+that boundary. Component condensation, content-sized rows, facing ports and
+independent main-path/label leaders replace the former shared annotation-box
+routing. Sequences retain explicit temporal/parallel context with action-first
+messages. Renderer identity versions Derived geometry only; it does not change a
+publication's admitted facts or identity. The selected implementation has no
+additional runtime dependency, browser layout authority or client-owned semantic
+copy. Reader owns the bounded policy, rejected alternatives and visual acceptance;
+Privacy remains the authority for every subsequent Source request.

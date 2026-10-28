@@ -67,7 +67,7 @@ async function inspectDiagram(svg, diagram, prose) {
       if(!primary || primary.textContent!==name || parseFloat(getComputedStyle(primary).fontSize)!==16)errors.push({kind:'label-hierarchy',element:node.id});
       if(node.identifier){
         const support=pick(anchor(node.id+':identifier'),'.diagram-label-support text');
-        if(!support || support.textContent!==node.identifier.text || parseFloat(getComputedStyle(support).fontSize)!==12 || bounds(support).y<=bounds(primary).y)errors.push({kind:'identifier-hierarchy',element:node.id});
+        if(!primary || !support || support.textContent!==node.identifier.text || parseFloat(getComputedStyle(support).fontSize)!==12 || bounds(support).y<=bounds(primary).y)errors.push({kind:'identifier-hierarchy',element:node.id});
       }
 
     }
@@ -131,7 +131,7 @@ async function inspectDiagram(svg, diagram, prose) {
       if(parseFloat(style.fontSize)<(t.closest('.diagram-node-kind,.diagram-label-support')?12:t.closest('.relation-wording,.diagram-condition')?13:16))errors.push({kind:'small-text',text:t.textContent});
     }
     for(let i=0;i<texts.length;i++)for(let j=i+1;j<texts.length;j++)if(intersects(texts[i].box,texts[j].box))errors.push({kind:'text-overlap',a:texts[i],b:texts[j]});
-    for(const p of [...root.querySelectorAll('.relation-line,.participant-box')].filter(rendered)) {
+    for(const p of [...root.querySelectorAll('.relation-line,.relation-leader,.participant-box')].filter(rendered)) {
       const length=p.getTotalLength();const d=p.getAttribute('d');const element=p.closest('a')?.id || p.closest('a')?.dataset.element;
       const hits=new Set();
       // Sampling <= .75 SVG px is finer than stroke width; no layout-side oracle.

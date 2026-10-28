@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/12";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/13";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -72,6 +72,15 @@ fn words(s: &str, limit: usize) -> Vec<String> {
     result
 }
 
+// Conservative local advances at the actual role size. Export uses the same
+// bounded metrics as live output; browser conformance measures native glyphs.
+fn words_at(s: &str, width: usize, size: usize) -> Vec<String> {
+    words(s, width.saturating_mul(16) / size)
+}
+fn measure_at(s: &str, size: usize) -> usize {
+    measure_text(s).saturating_mul(size).div_ceil(16)
+}
+
 fn node_text(out: &mut String, x: usize, y: usize, value: &str, width: usize) {
     out.push_str(&format!(
         "<text class=\"diagram-node-label\" x=\"{x}\" y=\"{y}\" text-anchor=\"middle\">"
@@ -100,23 +109,32 @@ fn node_header(
 }
 fn identifier_text(out: &mut String, x: usize, y: usize, value: &str, width: usize) {
     out.push_str("<g class=\"diagram-label-support\">");
-    text(out, x, y, value, width);
+    sized_text(out, x, y, value, width, 12, 18);
     out.push_str("</g>");
 }
 
-fn text(out: &mut String, x: usize, y: usize, value: &str, width: usize) {
+fn sized_text(
+    out: &mut String,
+    x: usize,
+    y: usize,
+    value: &str,
+    width: usize,
+    size: usize,
+    leading: usize,
+) {
     out.push_str(&format!(
         "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\">"
     ));
-    for (i, line) in words(value, width).iter().enumerate() {
+    for (i, line) in words_at(value, width, size).iter().enumerate() {
         out.push_str(&format!(
             "<tspan x=\"{x}\" dy=\"{}\">{}</tspan>",
-            if i == 0 { 0 } else { 24 },
+            if i == 0 { 0 } else { leading },
             esc(line)
         ));
     }
     out.push_str("</text>");
 }
+
 fn open(
     out: &mut String,
     ns: &str,
@@ -489,11 +507,22 @@ mod tests {
                 .parse::<usize>()
                 .map_err(|e| e.to_string())
         };
-        // At desktop width these two same-layer sources must not borrow each
-        // other's annotation columns, even with reverse and parallel routes.
-        assert_eq!(column("content")?, column("edge-0")?);
-        assert_eq!(column("content")?, column("edge-6")?);
-        assert_eq!(column("page")?, column("edge-2")?);
+        // Column equality belonged to the replaced annotation-box policy.
+        // Every actual source/route keeps its own origin and visible predicate;
+        // browser controls independently check endpoints and glyph intersections.
+        for id in ids {
+            assert!(column(id)? < 760);
+        }
+        for (i, _) in endpoints.iter().enumerate() {
+            assert!(column(&format!("edge-{i}"))? < 760);
+            assert!(output.contains(&esc(values[i + 4])));
+        }
+        assert_eq!(
+            output
+                .matches("class=\"diagram-route diagram-text-link\"")
+                .count(),
+            endpoints.len()
+        );
         Ok(())
     }
     #[test]
@@ -705,12 +734,12 @@ mod tests {
         for (script,value) in [("ko","긴 조건과 반환 경로를 확인하는 설명입니다 ".repeat(6)),("en","Long conditional return paths keep every authored word and repeated participant name exact. ".repeat(2)),("dense-en","p".repeat(96))] {
             let value=value.chars().take(96).collect::<String>();
             let label=DiagramLabel{ text: value.clone(),unit:0,start_byte:0,end_byte:value.len()};
-            let nodes=["first","second","third"].iter().map(|id|DiagramNode{ identifier: None,id:(*id).into(),kind:DiagramNodeKind::Participant,label:label.clone()}).collect::<Vec<_>>();
+            let nodes=["first","second","third"].iter().map(|id|DiagramNode{ identifier: Some(DiagramLabel{text:(*id).into(),..label.clone()}),id:(*id).into(),kind:DiagramNodeKind::Participant,label:label.clone()}).collect::<Vec<_>>();
             let messages=[("self","first","first",DiagramMessageKind::Call),("cross","first","third",DiagramMessageKind::Await),("last-self","third","third",DiagramMessageKind::Return)].iter().map(|(id,from,to,kind)|DiagramMessage{id:(*id).into(),from:(*from).into(),to:(*to).into(),kind:*kind,label:label.clone()}).collect::<Vec<_>>();
             let sequential_messages=messages.iter().cloned().map(|mut m|{m.id=format!("{}-sequential",m.id);m}).collect();
             let sequence=GroundedDiagram{id:"long-sequence".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Sequence{participants:nodes,groups:vec![DiagramGroup{order:DiagramOrder::Parallel,condition:Some(label.clone()),messages:messages.clone()},DiagramGroup{order:DiagramOrder::Sequential,condition:None,messages:sequential_messages}]}};
             let state=GroundedDiagram{id:"long-state".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::State{owner:label.clone(),nodes:vec![DiagramNode{ identifier: None,id:"only".into(),kind:DiagramNodeKind::State,label:label.clone()}],relations:vec![DiagramRelation{id:"self".into(),from:"only".into(),to:"only".into(),kind:DiagramRelationKind::Transition,label:label.clone(),condition:Some(label.clone())}]}};
-            let flow=GroundedDiagram{id:"long-flow".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Flowchart{nodes:[("branch",DiagramNodeKind::Branch),("left",DiagramNodeKind::Process),("right",DiagramNodeKind::Process)].iter().map(|(id,kind)|DiagramNode{ identifier: None,id:(*id).into(),kind:*kind,label:label.clone()}).collect(),relations:["left","right"].iter().map(|id|DiagramRelation{id:format!("to-{id}"),from:"branch".into(),to:(*id).into(),kind:DiagramRelationKind::ControlFlow,label:label.clone(),condition:Some(label.clone())}).collect()}};
+            let flow=GroundedDiagram{id:"long-flow".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Flowchart{nodes:[("branch",DiagramNodeKind::Branch),("left",DiagramNodeKind::Process),("right",DiagramNodeKind::Process)].iter().map(|(id,kind)|DiagramNode{ identifier: Some(DiagramLabel{text:(*id).into(),..label.clone()}),id:(*id).into(),kind:*kind,label:label.clone()}).collect(),relations:["left","right"].iter().map(|id|DiagramRelation{id:format!("to-{id}"),from:"branch".into(),to:(*id).into(),kind:DiagramRelationKind::ControlFlow,label:label.clone(),condition:Some(label.clone())}).collect()}};
             for (kind,d) in [("sequence",sequence),("state",state),("flow",flow)] {
                 for (ui,locale) in [("en",FixedLocale::English),("ko",FixedLocale::Korean)] {
                     let ns=format!("fixture-{kind}-{script}-{ui}");
@@ -737,7 +766,7 @@ mod tests {
                 semantic_fingerprint: String::new(),
                 meaning: DiagramMeaning::Sequence {
                     participants: ["coordinator", "first-worker", "second-worker"].iter().enumerate()
-                        .map(|(i,id)| DiagramNode { identifier: None, id: (*id).into(), kind: DiagramNodeKind::Participant, label: select(usize::from(i > 0)) }).collect(),
+                        .map(|(i,id)| DiagramNode { identifier: Some(DiagramLabel{text:(*id).into(),..select(usize::from(i > 0))}), id: (*id).into(), kind: DiagramNodeKind::Participant, label: select(usize::from(i > 0)) }).collect(),
                     groups: vec![
                         DiagramGroup { order: DiagramOrder::Parallel, condition: Some(select(3)),
                             messages: ["first-worker", "second-worker"].iter().enumerate().map(|(i,id)| DiagramMessage {
@@ -771,7 +800,10 @@ mod tests {
             };
             let nodes = (0..count)
                 .map(|i| DiagramNode {
-                    identifier: None,
+                    identifier: Some(DiagramLabel {
+                        text: format!("node-{i}"),
+                        ..select(0)
+                    }),
                     id: format!("node-{i}"),
                     kind: if kind == "many-components" {
                         DiagramNodeKind::Component
@@ -880,6 +912,7 @@ mod tests {
         for raw in value["diagrams"].as_array().ok_or("public diagrams")? {
             let d: GroundedDiagram =
                 serde_json::from_value(raw.clone()).map_err(|e| e.to_string())?;
+            let started = std::time::Instant::now();
             let output = super::svg(
                 &d,
                 &texts,
@@ -889,6 +922,10 @@ mod tests {
             )
             .map_err(|e| format!("{}: {e}", d.id))?;
             assert!(output.contains("connected-overview"));
+            println!(
+                "{}",
+                serde_json::json!({"diagram":d.id,"renderer":super::RENDERER_ID,"elapsed_ns":started.elapsed().as_nanos(),"svg_utf8_bytes":output.len(),"scope":"all three responsive variants; diagnostic profile; no authority reads"})
+            );
         }
         Ok(())
     }
@@ -924,7 +961,10 @@ mod tests {
                 nodes: names
                     .iter()
                     .map(|id| DiagramNode {
-                        identifier: None,
+                        identifier: Some(DiagramLabel {
+                            text: (*id).into(),
+                            ..label.clone()
+                        }),
                         id: (*id).into(),
                         kind: DiagramNodeKind::State,
                         label: label.clone(),
@@ -1001,9 +1041,16 @@ mod tests {
                     .split("</a>")
                     .next()
                     .ok_or("node close")?;
+                let identifier = output
+                    .split_once(&format!("id=\"geometry-{name}:identifier\""))
+                    .ok_or("separately selectable identifier")?
+                    .1
+                    .split("</a>")
+                    .next()
+                    .ok_or("identifier close")?;
                 assert!(
-                    group.contains(&format!(">[{name}]</tspan>")),
-                    "common type keys must retain each repeated-name identity"
+                    identifier.contains(&format!(">{name}</tspan>")),
+                    "common type keys must retain each authored repeated-name identifier"
                 );
                 boxes.push(rect(group.split_once("<rect ").ok_or("box")?.1)?);
             }

@@ -61,7 +61,7 @@ fn penalty(a: Point, b: Point, old: &[Segment], group: usize) -> Option<usize> {
                     return None;
                 }
                 if distance < 6 {
-                    cost += overlap * 32;
+                    cost += overlap / 4;
                 }
             }
         } else {
@@ -134,9 +134,9 @@ pub(super) fn route(
     }
     for s in old {
         if s.a.0 == s.b.0 {
-            xs.extend([s.a.0.saturating_sub(6), s.a.0, s.a.0 + 6]);
+            xs.extend([s.a.0.saturating_sub(4), s.a.0 + 4]);
         } else {
-            ys.extend([s.a.1.saturating_sub(6), s.a.1, s.a.1 + 6]);
+            ys.extend([s.a.1.saturating_sub(4), s.a.1 + 4]);
         }
     }
     xs.retain(|x| *x >= 4 && *x <= width - 4);

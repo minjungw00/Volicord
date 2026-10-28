@@ -1,4 +1,4 @@
-const {embeddedCode}=require('./product_review_controls.cjs');
+const {embeddedCode,citationPoint}=require('./product_review_controls.cjs');
 // Actual Product journeys and review packaging. No case prose or expected claims
 // are authored here; all pages are served/exported by the selected executable.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
@@ -35,6 +35,13 @@ async function serve(c){const p=spawn(config.viewer,['--runtime',c.runtime,'--pr
  return {base,async stop(){p.kill('SIGTERM');const termination=await exited;fs.writeFileSync(path.join(output,c.key+'-viewer.stdout'),stdout);fs.writeFileSync(path.join(output,c.key+'-viewer.stderr'),stderr);return termination;}};}
 async function fits(page){assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),JSON.stringify(await page.evaluate(()=>({url:location.href,width:innerWidth,scroll:document.documentElement.scrollWidth,overflow:[...document.querySelectorAll('main *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(n=>({tag:n.tagName,cls:n.className,width:n.getBoundingClientRect().width}))}))));}
 async function capture(page,c,name,width){await fits(page);fs.writeFileSync(path.join(output,`${c.key}-${name}-${width}.png`),await page.screenshot(),{flag:'wx'});}
+async function navigate(page,destination){
+ const link=page.locator(`.project-navigation a[data-destination="${destination}"]`);
+ const menu=page.locator('.project-shell'),toggle=menu.locator(':scope>summary');
+ if(!await link.isVisible()){await toggle.focus();await toggle.press('Enter');}
+ await link.click();
+ if(await toggle.isVisible()&&await menu.getAttribute('open')!==null){await toggle.focus();await toggle.press('Enter');}
+}
 async function sourceJourney(page,c,width,offline,selector,answers,destination){
  const article=page.locator(selector),tasks=sourceTasks(c,destination,answers),critical=[];
  if(destination==='repository')await repositoryFacts(article,answers);
@@ -49,14 +56,14 @@ async function sourceJourney(page,c,width,offline,selector,answers,destination){
 }
 async function inspectSource(page,c,width,offline,article,link,task,destination,answers){
  const target=(await link.getAttribute('href')).slice(1),origin=await link.getAttribute('data-origin');
- const point=page.locator(`[id="${target}"]`);
+ const point=await citationPoint(page,'#'+target);
  let pending=task&&!offline?citationResponse(page,task,0):null;
  await link.focus();await link.press('Enter');await point.waitFor({state:'visible'});
  if(task)await criticalPoint(point,task);
  let bytes=0,pages=0;
  if(!offline){
   await page.waitForFunction(({id,narrow})=>{const n=document.getElementById(id);return n&&n.contains(document.activeElement)&&n.getAttribute('role')===(narrow?'dialog':null);},{id:target,narrow:width<1200});
-  assert.equal(await article.evaluate(n=>n.inert),width<1200);
+  assert.equal(await page.locator('.project-shell').evaluate(n=>n.inert),width<1200);
   assert.equal(await point.evaluate(n=>Boolean(n.closest('[inert]'))),false,'Source controls must remain outside the inert article');
   await page.keyboard.press('Tab');assert.equal(await point.evaluate(n=>n.contains(document.activeElement)),true);
   if(task){
@@ -77,12 +84,12 @@ async function inspectSource(page,c,width,offline,article,link,task,destination,
    assert.equal(await point.locator('.citation-inspection').count(),0,'offline omission grants no live retrieval');
   }
  }
- if(!omitted)assert.equal(await (await embeddedCode(point)).evaluate(n=>getComputedStyle(n.parentElement).fontSize),width<=600?'12px':width<1200?'13px':'15px');
+ if(!omitted)assert.equal(await (await embeddedCode(point)).evaluate(n=>getComputedStyle(n.parentElement).fontSize),'11px','R3 code typography');
  await capture(page,c,sourceCaptureName(destination,offline,task),width);
- const returnId=(await point.locator('.return').getAttribute('href')).slice(1);assert.equal(returnId,origin);
+ const returnId=(await point.locator('.return:visible').getAttribute('href')).slice(1);assert.equal(returnId,origin);
  if(!offline){await page.reload();await point.waitFor({state:'visible'});await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.id),returnId);
   await page.goBack();await point.waitFor({state:'visible'});await page.goForward();assert.equal(new URL(page.url()).hash,'#'+returnId);
- }else await point.locator('.return').click();
+ }else await point.locator('.return:visible').click();
  assert.equal(new URL(page.url()).hash,'#'+returnId);
  return {state:omitted?'offline_omission':'read',target,returnId,unit_index:task?.unit_index,citation_index:task?.citation_index,source_id:task?.citation.source_id,realization_fingerprint:task?.realization_fingerprint,claim_sha256:task?.citation.claim_sha256,range_sha256:task?.citation.range_sha256,bytes,pages};
 }
@@ -125,52 +132,49 @@ async function inspectSource(page,c,width,offline,article,link,task,destination,
    const row={width};r.widths.push(row);await page.setViewportSize({width,height:1000});
    await page.goto(server.base+'?view=overview');assert.equal(await page.locator('#overview h1').textContent(),c.project_name);
    assert.equal(await page.locator('#overview .project-purpose[data-statement-role=verified-canonical]').count(),c.purpose_count||0);
-   assert.equal(await page.locator('.project-navigation,.masthead .surface-status,.masthead .trial').count(),0);
-   assert.equal(await page.locator('.masthead nav').count(),1);
+   assert.equal(await page.locator('.masthead nav,.masthead .surface-status,.masthead .trial').count(),0);
+   assert.equal(await page.locator('.project-navigation').count(),1);
    assert.equal(await page.locator('#overview .repository-entry,#overview .related-decisions').count(),0);
    assert.ok(!(await page.locator('#overview').textContent()).includes('RECENT WORK'));
-   const geometry=await page.evaluate(()=>{const brand=document.querySelector('.brand').getBoundingClientRect(),nav=document.querySelector('.masthead nav').getBoundingClientRect(),shell=document.querySelector('.masthead>.shell').getBoundingClientRect();return {brand:brand.x,nav:nav.x,right:nav.right,shellRight:shell.right};});
-   assert.ok(Math.abs(geometry.right-(width-(width>1440?(width-1440)/2:0)-(width<=600?20:width<1200?28:48)))<2,'right aligned navigation');
-   if(width>=768)assert.ok(geometry.nav>geometry.brand+100);
+   const geometry=await page.evaluate(()=>({railWidth:parseFloat(getComputedStyle(document.querySelector('.project-rail')).width),mobileHeader:document.querySelector('.mobile-header').getBoundingClientRect().height}));
+   assert.equal(geometry.railWidth,width<=980?280:width<1200?218:232,'R3 shared sidebar width');
+   if(width<=980)assert.equal(geometry.mobileHeader,56);
    row.navigation_geometry=geometry;
-   if(c.normal_work){const card=page.locator(`.work-card[data-work-id="${c.normal_work}"]`);
+   if(c.normal_work){const card=page.locator(`#overview a.work-row[data-work-id="${c.normal_work}"]`);
     assert.equal(await card.locator('h3').getAttribute('data-title-basis'),'generated-interpretation');
-    assert.equal(await card.locator('blockquote').count(),0);assert.equal(await card.locator('[data-question="Synopsis"]').count(),1);
-    assert.equal(await card.locator('time[data-event-kind="goal_created"]').count(),1);
+    assert.equal(await card.locator('blockquote').count(),0);
     const canonicalWork=status.work_history.find(w=>w.work_item_id===c.normal_work);
-    const hasCheckpoint=originalEvents?Boolean(originalEvents.latest):canonicalWork.checkpoint_ids.length>0;
-    assert.equal(await card.locator('time[data-event-kind="checkpoint_recorded"]').count(),hasCheckpoint?1:0,'no Checkpoint means no fabricated latest-work instant');
+    const name=canonicalWork.answers.work_name,summary=canonicalWork.answers.work_summary;
+    assert.equal(name.explanation_state,'current');assert.equal(summary.explanation_state,'current');
+    assert.equal(await card.locator('h3').textContent(),name.prose.find(p=>p.question==='Heading').text);
+    assert.equal(await card.locator('.work-main>p').textContent(),summary.prose.find(p=>p.question==='Synopsis').text);
     assert.ok((await card.locator('h3').textContent()).length<160);
     if(originalEvents){
-     const creation=card.locator('time[data-event-kind="goal_created"]'),latest=card.locator('time[data-event-kind="checkpoint_recorded"]');
-     assert.equal(await creation.getAttribute('data-recorded-at'),String(originalEvents.creation.recorded_at));
-     assert.equal(await creation.getAttribute('data-revision'),'1');
-     assert.equal(await creation.getAttribute('data-record-id'),c.work);
      row.creation_event={record:c.work,revision:1,micros:originalEvents.creation.recorded_at};
      if(originalEvents.latest){
+      const latest=card.locator('time');
       assert.equal(await latest.getAttribute('data-recorded-at'),String(originalEvents.latest.recorded_at));
-      assert.equal(await latest.getAttribute('data-record-id'),originalEvents.latest.id);
       row.latest_work_event={record:originalEvents.latest.id,revision:originalEvents.latest.revision,micros:originalEvents.latest.recorded_at};
      }else row.latest_work_event='absent: no original Checkpoint';
     }
-    row.reading_title=await card.locator('h3').textContent();row.synopsis=await card.locator('[data-question="Synopsis"]').textContent();
+    row.reading_title=await card.locator('h3').textContent();row.synopsis=await card.locator('.work-main>p').textContent();
     row.normal_content='current public name and synopsis; author identity and semantic quality are not established by this browser';
    }
    if(c.unavailable_work)assert.equal(await page.locator(`.work-card[data-work-id="${c.unavailable_work}"] .content-unavailable`).count(),1);
    assert.equal(await page.locator('.tools-menu,.inspection-query').count(),0);
-   assert.equal(await page.locator('.masthead nav a').count(),3);
+   assert.equal(await page.locator('.project-navigation a').count(),3);
    await capture(page,c,'overview',width);
    const clickStarted=performance.now(),cpuBefore=await processCpu();
-   await page.locator('.masthead a[href*="view=repository"]').click();
+   await navigate(page,'repository');
    await page.waitForURL(u=>u.searchParams.get('view')==='repository');
    await page.waitForLoadState('domcontentloaded');
    await page.locator('#repository-explanation').waitFor();
    row.repository_cost={navigation_ms:performance.now()-clickStarted,...processCpuDelta(cpuBefore,await processCpu()),...await page.evaluate(documentMetrics)};assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
    fs.writeFileSync(path.join(output,`${c.key}-repository-${width}.html`),await page.content());await capture(page,c,'repository',width);
    row.source=await sourceJourney(page,c,width,false,'#repository-explanation .doc',status.repository_explanation,'repository');
-   await page.locator('.masthead a[href*="view=work"]').click();assert.equal(new URL(page.url()).searchParams.get('view'),'work');await capture(page,c,'works',width);
-   if(c.work){const card=page.locator(`.work-card[data-work-id="${c.work}"]`);assert.equal(await card.locator('a').count(),1);
-    await card.locator('.card-action').click();assert.equal(new URL(page.url()).searchParams.get('work'),c.work);
+   await navigate(page,'work');assert.equal(new URL(page.url()).searchParams.get('view'),'work');await capture(page,c,'works',width);
+   if(c.work){const card=page.locator(`a.work-row[data-work-id="${c.work}"]`);assert.equal(await card.count(),1);
+    await card.click();assert.equal(new URL(page.url()).searchParams.get('work'),c.work);
     assert.equal(await page.locator('.doc[data-work-id]').getAttribute('data-work-id'),c.work);
     if(c.normal_work){
      // Name, summary and article are independently admitted publications. A
@@ -202,7 +206,7 @@ async function inspectSource(page,c,width,offline,article,link,task,destination,
     assert.equal(await page.locator(`.decision-reading[data-decision-id="${c.decision}"]`).count(),1);
     await capture(page,c,'contextual-decision',width);
    }
-   await page.locator('.brand').click();assert.equal(new URL(page.url()).searchParams.get('view'),'overview');
+   await navigate(page,'overview');assert.equal(new URL(page.url()).searchParams.get('view'),'overview');
   }
   for(const selector of ['work=00000000000000000000000000000000','work=bad']){
    const response=await context.request.get(server.base+'?view=work&'+selector);assert.equal(response.status(),selector.endsWith('bad')?400:404);
@@ -218,15 +222,15 @@ async function inspectSource(page,c,width,offline,article,link,task,destination,
   for(const width of [1440,1024,768,390,320]){await p.setViewportSize({width,height:1000});await p.goto(pathToFileURL(offlinePath).href);
    assert.equal(await p.locator('script,form,[data-citation-url]').count(),0);
    assert.equal(await p.locator('#overview h1').textContent(),c.project_name);
-   assert.equal(await p.locator('.masthead nav').count(),1);
+   assert.equal(await p.locator('.project-navigation').count(),1);
    assert.equal(await p.locator('#overview .repository-entry,#overview .related-decisions').count(),0);
    await capture(p,c,'offline-overview',width);
-   if(c.work){await p.locator('.masthead a[href="#works"]').click();await p.locator(`#works .work-card[data-work-id="${c.work}"] .card-action`).click();
+   if(c.work){await navigate(p,'work');await p.locator(`#works .work-card[data-work-id="${c.work}"] .card-action`).click();
     assert.equal(await p.locator(`article.doc[data-work-id="${c.work}"]:visible`).count(),1);
     await capture(p,c,'offline-work',width);await sourceJourney(p,c,width,true,`article.doc[data-work-id="${c.work}"]`,status.work_history.find(w=>w.work_item_id===c.work).answers,'work');}
-   await p.locator('.masthead a[href="#repository-explanation"]').click();await capture(p,c,'offline-repository',width);await sourceJourney(p,c,width,true,'#repository-explanation .doc',status.repository_explanation,'repository');
+   await navigate(p,'repository');await capture(p,c,'offline-repository',width);await sourceJourney(p,c,width,true,'#repository-explanation .doc',status.repository_explanation,'repository');
    for(const id of ['analysis-tool','documents-tool','memory-tool','evidence-tool','code','decision-reading','repository-code'])assert.equal(await p.locator('#'+id).count(),0);
-   assert.equal(await p.locator('.masthead nav a').count(),3);
+   assert.equal(await p.locator('.project-navigation a').count(),3);
   }
   await offline.close();assert.equal(state(c.runtime),before,'GET/export changed canonical, retention, provider or Candidate rows');r.read_state_unchanged=true;
  }

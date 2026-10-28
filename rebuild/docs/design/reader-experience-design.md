@@ -945,3 +945,48 @@ new explicit campaign publications have distinct identities. Ordinary v9 Source
 expiry still preserves permitted narrative/maps and denies unavailable bodies.
 Matching role fields or font sizes alone is not R3 fidelity or human acceptance;
 initial/selected/code/return journeys and realistic topology/wording remain required.
+
+### Grounded graph and sequence layout choice
+
+General maps use strongly connected components and directed condensation layers,
+stable parent ordering and content-sized rows. A root context role may sit beside
+its role target; that placement does not assert containment. Facing ports are
+distinct for incoming/outgoing edges, including cycles and self-edges. Complete
+action/guard labels reserve local shelves. Main arrow paths connect the actual
+nodes independently of labels; quieter leaders associate labels with their paths.
+Crossing bridges distinguish crossings from joins. This replaces breadth ranks,
+fixed column counts and annotations used as mandatory intermediate nodes.
+
+Sequences have a separate participant/lifeline policy. An action is the primary
+message text; concise endpoint names are subordinate, with exact identifiers when
+names repeat. Message-local type, strict/par order and active condition survive
+scrolling past the header. Self-calls, returns and parallel operand separators
+remain explicit. Authored enumeration inside a parallel group is not a trace.
+
+Primary names and sequence actions use 16px text, exact identifiers/types use 12px,
+map actions and guards use 13px. Wrapping uses conservative advances at the actual
+role size. The same local Rust renderer emits 760/520/272px native-size variants
+for live and static reading; it neither scales text down nor requires a browser
+measurement service. These are bounded responsive policies, not optimal layout
+for every admitted topology or a guarantee for arbitrary substituted fonts.
+Routing keeps its 65,536 grid-node bound and 256KiB SVG bound; exhaustion is
+explicit, never a dropped edge.
+
+The same admitted v9 examples were compared with the former constrained renderer.
+The initial component-layer candidate still forced paths through label boxes,
+giving the peer role relation an avoidable loop; it was rejected despite passing
+local geometry checks. Distinct-port and reserved-endpoint controls also exposed
+dense-cycle routing failures before selection. The selected main-path/leader
+policy closes those observed cases without repository IDs or coordinates.
+Long bilingual/duplicate names, branches, state owners, self-calls and many-node
+topologies exercise reusable behavior; actual publication journeys remain the
+separate usability evidence. Source entailment and human acceptance are not inferred
+from those technical controls.
+
+No specialist library or frontend framework is adopted. The bounded local policy
+fits current publication/runtime/export integration without an additional asset,
+WASM, JavaScript layout runtime or network dependency. Existing native DOM owns
+claim origins and return; live enhancement owns only its established selection
+and panel transitions. Replacing that ownership would add static/native parity
+work without evidence of a required capability here. This is a scoped architecture
+choice, not a measured framework productivity comparison.

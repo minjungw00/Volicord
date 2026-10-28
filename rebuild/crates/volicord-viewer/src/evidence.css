@@ -118,6 +118,9 @@ body:has(.diagram-expanded):not([data-source-open=true]) {overflow:hidden}
 .connected-overview .diagram-node-label {font-weight:650}
 .connected-overview .diagram-label-support {font:400 12px "SFMono-Regular",Consolas,"Liberation Mono",monospace;fill:var(--muted)}
 .connected-overview .diagram-element:focus .diagram-label-support text {text-decoration:underline;fill:var(--accent)}
+.connected-overview .relation-leader {fill:none;stroke:#91adbf;stroke-width:1}
+.connected-overview .sequence-endpoints {fill:var(--muted)}
+.connected-overview .sequence-context {fill:var(--muted)}
 .doc-head h1 {white-space:pre-line}
 body[data-viewer-mode=snapshot]:not(:has(main :target)) .nav-link[data-destination=overview],
 body[data-viewer-mode=snapshot]:has(#overview:target,#overview :target) .nav-link[data-destination=overview],
