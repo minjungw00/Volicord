@@ -6,7 +6,7 @@ const {createOutput,citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=requi
 const config=JSON.parse(fs.readFileSync(process.argv[2]));createOutput(config.output);
 const write=(n,x)=>fs.writeFileSync(path.join(config.output,n),JSON.stringify(x,null,2),{flag:'wx'});
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
-const result={outcome:'failed',scope:'actual script-free file/HTTP and live-no-JS navigation; no human/assistive verdict',checks:[],external:[],viewer:hash(fs.readFileSync(config.viewer))};
+const result={outcome:'failed',scope:'actual script-free file/HTTP and live-no-JS navigation; no human/assistive verdict',checks:[],external:[],viewer:hash(fs.readFileSync(config.viewer)),driver:hash(fs.readFileSync(__filename))};
 let browser,files,child,active;
 const pause=p=>p.waitForTimeout(100);
 async function cue(page,kind,c,width,snapshot,projectName){
@@ -25,6 +25,61 @@ async function navigate(page,destination,width){
  await page.locator(`.project-navigation a[data-destination="${destination}"]`).click();
  if(width<=980&&await page.locator('.project-shell[open]').count()){await page.locator('.project-shell>summary').focus();await page.keyboard.press('Enter');}
  await pause(page);
+}
+async function timelineReturn(page,details,element,origin,c,state){
+ assert.equal(new URL(page.url()).hash,'#'+origin,'native primary return retains timeline role, not its equal-worded scene');
+ assert.equal(await details.getAttribute('open'),'','native return reveals the exact timeline');
+ assert(await element.isVisible());await cue(page,state.kind,c,state.width,state.snapshot,state.projectName);
+}
+// A timeline's native Source aliases live outside its disclosure. Check the
+// actual page owner as well as the exact view on return; the first scene node
+// cannot establish either property for later sequence/guard origins.
+async function timelineOrigins(page,c,{kind,width,snapshot,projectName,prefix,address}){
+ const publication=JSON.parse(fs.readFileSync(c.public));
+ assert.equal(publication.provenance.publication_id,c.publication);
+ const documentAddress=new URL(address);documentAddress.hash='';
+ if(snapshot)documentAddress.hash=c.work?'work-'+c.work:'repository-explanation';
+ else {documentAddress.searchParams.set('view',kind);if(c.work)documentAddress.searchParams.set('work',c.work);}
+ const observations=[];
+ for(const d of publication.diagrams.filter(d=>d.meaning.kind==='sequence')){
+  const figure=page.locator(`.admitted-diagram[data-semantic-fingerprint="${d.semantic_fingerprint}"]`);
+  const ns=await figure.getAttribute('id'),details=figure.locator(':scope > .diagram-timeline');
+  const groups=d.meaning.groups,guard=groups.findIndex(g=>g.condition);
+  const last=groups.flatMap(g=>g.messages).at(-1);
+  const selections=[{id:last.id,label:last.label},...(guard<0?[]:[{id:'guard:'+(guard+1),label:groups[guard].condition}])];
+  for(const selection of selections){
+   await page.goto(documentAddress.href);await pause(page);
+   if(!await details.evaluate(n=>n.open))await details.locator(':scope > summary').click();await pause(page);
+   const origin=ns+':timeline-'+selection.id,element=figure.locator(`a[id="${origin}"]`);
+   await element.focus();assert(await element.evaluate(n=>n===document.activeElement),'activate the actual visible timeline role');await page.keyboard.press('Enter');await pause(page);
+   const claim=page.locator(`[id="${origin}-claim"]`),unit=publication.prose[selection.label.unit];
+   const index=unit.citations.findIndex(q=>q.claim_start_byte<=selection.label.start_byte&&q.claim_end_byte>=selection.label.end_byte);
+   assert(index>=0,'original role has its own covering Source');
+   const citation=unit.citations[index],link=claim.locator(`a.evidence-link[href$="-c${index+1}"]`);
+   const point=await citationPoint(page,await link.getAttribute('href'));
+   await link.click();await pause(page);await cue(page,kind,c,width,snapshot,projectName);
+   const code=await openEmbeddedCode(point),directCode=page.url();
+   const expected=fs.readFileSync(path.join(c.repository,citation.locator)).subarray(citation.start_byte,citation.end_byte);
+   assert.equal('sha256:'+hash(expected),citation.range_sha256,'independent original range');
+   assert.equal(await code.textContent(),expected.toString('utf8'),'complete native timeline role evidence');
+   await cue(page,kind,c,width,snapshot,projectName);
+   await page.screenshot({path:path.join(config.output,`${prefix}-${d.id}-${selection.id.replaceAll(':','-')}-timeline-code.png`)});
+   for(const deep of [false,true]){
+    if(deep){await page.goto(directCode);await page.reload();await pause(page);await cue(page,kind,c,width,snapshot,projectName);}
+    await returnFromEmbeddedCode(point);await point.locator('a.return:visible').click();await pause(page);
+    await timelineReturn(page,details,element,origin,c,{kind,width,snapshot,projectName});
+   }
+   await page.screenshot({path:path.join(config.output,`${prefix}-${d.id}-${selection.id.replaceAll(':','-')}-timeline-returned.png`)});
+   // An otherwise valid same-publication/same-role return to the scene is a
+   // counterexample. Mutate only the disposable page, never its public export.
+   await page.goto(directCode);await returnFromEmbeddedCode(point);
+   const back=point.locator('a.return:visible');await back.evaluate((a,scene)=>a.setAttribute('href','#'+scene),ns+'-'+selection.id);
+   await back.click();await pause(page);
+   await assert.rejects(()=>timelineReturn(page,details,element,origin,c,{kind,width,snapshot,projectName}),{code:'ERR_ASSERTION'},'same wording cannot satisfy view-specific return');
+   observations.push({diagram:d.id,element:selection.id,origin,source:citation.source_id,range: citation.range_sha256,wrong_view_rejected:true});
+  }
+ }
+ return observations;
 }
 (async()=>{try{
  const sources=new Map(config.cases.map(c=>['/'+c.key+'.html',fs.readFileSync(c.offline)]));
@@ -58,9 +113,10 @@ async function navigate(page,destination,width){
     await page.goto(directCode);await pause(page);await cue(page,kind,c,width,snapshot,projectName);await page.reload();await pause(page);await cue(page,kind,c,width,snapshot,projectName);
     await returnFromEmbeddedCode(point);await point.locator('a.return:visible').click();await pause(page);await cue(page,kind,c,width,snapshot,projectName);
    }
+   const timelines=await timelineOrigins(page,c,{kind,width,snapshot,projectName,prefix,address});
    if(snapshot){await page.goto(address+'#unknown-native-destination');await pause(page);await cue(page,'overview',c,width,true,projectName);assert.equal(await page.locator('#overview').isVisible(),true);assert.equal(await page.locator('.snapshot-link-help').isVisible(),true,'unknown target has an explicit unavailable-link notice');}
    await navigate(page,'overview',width);await cue(page,'overview',c,width,snapshot,projectName);
-   result.checks.push({case:c.key,transport,width,publication:c.publication});await context.close();active=null;
+   result.checks.push({case:c.key,transport,width,publication:c.publication,export_sha256:hash(fs.readFileSync(c.offline)),timelines});await context.close();active=null;
   }
   const context=await browser.newContext({javaScriptEnabled:false,viewport:{width:390,height:900}}),page=await context.newPage();await page.goto(pathToFileURL(c.offline).href+'#'+(c.work?'work-'+c.work:'repository-explanation'));await pause(page);await cue(page,c.work?'work':'repository',c,390,true,await page.locator('.mobile-project').textContent());await context.close();
   child.kill('SIGTERM');await done;write(c.key+'-listener.json',{stderr});child=null;

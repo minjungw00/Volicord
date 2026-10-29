@@ -4355,6 +4355,20 @@ membership or explanatory requirements from generated SVG/public answers. Exact
 public answers remain the binding/Source oracle. Necessary-content checks cannot
 establish entailment, natural prose quality, R3 adoption or human comprehension.
 
+The pinned Music Deck state expectations additionally require the queued-success
+edge and its material native-launch condition, independently of its Source hash.
+Inspect all callers: delivered-only acknowledgement does not exclude successful
+unpaired `open` launch with unchanged generation. The original unguarded edge,
+edge deletion, reversed origin and each missing guard term are counterexamples.
+Ordinary geometry must expose the admitted condition, and its exact launch/finish
+claims remain accessible through native and enhanced reading. This bounded
+semantic obligation is not a general natural-language entailment checker.
+The selected-figure browser driver checks bounded citation HTTP responses with
+the existing shared stream control. The enhanced Reader assembles those chunks
+automatically; applying the 4,096-byte transport ceiling to its complete DOM
+incorrectly rejects longer permitted original ranges. Binding, contiguous offset,
+per-response size, complete range hash and visible original bytes remain checked.
+
 Initial figure captures use ordinary vertical alignment at the beginning of a tall
 figure, after the untouched article-entry capture. Playwright's former automatic
 if-needed alignment could capture the middle of a long sequence as initial. Neither
@@ -4408,6 +4422,16 @@ full timeline only after preserving connected entry. It checks its complete
 admitted geometry, distinct namespace/claim/Source targets, exact full original
 code, focus/pan/visible return, fresh deep evidence entry, modality resize and
 first disclosure after zoom. Both live and script-free consumers must pass.
+`native_location_browser.cjs` additionally follows the last message and an actual
+group guard of every sequence in its declared publications through script-free
+live HTTP and unchanged HTTP-served exports. It checks the owning Project/page
+cue at the claim, shared code, reload and primary return, alongside the exact
+original range and timeline disclosure. The same validator must reject a
+disposable same-publication/same-role return redirected to the connected scene.
+This couples native snapshot navigation to view identity; it is separate from
+initial orientation and does not award semantic or human acceptance. Native
+same-document navigation can retain an open disclosure, so checks inspect its
+state and actual SVG focus before keyboard activation.
 Message pointer/modifier activation includes the space between its action and
 route, preserving the same native claim instead of hitting the SVG background.
 The shared geometry/context controls distinguish local named message endpoints

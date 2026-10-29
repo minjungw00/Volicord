@@ -18,7 +18,7 @@ const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),ch
 if(config.fontconfig) executionIdentities.fontconfig=hash(config.fontconfig);
 for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs','diagram_context.cjs','publication_coverage.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
 const sleep = ms => new Promise(r => setTimeout(r,ms));
-const {openEmbeddedCode,returnFromEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
+const {openEmbeddedCode,returnFromEmbeddedCode,citationResponse,criticalBytes}=require('../../viewer-design/product_review_controls.cjs');
 executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/product_review_controls.cjs'));
 const failureReasons=['expired','deleted','changed','withheld','comparison_unavailable','unavailable','missing','corrupt','unsupported'];
 async function nativeLinkNavigation(page, link, receipt) {
@@ -167,6 +167,8 @@ async function nativeLinkNavigation(page, link, receipt) {
           // Exact native SVG/text anchor access, then the actual selected Source.
           await element.focus();
           await page.evaluate(id=>{window.__diagramActivation=null;document.addEventListener('click',event=>{const n=event.target.closest('a.diagram-element');if(n?.id===id){const v=n.closest('.diagram-viewport');window.__diagramActivation={left:v.scrollLeft,top:v.scrollTop,y:scrollY,viewportTop:v.getBoundingClientRect().top,elementTop:n.getBoundingClientRect().top,meaning:[...n.querySelectorAll('text')].map(t=>({text:t.textContent,box:t.getBoundingClientRect()})).filter(t=>t.box.height>0&&t.box.top>=160&&t.box.bottom<=innerHeight).map(t=>({text:t.text,top:t.box.top,left:t.box.left}))};}},{capture:true});},elementId);
+          const task={unit_index:c.unit,citation_index:c.citation,citation,realization_fingerprint:pub.provenance.realization_fingerprint};
+          const pending=mode==='live'?citationResponse(page,task,0):null;
           await page.keyboard.press('Enter');
           const prior=await page.evaluate(()=>window.__diagramActivation);
           if(mode==='live') {assert(prior,'browser position at actual element activation');assert(prior.meaning.length,'actual visible meaning at activation');}
@@ -207,25 +209,19 @@ async function nativeLinkNavigation(page, link, receipt) {
           const nativeId=(await action.getAttribute('href')).slice(1);
           assert.equal(await page.locator('[id="'+nativeId+'"]').getAttribute('data-selected-point'),boundPointId,'native origin keeps independently selected citation');
           const selectedStarted=Date.now();
-          await action.click();
+          // Live SVG activation already opens exact evidence. A second click
+          // would target the inert claim behind the narrow modal. Native
+          // reading deliberately follows the visible claim's Source action.
+          if(mode!=='live')await action.click();
           const pointId=boundPointId;
           const point=page.locator('[id="'+pointId+'"]');
           if(mode==='live') {
-            await page.waitForFunction(id=>{const n=document.getElementById(id);return n?.querySelector('.citation-inspection pre.code-region code')?.textContent.length>0;},pointId);
-            let collected='';let offset=0;let pages=0;
-            while(true) {
-              const chunk=await point.locator('.citation-inspection pre.code-region code').textContent();
-              assert(Buffer.byteLength(chunk)<=4096,'bounded live citation page');
-              assert.equal(chunk,Buffer.from(expected).subarray(offset,offset+Buffer.byteLength(chunk)).toString('utf8'),'exact original page');
-              collected+=chunk;pages++;
-              const next=Number(await point.locator('.citation-read').getAttribute('data-next-offset'));
-              if(next===0)break;
-              assert.equal(next,Buffer.byteLength(collected),'contiguous UTF-8 page offsets');
-              offset=next;await point.locator('.citation-read').click();
-              await point.locator('.citation-status').filter({hasText:new RegExp('bytes '+(citation.start_byte+offset)+'–')}).waitFor();
-            }
-            assert.equal(collected,expected,'all critical implementing bytes across bounded pages');
-            assert(pages>0);
+            // The Reader automatically assembles bounded HTTP chunks. Its
+            // complete DOM is not one transport page; inspect the actual
+            // response stream with the shared exact-binding/range control.
+            try {await criticalBytes(page,point,task,false,pending);}
+            finally {pending.dispose();}
+            assert.equal(await point.locator('.citation-inspection code').textContent(),expected,'all critical implementing bytes across bounded pages');
           } else {
             const code=await (await openEmbeddedCode(point)).allTextContents();
             assert(code.includes(expected),'offline/no-JS complete exact implementing bytes');
