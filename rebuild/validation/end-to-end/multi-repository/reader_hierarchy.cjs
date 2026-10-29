@@ -86,6 +86,20 @@ function explanatoryObligations(texts, expected) {
  for(const padding of expected.forbidden)if(texts.some(t=>t.includes(padding)))errors.push('label-dictionary padding: '+padding);
  return errors;
 }
+function relationObligations(diagrams, expected) {
+ const errors=[];
+ for(const required of expected.relations||[]){
+  const diagram=diagrams.find(d=>d.id===required.diagram);
+  const relation=diagram?.meaning.relations?.find(e=>e.id===required.id);
+  if(!relation||['from','to','kind'].some(k=>relation[k]!==required[k])){
+   errors.push('missing source-derived relation: '+required.id);continue;
+  }
+  for(const term of required.condition_terms){
+   if(!relation.condition?.text.includes(term))errors.push('missing material relation condition: '+required.id+' / '+term);
+  }
+ }
+ return errors;
+}
 function corpusObligations(cases, contract) {
  assert.deepEqual(cases.map(c=>c.key).sort(),Object.keys(contract.cases).sort(),'independent complete corpus membership');
  for(const c of cases){
@@ -94,7 +108,9 @@ function corpusObligations(cases, contract) {
   const membership=p.diagrams.map(d=>[d.meaning.kind,d.id]).sort();
   assert.deepEqual(membership,Object.entries(expected.figures).flatMap(([kind,ids])=>ids.map(id=>[kind,id])).sort(),'independent figure/language membership');
   assert.deepEqual(explanatoryObligations(p.prose.map(p=>p.text),expected),[],'source-derived necessary prose; bindings alone do not establish explanatory content');
+  assert.deepEqual(relationObligations(p.diagrams,expected),[],'source-derived transitions retain their material caller conditions');
  }
 }
 module.exports.explanatoryObligations=explanatoryObligations;
 module.exports.corpusObligations=corpusObligations;
+module.exports.relationObligations=relationObligations;

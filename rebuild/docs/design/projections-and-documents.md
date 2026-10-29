@@ -3297,3 +3297,15 @@ annotation to follow. Primary action emphasis is distinct from supporting type
 and identifier text; mixed types, guards, state ownership and directions remain.
 All geometry is computed from admitted topology/wording. There is no repository
 label table, stored summary, external layout engine or additional format field.
+
+State-transition authorship must inspect the actual callers as well as the
+transition helper. A delivered-only acknowledgement does not rule out a separate
+native-launch success path; conversely a permissive helper branch alone does not
+establish that every caller can take it. Preserve each reachable edge and its
+material caller condition in the admitted visual role. In the pinned Music Deck
+case, queued success is possible after an unpaired `open` native launch resolves
+with the same session generation. Its condition must remain visible on that edge,
+with the original launch/finish ranges accessible; success does not establish
+confirmed playback. Correcting this authored mapping requires normal composition
+and a new publication, not renderer inference, deletion of the edge or rebinding
+the previous publication's fingerprints.

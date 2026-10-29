@@ -4,7 +4,8 @@
     "design_zip_sha256": "a30e6e4297b74eee30cfcb0c6315cd2b5192e8aa6e7133956d4a8d858039f4e9",
     "meaning": [
       "e6da693a:rebuild/docs/design/domain-model.md and architecture.md; work joins in projections/src/reading.rs",
-      "acc07330 and 74304b69:chrome-extension/background/player-sync-service.js, bridge-client.js and plugin command/player state owners"
+      "acc07330 and 74304b69:chrome-extension/background/player-sync-service.js, bridge-client.js and plugin command/player state owners",
+      "74304b69:streamdeck/src/application/command-service.cjs:83-108,154-179,218-220; queued success is possible via resolved unpaired open native launch with unchanged session generation, independently of delivered-only acknowledgement."
     ],
     "scope": "Seven supported campaign cases. Implementation memo remains a bounded note; not repository breadth."
   },
@@ -89,6 +90,21 @@
       "forbidden": [
         "Sync service is Sync service",
         "Sync service means Sync service"
+      ],
+      "relations": [
+        {
+          "diagram": "browser-request-states",
+          "id": "ok-queued",
+          "kind": "transition",
+          "from": "queued",
+          "to": "succeeded",
+          "condition_terms": [
+            "unpaired",
+            "open",
+            "launch",
+            "generation"
+          ]
+        }
       ]
     },
     "musicdeck-work-en": {
@@ -198,6 +214,21 @@
       "forbidden": [
         "Sync service is Sync service",
         "Sync service means Sync service"
+      ],
+      "relations": [
+        {
+          "diagram": "browser-request-states",
+          "id": "ok-queued",
+          "kind": "transition",
+          "from": "queued",
+          "to": "succeeded",
+          "condition_terms": [
+            "unpaired",
+            "open",
+            "launch",
+            "generation"
+          ]
+        }
       ]
     },
     "musicdeck-work-ko": {

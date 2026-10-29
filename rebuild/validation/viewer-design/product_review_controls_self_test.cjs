@@ -22,6 +22,19 @@ test('complete reading requires independently declared case, language and figure
   }
  }finally{fs.rmSync(root,{recursive:true});}
 });
+test('queued native success retains its caller guard rather than deleting a reachable edge',()=>{
+ const {relationObligations}=require('../end-to-end/multi-repository/reader_hierarchy.cjs');
+ // Independent command-service facts: acknowledgement requires delivered, but
+ // a resolved unpaired open launch with the same generation can finish queued.
+ const expected={relations:[{diagram:'requests',id:'native-success',from:'queued',to:'succeeded',kind:'transition',condition_terms:['unpaired','open','launch','generation']}]};
+ const relation={id:'native-success',from:'queued',to:'succeeded',kind:'transition',condition:{text:'unpaired open · launch resolved · same generation'}};
+ const diagrams=relations=>[{id:'requests',meaning:{kind:'state',relations}}];
+ assert.deepEqual(relationObligations(diagrams([relation]),expected),[]);
+ for(const relations of [[],[{...relation,condition:null}],[{...relation,from:'delivered'}],
+  ...expected.relations[0].condition_terms.map(term=>[{...relation,condition:{text:relation.condition.text.replace(term,'')}}])]){
+  assert(relationObligations(diagrams(relations),expected).length,'omitting the transition or a material guard fails');
+ }
+});
 test('same Source coordinates in Repository and Work retain separate live/offline captures',()=>{
   const {sourceCaptureName}=require('./product_review_controls.cjs');
   const names=[];
