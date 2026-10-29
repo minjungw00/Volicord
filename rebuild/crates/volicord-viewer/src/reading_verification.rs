@@ -133,7 +133,7 @@ fn check(
     );
     definition(
         html,
-        text(r.locale, "Assertion result", "Assertion 결과"),
+        text(r.locale, "Assertion result", "검사 조건 결과"),
         detail(&check.assertion_result, r.locale),
     );
     definition(
@@ -148,7 +148,7 @@ fn check(
             VerificationApplicability::CapturedArtifactsAtExecution => text(
                 r.locale,
                 "Captured artifacts at execution; current coverage unestablished",
-                "실행 당시 관측 대상; 현재 coverage 미확인",
+                "실행 당시 관측 대상; 현재 확인 범위 미확인",
             ),
             VerificationApplicability::Unknown => text(
                 r.locale,
@@ -172,11 +172,7 @@ fn check(
     html.push_str("<dl>");
     definition(
         html,
-        text(
-            r.locale,
-            "Declared bounded coverage",
-            "선언된 한정 coverage",
-        ),
+        text(r.locale, "Declared bounded coverage", "선언된 확인 범위"),
         detail(&check.declared_coverage, r.locale),
     );
     definition(
@@ -298,8 +294,8 @@ pub(super) fn render_verification(
 ) {
     html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary><p>{}</p><p class=\"source-note\">{}</p>",
         document_anchor(answers,"verification"),text(r.locale,"Verification report", "검증 보고"),
-        text(r.locale,"Each entry is a Checkpoint verification report, not a test. Reported test counts remain attributed original text; repeated reports are not extra tests or newly observed runs. Observed executions have separate provenance. Exit status proves no assertions.", "각 항목은 테스트 개수가 아닌 Checkpoint 검증 보고입니다. 보고된 테스트 수는 원문에 귀속하며 반복 보고를 추가 테스트나 새 관측 실행으로 세지 않습니다. 실행 관측의 출처는 별도이며 종료 코드만으로 assertion을 확정하지 않습니다."),
-        if report.checks.iter().all(|c|matches!(c.scoped_run,EvidenceDetail::NotObserved)) {text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Environment, assertion detail and coverage are shown only when observed.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 환경·assertion 상세·coverage는 관측되었을 때만 표시합니다.")} else {text(r.locale,"Only explicit recorded relationships support comparison. Earlier failures remain original facts; environment and coverage descriptions are attributed operator reports.","명시적으로 기록된 관계만 비교를 뒷받침합니다. 이전 실패는 원래 사실로 보존하며 환경과 coverage 설명은 작업자 보고로 표시합니다.")}));
+        text(r.locale,"Each entry is a Checkpoint verification report, not a test. Reported test counts remain attributed original text; repeated reports are not extra tests or newly observed runs. Observed executions have separate provenance. Exit status proves no assertions.", "각 항목은 테스트 개수가 아닌 Checkpoint 검증 보고입니다. 보고된 테스트 수는 원문에 귀속하며 반복 보고를 추가 테스트나 새 관측 실행으로 세지 않습니다. 실행 관측의 출처는 별도이며 종료 코드만으로 검사 조건의 충족 여부를 확정하지 않습니다."),
+        if report.checks.iter().all(|c|matches!(c.scoped_run,EvidenceDetail::NotObserved)) {text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Environment, assertion detail and coverage are shown only when observed.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 환경·검사 조건 상세·확인 범위는 관측되었을 때만 표시합니다.")} else {text(r.locale,"Only explicit recorded relationships support comparison. Earlier failures remain original facts; environment and coverage descriptions are attributed operator reports.","명시적으로 기록된 관계만 비교를 뒷받침합니다. 이전 실패는 원래 사실로 보존하며 환경과 확인 범위 설명은 작업자 보고로 표시합니다.")}));
     render_article_layer(html, r, answers, ArticleLayer::Verification, snapshot);
     if report.checks.is_empty() {
         html.push_str(&format!(
@@ -358,11 +354,11 @@ pub(super) fn render_verification(
         );
         definition(
             html,
-            text(r.locale, "Execution assertion interpretation", "실행의 assertion 해석"),
+            text(r.locale, "Execution assertion interpretation", "실행의 검사 조건 해석"),
             match &execution.assertion_result {
                 EvidenceDetail::NotObserved => text(r.locale,
                     "No assertion interpretation in this execution record; Checkpoint reports are separate.",
-                    "이 실행 기록에는 assertion 해석이 없습니다. Checkpoint 보고는 별도입니다."),
+                    "이 실행 기록에는 검사 조건 해석이 없습니다. Checkpoint 보고는 별도입니다."),
                 value => detail(value, r.locale),
             },
         );
@@ -374,7 +370,7 @@ pub(super) fn render_verification(
                 definition(html,text(r.locale,"Ended", "종료 시각"),&instant(o.ended_at_unix_micros,r.locale));
                 definition(html,text(r.locale,"Target limitation", "대상 한계"),match o.target_state {
                     ExecutionTargetState::SelectedAnalysisOnlyNotRechecked => text(r.locale,"Selected analysis only; execution-time tree was not rechecked", "선택된 분석이며 실행 시점의 트리는 재확인하지 않았습니다"),
-                    ExecutionTargetState::DeclaredArtifactsSampled => text(r.locale,"Declared artifact hashes sampled before and after execution; whole-tree coverage unestablished", "실행 전후 선언 대상 해시 표본; 전체 트리 coverage 미확인"),
+                    ExecutionTargetState::DeclaredArtifactsSampled => text(r.locale,"Declared artifact hashes sampled before and after execution; whole-tree coverage unestablished", "실행 전후 선언 대상 해시 표본; 전체 트리 확인 범위 미확인"),
                     ExecutionTargetState::DeclaredArtifactsChanged => text(r.locale,"Declared targets changed or became unavailable during execution", "실행 중 선언 대상 변경 또는 이용 불가"),
                 });
                 definition(html,text(r.locale,"Timeout detected", "시간 초과 감지"),if o.timeout_detected {text(r.locale,"Yes", "예")} else {text(r.locale,"No", "아니요")});
@@ -412,7 +408,7 @@ pub(super) fn render_verification(
                 text(
                     r.locale,
                     "No Checkpoint assertion report is linked to this execution.",
-                    "이 실행에 연결된 Checkpoint assertion 보고가 없습니다."
+                    "이 실행에 연결된 진행 기록의 검사 조건 보고가 없습니다."
                 )
             ));
         }
@@ -501,7 +497,7 @@ fn comparison_label(comparison: &RetestComparison, locale: ViewerLocale) -> Stri
             text(
                 locale,
                 "Original report remains recorded; comparison is limited to declared coverage.",
-                "원래 보고는 보존하며 비교는 선언된 coverage로 제한됩니다."
+                "원래 보고는 보존하며 비교는 선언된 확인 범위로 제한됩니다."
             )
         ),
         RetestComparison::NotComparable { previous, reason } => format!(
@@ -529,7 +525,7 @@ fn comparison_limit(reason: ComparisonLimit, locale: ViewerLocale) -> &'static s
         ComparisonLimit::CheckIdentityOrPurposeChanged => text(
             locale,
             "Check identity, purpose or intended assertion differs",
-            "검증 식별자·목적 또는 의도한 assertion 다름",
+            "검증 식별자·목적 또는 의도한 검사 조건 다름",
         ),
         ComparisonLimit::InvocationChanged => text(
             locale,
@@ -539,7 +535,7 @@ fn comparison_limit(reason: ComparisonLimit, locale: ViewerLocale) -> &'static s
         ComparisonLimit::CoverageMissingOrDifferent => text(
             locale,
             "Declared coverage missing or different",
-            "선언된 coverage 누락 또는 다름",
+            "선언된 확인 범위 누락 또는 다름",
         ),
         ComparisonLimit::EnvironmentMissingOrDifferent => text(
             locale,
@@ -564,7 +560,7 @@ fn comparison_limit(reason: ComparisonLimit, locale: ViewerLocale) -> &'static s
         ComparisonLimit::AssertionNotObserved => text(
             locale,
             "At least one assertion outcome was not observed",
-            "하나 이상의 assertion 결과 미관측",
+            "하나 이상의 검사 조건 결과 미관측",
         ),
     }
 }
