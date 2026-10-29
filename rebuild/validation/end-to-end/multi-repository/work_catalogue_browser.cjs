@@ -8,6 +8,13 @@ const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex
 const result={outcome:'failed',scope:'technical public query/navigation and dependent reference comparison; human/assistive acceptance unobserved',viewer_sha256:hash(config.viewer),checks:[],measurements:[],external:[]};
 let browser,listener;
 const frame=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+async function clippedSummaries(page){
+ return page.locator('.work-main p').evaluateAll(nodes=>nodes.filter(n=>{
+  const range=document.createRange();range.selectNodeContents(n);
+  const content=range.getBoundingClientRect(),box=n.getBoundingClientRect();
+  return content.bottom>box.bottom+1||n.scrollHeight>n.clientHeight+1;
+ }).map(n=>n.textContent));
+}
 async function start(item,runtime){
  const child=spawn(config.viewer,['--runtime',runtime,'--project',item.project,'--bind','127.0.0.1:0']);let stderr='',stdout='';
  child.stderr.on('data',b=>stderr+=b);child.stdout.on('data',b=>stdout+=b);
@@ -29,6 +36,13 @@ async function start(item,runtime){
     await page.screenshot({path:path.join(config.output,`${item.key}-${view}-${width}-initial.png`)});
     const geometry=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,rows:document.querySelectorAll('.work-row').length,contents:document.querySelectorAll('.document-nav').length,nav:[...document.querySelectorAll('.project-navigation [aria-current=page]')].map(n=>n.dataset.destination),font:getComputedStyle(document.body).fontFamily,main:document.querySelector('main').getBoundingClientRect().toJSON()}));
     assert.ok(geometry.overflow<=1,JSON.stringify({width,view,...geometry}));assert.equal(geometry.contents,0);assert.deepEqual(geometry.nav,[view]);
+    assert.deepEqual(await clippedSummaries(page),[],'complete independent summaries, including final qualifications');
+    if(item.synthetic&&view==='work'&&width===320){
+     const clamp=await page.addStyleTag({content:'.work-main p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}'});
+     assert.ok((await clippedSummaries(page)).length,'controlled final-qualification clipping must be detected');
+     await clamp.evaluate(n=>n.remove());
+     assert.deepEqual(await clippedSummaries(page),[],'actual complete summary restored');
+    }
     if(item.synthetic){assert.equal(geometry.rows,view==='work'?8:5);}
     result.checks.push({case:item.key,view,width,...geometry});
    }

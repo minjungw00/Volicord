@@ -36,7 +36,7 @@ pub fn fixture(count: usize) -> TestResult<reading_fixture::Fixture> {
                 ExplanationSubject::WorkSummary(*id),
                 ExplanationQuestion::Synopsis,
                 format!(
-                    "Synthetic summary {} {i:03} — no actual tests or acceptance.",
+                    "Synthetic summary {} {i:03}. This controlled record describes a separate topic in a repeated-name catalogue. Read its request, reported progress and remaining direction together. The final qualification must stay visible even when this paragraph wraps across several lines: no actual tests or acceptance.",
                     if i % 2 == 0 { "needle" } else { "other" }
                 ),
             ),
