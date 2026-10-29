@@ -11,7 +11,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
  const rows=[];
  try{
  for(const c of C.cases){const pub=JSON.parse(fs.readFileSync(c.public));const d=pub.diagrams.find(d=>d.id===c.diagram);
-  for(const control of ['hidden-card','miniature','assisted-entry','incomplete-label','reversed-edge','merged-routes','invisible-focus']){
+  for(const control of ['hidden-card','miniature','assisted-entry','incomplete-label','reversed-edge','merged-routes','invisible-focus',...(d.meaning.kind==='sequence'?['clipped-detail','missing-guard']:[])]){
    // The export itself is script-free. Enable evaluation callbacks for the
    // observer's event/MutationObserver negative control; no-JS product journeys
    // run separately through grounded_diagrams_browser.cjs.
@@ -23,7 +23,28 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
    await figure.evaluate(n=>n.scrollIntoView({block:'start'}));
    await page.screenshot({path:path.join(C.output,c.key+'-'+control+'-initial.png')});
    await installEntryObserver(page);assert.deepEqual((await observeOverview(figure,d)).errors,[],'unmodified actual entry');
-   if(['hidden-card','assisted-entry'].includes(control)){
+   if(control==='clipped-detail'){
+    await figure.evaluate(n=>{
+     const scene=n.querySelector(':scope > .diagram-full-view svg');
+     const timeline=n.querySelector('.diagram-timeline svg').cloneNode(true);
+     const ns=n.id;
+     for(const a of [timeline,...timeline.querySelectorAll('*')])for(const attribute of [...a.attributes]){
+      if(attribute.value.includes(ns+':timeline'))a.setAttribute(attribute.name,attribute.value.replaceAll(ns+':timeline',ns));
+     }
+     scene.replaceWith(timeline);
+    });
+    const observed=await observeOverview(figure,d);
+    assert(observed.errors.includes('ordinary orientation requires horizontal discovery'),'readable clipped detail cannot masquerade as initial orientation');
+    rows.push({case:c.key,control,observed});
+   }else if(control==='missing-guard'){
+    const index=d.meaning.groups.findIndex(g=>g.condition);assert(index>=0,'real conditional sequence required');
+    await figure.locator(':scope > .diagram-full-view svg').evaluate((svg,guard)=>{
+     for(const text of svg.querySelectorAll('text'))if(text.textContent.includes(guard))text.style.display='none';
+    },d.meaning.groups[index].condition.text);
+    const geometry=await inspectDiagram(figure.locator(':scope > .diagram-full-view svg'),d,pub.prose);
+    assert(geometry.errors.some(e=>e.kind==='missing-visible-meaning'&&e.element==='guard:'+(index+1)),'missing material guard fails independently');
+    rows.push({case:c.key,control,errors:geometry.errors});
+   }else if(['hidden-card','assisted-entry'].includes(control)){
     await figure.evaluate((n,showCard)=>{const viewport=n.querySelector('.diagram-viewport');const details=document.createElement('details');details.className='counterexample-hidden-map';const summary=document.createElement('summary');summary.textContent='Full map';viewport.replaceWith(details);details.append(summary,viewport);if(showCard)n.querySelector('.diagram-claim:has(.diagram-connection)').dataset.active='true';},control==='hidden-card');
     if(control==='assisted-entry'){
      await figure.locator('.counterexample-hidden-map > summary').click();
@@ -48,16 +69,18 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
    }else{
     const edges=d.meaning.relations||d.meaning.groups.flatMap(g=>g.messages);const edge=edges.find(e=>e.from!==e.to);
     const anchor=figure.locator('a[id="'+await figure.getAttribute('id')+'-'+edge.id+'"]');
+    const route=id=>figure.locator(d.meaning.kind==='sequence'?'a[id="'+figureId+'-'+id+'"]':'a.diagram-route[data-element="'+figureId+'-'+id+'"]');
+    const figureId=await figure.getAttribute('id');
     if(control==='incomplete-label'){
      const label=edge.label.text;
-     await anchor.evaluate((n,label)=>{const t=[...n.querySelectorAll('text')].find(t=>t.textContent===label&&getComputedStyle(t.parentElement).display!=='none');t.replaceChildren(document.createTextNode('DOM snapshot을'));},label);
+     await anchor.evaluate((n,label)=>{const t=[...n.querySelectorAll('text')].find(t=>t.textContent===label&&t.getBoundingClientRect().width>0&&t.getBoundingClientRect().height>0);t.replaceChildren(document.createTextNode('DOM snapshot을'));},label);
     }else if(control==='reversed-edge'){
-     await anchor.evaluate(n=>{const p=[...n.querySelectorAll('.relation-line')].find(p=>getComputedStyle(p.parentElement).display!=='none');const a=p.getPointAtLength(0),b=p.getPointAtLength(p.getTotalLength());p.setAttribute('transform',`rotate(180 ${(a.x+b.x)/2} ${(a.y+b.y)/2})`);});
+     await route(edge.id).evaluate(n=>{const p=[...n.querySelectorAll('.relation-line')].find(p=>p.getBoundingClientRect().width||p.getBoundingClientRect().height);const a=p.getPointAtLength(0),b=p.getPointAtLength(p.getTotalLength());p.setAttribute('transform',`rotate(180 ${(a.x+b.x)/2} ${(a.y+b.y)/2})`);});
     }else{
      const other=edges.find(e=>e.from!==edge.from&&e.to!==edge.to);assert(other,'distinct routes challenge merger');
-     const otherAnchor=figure.locator('a[id="'+await figure.getAttribute('id')+'-'+other.id+'"]');
-     const route=await anchor.evaluate(n=>[...n.querySelectorAll('.relation-line')].find(p=>getComputedStyle(p.parentElement).display!=='none').getAttribute('d'));
-     await otherAnchor.evaluate((n,d)=>[...n.querySelectorAll('.relation-line')].find(p=>getComputedStyle(p.parentElement).display!=='none').setAttribute('d',d),route);
+     const otherAnchor=route(other.id);
+     const path=await route(edge.id).evaluate(n=>[...n.querySelectorAll('.relation-line')].find(p=>p.getBoundingClientRect().width||p.getBoundingClientRect().height).getAttribute('d'));
+     await otherAnchor.evaluate((n,d)=>[...n.querySelectorAll('.relation-line')].find(p=>p.getBoundingClientRect().width||p.getBoundingClientRect().height).setAttribute('d',d),path);
     }
     const geometry=await inspectDiagram(figure.locator(':scope > .diagram-full-view svg'),d,pub.prose);
     const expected=control==='incomplete-label'?'missing-visible-meaning':control==='reversed-edge'?(d.meaning.kind==='sequence'?'wrong-lifeline-direction':'wrong-edge-direction'):'route-merge';

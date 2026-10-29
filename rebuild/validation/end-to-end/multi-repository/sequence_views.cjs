@@ -16,6 +16,13 @@ async function inspect(page,figure,diagram,answers,{scripted,write,screenshot,se
   const link=figure.locator(`.diagram-caption-claims ul a[href$="-p${unit+1}"]`);
   assert.equal(await link.count(),1);assert((await link.textContent()).endsWith(answers.prose[unit].text),'chooser retains the complete original claim rather than guessing an aggregate citation');
  }
+ const evidence=figure.locator('.diagram-caption-claims');
+ await evidence.locator(':scope > summary').click();await settled();
+ assert.equal(await evidence.getAttribute('open'),'');
+ assert(await evidence.locator('a').first().isVisible(),'actual scene evidence is disclosed natively');
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'complete claim choices wrap at the actual reading width');
+ await screenshot('scene-claims');
+ await evidence.locator(':scope > summary').click();await settled();
  const svg=details.locator('svg'),ns=(await figure.getAttribute('id'))+':timeline';
  if(scripted){
   const expand=figure.locator('[data-diagram-action=expand]');await expand.click();
