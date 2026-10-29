@@ -21,7 +21,7 @@ async function inspectDiagram(svg, diagram, prose) {
   }
   for(const [i,g] of (m.groups||[]).entries()) {
     const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
-    const localOrder=g.order==='sequential'?'strict':order;
+    const localOrder=g.order==='sequential'?(stages?(ko?'순차':'Sequential'):'strict'):order;
     const context=localOrder+(g.condition?` · opt · ${ko?'조건:':'condition:'} ${label(g.condition)}`:'');
     expected.push(...g.messages.map(r=>({id:r.id,text:context,prefix:true})));
     if(g.condition)expected.push({id:'guard:'+(i+1),text:label(g.condition),prefix:true});
@@ -100,7 +100,8 @@ async function inspectDiagram(svg, diagram, prose) {
       let previousGroupBottom=-Infinity;
       for(const [gi,g] of groups.entries()) {
         const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
-        const header=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===`${gi+1}. ${order}`);
+        const heading=stages&&g.order==='sequential'?(ko?'순차':'Sequential')+(root.clientWidth>=760?(ko?' · 왼쪽부터 읽고 다음 줄로':' · left to right, then next row'):''):order;
+        const header=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===`${gi+1}. ${heading}`);
         if(!header)errors.push({kind:'wrong-group-order',group:gi+1,expected:order});
         // Panning participant lanes must not pan the local order/guard heading
         // out of the initial article reading column.
@@ -108,17 +109,17 @@ async function inspectDiagram(svg, diagram, prose) {
         if(header && bounds(header).x+bounds(header).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1});
         if(g.condition){const guard=pick(anchor('guard:'+(gi+1)),'text');if(guard && bounds(guard).x+bounds(guard).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1,role:'condition'});}
         for(const message of g.messages) {
-          if(!visibleTexts(anchor(message.id)).some(t=>stages?t.startsWith(kindText(message.kind)+' · '):t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
+          if(!visibleTexts(anchor(message.id)).some(t=>t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
           // The primary action, concise endpoints and local scope are the whole
           // scene text. An extra identifier/type band cannot silently return.
           if(visibleTexts(anchor(message.id)).length!==(stages&&message.from!==message.to?4:3))errors.push({kind:'repeated-message-identity',element:message.id});
         }
-        let last=previousGroupBottom;
-        const positions=g.messages.flatMap(m=>{const p=edgePath(m.id);return p?[{id:m.id,box:bounds(p)}]:[];});
+        let last=previousGroupBottom,lastX=-Infinity;
+        const positions=g.messages.flatMap(m=>{const p=edgePath(m.id);return p?[{id:m.id,box:bounds(stages?pick(anchor(m.id),'.sequence-message-hitbox'):p)}]:[];});
         for(const m of positions) {
-          if(m.box.y<=previousGroupBottom || (g.order==='sequential' && m.box.y<=last))errors.push({kind:'wrong-message-order',group:gi+1,message:m.id});
+          if(m.box.y<=previousGroupBottom || (g.order==='sequential' && (m.box.y<last || m.box.y===last && (!stages||m.box.x<=lastX))))errors.push({kind:'wrong-message-order',group:gi+1,message:m.id});
           if(header && m.box.y<=bounds(header).y+bounds(header).height)errors.push({kind:'message-before-group',group:gi+1,message:m.id});
-          last=m.box.y+m.box.height;
+          last=stages?m.box.y:m.box.y+m.box.height;lastX=m.box.x;
         }
         previousGroupBottom=Math.max(...positions.map(m=>m.box.y+m.box.height));
       }

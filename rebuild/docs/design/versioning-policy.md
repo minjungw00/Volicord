@@ -766,3 +766,10 @@ preparation/semantic seals, retained envelopes and generated-document metadata.
 Explanation 9 and metadata 11 remain exact-current. Original publications, Source
 deadlines and byte/workload limits are unchanged; no conversion, compatibility
 decoder or destructive format transition is introduced.
+
+Renderer 18 changes only responsive message geometry, local actor/self-effect
+emphasis and directed predicate contrast. Wide message rows have explicit reading
+order; narrow views retain a single column. The full timeline, selectable inventory
+and per-view origins remain complete. Explanation 9 and metadata 11, existing
+publications, preparation seals and original Source deadlines are unchanged.
+No semantic phase title is inferred from a group ordinal or its geometry.

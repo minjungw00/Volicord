@@ -1019,7 +1019,7 @@ fn diagram_source_origins(
                 let claim = format!("{element}-claim");
                 let alias = diagram_source_anchor(&claim, citation);
                 if payload_aliases {
-                    html.push_str(&format!("<section class=\"shared-source-target\" id=\"{alias}-shared-code\" data-selected-point=\"{point}\" data-origin=\"{claim}\" data-source-id=\"{}\" data-range-sha256=\"{}\" tabindex=\"-1\"><p><a class=\"shared-source-return\" href=\"#{alias}\">← {}</a></p></section>",escape(&c.source_id),escape(&c.range_sha256),text(r.locale,"Return to selected Source claim","선택한 Source 주장으로 돌아가기")));
+                    html.push_str(&format!("<section class=\"shared-source-target\" id=\"{alias}-shared-code\" data-selected-point=\"{point}\" data-origin=\"{claim}\" data-source-id=\"{}\" data-range-sha256=\"{}\" tabindex=\"-1\"><p><a class=\"shared-source-return\" href=\"#{alias}\">← {}</a></p></section>",escape(&c.source_id),escape(&c.range_sha256),text(r.locale,"Return to the selected claim","선택한 주장으로 돌아가기")));
                     continue;
                 }
                 let caption = crate::diagram::element_caption(d, &id, &texts, r.locale.fixed());
@@ -1053,7 +1053,7 @@ fn diagram_source_origins(
                     html.push_str("</nav></details>");
                 }
                 if shared {
-                    html.push_str(&format!("<p class=\"source-code-reference\"><a href=\"#{alias}-shared-code\" data-range-sha256=\"{}\">{} ↗</a></p>",escape(&c.range_sha256),text(r.locale,"Read shared complete code for this exact Source range","이 정확한 Source 범위의 공유 전체 코드 읽기")));
+                    html.push_str(&format!("<p class=\"source-code-reference\"><a href=\"#{alias}-shared-code\" data-range-sha256=\"{}\">{} ↗</a></p>",escape(&c.range_sha256),text(r.locale,"Read the complete cited code","인용된 전체 코드 보기")));
                 }
                 html.push_str("</section>");
                 // :target keeps the selected strip visible while reading its code,
@@ -2174,9 +2174,29 @@ fn render_source_excerpts(
                 .text
                 .get(c.claim_start_byte..c.claim_end_byte)
                 .unwrap_or("");
+            let selected_question = answers
+                .prose
+                .iter()
+                .find(|unit| unit.question == "Heading")
+                .map(|unit| {
+                    format!(
+                        "{} · <span lang=\"{}\">{}</span>",
+                        text(r.locale, "Reading question", "확인할 질문"),
+                        escape(&content_language_tag(&provenance.language)),
+                        escape(&unit.text)
+                    )
+                })
+                .unwrap_or_else(|| {
+                    text(
+                        r.locale,
+                        "Evidence for this explanation",
+                        "이 설명을 확인하는 근거",
+                    )
+                    .into()
+                });
             let range = source_excerpt_anchor(answers, c);
             let first_payload = seen.insert(range.clone());
-            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" tabindex=\"-1\"{}><div class=\"point-bar\"><a class=\"return\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><h2 class=\"evidence-claim\" lang=\"{}\">{}</h2><h3 class=\"source-path\">{}:{}–{}</h3>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),publication_scope(answers),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),text(r.locale,"Evidence for this explanation","이 설명을 확인하는 근거"),escape(&content_language_tag(&provenance.language)),escape(claim),escape(&c.locator),c.start_line,c.end_line));
+            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" tabindex=\"-1\"{}><div class=\"point-bar\"><a class=\"return\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><h2 class=\"evidence-claim\" lang=\"{}\">{}</h2><h3 class=\"source-path\">{}:{}–{}</h3>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),publication_scope(answers),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),selected_question,escape(&content_language_tag(&provenance.language)),escape(claim),escape(&c.locator),c.start_line,c.end_line));
             diagram_source_origins(
                 html,
                 r,
@@ -2277,7 +2297,7 @@ fn render_source_excerpts(
                                 continue;
                             }
                             let point = source_point_anchor(answers, u, j);
-                            html.push_str(&format!("<section class=\"shared-source-target\" id=\"{point}-shared-code\" data-selected-point=\"{point}\" data-source-id=\"{}\" data-range-sha256=\"{}\" tabindex=\"-1\"><p>{} <a class=\"shared-source-return\" href=\"#{point}\">← {}</a></p></section>",escape(&other.source_id),escape(&other.range_sha256),text(r.locale,"Shared complete code. The selected claim and provenance stay at its original reading point.","공유하는 전체 코드입니다. 선택한 주장과 provenance는 원래 읽기 위치에 남습니다."),text(r.locale,"Return to selected Source claim","선택한 Source 주장으로 돌아가기")));
+                            html.push_str(&format!("<section class=\"shared-source-target\" id=\"{point}-shared-code\" data-selected-point=\"{point}\" data-source-id=\"{}\" data-range-sha256=\"{}\" tabindex=\"-1\"><p>{} <a class=\"shared-source-return\" href=\"#{point}\">← {}</a></p></section>",escape(&other.source_id),escape(&other.range_sha256),text(r.locale,"Complete cited code. Return to the selected claim for its explanation and basis.","인용된 전체 코드입니다. 선택한 주장으로 돌아가 설명과 근거를 확인하세요."),text(r.locale,"Return to the selected claim","선택한 주장으로 돌아가기")));
                             diagram_source_origins(html, r, answers, u, j, false, true);
                         }
                     }
@@ -2304,7 +2324,7 @@ fn render_source_excerpts(
                     ));
                     html.push_str(&format!("<pre class=\"code-region\" tabindex=\"0\" role=\"region\" aria-label=\"{}: {}:{}–{}\"><span class=\"source-line-numbers\" aria-hidden=\"true\">{}</span><code lang=\"\" data-syntax=\"{}\">{}</code></pre>",text(r.locale,"Original Source","Source 원문"),escape(&c.locator),c.start_line,e.displayed_end_line,e.text.split_inclusive('\n').enumerate().map(|(line,_)|format!("<span data-line=\"{}\"></span>",c.start_line+line)).collect::<String>(),syntax.map(|s|s.key()).unwrap_or("plain"),crate::source_highlight::html(&e.text,syntax)));
                 } else {
-                    html.push_str(&format!("<p class=\"source-code-reference\"><a href=\"#{anchor}-shared-code\" data-range-sha256=\"{}\">{} ↗</a></p>",escape(&c.range_sha256),text(r.locale,"Read shared complete code for this exact Source range","이 정확한 Source 범위의 공유 전체 코드 읽기")));
+                    html.push_str(&format!("<p class=\"source-code-reference\"><a href=\"#{anchor}-shared-code\" data-range-sha256=\"{}\">{} ↗</a></p>",escape(&c.range_sha256),text(r.locale,"Read the complete cited code","인용된 전체 코드 보기")));
                 }
                 if e.omitted_utf8_bytes > 0 {
                     html.push_str(&format!(

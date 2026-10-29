@@ -3268,6 +3268,16 @@ actual final JSON sizes of 131,071/131,072 and refusal at 131,073 bytes.
 
 ### Connected sequence reading and scoped timeline origins
 
+Renderer 18 uses two message columns at wide article width, in explicit admitted
+group order (left to right, then the next row), and one column at narrower widths.
+Parallel groups retain their explicit no-relative-order meaning. Local actor names,
+larger self-effect routes and message ordinals identify each action without a
+participant key lookup. Fixed ordering vocabulary does not supply a phase title:
+v9 has no authored group-title role and the renderer invents none. Graph predicates
+stay on their own routes with stronger label/direction contrast. Native origins,
+the complete timeline and every admitted role are unchanged. Evidence actions say
+what to read; shared code storage remains an internal implementation detail.
+
 Renderer 17 presents the existing admitted sequence groups as a vertical connected
 scene with local named message endpoints. Its rail denotes admitted group order,
 not a new actor or causal message. Parallel operands retain their no-relative-order

@@ -43,11 +43,20 @@ pub(super) fn sequence(
     };
     let w = width - 64;
     let center = width / 2 + 8;
+    // Wide reading compares adjacent steps. Narrow reading keeps the same
+    // admitted order in one column, without scaling text or dropping messages.
+    let columns = if width >= 760 { 2 } else { 1 };
+    let cell_width = (w - (columns - 1) * 24) / columns;
     let mut y = 24;
     for (gi, group) in groups.iter().enumerate() {
         let start = y;
         let order = match group.order {
-            DiagramOrder::Sequential => diagram_ui(locale, "strict · sequential", "strict · 순차"),
+            DiagramOrder::Sequential if columns > 1 => diagram_ui(
+                locale,
+                "Sequential · left to right, then next row",
+                "순차 · 왼쪽부터 읽고 다음 줄로",
+            ),
+            DiagramOrder::Sequential => diagram_ui(locale, "Sequential", "순차"),
             DiagramOrder::Parallel => {
                 diagram_ui(locale, "par · no relative order", "par · 상대 순서 없음")
             }
@@ -73,20 +82,37 @@ pub(super) fn sequence(
             layout.elements.insert(format!("guard:{}", gi + 1), out);
             y += 20 * count(guard, w, 13) + 12;
         }
+        let mut row_top = y;
+        let mut row_bottom = y;
         for (mi, message) in group.messages.iter().enumerate() {
+            if mi > 0 && mi % columns == 0 {
+                row_top = row_bottom + 12;
+            }
+            let mut y = row_top;
+            let cell_x = 32 + mi % columns * (cell_width + 24);
+            let w = cell_width;
+            let center = cell_x + w / 2;
             let name = label(&message.label)?;
             let source = endpoint(&message.from)?;
             let destination = endpoint(&message.to)?;
             // Full scope is retained locally for long/reverse scrolling. Order
             // and type share one quiet row instead of separate metadata bands.
+            let self_call = message.from == message.to;
             let local_order = match group.order {
-                DiagramOrder::Sequential => "strict",
+                DiagramOrder::Sequential => diagram_ui(locale, "Sequential", "순차"),
                 DiagramOrder::Parallel => {
                     diagram_ui(locale, "par · no relative order", "par · 상대 순서 없음")
                 }
             };
             let context = format!(
-                "{} · {}{}",
+                "{}.{}{} · {} · {}{}",
+                gi + 1,
+                mi + 1,
+                if self_call {
+                    diagram_ui(locale, " · within participant", " · 자체 처리")
+                } else {
+                    ""
+                },
                 message.kind.localized_text(locale),
                 local_order,
                 guard
@@ -98,38 +124,37 @@ pub(super) fn sequence(
             let top = y;
             sized_text(&mut out, center, y + 20, name, w, 16, 24);
             y += 24 * count(name, w, 16) + 4;
-            let self_call = message.from == message.to;
             let local_width = if self_call { w } else { (w - 16) / 2 };
             let left = if self_call {
                 center
             } else {
-                32 + local_width / 2
+                cell_x + local_width / 2
             };
-            let right = width - 16 - local_width / 2;
-            out.push_str("<g class=\"diagram-node-kind sequence-endpoints\">");
+            let right = cell_x + w - local_width / 2;
+            out.push_str("<g class=\"sequence-endpoints\">");
             out.push_str(&format!(
                 "<g class=\"sequence-from\" data-node=\"{}\">",
                 message.from
             ));
-            sized_text(&mut out, left, y + 12, &source, local_width, 12, 18);
+            sized_text(&mut out, left, y + 14, &source, local_width, 14, 20);
             out.push_str("</g>");
             if !self_call {
                 out.push_str(&format!(
                     "<g class=\"sequence-to\" data-node=\"{}\">",
                     message.to
                 ));
-                sized_text(&mut out, right, y + 12, &destination, local_width, 12, 18);
+                sized_text(&mut out, right, y + 14, &destination, local_width, 14, 20);
                 out.push_str("</g>");
             }
             out.push_str("</g>");
             y +=
-                18 * count(&source, local_width, 12).max(if self_call {
+                20 * count(&source, local_width, 14).max(if self_call {
                     0
                 } else {
-                    count(&destination, local_width, 12)
+                    count(&destination, local_width, 14)
                 }) + 8;
             let route = if self_call {
-                format!("M{left} {y}h24v12h-24")
+                format!("M{left} {y}h40v20h-40")
             } else {
                 format!("M{left} {y}H{right}")
             };
@@ -144,7 +169,7 @@ pub(super) fn sequence(
                 message.kind == DiagramMessageKind::Return,
             );
             out.push_str("</g>");
-            y += if self_call { 28 } else { 16 };
+            y += if self_call { 36 } else { 16 };
             out.push_str("<g class=\"diagram-node-kind sequence-context\">");
             sized_text(&mut out, center, y + 12, &context, w, 12, 18);
             out.push_str("</g></g>");
@@ -153,21 +178,35 @@ pub(super) fn sequence(
             // between its text and directed route. Keep modifier/pointer
             // activation on that exact message rather than the SVG background.
             out.insert_str("<g class=\"sequence-stage-message\">".len(), &format!(
-                "<rect class=\"sequence-message-hitbox\" x=\"28\" y=\"{top}\" width=\"{}\" height=\"{}\"/>",
-                width - 40, y - top - 12));
+                "<rect class=\"sequence-message-hitbox\" x=\"{}\" y=\"{top}\" width=\"{}\" height=\"{}\"/>",
+                cell_x - 4, w + 8, y - top - 12));
             layout.background.push_str(&format!(
-                "<circle class=\"sequence-step\" cx=\"20\" cy=\"{}\" r=\"3\"/>",
+                "<circle class=\"sequence-step\" cx=\"{}\" cy=\"{}\" r=\"3\"/>",
+                cell_x - 12,
                 top + 16
             ));
             layout.elements.insert(message.id.clone(), out);
-            if group.order == DiagramOrder::Parallel && mi + 1 < group.messages.len() {
+            if group.order == DiagramOrder::Parallel
+                && columns == 1
+                && mi + 1 < group.messages.len()
+            {
                 layout.background.push_str(&format!(
                     "<path class=\"parallel-operand\" d=\"M28 {y}H{}\"/>",
                     width - 16
                 ));
                 y += 12;
+            } else if group.order == DiagramOrder::Parallel
+                && mi % columns == 0
+                && mi + 1 < group.messages.len()
+            {
+                layout.background.push_str(&format!(
+                    "<path class=\"parallel-operand\" d=\"M{} {top}V{y}\"/>",
+                    cell_x + w + 12
+                ));
             }
+            row_bottom = row_bottom.max(y);
         }
+        y = row_bottom;
         panel(
             &mut layout.background,
             8,
