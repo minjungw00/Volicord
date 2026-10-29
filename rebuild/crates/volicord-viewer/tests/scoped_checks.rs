@@ -37,19 +37,29 @@ fn passing_repeat_preserves_report_provenance_without_inventing_a_failure(
             ..
         }
     ));
+    let execution = report
+        .executions
+        .iter()
+        .find(|execution| execution.source_id == repeat.source_id.to_string())
+        .ok_or("repeat execution")?;
+    assert!(matches!(
+        execution.assertion_result,
+        EvidenceDetail::NotObserved
+    ));
+    assert_eq!(execution.checkpoint_reports.len(), 1);
     let before = f.ops.canonical_basis(f.project)?;
-    for (language, locale, report_label, execution_limit) in [
+    for (language, locale, report_label, execution_heading) in [
         (
             "en",
             ViewerLocale::English,
             "Original report remains recorded",
-            "No assertion interpretation in this execution record",
+            "Execution assertion interpretation",
         ),
         (
             "ko",
             ViewerLocale::Korean,
             "원래 보고는 보존하며",
-            "이 실행 기록에는 assertion 해석이 없습니다",
+            "실행의 검사 조건 해석",
         ),
     ] {
         let request = ViewerRequest {
@@ -85,7 +95,20 @@ fn passing_repeat_preserves_report_provenance_without_inventing_a_failure(
             assert!(row.contains("Passed → Passed"));
             assert!(row.contains(report_label));
             assert!(!row.contains("Original failure") && !row.contains("원래 실패"));
-            assert!(row.contains(execution_limit));
+            let execution_limit = row
+                .split_once(&format!("<dt>{execution_heading}</dt><dd>"))
+                .ok_or("execution interpretation field")?
+                .1
+                .split_once("</dd>")
+                .ok_or("execution interpretation end")?
+                .0;
+            assert!(execution_limit.contains("Checkpoint"));
+            assert!(execution_limit.contains(if language == "ko" {
+                "해석이 없습니다"
+            } else {
+                "No assertion interpretation"
+            }));
+            assert!(!execution_limit.contains("actual=7"));
             // A genuine earlier failure still exists as its own original report.
             assert!(html.contains(&f.failed.checkpoint_id.to_string()));
             assert!(html.contains("actual=3; expected=7"));
