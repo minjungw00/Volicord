@@ -34,7 +34,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
     assert(observed.errors.includes(control==='hidden-card'?'connected map hidden or absent':'orientation was assisted before its initial observation'));
     rows.push({case:c.key,control,observed});
    }else if(control==='miniature'){
-    await figure.locator('svg').evaluate(n=>{n.style.transform='scale(.15)';n.style.transformOrigin='0 0';});
+    await figure.locator(':scope > .diagram-full-view svg').evaluate(n=>{n.style.transform='scale(.15)';n.style.transformOrigin='0 0';});
     const observed=await observeOverview(figure,d);assert(observed.errors.includes('essential text scaled below native reading size'));rows.push({case:c.key,control,observed});
    }else if(control==='invisible-focus'){
     const {inspectTextOriginFocus}=require('./diagram_focus.cjs');
@@ -59,7 +59,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
      const route=await anchor.evaluate(n=>[...n.querySelectorAll('.relation-line')].find(p=>getComputedStyle(p.parentElement).display!=='none').getAttribute('d'));
      await otherAnchor.evaluate((n,d)=>[...n.querySelectorAll('.relation-line')].find(p=>getComputedStyle(p.parentElement).display!=='none').setAttribute('d',d),route);
     }
-    const geometry=await inspectDiagram(figure.locator('svg'),d,pub.prose);
+    const geometry=await inspectDiagram(figure.locator(':scope > .diagram-full-view svg'),d,pub.prose);
     const expected=control==='incomplete-label'?'missing-visible-meaning':control==='reversed-edge'?(d.meaning.kind==='sequence'?'wrong-lifeline-direction':'wrong-edge-direction'):'route-merge';
     assert(geometry.errors.some(e=>e.kind===expected),control+' must fail independently');
     rows.push({case:c.key,control,errors:geometry.errors});

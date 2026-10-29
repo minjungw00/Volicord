@@ -1029,11 +1029,12 @@ Teardown restores native fragment/code-reference visibility and removes fetched
 code and enhancement-only state. Original visibility is tracked with weak DOM
 keys, so detached denied bodies are not retained as an unmount snapshot.
 
-The bounded alternative is a Preact **10.27.2** layout-effect host for the same
+The bounded trial is a Preact **10.27.2** layout-effect wrapper for the same
 Reader modules, real admitted document, selected claim, evidence and return path.
-This credible narrow integration uses component unmount for lifetime cleanup while
-leaving native document subtrees with their explicit owners; it does not pretend
-that copying native markup into a virtual tree is an adopted solution. Exact-tag
+It mounts the imperative implementation and returns no rendered component. It uses
+component unmount for lifetime cleanup while leaving state and DOM with the same
+native owners. It did not evaluate a declarative component owning the affected
+selection, view or evidence subtree. Exact-tag
 [package metadata](https://github.com/preactjs/preact/blob/10.27.2/package.json),
 [MIT license](https://github.com/preactjs/preact/blob/10.27.2/LICENSE),
 [hook cleanup implementation](https://github.com/preactjs/preact/blob/10.27.2/hooks/src/index.js)
@@ -1045,17 +1046,19 @@ and changed CSP while leaving the Product's attributed tag; it establishes no
 framework limitation. No package scripts or external Source transmission are used.
 Both corrected hosts passed the same real-publication claim/code/return,
 history/resize/late-response and lifetime transition checks. This establishes
-bounded equivalence for that interaction, not a whole-framework qualification.
+bounded equivalence for those wrappers, not a comparison of native ownership with
+declarative state/DOM ownership or a whole-framework qualification.
 
 A component lifecycle does not replace exact-citation authorization, native
 fragment/history ownership or shared modal coordination. A VDOM-owned panel would
 also require a matching native initial tree and exclusive subtree ownership;
 neither framework installation nor hydration alone supplies that contract. The
 effect-host trial adds 15,437 uncompressed bytes (local core/hooks and mounting
-adapter) while retaining those same explicit responsibilities. The working native
-boundary therefore remains selected. This is a bounded capability/deployment
-decision, not a claim that frameworks cannot improve other interfaces or that
-team productivity was measured. A future independently justified mutable Reader
+adapter) while retaining those same explicit responsibilities. That wrapper showed
+no behavioral advantage for its added bytes. The functioning native baseline remains
+selected for the current reading work; the trial does not establish its general
+maintainability or productivity superiority. Correcting that evidence limit does
+not require another trial. A concrete obstacle in an affected mutable Reader
 subtree may reopen it with the same native/permission/return acceptance criteria.
 
 All selected rendering assets remain embedded in the installed Rust executables
@@ -1079,6 +1082,49 @@ wide scenes retain their prior geometry. No participant, message, identifier,
 condition, Source or prose is removed; graph policy and admitted v9 meaning stay
 unchanged. Browser geometry controls now reject unreadably narrow participant
 headers in addition to checking glyph containment and exact identity.
+
+### Connected temporal entry and relationship hierarchy
+
+The remaining initial-reading discrepancy is independent of renderer 15's readable
+detail lanes: the actual five-participant closure occupies 664px inside 352/290px
+at 390/320px entry. Its offscreen actors cannot establish default orientation.
+The following Source-derived questions are frozen before selecting a replacement
+presentation. The R3 prototype is the visual hierarchy reference; its fewer actors
+do not define the Product's supported scope.
+
+| Case | Essential connected meaning | Supporting detail that remains reachable |
+| --- | --- | --- |
+| Music Deck closure / historical Work | Submitted A and B belong to the captured set; B settling leaves A pending; settlement includes rejection; only after that set settles is the token read and notification conditionally attempted. Neither future browser activity nor delivery is guaranteed. | Removed marking, snapshot capture, distinct promises, every message/guard/identifier and exact claim/Source; received-close effects, queue and ID-request completion remain separate. A/B order is illustrative, and the Work remains its historical Paused/no-change/reported-VM scope. |
+| Volicord concept map | Work groups its Goal, explicit Checkpoints and applicable Decisions; Goal and Project Purpose are ContextItem roles; Decision references Question/revision; ContextItem references Project and Source. | Every record/role identity, directed predicate and type, exact claim/Source and the authored map's explicit scope limits. No ownership or execution order is inferred from placement. |
+
+Presentation may reflow the existing sequence groups into connected reading stages
+with local endpoints. These remain the original groups/messages, not inferred
+summary entities or a new causal abstraction. All roles keep their own exact
+origin. Wider participant detail may pan deliberately. Compare ordinary initial
+rendering before any selection/pan and check the material qualifications in the
+authored article as well as the scene. A clipped timeline with a new title fails.
+Graph actions must visibly belong to their directed edge; focus emphasis alone
+does not repair an ambiguous ordinary-entry association. Normal scrolling, exact
+evidence return and script-free output must retain the same admitted meaning.
+
+The selected implementation reflows those exact groups, with complete local
+message directions and self-call/return cues, instead of squeezing or clipping a
+participant timeline. Its original caption comes first; demonstrated gaps in the
+closure caption are normally reauthored to expose captured-set settlement,
+rejection and conditional attempted notification before timeline exploration.
+The remaining detailed prose and every message/guard/actor retain their meaning.
+A native full-timeline disclosure preserves deliberate panning and has distinct
+publication/view/element/claim/Source return origins. This uses current v9 rather
+than adding an abstraction field or another figure to already-full publications.
+It also avoids a second state/DOM owner: the existing lifetime and figure modules
+own both live views, while native disclosures and anchors remain independently usable.
+
+Graph action wording now sits beside an actual reserved route segment. It no
+longer requires following a dotted label leader to discover which edge it names.
+Predicates/messages are emphasized; exact types and identifiers remain secondary.
+Local temporal context uses `strict` once rather than repeating both `strict` and
+its sequential synonym at each action. Full group/selected/nonvisual context still
+explains the admitted order, and parallel/optional qualifications remain explicit.
 
 ### Relationship route association and narrow group context
 

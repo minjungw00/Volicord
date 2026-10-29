@@ -10,7 +10,9 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  // Native modified activation keeps the current tab's selection, URL and scroll.
  await element.focus();await settle(page);
  const state=()=>page.evaluate(()=>({url:location.href,y:scrollY,focus:document.activeElement?.id,selected:[...document.querySelectorAll('.source-point[data-selected]')].map(n=>n.id),open:[...document.querySelectorAll('details')].map(n=>n.open)}));
- const before=await state(),popup=context.waitForEvent('page',{timeout:10000});await element.click({modifiers:['Control']});const tab=await popup;await tab.waitForURL(url=>url.hash==='#'+claimId,{waitUntil:'load',timeout:15000});assert.ok(tab.url().endsWith('#'+claimId));await tab.close();await settle(page);assert.deepEqual(await state(),before,'native modifier leaves original context');notes.push('native modifier');
+ const before=await state();
+ const [tab]=await Promise.all([context.waitForEvent('page',{timeout:15000}),element.click({modifiers:['Control']})]);
+ await tab.waitForURL(url=>url.hash==='#'+claimId,{waitUntil:'load',timeout:15000});assert.ok(tab.url().endsWith('#'+claimId));await tab.close();await settle(page);assert.deepEqual(await state(),before,'native modifier leaves original context');notes.push('native modifier');
  await open();
  if(width<1200){
   for(let i=0;i<20;i++){await page.keyboard.press(i%2?'Shift+Tab':'Tab');assert.equal(await point().evaluate(n=>n.contains(document.activeElement)),true,'modal focus stays in evidence');}

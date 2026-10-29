@@ -59,7 +59,7 @@ async function run(config){
     await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
-    const svg=figure.locator('svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/16');
+    const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/17');
     const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(baseKey+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
     const routeFocus=await require('./diagram_focus.cjs').inspectRelationFocus(figure,d);write(baseKey+'-route-focus.json',JSON.stringify(routeFocus,null,2));assert.deepEqual(routeFocus.errors,[],'native relationship/condition focus identifies its exact route');
     const m=d.meaning,defaultElement=(m.relations||m.groups?.flatMap(g=>g.messages)||m.nodes||m.participants)[0];
@@ -126,6 +126,12 @@ async function run(config){
       const interaction=await require('./evidence_interactions.cjs').inspect(page,context,{address,figureId,elementId:figureId+'-'+semantic.id,claimId,sourceId:pointId,width});write(key+'-interactions.json',JSON.stringify(interaction,null,2));
     }
     result.checks.push({case:c.key,diagram:d.id,element:semantic.id,width,mode,publication:c.publication,unit:label.unit,citation:citationIndex,code_bytes:Buffer.byteLength(expected),entry,geometry_errors:geometry.errors});
+    }
+    if(d.meaning.kind==='sequence'){
+     const journey=await require('./sequence_views.cjs').inspect(page,figure,d,publicAnswers,{scripted,
+      write:(name,value)=>write(baseKey+'-'+name+'.json',JSON.stringify(value,null,2)),
+      screenshot:name=>page.screenshot({path:path.join(config.output,baseKey+'-'+name+'.png')}),settled:()=>settled(page)});
+     result.checks.push({case:c.key,diagram:d.id,width,mode,view:'timeline',...journey});
     }
     // Restore ordinary entry before observing the next declared figure.
     await page.goto(live?address:pathToFileURL(c.offline).href+'#'+(c.work?'work-'+c.work:'repository-explanation'));await page.reload();await settled(page);

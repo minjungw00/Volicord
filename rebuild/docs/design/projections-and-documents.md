@@ -3265,3 +3265,35 @@ therefore keep their IDs, preparation seals and retained-reading validation. Thi
 is one current producer/decoder with a bounded guidance policy, not a compatibility
 decoder, rewritten original or new format. Both guidance policies are checked at
 actual final JSON sizes of 131,071/131,072 and refusal at 131,073 bytes.
+
+### Connected sequence reading and scoped timeline origins
+
+Renderer 17 presents the existing admitted sequence groups as a vertical connected
+scene with local named message endpoints. Its rail denotes admitted group order,
+not a new actor or causal message. Parallel operands retain their no-relative-order
+scope; self-calls, returns, active conditions and message kinds remain visible.
+Full participant/identifier roles stay selectable. A native disclosure provides
+the complete participant/lifeline timeline, where deliberate horizontal reading
+is permitted. Neither representation drops, merges or summarizes semantic elements.
+
+The authored caption precedes temporal reading. It must state the core mechanism
+and material limits when needed; layout cannot author those claims. Its evidence
+disclosure exposes all caption citations and links to the underlying original
+claims rather than choosing a first citation as aggregate proof. A caption edit
+uses normal prepare/compose/record and a new publication. Unchanged maps and
+articles render directly without republication.
+
+The scene retains its original element origins; the timeline uses a renderer-owned
+`:timeline` namespace. Each view has distinct element/claim/native Source-return
+targets bound to the same admitted roles and original unit/citation indices.
+Original code payloads remain shared. Live deep evidence links reveal the exact
+mapped native disclosure before focus return. Resizing, expansion, zoom and cleanup
+are owned by the existing Reader lifetime/figure controllers. Publication denial
+removes both views and their aliases together under the existing authority boundary.
+
+Graph predicates sit beside a reserved segment of their actual directed route,
+with the full typed relationship still selectable. There is no separate dotted
+annotation to follow. Primary action emphasis is distinct from supporting type
+and identifier text; mixed types, guards, state ownership and directions remain.
+All geometry is computed from admitted topology/wording. There is no repository
+label table, stored summary, external layout engine or additional format field.

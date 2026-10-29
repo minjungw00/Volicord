@@ -1538,6 +1538,19 @@ The two previously overwritten diagnostics (`metadata.stdout` and
 were not recovered; neither the historical scripts nor their outputs are edited.
 This is caller output protection, not a new evidence framework or qualification.
 
+Connected sequence reading uses the original admitted groups/messages and a native
+complete-timeline disclosure. `document_evidence_journey.cjs` now invokes
+`sequence_views.cjs` after ordinary entry, checking distinct view/element/native
+Source origins, full code, deep return, resize and disclosure after zoom. Its
+default renderer is 17; the declared `renderer` override still identifies diagnostic
+baselines. Initial overview observation rejects sideways discovery for every kind.
+Geometry/context controls read local named endpoints in the folded scene and
+participant lifelines in detail; neither substitutes names for exact identities.
+The retained-reading browser's normal polyglot seed includes both sequence views.
+Use the existing focused runner and fresh output directories. Keep normal caption
+authorship, unchanged-publication rendering, complete CLI/MCP, actual live/native
+exports and real-TTL/deletion results separate from qualitative or human acceptance.
+
 `end-to-end/multi-repository/project_shell_browser.cjs <private-config.json>`
 exercises actual local-server project navigation, document-only contents, available
 article width, heading focus/history/modifier links, modal drawer resize and native

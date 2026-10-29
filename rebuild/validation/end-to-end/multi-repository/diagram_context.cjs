@@ -5,9 +5,10 @@ async function inspectReadingContext(page, figure, diagram, prose, screenshot) {
   const ko=await page.evaluate(()=>document.documentElement.lang==='ko');
   const m=diagram.meaning,nodes=m.nodes||m.participants,items=[];
   const name=id=>{const n=nodes.find(n=>n.id===id),text=label(n.label);return nodes.filter(n=>label(n.label)===text).length>1?`${text} (${label(n.identifier)})`:text;};
+  const stages=await figure.locator(':scope > .diagram-full-view svg').getAttribute('data-sequence-layout')==='stages';
   for(const [gi,g] of (m.groups||[]).entries()) for(const r of g.messages) {
-    const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
-    items.push({id:r.id,label:label(r.label),expected:[`${name(r.from)} → ${name(r.to)}`,order+(g.condition?` · opt · ${ko?'조건:':'condition:'} ${label(g.condition)}`:'')],group:gi+1});
+    const order=g.order==='sequential'?'strict':g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
+    items.push({id:r.id,label:label(r.label),expected:[...(stages?[name(r.from),name(r.to)]:[`${name(r.from)} → ${name(r.to)}`]),order+(g.condition?` · opt · ${ko?'조건:':'condition:'} ${label(g.condition)}`:'')],group:gi+1});
   }
   const owner=m.owner && `${ko?'상태 소유자:':'State owner:'} ${label(m.owner)}`;
   if(owner)for(const n of nodes)items.push({id:n.id,label:label(n.label),expected:[owner]});

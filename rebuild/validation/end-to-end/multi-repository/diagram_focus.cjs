@@ -1,7 +1,7 @@
 // Run after preserving ordinary entry. Text-only guards and state ownership
 // have no node/card border on which to show the map's usual focus cue.
 async function inspectTextOriginFocus(figure) {
-  const origins = figure.locator('a.diagram-element').filter({
+  const origins = figure.locator('a.diagram-element:visible').filter({
     hasNot: figure.page().locator('.participant-box,.edge-key,.message-label')
   });
   const observations = [];

@@ -43,7 +43,7 @@ async function verify(page,expected,publication,negative=false) {
  assert.ok(Array.isArray(expected.sections)&&expected.sections.length,'independently declared section names required');
  assert.deepEqual(await inspect(page,expected),[],'authored names/identifiers/relations and section hierarchy');
  const figure=page.locator(`.admitted-diagram[id$="-${expected.diagram}"]`),d=publication.diagrams.find(d=>d.id===expected.diagram);
- assert.deepEqual((await inspectDiagram(figure.locator('svg'),d,publication.prose)).errors,[]);
+ assert.deepEqual((await inspectDiagram(figure.locator(':scope > .diagram-full-view svg'),d,publication.prose)).errors,[]);
  if(!negative)return {hierarchy:true};
  const action=page.locator('.unit .evidence-choice .evidence-link').first();
  assert.ok(await action.count(),'real article citation action required');
@@ -69,7 +69,7 @@ async function verify(page,expected,publication,negative=false) {
  await label.evaluate((n,s)=>n.innerHTML=s,html);
  const route=figure.locator(`a.diagram-route[data-element$="-${id}"] .map-wide .relation-line`),path=await route.getAttribute('d');
  await route.evaluate(n=>n.setAttribute('d','M0 0H2'));
- assert.ok((await inspectDiagram(figure.locator('svg'),d,publication.prose)).errors.some(e=>e.kind==='wrong-edge-direction'),'foreign/reversed endpoints fail');
+ assert.ok((await inspectDiagram(figure.locator(':scope > .diagram-full-view svg'),d,publication.prose)).errors.some(e=>e.kind==='wrong-edge-direction'),'foreign/reversed endpoints fail');
  await route.evaluate((n,s)=>n.setAttribute('d',s),path);
  const heading=page.locator('.article-section>.unit h2').first(),tag=await heading.evaluate(n=>{const p=document.createElement('p');p.innerHTML=n.innerHTML;n.replaceWith(p);return p.outerHTML;});
  assert.ok((await inspect(page,expected)).includes('section meaning'),'heading/type substitution fails');

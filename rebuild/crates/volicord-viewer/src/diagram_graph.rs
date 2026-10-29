@@ -418,16 +418,22 @@ pub(super) fn graph<'a>(
         emitted[a] += 1;
         received[b] += 1;
         let r = labels[i];
-        let join = (r.x + r.w / 2, r.y - 8);
-        connections.push((source, s, target, t, join));
+        let top = (r.x - 8, r.y - 4);
+        let bottom = (r.x - 8, r.y + r.h + 4);
+        let (entry, exit) = if boxes[b].y >= boxes[a].y {
+            (top, bottom)
+        } else {
+            (bottom, top)
+        };
+        connections.push((source, s, target, t, entry, exit));
     }
     let reserved = connections
         .iter()
-        .flat_map(|&(_, s, _, t, j)| [s, t, j])
+        .flat_map(|&(_, s, _, t, entry, exit)| [s, t, entry, exit])
         .collect::<Vec<_>>();
     let mut old = Vec::new();
     for (i, e) in edges.iter().enumerate() {
-        let (source, s, target, t, join) = connections[i];
+        let (source, s, target, t, entry, exit) = connections[i];
         let r = labels[i];
         let protect = |start: Point, end: Point| {
             let mut protected = obstacles.clone();
@@ -441,50 +447,38 @@ pub(super) fn graph<'a>(
             ));
             protected
         };
-        // Main topology is routed independently of label placement. A quiet
-        // leader attaches the label to its nearest actual route segment.
-        let main = routing::route(s, t, &protect(s, t), &old, 2 * i + 2, width, layout.height)
-            .map_err(|s| format!("{} route: {s}", e.id))?;
-        let attach = main
-            .windows(2)
-            .map(|pair| {
-                let a = pair[0];
-                let b = pair[1];
-                if a.0 == b.0 {
-                    (a.0, join.1.clamp(a.1.min(b.1), a.1.max(b.1)))
-                } else {
-                    (join.0.clamp(a.0.min(b.0), a.0.max(b.0)), a.1)
-                }
-            })
-            .min_by_key(|p| p.0.abs_diff(join.0) + p.1.abs_diff(join.1))
-            .ok_or("missing main route")?;
-        let mut label_obstacles = obstacles.clone();
-        label_obstacles.extend(
-            reserved
-                .iter()
-                .filter(|&&p| p != join && p != attach && p != s && p != t)
-                .map(|&(x, y)| Rect {
-                    x: x.saturating_sub(2),
-                    y: y.saturating_sub(2),
-                    w: 4,
-                    h: 4,
-                }),
-        );
-        let leader = routing::route(
-            join,
-            attach,
-            &label_obstacles,
+        // The predicate sits beside a reserved segment of its actual directed
+        // route. There is no separate leader to follow to a remote connection.
+        let first = routing::route(
+            s,
+            entry,
+            &protect(s, entry),
             &old,
             2 * i + 2,
             width,
             layout.height,
         )
-        .map_err(|s| format!("{} label: {s}", e.id))?;
+        .map_err(|s| format!("{} entry route: {s}", e.id))?;
+        let last = routing::route(
+            exit,
+            t,
+            &protect(exit, t),
+            &old,
+            2 * i + 2,
+            width,
+            layout.height,
+        )
+        .map_err(|s| format!("{} exit route: {s}", e.id))?;
         let mut points = vec![source];
-        points.extend(main);
+        points.extend(first);
+        points.push(exit);
+        points.extend(last);
         points.push(target);
+        // Each independently routed leg includes its endpoints. Remove the
+        // shared boundary before path compaction, so a duplicate exit cannot
+        // swallow the vertical segment beside the predicate.
+        points.dedup();
         routing::remember(&points, 2 * i + 2, &mut old);
-        routing::remember(&leader, 2 * i + 2, &mut old);
         let mut route = String::new();
         path(
             &mut route,
@@ -492,18 +486,11 @@ pub(super) fn graph<'a>(
             marker,
             e.kind == DiagramRelationKind::DataFlow,
         );
-        route.push_str(&format!(
-            "<path class=\"relation-leader\" d=\"M{} {}L{} {} {}\"/>",
-            join.0,
-            r.y,
-            join.0,
-            join.1,
-            routing::path(&leader)
-        ));
         layout.routes.insert(e.id.clone(), route);
         let mut out = String::new();
         panel(&mut out, r.x, r.y, r.w, r.h, "edge-key");
         out.push_str("<g class=\"relation-wording\">");
+        let join = (r.x + r.w / 2, r.y - 8);
         let mut ty = r.y + 16;
         action(&mut out, join.0, ty, label(&e.label)?, r.w - 12);
         ty += 20 * count(label(&e.label)?, r.w - 12, 13);

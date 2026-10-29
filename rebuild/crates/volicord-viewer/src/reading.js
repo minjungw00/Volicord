@@ -117,6 +117,14 @@
         if (parent.matches('details')) parent.open = true;
       }
     }
+    // A deep evidence/claim link can originate in the disclosed timeline. The
+    // claim lives beside both scenes, so reveal the exact mapped visual origin
+    // before focus or return; no name-based or publication-wide fallback.
+    const originClaim=diagramOrigin?document.getElementById(diagramOrigin):target?.matches('.diagram-claim')?target:null;
+    const visualOrigin=originClaim&&document.getElementById(originClaim.dataset.element);
+    if(visualOrigin?.closest('.admitted-diagram')===originClaim?.closest('.admitted-diagram')){
+      for(let parent=visualOrigin?.parentElement;parent;parent=parent.parentElement){if(parent.matches('details'))parent.open=true;}
+    }
     if (navigationChanged && target?.matches('h2,h3')) {
       target.focus({preventScroll:true});lifetime.frame(()=>target.scrollIntoView({block:'start'}));
     }
@@ -218,7 +226,7 @@
   });
   function openEvidence(link, trigger=link, activation=null) {
     outline.close();
-    const figure=trigger.closest('.admitted-diagram'),viewport=figure?.querySelector('.diagram-viewport');
+    const figure=trigger.closest('.admitted-diagram'),viewport=trigger.closest('.diagram-viewport')||figure?.querySelector('.diagram-viewport');
     const token=remember(sourceReturns,{claim:link.dataset.origin,trigger,y:activation?.y??scrollY,triggerTop:activation?.triggerTop??trigger.getBoundingClientRect().top,figure,figureLeft:activation?.figureLeft??figure?.scrollLeft,figureTop:activation?.figureTop??figure?.scrollTop,viewport,left:activation?.left??viewport?.scrollLeft,top:activation?.top??viewport?.scrollTop});
     const next={...state(),sourceReturn:token};
     history.replaceState({...state(),sourceBack:token},'');

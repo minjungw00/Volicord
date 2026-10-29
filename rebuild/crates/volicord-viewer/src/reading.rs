@@ -528,6 +528,21 @@ fn diagram_namespace(
     format!("reader-{}-diagram-{}", answers.namespace, d.id)
 }
 
+fn diagram_namespaces(
+    answers: &ReaderAnswers<'_>,
+    d: &volicord_projections::GroundedDiagram,
+) -> Vec<String> {
+    let ns = diagram_namespace(answers, d);
+    if matches!(
+        d.meaning,
+        volicord_projections::DiagramMeaning::Sequence { .. }
+    ) {
+        vec![ns.clone(), format!("{ns}:timeline")]
+    } else {
+        vec![ns]
+    }
+}
+
 // A detail is an existing directed relationship, never a renderer-inferred
 // subsystem, execution trace or reduced overview. Keep its original origin and
 // claim; only repeat the admitted endpoints beside the selected wording.
@@ -667,19 +682,50 @@ fn render_diagrams(
         if !snapshot {
             html.push_str(&format!("<div class=\"figure-bar\">{controls}</div>"));
         }
-        html.push_str(&visual);
+        let mut caption = String::new();
         let caption_open = if ordinal == 0 && answers.prose[index].question == "Narrative" {
             format!("<div class=\"unit diagram-caption\" id=\"{}\" tabindex=\"-1\"><p class=\"unit-text\" data-question=\"Narrative\" lang=\"{}\" data-content-language=\"{}\">",reader_claim_anchor(answers,index),escape(&content_language_tag(&answers.language)),escape(&answers.language))
         } else {
             "<div class=\"diagram-caption\"><p>".into()
         };
         if ordinal == 0 {
-            html.push_str(&format!(
-                "{caption_open}{}</p></div>",
+            caption.push_str(&format!(
+                "{caption_open}{}</p>",
                 escape(texts.get(d.caption_unit).copied().unwrap_or(""))
             ));
+            if matches!(
+                d.meaning,
+                volicord_projections::DiagramMeaning::Sequence { .. }
+            ) {
+                caption.push_str(&format!(
+                    "<details class=\"diagram-caption-claims\"><summary>{}</summary>",
+                    text(
+                        r.locale,
+                        "Evidence and claims behind this scene",
+                        "이 장면의 근거와 주장"
+                    )
+                ));
+                reader_citations(&mut caption, r, answers, d.caption_unit);
+                let units = d
+                    .presentation_elements()
+                    .into_iter()
+                    .filter_map(|e| e.label().map(|l| l.unit))
+                    .collect::<std::collections::BTreeSet<_>>();
+                caption.push_str("<ul>");
+                for unit in units.into_iter().filter(|u| *u != d.caption_unit) {
+                    caption.push_str(&format!(
+                        "<li><a href=\"#{}\">{} {} · {}</a></li>",
+                        reader_claim_anchor(answers, unit),
+                        text(r.locale, "Original claim", "원래 주장"),
+                        unit + 1,
+                        escape(&answers.prose[unit].text)
+                    ));
+                }
+                caption.push_str("</ul></details>");
+            }
+            caption.push_str("</div>");
         } else {
-            html.push_str(&format!(
+            caption.push_str(&format!(
                 "<p class=\"shared-diagram-basis\"><a href=\"#{}\">{}</a></p>",
                 reader_claim_anchor(answers, index),
                 text(
@@ -688,6 +734,47 @@ fn render_diagrams(
                     "이 도식들이 공유하는 근거와 한계"
                 )
             ));
+        }
+        if matches!(
+            d.meaning,
+            volicord_projections::DiagramMeaning::Sequence { .. }
+        ) {
+            html.push_str(&caption);
+        }
+        html.push_str(&visual);
+        if matches!(
+            d.meaning,
+            volicord_projections::DiagramMeaning::Sequence { .. }
+        ) {
+            let detail_ns = format!("{ns}:timeline");
+            match crate::diagram::timeline_svg(
+                d,
+                &texts,
+                &detail_ns,
+                &|id, _| format!("{detail_ns}-{id}-claim"),
+                r.locale.fixed(),
+            ) {
+                Ok(svg) => {
+                    html.push_str(&format!("<details class=\"diagram-timeline\" id=\"{ns}:timeline-view\"><summary>{}</summary><p class=\"diagram-scene-return\"><a href=\"#{ns}\">{}</a></p><div class=\"diagram-full-view\"><div class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div></div></details>",
+                    text(r.locale, "Full participant timeline · scroll horizontally in detail", "전체 참여자 타임라인 · 상세에서 가로로 이동"),
+                    text(r.locale, "Return to connected scene", "연결된 장면으로 돌아가기"),
+                    text(r.locale, "Detailed timeline · same groups, messages and conditions", "상세 타임라인 · 같은 그룹·메시지·조건")));
+                }
+                Err(_) => {
+                    html.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Detailed timeline rendering failed. The admitted meaning remains below.","상세 타임라인 렌더링에 실패했습니다. 검증된 의미는 아래에 남아 있습니다.")));
+                    for (id, _) in crate::diagram::elements(d) {
+                        html.push_str(&format!(
+                            "<span id=\"{detail_ns}-{id}\" tabindex=\"-1\"></span>"
+                        ));
+                    }
+                }
+            }
+        }
+        if !matches!(
+            d.meaning,
+            volicord_projections::DiagramMeaning::Sequence { .. }
+        ) {
+            html.push_str(&caption);
         }
         html.push_str("<div class=\"diagram-claims\">");
         let connections = match &d.meaning {
@@ -702,59 +789,62 @@ fn render_diagrams(
                 relations.iter().map(|e| e.id.as_str()).collect()
             }
         };
-        for (id, label) in crate::diagram::elements(d) {
-            let origin = format!("{ns}-{id}");
-            let claim = format!("{origin}-claim");
-            let selected = volicord_projections::diagram_label(label, &texts).unwrap_or("");
-            let unit = &answers.prose[label.unit];
-            let position = connections.iter().position(|edge| *edge == id);
-            html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p class=\"diagram-selected-label\">{}</p>",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed())),escape(selected)));
-            if let Some(position) = position {
-                html.push_str(&format!("<nav class=\"connection-navigation\" aria-label=\"{}\"><span>{} {} / {}</span>",text(r.locale,"Figure connections","도식의 연결"),text(r.locale,"Connection","연결"),position+1,connections.len()));
-                for (other, title) in [
-                    (
-                        position.checked_sub(1),
-                        text(r.locale, "Previous connection", "이전 연결"),
-                    ),
-                    (
-                        (position + 1 < connections.len()).then_some(position + 1),
-                        text(r.locale, "Next connection", "다음 연결"),
-                    ),
-                ] {
-                    if let Some(other) = other {
-                        let next = escape(connections[other]);
-                        html.push_str(&format!("<a class=\"button secondary diagram-text-link\" data-element=\"{ns}-{next}\" href=\"#{ns}-{next}-claim\">{title}</a>"));
+        for ns in diagram_namespaces(answers, d) {
+            for (id, label) in crate::diagram::elements(d) {
+                let origin = format!("{ns}-{id}");
+                let claim = format!("{origin}-claim");
+                let selected = volicord_projections::diagram_label(label, &texts).unwrap_or("");
+                let unit = &answers.prose[label.unit];
+                let position = connections.iter().position(|edge| *edge == id);
+                html.push_str(&format!("<section class=\"diagram-claim\" id=\"{claim}\" tabindex=\"-1\" data-element=\"{origin}\" data-unit=\"{}\"><h3>{}</h3><p class=\"diagram-selected-label\">{}</p>",label.unit,escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed())),escape(selected)));
+                if let Some(position) = position {
+                    html.push_str(&format!("<nav class=\"connection-navigation\" aria-label=\"{}\"><span>{} {} / {}</span>",text(r.locale,"Figure connections","도식의 연결"),text(r.locale,"Connection","연결"),position+1,connections.len()));
+                    for (other, title) in [
+                        (
+                            position.checked_sub(1),
+                            text(r.locale, "Previous connection", "이전 연결"),
+                        ),
+                        (
+                            (position + 1 < connections.len()).then_some(position + 1),
+                            text(r.locale, "Next connection", "다음 연결"),
+                        ),
+                    ] {
+                        if let Some(other) = other {
+                            let next = escape(connections[other]);
+                            html.push_str(&format!("<a class=\"button secondary diagram-text-link\" data-element=\"{ns}-{next}\" href=\"#{ns}-{next}-claim\">{title}</a>"));
+                        }
                     }
+                    html.push_str("</nav>");
                 }
-                html.push_str("</nav>");
-            }
-            diagram_connection_detail(html, r, d, &ns, &id, &texts);
-            html.push_str(&format!("<details class=\"diagram-claim-context\"><summary>{}</summary><p>{}</p></details><div class=\"evidence-actions\">",text(r.locale,"Original claim and material qualification","원래 주장과 중요한 조건"),escape(&unit.text)));
-            let mut other_ranges = false;
-            for (covering, (n, c)) in unit
-                .citations
-                .iter()
-                .enumerate()
-                .filter(|(_, c)| {
-                    c.claim_start_byte <= label.start_byte && c.claim_end_byte >= label.end_byte
-                })
-                .enumerate()
-            {
-                if covering > 0 && !other_ranges {
-                    html.push_str(&format!(
-                        "<details class=\"other-claim-ranges\"><summary>{}</summary>",
-                        text(r.locale, "Other evidence ranges", "다른 근거 범위")
-                    ));
-                    other_ranges = true;
+                diagram_connection_detail(html, r, d, &ns, &id, &texts);
+                html.push_str(&format!("<details class=\"diagram-claim-context\"><summary>{}</summary><p>{}</p></details><div class=\"evidence-actions\">",text(r.locale,"Original claim and material qualification","원래 주장과 중요한 조건"),escape(&unit.text)));
+                let mut other_ranges = false;
+                for (covering, (n, c)) in unit
+                    .citations
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| {
+                        c.claim_start_byte <= label.start_byte && c.claim_end_byte >= label.end_byte
+                    })
+                    .enumerate()
+                {
+                    if covering > 0 && !other_ranges {
+                        html.push_str(&format!(
+                            "<details class=\"other-claim-ranges\"><summary>{}</summary>",
+                            text(r.locale, "Other evidence ranges", "다른 근거 범위")
+                        ));
+                        other_ranges = true;
+                    }
+                    let purpose =
+                        format!("{} {}", text(r.locale, "Inspect", "코드 확인:"), selected);
+                    html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{claim}\" href=\"#{}\" aria-label=\"{} · {}:{}–{}\">{} ↗</a><small class=\"diagram-code-range\">{}:{}–{}</small>",diagram_source_anchor(&claim,n),escape(&purpose),escape(&c.locator),c.start_line,c.end_line,escape(&purpose),escape(&c.locator),c.start_line,c.end_line));
+                    source_window_omission(html, r, answers, c);
                 }
-                let purpose = format!("{} {}", text(r.locale, "Inspect", "코드 확인:"), selected);
-                html.push_str(&format!("<a class=\"evidence-link\" data-origin=\"{claim}\" href=\"#{}\" aria-label=\"{} · {}:{}–{}\">{} ↗</a><small class=\"diagram-code-range\">{}:{}–{}</small>",diagram_source_anchor(&claim,n),escape(&purpose),escape(&c.locator),c.start_line,c.end_line,escape(&purpose),escape(&c.locator),c.start_line,c.end_line));
-                source_window_omission(html, r, answers, c);
+                if other_ranges {
+                    html.push_str("</details>");
+                }
+                html.push_str(&format!("</div><a class=\"button secondary diagram-return\" href=\"#{origin}\">← {}</a></section>",text(r.locale,"Return to element","요소로 돌아가기")));
             }
-            if other_ranges {
-                html.push_str("</details>");
-            }
-            html.push_str(&format!("</div><a class=\"button secondary diagram-return\" href=\"#{origin}\">← {}</a></section>",text(r.locale,"Return to element","요소로 돌아가기")));
         }
         html.push_str("</div>");
         if let volicord_projections::DiagramMeaning::Concept { relations, .. }
@@ -871,19 +961,22 @@ fn diagram_source_returns(
     let c = &answers.prose[unit].citations[citation];
     let mut links = String::new();
     for d in &answers.diagrams {
-        let ns = diagram_namespace(answers, d);
-        for (id, _) in crate::diagram::elements(d).into_iter().filter(|(_, l)| {
-            l.unit == unit && c.claim_start_byte <= l.start_byte && c.claim_end_byte >= l.end_byte
-        }) {
-            links.push_str(&format!(
-                "<li><a class=\"button secondary\" href=\"#{ns}-{id}-claim\">{}</a></li>",
-                escape(&crate::diagram::element_caption(
-                    d,
-                    &id,
-                    &texts,
-                    r.locale.fixed()
-                ))
-            ));
+        for ns in diagram_namespaces(answers, d) {
+            for (id, _) in crate::diagram::elements(d).into_iter().filter(|(_, l)| {
+                l.unit == unit
+                    && c.claim_start_byte <= l.start_byte
+                    && c.claim_end_byte >= l.end_byte
+            }) {
+                links.push_str(&format!(
+                    "<li><a class=\"button secondary\" href=\"#{ns}-{id}-claim\">{}</a></li>",
+                    escape(&crate::diagram::element_caption(
+                        d,
+                        &id,
+                        &texts,
+                        r.locale.fixed()
+                    ))
+                ));
+            }
         }
     }
     if !links.is_empty() {
@@ -916,54 +1009,57 @@ fn diagram_source_origins(
             .map_or("", |p| p.language.as_str()),
     );
     for d in &answers.diagrams {
-        let ns = diagram_namespace(answers, d);
-        for (id, label) in crate::diagram::elements(d).into_iter().filter(|(_, l)| {
-            l.unit == unit && c.claim_start_byte <= l.start_byte && c.claim_end_byte >= l.end_byte
-        }) {
-            let element = format!("{ns}-{id}");
-            let claim = format!("{element}-claim");
-            let alias = diagram_source_anchor(&claim, citation);
-            if payload_aliases {
-                html.push_str(&format!("<section class=\"shared-source-target\" id=\"{alias}-shared-code\" data-selected-point=\"{point}\" data-origin=\"{claim}\" data-source-id=\"{}\" data-range-sha256=\"{}\" tabindex=\"-1\"><p><a class=\"shared-source-return\" href=\"#{alias}\">← {}</a></p></section>",escape(&c.source_id),escape(&c.range_sha256),text(r.locale,"Return to selected Source claim","선택한 Source 주장으로 돌아가기")));
-                continue;
-            }
-            let caption = crate::diagram::element_caption(d, &id, &texts, r.locale.fixed());
-            let wording = volicord_projections::diagram_label(label, &texts).unwrap_or("");
-            html.push_str(&format!("<section class=\"source-origin-target\" id=\"{alias}\" data-selected-point=\"{point}\" data-origin=\"{claim}\" tabindex=\"-1\"><div class=\"point-bar\"><a class=\"return\" href=\"#{element}\">← {}</a></div><h2 class=\"evidence-claim\" lang=\"{language}\">{}: {}</h2>",text(r.locale,"Return to explanation","설명으로 돌아가기"),escape(&caption),escape(wording)));
-            let covering = answers.prose[unit]
-                .citations
-                .iter()
-                .enumerate()
-                .filter(|(_, other)| {
-                    other.claim_start_byte <= label.start_byte
-                        && other.claim_end_byte >= label.end_byte
-                })
-                .collect::<Vec<_>>();
-            if covering.len() > 1 {
-                html.push_str(&format!("<details class=\"native-range-selector\"><summary>{} · {}</summary><nav class=\"native-range-links\">",text(r.locale,"Choose evidence range","근거 범위 선택"),covering.len()));
-                for (n, other) in covering {
-                    html.push_str(&format!(
-                        "<a href=\"#{}\"{}>{}:{}–{}</a>",
-                        diagram_source_anchor(&claim, n),
-                        if n == citation {
-                            " aria-current=\"true\""
-                        } else {
-                            ""
-                        },
-                        escape(&other.locator),
-                        other.start_line,
-                        other.end_line
-                    ));
+        for ns in diagram_namespaces(answers, d) {
+            for (id, label) in crate::diagram::elements(d).into_iter().filter(|(_, l)| {
+                l.unit == unit
+                    && c.claim_start_byte <= l.start_byte
+                    && c.claim_end_byte >= l.end_byte
+            }) {
+                let element = format!("{ns}-{id}");
+                let claim = format!("{element}-claim");
+                let alias = diagram_source_anchor(&claim, citation);
+                if payload_aliases {
+                    html.push_str(&format!("<section class=\"shared-source-target\" id=\"{alias}-shared-code\" data-selected-point=\"{point}\" data-origin=\"{claim}\" data-source-id=\"{}\" data-range-sha256=\"{}\" tabindex=\"-1\"><p><a class=\"shared-source-return\" href=\"#{alias}\">← {}</a></p></section>",escape(&c.source_id),escape(&c.range_sha256),text(r.locale,"Return to selected Source claim","선택한 Source 주장으로 돌아가기")));
+                    continue;
                 }
-                html.push_str("</nav></details>");
+                let caption = crate::diagram::element_caption(d, &id, &texts, r.locale.fixed());
+                let wording = volicord_projections::diagram_label(label, &texts).unwrap_or("");
+                html.push_str(&format!("<section class=\"source-origin-target\" id=\"{alias}\" data-selected-point=\"{point}\" data-origin=\"{claim}\" tabindex=\"-1\"><div class=\"point-bar\"><a class=\"return\" href=\"#{element}\">← {}</a></div><h2 class=\"evidence-claim\" lang=\"{language}\">{}: {}</h2>",text(r.locale,"Return to explanation","설명으로 돌아가기"),escape(&caption),escape(wording)));
+                let covering = answers.prose[unit]
+                    .citations
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, other)| {
+                        other.claim_start_byte <= label.start_byte
+                            && other.claim_end_byte >= label.end_byte
+                    })
+                    .collect::<Vec<_>>();
+                if covering.len() > 1 {
+                    html.push_str(&format!("<details class=\"native-range-selector\"><summary>{} · {}</summary><nav class=\"native-range-links\">",text(r.locale,"Choose evidence range","근거 범위 선택"),covering.len()));
+                    for (n, other) in covering {
+                        html.push_str(&format!(
+                            "<a href=\"#{}\"{}>{}:{}–{}</a>",
+                            diagram_source_anchor(&claim, n),
+                            if n == citation {
+                                " aria-current=\"true\""
+                            } else {
+                                ""
+                            },
+                            escape(&other.locator),
+                            other.start_line,
+                            other.end_line
+                        ));
+                    }
+                    html.push_str("</nav></details>");
+                }
+                if shared {
+                    html.push_str(&format!("<p class=\"source-code-reference\"><a href=\"#{alias}-shared-code\" data-range-sha256=\"{}\">{} ↗</a></p>",escape(&c.range_sha256),text(r.locale,"Read shared complete code for this exact Source range","이 정확한 Source 범위의 공유 전체 코드 읽기")));
+                }
+                html.push_str("</section>");
+                // :target keeps the selected strip visible while reading its code,
+                // and after the native primary return reaches the actual element.
+                html.push_str(&format!("<style>body:not([data-reader-enhanced=true]):has([id=\"{alias}\"]:target,[id=\"{alias}-shared-code\"]:target,[id=\"{element}\"]:target) [id=\"{claim}\"]{{display:block}}</style>"));
             }
-            if shared {
-                html.push_str(&format!("<p class=\"source-code-reference\"><a href=\"#{alias}-shared-code\" data-range-sha256=\"{}\">{} ↗</a></p>",escape(&c.range_sha256),text(r.locale,"Read shared complete code for this exact Source range","이 정확한 Source 범위의 공유 전체 코드 읽기")));
-            }
-            html.push_str("</section>");
-            // :target keeps the selected strip visible while reading its code,
-            // and after the native primary return reaches the actual element.
-            html.push_str(&format!("<style>body:not([data-reader-enhanced=true]):has([id=\"{alias}\"]:target,[id=\"{alias}-shared-code\"]:target,[id=\"{element}\"]:target) [id=\"{claim}\"]{{display:block}}</style>"));
         }
     }
 }

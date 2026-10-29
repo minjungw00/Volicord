@@ -1760,7 +1760,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             "native exports omit live-only shell and diagram controls"
         );
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/16\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/17\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(html.contains("diagram-alternative"));
             assert!(html.contains("calls verification"));
@@ -1858,7 +1858,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/16\""));
+            .contains("data-renderer=\"volicord-static-svg/17\""));
     }
     Ok(())
 }
@@ -2038,7 +2038,7 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
-            assert!(text.contains("volicord-static-svg/16"));
+            assert!(text.contains("volicord-static-svg/17"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"
             } else {
@@ -2294,10 +2294,14 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
                 .ok_or("caption")?;
             let map = html.find("class=\"diagram-full-view\"").ok_or("map")?;
             let detail = html.find("class=\"diagram-claims\"").ok_or("detail")?;
-            assert!(
-                map < caption && caption < detail,
-                "native reading order precedes detail"
-            );
+            assert!(caption < detail && map < detail);
+            assert_eq!(caption < map, sequence, "temporal scope precedes the scene");
+            if sequence {
+                assert!(html.contains("class=\"diagram-timeline\""));
+                assert!(html.contains("data-sequence-layout=\"stages\""));
+                assert!(html.contains("data-sequence-layout=\"timeline\""));
+                assert!(html.contains(":timeline-answer-claim"));
+            }
             let controls = html.find("class=\"diagram-controls\"");
             if snapshot {
                 assert!(
@@ -2419,7 +2423,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
         .export_snapshot(&f.request(), &output)?;
     let html = fs::read_to_string(output)?;
-    assert!(html.contains("data-renderer=\"volicord-static-svg/16\""));
+    assert!(html.contains("data-renderer=\"volicord-static-svg/17\""));
     assert!(html.contains("&lt;image"));
     assert!(!html.contains("<image"));
     assert!(!html.contains("<script"));
@@ -2578,7 +2582,7 @@ fn diagram_ui_locale_preserves_authored_english_claims_and_publication_identity(
                 } else {
                     for (id, expected, forbidden) in if locale == ViewerLocale::Korean {
                         [
-                            ("invoke", "strict · 순차", "opt · 조건:"),
+                            ("invoke", "strict", "opt · 조건:"),
                             (
                                 "answer",
                                 "par · 상대 순서 없음 · opt · 조건: acceptance",
@@ -2587,7 +2591,7 @@ fn diagram_ui_locale_preserves_authored_english_claims_and_publication_identity(
                         ]
                     } else {
                         [
-                            ("invoke", "strict · sequential", "opt · condition:"),
+                            ("invoke", "strict", "opt · condition:"),
                             (
                                 "answer",
                                 "par · no relative order · opt · condition: acceptance",
@@ -2642,130 +2646,140 @@ fn admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart(
 ) -> Result<(), Box<dyn Error>> {
     use volicord_context::{FixedClock, SystemIdGenerator, TimestampMicros};
     use volicord_privacy::{ManagedDerivedKind, PrivacyStore};
-    let f = Fixture::new_retention(None, false, None, true)?;
-    let realization = diagram_control(&f, false)?;
-    let retained = f.ops.record_explanation(
-        f.project,
-        ExplanationSubject::Repository(f.analysis),
-        "en",
-        realization.clone(),
-    )?;
-    let frozen = explanation_text_hash(&serde_json::to_string(&realization)?);
-    let before = f.answers()?;
-    let page = f
-        .ops
-        .read_explanation_page(f.project, retained.subject, "en", 0, None)?;
-    let adapter = ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()));
-    let rendered_before =
-        adapter.render_snapshot(&f.request(), TimestampMicros::from_unix_micros(1))?;
-    let inspection = f.ops.privacy_status(f.project)?;
-    let deadline = inspection
-        .managed_derived
-        .iter()
-        .filter(|r| r.kind == ManagedDerivedKind::SourceObservation)
-        .filter_map(|r| r.retained_until)
-        .min()
-        .ok_or("deadline")?;
-    let mut privacy = PrivacyStore::open_with(
-        f.ops.layout().privacy_store(),
-        SystemIdGenerator,
-        FixedClock::new(TimestampMicros::from_unix_micros(
-            deadline.as_unix_micros() + 1,
-        )),
-    )?;
-    assert_eq!(privacy.cleanup_expired(f.project)?.len(), 1);
-    drop(privacy);
-    // Actual cleanup erased only one Source body. Reopen the runtime through
-    // new Operations, HTTP and export consumers; do not re-record the article.
-    let restarted = LocalOperations::new(f.ops.layout().clone());
-    let after = restarted.read_repository_explanation(f.project, "en", FixedLocale::English)?;
-    assert_eq!(before.prose, after.prose);
-    assert_eq!(before.diagrams, after.diagrams);
-    assert_eq!(
-        before
-            .provenance
-            .as_ref()
-            .and_then(|p| p.publication_id.as_ref()),
-        retained.publication_id.as_ref()
-    );
-    assert_eq!(
-        after
-            .provenance
-            .as_ref()
-            .and_then(|p| p.publication_id.as_ref()),
-        retained.publication_id.as_ref()
-    );
-    assert_eq!(
-        frozen,
-        explanation_text_hash(&serde_json::to_string(&realization)?)
-    );
-    assert_eq!(
-        after.applicability.publication,
-        PublicationReadability::Readable
-    );
-    assert!(after
-        .applicability
-        .source_ranges
-        .iter()
-        .any(|r| r.limitation == Some(ExplanationFailureReason::Expired)));
-    assert!(!after
-        .source_excerpts
-        .iter()
-        .any(|e| e.text == f.originals[8]));
-    assert!(after
-        .source_excerpts
-        .iter()
-        .any(|e| e.text == f.originals[9]));
-    let continued = restarted.read_explanation_page(
-        f.project,
-        retained.subject,
-        "en",
-        0,
-        Some(page["fingerprint"].as_str().ok_or("fingerprint")?),
-    )?;
-    assert_eq!(page["publication_id"], continued["publication_id"]);
-    assert_eq!(page["fingerprint"], continued["fingerprint"]);
-    let provenance = after.provenance.as_ref().ok_or("provenance")?;
-    let target = format!(
+    for sequence in [false, true] {
+        let f = Fixture::new_retention(None, false, None, true)?;
+        let realization = diagram_control(&f, sequence)?;
+        let retained = f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            realization.clone(),
+        )?;
+        let frozen = explanation_text_hash(&serde_json::to_string(&realization)?);
+        let before = f.answers()?;
+        let page = f
+            .ops
+            .read_explanation_page(f.project, retained.subject, "en", 0, None)?;
+        let adapter = ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()));
+        let rendered_before =
+            adapter.render_snapshot(&f.request(), TimestampMicros::from_unix_micros(1))?;
+        let inspection = f.ops.privacy_status(f.project)?;
+        let deadline = inspection
+            .managed_derived
+            .iter()
+            .filter(|r| r.kind == ManagedDerivedKind::SourceObservation)
+            .filter_map(|r| r.retained_until)
+            .min()
+            .ok_or("deadline")?;
+        let mut privacy = PrivacyStore::open_with(
+            f.ops.layout().privacy_store(),
+            SystemIdGenerator,
+            FixedClock::new(TimestampMicros::from_unix_micros(
+                deadline.as_unix_micros() + 1,
+            )),
+        )?;
+        assert_eq!(privacy.cleanup_expired(f.project)?.len(), 1);
+        drop(privacy);
+        // Actual cleanup erased only one Source body. Reopen the runtime through
+        // new Operations, HTTP and export consumers; do not re-record the article.
+        let restarted = LocalOperations::new(f.ops.layout().clone());
+        let after = restarted.read_repository_explanation(f.project, "en", FixedLocale::English)?;
+        assert_eq!(before.prose, after.prose);
+        assert_eq!(before.diagrams, after.diagrams);
+        assert_eq!(
+            before
+                .provenance
+                .as_ref()
+                .and_then(|p| p.publication_id.as_ref()),
+            retained.publication_id.as_ref()
+        );
+        assert_eq!(
+            after
+                .provenance
+                .as_ref()
+                .and_then(|p| p.publication_id.as_ref()),
+            retained.publication_id.as_ref()
+        );
+        assert_eq!(
+            frozen,
+            explanation_text_hash(&serde_json::to_string(&realization)?)
+        );
+        assert_eq!(
+            after.applicability.publication,
+            PublicationReadability::Readable
+        );
+        assert!(after
+            .applicability
+            .source_ranges
+            .iter()
+            .any(|r| r.limitation == Some(ExplanationFailureReason::Expired)));
+        assert!(!after
+            .source_excerpts
+            .iter()
+            .any(|e| e.text == f.originals[8]));
+        assert!(after
+            .source_excerpts
+            .iter()
+            .any(|e| e.text == f.originals[9]));
+        let continued = restarted.read_explanation_page(
+            f.project,
+            retained.subject,
+            "en",
+            0,
+            Some(page["fingerprint"].as_str().ok_or("fingerprint")?),
+        )?;
+        assert_eq!(page["publication_id"], continued["publication_id"]);
+        assert_eq!(page["fingerprint"], continued["fingerprint"]);
+        let provenance = after.provenance.as_ref().ok_or("provenance")?;
+        let target = format!(
         "/citation?subject={}&language=en&publication={}&realization={}&unit=1&citation=0&offset=0",
         retained.subject.key(),
         retained.publication_id.as_deref().ok_or("publication")?,
         provenance.realization_fingerprint
     );
-    let http = f.get(&target)?;
-    assert!(http.starts_with("HTTP/1.1 409"));
-    assert!(
-        http.contains("\"reason\":\"expired\"") && http.contains("\"publication_readable\":true")
-    );
-    assert!(!http.contains("return verify(value)"));
-    let live = f.get("/?view=repository")?;
-    assert!(live.contains("admitted-diagram") && live.contains("data-range-state=\"expired\""));
-    assert!(!code_texts(&live).iter().any(|s| s == &f.originals[8]));
-    assert!(code_texts(&live).iter().any(|s| s == &f.originals[9]));
-    let destination = f.temp.path().join("after-expiry.html");
-    adapter.export_snapshot(&f.request(), &destination)?;
-    let offline = fs::read_to_string(destination)?;
-    assert!(
-        offline.contains("admitted-diagram") && offline.contains("data-range-state=\"expired\"")
-    );
-    assert!(!code_texts(&offline).iter().any(|s| s == &f.originals[8]));
-    assert!(code_texts(&offline).iter().any(|s| s == &f.originals[9]));
-    // An artifact rendered before expiry cannot publish cached expired bytes.
-    let stale = f.temp.path().join("stale-export.html");
-    assert!(restarted
-        .publish_viewer_snapshot(
-            &rendered_before.html,
-            &stale,
-            f.project,
-            &rendered_before.canonical_read_fingerprint,
-            &rendered_before.explanations,
-            &rendered_before.verification_basis
-        )
-        .is_err());
-    assert!(!stale.exists());
-    assert!(restarted
-        .record_explanation(f.project, retained.subject, "en", realization)
-        .is_err());
+        let http = f.get(&target)?;
+        assert!(http.starts_with("HTTP/1.1 409"));
+        assert!(
+            http.contains("\"reason\":\"expired\"")
+                && http.contains("\"publication_readable\":true")
+        );
+        assert!(!http.contains("return verify(value)"));
+        let live = f.get("/?view=repository")?;
+        assert!(live.contains("admitted-diagram") && live.contains("data-range-state=\"expired\""));
+        assert!(!code_texts(&live).iter().any(|s| s == &f.originals[8]));
+        assert!(code_texts(&live).iter().any(|s| s == &f.originals[9]));
+        let destination = f.temp.path().join("after-expiry.html");
+        adapter.export_snapshot(&f.request(), &destination)?;
+        let offline = fs::read_to_string(destination)?;
+        assert!(
+            offline.contains("admitted-diagram")
+                && offline.contains("data-range-state=\"expired\"")
+        );
+        assert!(!code_texts(&offline).iter().any(|s| s == &f.originals[8]));
+        assert!(code_texts(&offline).iter().any(|s| s == &f.originals[9]));
+        // An artifact rendered before expiry cannot publish cached expired bytes.
+        let stale = f.temp.path().join("stale-export.html");
+        assert!(restarted
+            .publish_viewer_snapshot(
+                &rendered_before.html,
+                &stale,
+                f.project,
+                &rendered_before.canonical_read_fingerprint,
+                &rendered_before.explanations,
+                &rendered_before.verification_basis
+            )
+            .is_err());
+        assert!(!stale.exists());
+        assert!(restarted
+            .record_explanation(f.project, retained.subject, "en", realization)
+            .is_err());
+        if sequence {
+            for html in [&live, &offline] {
+                assert!(html.contains("data-sequence-layout=\"stages\""));
+                assert!(html.contains("data-sequence-layout=\"timeline\""));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -2809,7 +2823,7 @@ fn seed_retained_browser_runtime() -> Result<(), Box<dyn Error>> {
     let output = std::path::Path::new(&output);
     fs::create_dir(output)?;
     let f = Fixture::new_retention(Some(output), false, None, true)?;
-    let realization = diagram_control(&f, false)?;
+    let realization = diagram_control(&f, true)?;
     let retained = f.ops.record_explanation(
         f.project,
         ExplanationSubject::Repository(f.analysis),

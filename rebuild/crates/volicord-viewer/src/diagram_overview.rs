@@ -50,6 +50,8 @@ fn node_kind(node: &DiagramNode, locale: FixedLocale, common_type: bool) -> Stri
 #[path = "diagram_graph.rs"]
 mod graph_layout;
 use graph_layout::graph;
+#[path = "diagram_stages.rs"]
+mod stages;
 
 fn sequence<'a>(
     d: &'a GroundedDiagram,
@@ -228,7 +230,11 @@ fn sequence<'a>(
                 gi + 1,
                 mi + 1,
                 message.kind.localized_text(locale),
-                order,
+                if group.order == DiagramOrder::Sequential {
+                    "strict"
+                } else {
+                    order
+                },
                 guard
                     .as_ref()
                     .map(|s| format!(" · {s}"))
@@ -240,7 +246,7 @@ fn sequence<'a>(
             let center = ((x(a) + x(b)) / 2).clamp(w / 2 + 16, width - w / 2 - 16);
             let h = 24 * count(name, w - 16, 16)
                 + 18 * count(&association, w - 16, 12)
-                + 20 * count(&context, w - 16, 13)
+                + 18 * count(&context, w - 16, 12)
                 + 16;
             let mut out = String::new();
             panel(&mut out, center - w / 2, y, w, h, "message-label");
@@ -251,8 +257,8 @@ fn sequence<'a>(
             sized_text(&mut out, center, ty, &association, w - 16, 12, 18);
             out.push_str("</g>");
             ty += 18 * count(&association, w - 16, 12);
-            out.push_str("<g class=\"diagram-condition sequence-context\">");
-            sized_text(&mut out, center, ty, &context, w - 16, 13, 20);
+            out.push_str("<g class=\"diagram-node-kind sequence-context\">");
+            sized_text(&mut out, center, ty, &context, w - 16, 12, 18);
             out.push_str("</g>");
             let baseline = y + h + 12;
             let route = if a == b {
@@ -307,10 +313,35 @@ pub(super) fn svg(
     target: &dyn Fn(&str, &DiagramLabel) -> String,
     locale: FixedLocale,
 ) -> Result<String, String> {
+    render(d, texts, ns, target, locale, false)
+}
+
+pub(super) fn timeline_svg(
+    d: &GroundedDiagram,
+    texts: &[&str],
+    ns: &str,
+    target: &dyn Fn(&str, &DiagramLabel) -> String,
+    locale: FixedLocale,
+) -> Result<String, String> {
+    render(d, texts, ns, target, locale, true)
+}
+
+fn render(
+    d: &GroundedDiagram,
+    texts: &[&str],
+    ns: &str,
+    target: &dyn Fn(&str, &DiagramLabel) -> String,
+    locale: FixedLocale,
+    timeline: bool,
+) -> Result<String, String> {
     let marker = format!("{ns}:arrow");
     let layout = |width| {
         if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
-            sequence(d, texts, width, &marker, locale)
+            if timeline {
+                sequence(d, texts, width, &marker, locale)
+            } else {
+                stages::sequence(d, texts, width, &marker, locale)
+            }
         } else {
             graph(d, texts, width, &marker, locale)
         }
@@ -327,6 +358,16 @@ pub(super) fn svg(
     {
         return Err("incomplete responsive elements".into());
     }
+    let mode = if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
+        if timeline {
+            "timeline"
+        } else {
+            "stages"
+        }
+    } else {
+        "graph"
+    };
+    out = out.replacen("class=\"connected-overview\"", &format!("class=\"connected-overview\" data-sequence-layout=\"{mode}\" data-origin-namespace=\"{}\"", esc(ns)), 1);
     let mut relationship: Option<&str> = None;
     for id in &wide.order {
         if relationship.is_some_and(|r| id != &format!("{r}:condition")) {

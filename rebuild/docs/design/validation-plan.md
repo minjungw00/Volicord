@@ -4393,3 +4393,57 @@ gate attempts to make admission pass. Fresh gate output remains isolated and
 retained even after failure. Low-space linker termination is not a failed test;
 retain its streams and distinguish a likely output-allocation failure from a
 confirmed compiler or Product defect.
+
+### Connected temporal orientation and view-specific return controls
+
+Use the Reader's frozen closure/concept question mapping before layout selection.
+Ordinary entry must now reject horizontal discovery for sequences as well as
+graphs; a readable first participant does not excuse the rest of a clipped scene.
+Keep original article/figure captures at five widths before disclosure, selection,
+pan or code. R3's scoped abstraction remains an immutable visual reference, not
+permission to omit the richer publication's actors or conditions.
+
+`sequence_views.cjs`, consumed by `document_evidence_journey.cjs`, opens the native
+full timeline only after preserving connected entry. It checks its complete
+admitted geometry, distinct namespace/claim/Source targets, exact full original
+code, focus/pan/visible return, fresh deep evidence entry, modality resize and
+first disclosure after zoom. Both live and script-free consumers must pass.
+Message pointer/modifier activation includes the space between its action and
+route, preserving the same native claim instead of hitting the SVG background.
+The shared geometry/context controls distinguish local named message endpoints
+from wide participant lifelines while independently preserving actor identity,
+direction, self-calls, return kind, group order and active guards. Exact fixture
+IDs avoid confusing `self` with `last-self`; suffix coincidence is not identity.
+
+Graph glyph checks include predicates beside the actual directed segment. Joining
+routed legs must not let duplicate boundary vertices erase that segment or draw
+through its label. Keep complete mixed-type/direction/guard controls and the
+independent crossing/hidden-wording counterexamples. Existing shared modal,
+late-response, native focus/history, publication-denial and teardown controls
+apply to both visual views, including closed timeline content.
+
+Normally reauthor only demonstrated caption gaps. Preserve the submitted-set,
+rejection-as-settlement, token/attempt/non-delivery and illustrative-order limits;
+Expose the complete original supporting claims in the caption's evidence chooser;
+compare unchanged detailed units and element identities separately from the new
+caption/claim seal and publication. A missing original repository may permit
+retained reading but must still fail new admission. Explicit binding of a verified
+local original clone is distinct from collecting Sources or rebinding old content.
+Do not omit evidence to fit a response: retain the real underlying claims and
+their permitted ranges, with the existing final-byte/preparation/retained bounds.
+
+The retained-reading unit control covers both concept and sequence publications;
+the real-TTL browser seed exercises a sequence with both scene and timeline.
+After expiry/restart/fresh export, permitted meaning survives and expired bodies
+are absent from every representation. Explicit deletion still blocks the complete
+dependent publication; new-admission and stale-export negatives stay separate.
+
+Measure pure scene and timeline generation separately, then complete native HTML,
+live assets/DOM/interaction, complete CLI/MCP reads and retained bytes on equivalent
+inputs. SVG/claim/return metadata for a second view has a real HTML cost even when
+code payloads remain shared. The local seven-case/eleven-publication corpus and
+varied language/topology fixtures are bounded technical evidence, not an official
+workload or permission to raise a ceiling. A wrapper-only FE trial cannot establish
+declarative state/DOM or maintainability superiority. Preserve originals and all
+failed attempts; report exact candidate/asset scope, dependent visual judgment,
+unobserved independent/human/assistive acceptance and skipped qualification separately.

@@ -37,7 +37,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
       }
       if(f.diagram.meaning.kind==='sequence') {
         const m=f.diagram.meaning;
-        const first=page.locator('svg a[id$="-'+m.groups[0].messages[0].id+'"]');
+        const first=page.locator('svg a[id="'+f.id+'-'+m.groups[0].messages[0].id+'"]');
         await first.evaluate(n=>{const t=document.createElementNS('http://www.w3.org/2000/svg','text');t.id='extra-identifier-band';t.textContent='Unnecessary full participant identifier';n.append(t);});
         const repeated=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
         assert(repeated.errors.some(e=>e.kind==='repeated-message-identity'),'extra supporting identifier bands cannot replace action hierarchy');
@@ -45,7 +45,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         // Local context must qualify this message, even when an earlier guard
         // is no longer on screen. Injecting an earlier group's meaning fails.
         const last=m.groups.at(-1).messages.at(-1);
-        const local=page.locator('svg a[id$="-'+last.id+'"] text:visible').last();
+        const local=page.locator('svg a[id="'+f.id+'-'+last.id+'"] text:visible').last();
         const saved=await local.innerHTML();
         await local.evaluate(n=>n.textContent='par · no relative order · opt · condition: previous guard');
         const wrongContext=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
@@ -63,8 +63,8 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         if(sequential){
         const messageId=sequential.messages.at(-1).id;
         const previousId=sequential.messages.length>1?sequential.messages[0].id:f.diagram.meaning.groups[0].messages[0].id;
-        const message=page.locator('svg a[id$="-'+messageId+'"]');
-        await message.evaluate((n,id)=>{const prior=[...n.parentElement.querySelectorAll('a')].find(a=>a.id.endsWith('-'+id));const shift=prior.getBBox().y-n.getBBox().y-100;n.setAttribute('transform',`translate(0,${shift})`);},previousId);
+        const message=page.locator('svg a[id="'+f.id+'-'+messageId+'"]');
+        await message.evaluate((n,id)=>{const prior=[...n.parentElement.querySelectorAll('a')].find(a=>a.id===n.ownerSVGElement.dataset.originNamespace+'-'+id);const shift=prior.getBBox().y-n.getBBox().y-100;n.setAttribute('transform',`translate(0,${shift})`);},previousId);
         const wrongOrder=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
         assert(wrongOrder.errors.some(e=>e.kind==='wrong-message-order'),'transformed sequential message order must fail');
         await message.evaluate(n=>n.removeAttribute('transform'));
@@ -73,7 +73,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
       }
       if(f.diagram.meaning.kind==='state') {
         const node=f.diagram.meaning.nodes[0];
-        const local=page.locator('svg a[id$="-'+node.id+'"] text:visible').last();
+        const local=page.locator('svg a[id="'+f.id+'-'+node.id+'"] text:visible').last();
         const saved=await local.innerHTML();
         await local.evaluate(n=>n.textContent='State owner: previous figure');
         const wrongOwner=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);

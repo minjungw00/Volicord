@@ -756,3 +756,13 @@ the unchanged 131,072-byte bound. Existing admissible format-9 preparations reta
 exact bytes/fingerprints; no supported publication is rebound. Newly representable
 preparations hash their actual complete concise JSON. Explanation 9, metadata 11,
 retained bytes, canonical/Source/privacy formats and lifetimes stay unchanged.
+
+Renderer 17 adds folded sequence geometry, a native complete-timeline disclosure
+and view-specific rendering origins. Both representations use the original v9
+roles and complete semantic inventory. Caption/claim edits still require normal
+admission with new publication IDs; display-only changes do not. The `:timeline`
+origin suffix and graph predicate routing are ephemeral presentation, excluded from
+preparation/semantic seals, retained envelopes and generated-document metadata.
+Explanation 9 and metadata 11 remain exact-current. Original publications, Source
+deadlines and byte/workload limits are unchanged; no conversion, compatibility
+decoder or destructive format transition is introduced.

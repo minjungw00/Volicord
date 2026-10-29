@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/16";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/17";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -158,6 +158,17 @@ pub(crate) fn svg(
     overview::svg(d, texts, ns, target, locale)
 }
 
+pub(crate) fn timeline_svg(
+    d: &GroundedDiagram,
+    texts: &[&str],
+    ns: &str,
+    target: &dyn Fn(&str, &DiagramLabel) -> String,
+    locale: FixedLocale,
+) -> Result<String, String> {
+    bounded_input(d, texts, ns)?;
+    overview::timeline_svg(d, texts, ns, target, locale)
+}
+
 fn bounded_input(d: &GroundedDiagram, texts: &[&str], ns: &str) -> Result<(), String> {
     if ns.is_empty()
         || ns.len() > 256
@@ -273,8 +284,7 @@ pub(crate) fn element_caption(
 mod tests {
     use super::*;
     #[test]
-    fn narrow_sequence_pans_readable_headers_but_keeps_message_reading_width() -> Result<(), String>
-    {
+    fn folded_sequence_preserves_local_endpoints_and_separate_timeline() -> Result<(), String> {
         // Renderer control, not evidence that these requests were executed.
         let text = "Submitted synchronization request";
         let label = DiagramLabel {
@@ -318,18 +328,21 @@ mod tests {
         let output = svg(&diagram, &[text], "readable-lanes", &|id, _| {
             format!("{id}-claim")
         })?;
-        assert!(output.contains("--map-wide-width:760px"));
-        assert!(output.contains("--map-medium-width:664px"));
-        assert!(output.contains("--map-narrow-width:664px"));
-        assert_eq!(
-            output.matches("width=\"124\"").count(),
-            10,
-            "five readable headers in both panning variants"
-        );
-        assert!(
-            output.contains("width=\"240\""),
-            "narrow message wraps to the input article, not the enlarged canvas"
-        );
+        assert!(output.contains("--map-narrow-width:272px"));
+        assert!(output.contains("data-sequence-layout=\"stages\""));
+        assert!(output.contains("data-from=\"a\" data-to=\"e\""));
+        let timeline = super::timeline_svg(
+            &diagram,
+            &[text],
+            "readable-lanes:timeline",
+            &|id, _| format!("{id}-detail-claim"),
+            FixedLocale::English,
+        )?;
+        assert!(timeline.contains("--map-narrow-width:664px"));
+        for (id, _) in elements(&diagram) {
+            assert!(output.contains(&format!("id=\"readable-lanes-{id}\"")));
+            assert!(timeline.contains(&format!("id=\"readable-lanes:timeline-{id}\"")));
+        }
         Ok(())
     }
     #[test]
@@ -580,9 +593,7 @@ mod tests {
         }
         let first = svg(&d, &[text], "publication-en", &|_, _| "claim".into())?;
         assert_eq!(
-            first
-                .matches("class=\"relation-line parallel-operand\"")
-                .count(),
+            first.matches("class=\"parallel-operand\"").count(),
             3, // One geometric operand in each responsive layout.
         );
         assert!(first.contains("par · no relative order"));
@@ -859,10 +870,24 @@ mod tests {
                 FixedLocale::English,
             )
             .map_err(|e| format!("{}: {e}", d.id))?;
+            let scene_elapsed_ns = started.elapsed().as_nanos();
+            let timeline = if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
+                let start = std::time::Instant::now();
+                let detail = super::timeline_svg(
+                    &d,
+                    &texts,
+                    "review-publication:timeline",
+                    &|id, _| format!("{id}-timeline-claim"),
+                    FixedLocale::English,
+                )?;
+                Some((start.elapsed().as_nanos(), detail.len()))
+            } else {
+                None
+            };
             assert!(output.contains("connected-overview"));
             println!(
                 "{}",
-                serde_json::json!({"diagram":d.id,"renderer":super::RENDERER_ID,"elapsed_ns":started.elapsed().as_nanos(),"svg_utf8_bytes":output.len(),"scope":"all three responsive variants; diagnostic profile; no authority reads"})
+                serde_json::json!({"diagram":d.id,"renderer":super::RENDERER_ID,"elapsed_ns":scene_elapsed_ns,"svg_utf8_bytes":output.len(),"timeline":timeline.map(|(ns,bytes)|serde_json::json!({"elapsed_ns":ns,"svg_utf8_bytes":bytes})),"scope":"all three responsive variants per view; diagnostic profile; no authority reads"})
             );
         }
         Ok(())

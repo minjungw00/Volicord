@@ -18,11 +18,7 @@ async function observeOverview(figure, diagram) {
     const svg=figure.querySelector('svg');const viewport=svg?.closest('.diagram-viewport');
     if(viewport&&(viewport.scrollLeft!==0||viewport.scrollTop!==0))errors.push('orientation was panned before its initial observation');
     if(!visible(svg))errors.push('connected map hidden or absent');
-    if(viewport&&viewport.scrollWidth>viewport.clientWidth+1){
-      const view=viewport.getBoundingClientRect();
-      const initialHeader=nodes.some(id=>{const anchor=document.getElementById(figure.id+'-'+id);const header=anchor&&[...anchor.querySelectorAll('.participant-box')].find(visible);if(!header)return false;const b=header.getBoundingClientRect();return b.left>=view.left-1&&b.right<=view.right+1;});
-      if(!sequence||!initialHeader||viewport.tabIndex!==0||!['auto','scroll'].includes(getComputedStyle(viewport).overflowX))errors.push('panning overview lacks a readable initial header or native keyboard access');
-    }
+    if(viewport&&viewport.scrollWidth>viewport.clientWidth+1)errors.push('ordinary orientation requires horizontal discovery');
     if(viewport&&viewport.scrollHeight>viewport.clientHeight+1)errors.push('overview requires internal vertical discovery');
     for(const id of nodes){
       const anchor=document.getElementById(figure.id+'-'+id);

@@ -123,6 +123,15 @@ body:has(.diagram-expanded):not([data-source-open=true]) {overflow:hidden}
 .connected-overview .diagram-relationship:has(a:is(:hover,:focus,:target,[data-selected=true])) .relation-leader {stroke:var(--accent);stroke-width:2}
 .connected-overview .sequence-endpoints {fill:var(--muted)}
 .connected-overview .sequence-context {fill:var(--muted)}
+.connected-overview .sequence-stage-message>text {font-weight:650}
+.connected-overview .sequence-message-hitbox {fill:transparent;stroke:none;pointer-events:all}
+.connected-overview .diagram-element:is(:hover,:focus,[data-selected=true]) .sequence-message-hitbox {fill:var(--wash)}
+.connected-overview .sequence-step {fill:#087bb8}
+.connected-overview .sequence-order-rail {fill:none;stroke:#c0d5e3;stroke-width:2}
+.connected-overview .parallel-operand {fill:none;stroke:#a8becd;stroke-width:1;stroke-dasharray:3 5}
+.diagram-timeline {margin:0 16px;border-top:1px solid var(--line)}
+.diagram-timeline>summary {font-size:12px;color:var(--accent);padding:12px 0}
+.diagram-timeline .diagram-full-view {margin-inline:-16px}
 .doc-head h1 {white-space:pre-line}
 body[data-viewer-mode=snapshot]:not(:has(main :target)) .nav-link[data-destination=overview],
 body[data-viewer-mode=snapshot]:has(#overview:target,#overview :target) .nav-link[data-destination=overview],
@@ -181,3 +190,11 @@ body[data-reader-enhanced=true] .source-point:not([data-selected=true]) {display
 .applicability:is([data-comparison-state=changed],[data-comparison-state=unavailable])>summary {color:inherit}
 .reading-warning[data-severity=danger] {color:#70212c;background:#fff0f1;border-left-color:#a32737}
 .reading-warning[data-severity=caution] {color:#674311;background:#fff7e8;border-left-color:#98641a}
+
+.connected-overview .relation-wording>text {fill:var(--body);font-weight:650}
+
+.connected-overview :is(.map-wide,.map-medium,.map-narrow):has(>.message-label)>text {font-weight:650}
+.admitted-diagram:has(>.diagram-timeline)>.diagram-caption {border-top:0;border-bottom:1px solid var(--line)}
+.admitted-diagram:has(>.diagram-timeline)>.diagram-caption .unit-text {font-size:14px;line-height:1.85;color:var(--body)}
+.diagram-caption-claims {font-size:12px;margin:10px 0 0}
+.diagram-caption-claims>summary {font-size:11px;color:var(--muted);padding:5px 0}

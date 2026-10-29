@@ -3,6 +3,7 @@
 async function inspectDiagram(svg, diagram, prose) {
   const label = l => l.text;
   const m=diagram.meaning;
+  const stages=await svg.getAttribute('data-sequence-layout')==='stages';
   const ko=await svg.evaluate(n=>n.ownerDocument.documentElement.lang==='ko');
   const owner=m.owner && `${ko?'상태 소유자:':'State owner:'} ${label(m.owner)}`;
   // Types may be stated once for a homogeneous scope, but must remain attached
@@ -20,15 +21,16 @@ async function inspectDiagram(svg, diagram, prose) {
   }
   for(const [i,g] of (m.groups||[]).entries()) {
     const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
-    const context=order+(g.condition?` · opt · ${ko?'조건:':'condition:'} ${label(g.condition)}`:'');
+    const localOrder=g.order==='sequential'?'strict':order;
+    const context=localOrder+(g.condition?` · opt · ${ko?'조건:':'condition:'} ${label(g.condition)}`:'');
     expected.push(...g.messages.map(r=>({id:r.id,text:context,prefix:true})));
     if(g.condition)expected.push({id:'guard:'+(i+1),text:label(g.condition),prefix:true});
     expected.push(...g.messages.map(r=>({id:r.id,text:label(r.label)})));
     const endpoint=id=>{const n=m.participants.find(n=>n.id===id);const name=label(n.label);return m.participants.filter(n=>label(n.label)===name).length>1?`${name} (${label(n.identifier)})`:name;};
-    expected.push(...g.messages.map(r=>({id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`})));
+    expected.push(...g.messages.flatMap(r=>stages?[{id:r.id,text:endpoint(r.from)},...(r.from===r.to?[]:[{id:r.id,text:endpoint(r.to)}])]:[{id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`}]));
   }
   const edges=m.relations || (m.groups||[]).flatMap(g=>g.messages);
-  return svg.evaluate((root,{expected,edges,sequence,groups,kinds,nodes})=> {
+  return svg.evaluate((root,{expected,edges,sequence,stages,groups,kinds,nodes})=> {
     const errors=[];const texts=[];const paths=[];
     const box=b=>({x:b.x,y:b.y,width:b.width,height:b.height});
     const intersects=(a,b)=>a.x<b.x+b.width-1 && a.x+a.width>b.x+1 && a.y<b.y+b.height-1 && a.y+a.height>b.y+1;
@@ -48,8 +50,8 @@ async function inspectDiagram(svg, diagram, prose) {
       const xs=ps.map(p=>p.x),ys=ps.map(p=>p.y);
       return {x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};
     };
-    const anchor=id=>[...root.querySelectorAll('a.diagram-element')].find(a=>a.id===root.closest('figure').id+'-'+id);
-    const edgePath=id=>pick([...root.querySelectorAll('a.diagram-route')].find(a=>a.dataset.element===root.closest('figure').id+'-'+id)||anchor(id),'.relation-line');
+    const anchor=id=>[...root.querySelectorAll('a.diagram-element')].find(a=>a.id===(root.dataset.originNamespace||root.closest('figure').id)+'-'+id);
+    const edgePath=id=>pick([...root.querySelectorAll('a.diagram-route')].find(a=>a.dataset.element===(root.dataset.originNamespace||root.closest('figure').id)+'-'+id)||anchor(id),'.relation-line');
     const ko=root.ownerDocument.documentElement.lang==='ko';
     const kindText=k=>kinds[k][ko?1:0];
     const visibleTexts=n=>[...n.querySelectorAll('text')].filter(rendered).map(t=>t.textContent);
@@ -75,13 +77,15 @@ async function inspectDiagram(svg, diagram, prose) {
     const tasks=[];
     for(const e of edges) {
       const p=edgePath(e.id);
-      const fromNode=pick(anchor(e.from),'.participant-box');
-      const toNode=pick(anchor(e.to),'.participant-box');
+      const local=stages?anchor(e.id):null;
+      const fromNode=stages?pick(local,'.sequence-from text'):pick(anchor(e.from),'.participant-box');
+      const toNode=stages?pick(local,e.from===e.to?'.sequence-from text':'.sequence-to text'):pick(anchor(e.to),'.participant-box');
       const from=fromNode && bounds(fromNode),to=toNode && bounds(toNode);
       if(!p || !from || !to) {errors.push({kind:'missing-endpoints',edge:e.id});continue;}
       const length=p.getTotalLength();const start=point(p,p.getPointAtLength(0));const end=point(p,p.getPointAtLength(length));
       const touches=(pt,b)=>pt.x>=b.x-2 && pt.x<=b.x+b.width+2 && pt.y>=b.y-2 && pt.y<=b.y+b.height+2;
       if(sequence) {
+        if(stages){const refs=pick(local,'.sequence-local-route');if(refs?.dataset.from!==e.from||refs?.dataset.to!==e.to)errors.push({kind:'wrong-local-endpoints',edge:e.id});}
         if(Math.abs(start.x-(from.x+from.width/2))>2 || Math.abs(end.x-(to.x+to.width/2))>2)errors.push({kind:'wrong-lifeline-direction',edge:e.id,start,end});
       }else if(!touches(start,from)||!touches(end,to))errors.push({kind:'wrong-edge-direction',edge:e.id,start,end});
       const semantic=bounds(pick(anchor(e.id),'text'));
@@ -104,10 +108,10 @@ async function inspectDiagram(svg, diagram, prose) {
         if(header && bounds(header).x+bounds(header).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1});
         if(g.condition){const guard=pick(anchor('guard:'+(gi+1)),'text');if(guard && bounds(guard).x+bounds(guard).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1,role:'condition'});}
         for(const message of g.messages) {
-          if(!visibleTexts(anchor(message.id)).some(t=>t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
+          if(!visibleTexts(anchor(message.id)).some(t=>stages?t.startsWith(kindText(message.kind)+' · '):t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
           // The primary action, concise endpoints and local scope are the whole
           // scene text. An extra identifier/type band cannot silently return.
-          if(visibleTexts(anchor(message.id)).length!==3)errors.push({kind:'repeated-message-identity',element:message.id});
+          if(visibleTexts(anchor(message.id)).length!==(stages&&message.from!==message.to?4:3))errors.push({kind:'repeated-message-identity',element:message.id});
         }
         let last=previousGroupBottom;
         const positions=g.messages.flatMap(m=>{const p=edgePath(m.id);return p?[{id:m.id,box:bounds(p)}]:[];});
@@ -120,7 +124,7 @@ async function inspectDiagram(svg, diagram, prose) {
       }
     }
     for(const e of expected) {
-      const a=[...root.querySelectorAll('a.diagram-element')].find(a=>a.id===root.closest('figure').id+'-'+e.id);
+      const a=[...root.querySelectorAll('a.diagram-element')].find(a=>a.id===(root.dataset.originNamespace||root.closest('figure').id)+'-'+e.id);
       if(e.accessibility){if(!a?.getAttribute('aria-label')?.includes(e.text))errors.push({kind:'missing-endpoint-binding',element:e.id,expected:e.text});continue;}
       const displayed=a && [...a.querySelectorAll('text')].find(t=>rendered(t)&&(e.prefix?t.textContent.endsWith(e.text):t.textContent===e.text));
       let visible=Boolean(displayed);
@@ -168,6 +172,6 @@ async function inspectDiagram(svg, diagram, prose) {
     for(const [pair,samples] of merges)if(samples>10)errors.push({kind:'route-merge',pair,samples});
     const v=root.closest('.diagram-viewport');
     return {canvas:{width:view.width,height:view.height},viewport:{width:v.clientWidth,height:v.clientHeight,left:v.scrollLeft,top:v.scrollTop,horizontalTravel:v.scrollWidth-v.clientWidth,verticalTravel:v.scrollHeight-v.clientHeight},expected,tasks,labels:texts,paths,errors};
-  },{expected,edges,sequence:m.kind==='sequence',groups:m.groups||[],kinds,nodes:m.nodes||m.participants});
+  },{expected,edges,stages,sequence:m.kind==='sequence',groups:m.groups||[],kinds,nodes:m.nodes||m.participants});
 }
 module.exports={inspectDiagram};
