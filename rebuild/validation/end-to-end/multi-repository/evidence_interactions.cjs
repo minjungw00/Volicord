@@ -77,6 +77,7 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  assert.equal(await page.locator('[aria-modal=true]').count(),0,'teardown releases modal ownership');
  assert.equal(await page.locator('.project-shell').evaluate(n=>n.inert),false,'teardown restores background');
  assert.equal(await page.locator('body').getAttribute('data-reader-enhanced'),null,'teardown restores native fragment consumption');
+ assert.ok(await page.locator('.source-point > .evidence-selection-context').evaluateAll(ns=>ns.every(n=>n.hidden&&!n.textContent)),'teardown clears transient selected context');
  const nativePoint=page.locator(`[id="${sourceId}"]`);
  const {openEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
  assert.equal(await (await openEmbeddedCode(nativePoint)).textContent(),expectedNativeCode,'native evidence survives enhancement teardown');
@@ -91,6 +92,7 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  await context.route('**/citation?*',route=>route.fulfill({status:410,contentType:'application/json',body:JSON.stringify({reason:'deleted',publication_readable:false})}));
  await point().locator('.citation-read').click();
  await point().locator('.publication-unavailable').waitFor();
+ assert.equal(await point().locator('.evidence-selection-context').count(),0,'publication denial removes selected action context');
  const names=await page.locator(`[data-reader-publication="${publication}"]`).evaluateAll(nodes=>nodes.map(n=>({label:n.getAttribute('aria-label')||'',title:n.getAttribute('title')||''})));
  assert.ok(names.every(n=>!n.label.includes(oldPath)&&!n.title.includes(oldPath)),'denied Source path cannot survive in accessible attributes');
  await context.unroute('**/citation?*');await page.setViewportSize({width,height:900});

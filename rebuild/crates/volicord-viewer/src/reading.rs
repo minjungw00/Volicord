@@ -993,6 +993,35 @@ fn diagram_source_returns(
     }
 }
 
+/// Reuse only the admitted heading in this publication, with its content language.
+fn evidence_question(r: &ViewerRequest, answers: &ReaderAnswers<'_>) -> String {
+    answers
+        .prose
+        .iter()
+        .find(|unit| unit.question == "Heading")
+        .map(|unit| {
+            format!(
+                "{} · <span lang=\"{}\">{}</span>",
+                text(r.locale, "Reading question", "확인할 질문"),
+                escape(&content_language_tag(
+                    answers
+                        .provenance
+                        .as_ref()
+                        .map_or("", |p| p.language.as_str())
+                )),
+                escape(&unit.text)
+            )
+        })
+        .unwrap_or_else(|| {
+            text(
+                r.locale,
+                "Evidence for this explanation",
+                "이 설명을 확인하는 근거",
+            )
+            .into()
+        })
+}
+
 /// Native origins share the exact citation body, never the originating element.
 /// These bounded fragment targets also work in a script-free exported file.
 fn diagram_source_origins(
@@ -1033,7 +1062,7 @@ fn diagram_source_origins(
                 }
                 let caption = crate::diagram::element_caption(d, &id, &texts, r.locale.fixed());
                 let wording = volicord_projections::diagram_label(label, &texts).unwrap_or("");
-                html.push_str(&format!("<section class=\"source-origin-target\" id=\"{alias}\" data-selected-point=\"{point}\" data-origin=\"{claim}\" tabindex=\"-1\"><div class=\"point-bar\"><a class=\"return\" href=\"#{element}\">← {}</a></div><h2 class=\"evidence-claim\" lang=\"{language}\">{}: {}</h2>",text(r.locale,"Return to explanation","설명으로 돌아가기"),escape(&caption),escape(wording)));
+                html.push_str(&format!("<section class=\"source-origin-target\" id=\"{alias}\" data-selected-point=\"{point}\" data-origin=\"{claim}\" tabindex=\"-1\"><div class=\"point-bar\"><a class=\"return\" href=\"#{element}\">← {}</a></div><p class=\"point-title\">{}</p><h2 class=\"evidence-claim\" lang=\"{language}\">{}</h2><p class=\"evidence-selection-context\">{}</p>",text(r.locale,"Return to explanation","설명으로 돌아가기"),evidence_question(r,answers),escape(wording),escape(&caption)));
                 let covering = answers.prose[unit]
                     .citations
                     .iter()
@@ -2183,29 +2212,10 @@ fn render_source_excerpts(
                 .text
                 .get(c.claim_start_byte..c.claim_end_byte)
                 .unwrap_or("");
-            let selected_question = answers
-                .prose
-                .iter()
-                .find(|unit| unit.question == "Heading")
-                .map(|unit| {
-                    format!(
-                        "{} · <span lang=\"{}\">{}</span>",
-                        text(r.locale, "Reading question", "확인할 질문"),
-                        escape(&content_language_tag(&provenance.language)),
-                        escape(&unit.text)
-                    )
-                })
-                .unwrap_or_else(|| {
-                    text(
-                        r.locale,
-                        "Evidence for this explanation",
-                        "이 설명을 확인하는 근거",
-                    )
-                    .into()
-                });
+            let selected_question = evidence_question(r, answers);
             let range = source_excerpt_anchor(answers, c);
             let first_payload = seen.insert(range.clone());
-            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" tabindex=\"-1\"{}><div class=\"point-bar\"><a class=\"return\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><h2 class=\"evidence-claim\" lang=\"{}\">{}</h2><h3 class=\"source-path\">{}:{}–{}</h3>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),publication_scope(answers),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),selected_question,escape(&content_language_tag(&provenance.language)),escape(claim),escape(&c.locator),c.start_line,c.end_line));
+            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" tabindex=\"-1\"{}><div class=\"point-bar\"><a class=\"return\" href=\"#{}\">← {}</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><h2 class=\"evidence-claim\" lang=\"{}\">{}</h2><p class=\"evidence-selection-context\" hidden></p><h3 class=\"source-path\">{}:{}–{}</h3>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),publication_scope(answers),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),selected_question,escape(&content_language_tag(&provenance.language)),escape(claim),escape(&c.locator),c.start_line,c.end_line));
             diagram_source_origins(
                 html,
                 r,

@@ -3278,6 +3278,13 @@ stay on their own routes with stronger label/direction contrast. Native origins,
 the complete timeline and every admitted role are unchanged. Evidence actions say
 what to read; shared code storage remains an internal implementation detail.
 
+Selected evidence uses the exact admitted display-role wording as its heading.
+The complete qualified actor/direction/order/guard caption stays immediately below
+as supporting context in both live and native output. The full original claim,
+all ranges and exact code remain reachable. This is selection of existing authored
+wording, never truncation or a new read-time paraphrase. Publication denial clears
+both layers; enhancement teardown clears its transient context before native return.
+
 Renderer 17 presents the existing admitted sequence groups as a vertical connected
 scene with local named message endpoints. Its rail denotes admitted group order,
 not a new actor or causal message. Parallel operands retain their no-relative-order

@@ -83,6 +83,9 @@ async function run(config){
     const point=await citationPoint(page,href),pointId=await point.getAttribute('id');let returnPoint=point;
     if(scripted){
      await point.waitFor({state:'visible'});assert.equal(await point.getAttribute('data-reader-publication'),c.publication);
+     assert.equal(await point.locator(':scope > .evidence-claim').textContent(),label.text,'selected heading is exact admitted action wording, without a generated prefix');
+     assert.ok((await point.locator(':scope > .evidence-selection-context').innerText()).length,'qualified actor/order/guard context remains adjacent');
+     if(publicAnswers.prose.some(u=>u.question==='Heading'))assert.equal(await point.locator(':scope > .point-title span').textContent(),publicAnswers.prose.find(u=>u.question==='Heading').text,'live question keeps this publication heading');
      await page.waitForFunction(id=>{const p=document.getElementById(id);const b=p?.querySelector('.citation-read');return b&&!b.disabled&&b.dataset.nextOffset==='0'&&p.querySelector('.citation-status')?.textContent.includes(document.documentElement.lang==='ko'?'표시 범위':'Displayed');},pointId);
      assert.equal(await point.locator('.citation-inspection code').textContent(),expected,'complete exact cited bytes');
      assert.equal(await point.getAttribute('aria-modal'),width<1200?'true':null,'actual evidence modality');
@@ -92,6 +95,8 @@ async function run(config){
      else {assert.equal(await page.locator('.project-shell').evaluate(n=>n.inert),true);}
     }else{
      await claim.locator('a.evidence-link').first().click();await settled(page);
+     assert.equal(await point.locator(':scope > .source-origin-target:target > .evidence-claim').textContent(),label.text,'native selected heading keeps the same admitted wording');
+     if(publicAnswers.prose.some(u=>u.question==='Heading'))assert.equal(await point.locator(':scope > .source-origin-target:target > .point-title span').textContent(),publicAnswers.prose.find(u=>u.question==='Heading').text,'native question keeps this publication heading');
      const opened=await openEmbeddedCode(point);assert.equal(await opened.textContent(),expected,'native/offline complete exact code');
      await returnFromEmbeddedCode(point);
     }

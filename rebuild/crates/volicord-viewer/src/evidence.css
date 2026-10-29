@@ -62,6 +62,7 @@
 .point-bar .return {font-size:11px;min-height:32px;padding:6px 9px;font-weight:500}
 .point-counter {font-size:10px}
 .point-title {font-size:10px;letter-spacing:.02em;color:var(--accent);margin-bottom:9px}
+.evidence-selection-context {font-size:12px;line-height:1.8;color:var(--body);overflow-wrap:anywhere;margin:0 0 16px}
 .evidence-claim {font-size:22px;font-weight:650;line-height:1.6;letter-spacing:-.5px;color:var(--ink);margin:0 0 17px}
 .source-path {font:11px/1.8 "SFMono-Regular",Consolas,"Liberation Mono",monospace;color:var(--body);margin:16px 0 8px}
 .point-others {display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}
@@ -170,7 +171,7 @@ body[data-viewer-mode=snapshot]:has(#works:target,#works :target,.snapshot-page[
 .native-range-links a {padding:6px 9px;color:var(--muted);border:1px solid var(--line);border-radius:5px}
 .native-range-links a[aria-current] {background:var(--wash);color:var(--strong)}
 body:not([data-reader-enhanced=true]) .source-origin-target:target {display:block}
-body:not([data-reader-enhanced=true]) .source-point:has(>.source-origin-target:target)>:is(.point-bar,.point-title,.evidence-claim,.range-selector,.source-code-reference) {display:none}
+body:not([data-reader-enhanced=true]) .source-point:has(>.source-origin-target:target)>:is(.point-bar,.point-title,.evidence-claim,.evidence-selection-context,.range-selector,.source-code-reference) {display:none}
 body:not([data-reader-enhanced=true]) .source-point:has(>.source-origin-target:target) {display:flex;flex-direction:column}
 body:not([data-reader-enhanced=true]) .source-origin-target:target {order:-1}
 

@@ -160,8 +160,11 @@
       focusedHash = location.hash;
       if (narrow.matches) point.setAttribute('aria-label',point.querySelector('.source-path')?.textContent || (ko?'근거를 사용할 수 없습니다':'Evidence unavailable'));
       const origin = document.getElementById(diagramOrigin || point.dataset.origin);
-      const title=point.querySelector('.evidence-claim');
-      if(title){const wording=origin?.querySelector('.diagram-selected-label')?.textContent;title.textContent=wording?`${origin.querySelector('h3').textContent}: ${wording}`:point.querySelector('.claim-quote')?.textContent||'';}
+      const title=point.querySelector(':scope > .evidence-claim');
+      const context=point.querySelector(':scope > .evidence-selection-context');
+      const wording=origin?.querySelector('.diagram-selected-label')?.textContent;
+      if(title)title.textContent=wording||point.querySelector('.claim-quote')?.textContent||'';
+      if(context){context.textContent=wording?origin.querySelector('h3').textContent:'';context.hidden=!wording;}
       if (changed) citations.read(point);
       if (changed && !narrow.matches && !state().sourceReturn) origin?.scrollIntoView({block:'center'});
       if (!point.contains(document.activeElement)) (point.querySelector('a.return')||point).focus({preventScroll:true});
@@ -300,6 +303,7 @@
     const nativeHash=location.hash.split('!')[0];
     if(fragment().target&&nativeHash!==location.hash)location.replace(nativeHash);
     diagramReturns.clear();sourceReturns.clear();evidenceBackdrop.remove();fragmentNotice.remove();
+    document.querySelectorAll('.source-point > .evidence-selection-context').forEach(n=>{n.hidden=true;n.textContent='';});
     delete document.body.dataset.readerEnhanced;delete document.body.dataset.sourceOpen;
     document.querySelectorAll('.source-point[data-selected],.appendix[data-open],.diagram-claim[data-active]').forEach(node=>{delete node.dataset.selected;delete node.dataset.open;delete node.dataset.active;});
   });
