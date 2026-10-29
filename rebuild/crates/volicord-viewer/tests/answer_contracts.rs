@@ -92,7 +92,8 @@ fn selected_result_and_state_have_independent_prefix_basis(
             assert!(!basis.sources.is_empty());
         }
         let page = get(&server(&f), &format!("/?view=work&work={work}"));
-        assert!(page.contains("Interpretation has not been generated"));
+        assert!(page.contains("data-question=\"ExplanationAvailability\""));
+        assert!(!page.contains("data-reading-role=\"cited-source\""));
         assert!(!page.contains("class=\"work-explanation\""));
         assert_eq!(page.contains("result: Some("), prefix > 0);
     }

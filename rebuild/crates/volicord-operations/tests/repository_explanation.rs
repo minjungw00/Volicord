@@ -1765,14 +1765,23 @@ fn repository_cli_keeps_fixed_locale_independent_from_publication_language(
             .iter()
             .all(|unit| unit["role"] != "generated_interpretation"));
         assert!(missing["provenance"].is_null());
-        assert!(missing["prose"][0]["text"]
-            .as_str()
-            .ok_or("availability notice")?
-            .starts_with(if locale == "ko" {
-                "이 언어의 해석"
-            } else {
-                "Interpretation has not"
-            }));
+        assert_eq!(missing["applicability"]["limitation"], "missing");
+        assert_eq!(missing["source_excerpts"], serde_json::json!([]));
+        assert_eq!(missing["diagrams"], serde_json::json!([]));
+        let units = missing["prose"].as_array().ok_or("availability units")?;
+        assert_eq!(units.len(), 1);
+        let notice = &units[0];
+        assert_eq!(notice["question"], "ExplanationAvailability");
+        assert_eq!(notice["role"], "unavailable");
+        assert_eq!(notice["citations"], serde_json::json!([]));
+        assert_eq!(notice["evidence_keys"], serde_json::json!([]));
+        let text = notice["text"].as_str().ok_or("availability notice")?;
+        assert!(!text.trim().is_empty());
+        assert_eq!(
+            text.chars().any(|c| ('\u{ac00}'..='\u{d7a3}').contains(&c)),
+            locale == "ko",
+            "fixed UI notice follows locale, not the missing French publication"
+        );
     }
     f.ops
         .delete_repository_source_observation(f.project, f.analysis, id)?;

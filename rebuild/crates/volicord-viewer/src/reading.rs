@@ -507,6 +507,11 @@ fn publication_scope(answers: &ReaderAnswers<'_>) -> String {
 }
 fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>, index: usize) {
     let answer = &answers.prose[index];
+    let language = if matches!(&answer.role, volicord_projections::AnswerRole::Unavailable) {
+        locale_key(r.locale)
+    } else {
+        &answers.language
+    };
     let outer = match answer.question.as_str() {
         "ComparisonCondition" => "dt",
         "ComparisonResult" => "dd",
@@ -524,7 +529,7 @@ fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>
     } else {
         "p"
     };
-    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"{}><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),publication_scope(answers),escape(&answer.question),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&answer.text)));
+    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"{}><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),publication_scope(answers),escape(&answer.question),escape(&content_language_tag(language)),escape(language),escape(&answer.text)));
     reader_inline_citations(html, r, answers, index);
     html.push_str(&format!("</{outer}>"));
 }

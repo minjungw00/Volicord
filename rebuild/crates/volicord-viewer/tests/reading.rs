@@ -58,10 +58,14 @@ fn exact_routes_keep_older_work_failed_states_and_decision_rationales(
             );
         }
         assert!(page.contains(if locale == "en" { "failed" } else { "실패" }));
-        assert!(
-            page.contains("Interpretation has not been generated")
-                || page.contains("해석이 아직 생성되지")
-        );
+        let availability = page
+            .split("data-question=\"ExplanationAvailability\"")
+            .nth(1)
+            .ok_or("missing publication notice")?;
+        let attributes = availability.split('>').next().ok_or("notice attributes")?;
+        assert!(attributes.contains(&format!("lang=\"{locale}\"")));
+        assert!(attributes.contains(&format!("data-content-language=\"{locale}\"")));
+        assert!(!attributes.contains("fr-CA"));
         assert!(!page.contains(&fixture.decisions["other_work"].to_string()));
         assert!(page.contains("user_rationale"));
         assert!(page.contains("recommendation_rationale"));

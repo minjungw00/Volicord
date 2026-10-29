@@ -202,6 +202,10 @@ canonical/source authority are independent of UI locale. Repository explanation
 CLI reads pass the selected fixed locale to deterministic facts while selecting
 generated prose by its exact requested language. Locale changes neither
 publication identity nor Source lifetime, and cannot supply a missing language.
+An unavailable-publication notice is fixed UI text: its HTML language follows the
+UI locale, including when the requested article language is absent. The request
+and publication namespace retain the original language selector; a notice never
+becomes an authored interpretation or acquires citations/provenance.
 The current route/CLI/
 snapshot contract is maintained in the [Viewer README](../../crates/volicord-viewer/README.md).
 
