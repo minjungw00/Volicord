@@ -624,6 +624,14 @@ Source-first에서는 원본을 먼저 조사하여 책임·메커니즘·중요
 
 ## Implementation responsibility and acceptance ledger
 
+Reader calendar dates use explicit UTC consistently in live and static output.
+The explanation envelope's generation timestamp is its recording instant, not
+an independently observed authorship time. Label recording, Source observation,
+repository comparison and export separately. Raw Unix microseconds, precision
+and complete identities remain in supporting detail; absent/out-of-calendar values
+stay unavailable. Canonical context revisions are not Git revisions. Verification
+digests count Checkpoint reports explicitly, without deriving case or run totals.
+
 Reading applicability is provided as typed shared data: explained snapshot,
 known generation time, read/export comparison basis and confirmed limitation.
 Changed/expired/deleted/withheld/comparison-unavailable/unavailable/missing/corrupt/

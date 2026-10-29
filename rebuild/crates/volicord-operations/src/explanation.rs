@@ -835,13 +835,13 @@ fn decode_explanation(
     if content.len() > EXPLANATION_RETAINED_BYTE_LIMIT {
         return Err((
             ExplanationState::Corrupt,
-            format!("stored explanation envelope is {} bytes; limit {EXPLANATION_RETAINED_BYTE_LIMIT}; explicitly delete and regenerate from current preparation",content.len()),
+            format!("stored explanation envelope is {} bytes; limit {EXPLANATION_RETAINED_BYTE_LIMIT}; preserve the original; explicitly prepare, compose and record a replacement from permitted evidence",content.len()),
         ));
     }
     let envelope: serde_json::Value = serde_json::from_str(content).map_err(|_| {
         (
             ExplanationState::Corrupt,
-            "stored explanation JSON is invalid; explicitly delete and regenerate".into(),
+            "stored explanation JSON is invalid; preserve the original; explicitly prepare, compose and record a replacement from permitted evidence".into(),
         )
     })?;
     if envelope["realization"]["format_kind"] != EXPLANATION_KIND
@@ -849,19 +849,19 @@ fn decode_explanation(
     {
         return Err((
             ExplanationState::Unsupported,
-            "unsupported explanation format; explicitly delete and regenerate".into(),
+            "unsupported explanation format; preserve the original; explicitly prepare, compose and record a replacement from permitted evidence".into(),
         ));
     }
     let retained: RetainedExplanation = serde_json::from_value(envelope).map_err(|_| {
         (
             ExplanationState::Corrupt,
-            "stored explanation schema is invalid; explicitly delete and regenerate".into(),
+            "stored explanation schema is invalid; preserve the original; explicitly prepare, compose and record a replacement from permitted evidence".into(),
         )
     })?;
     validate_diagrams(retained.subject, &retained.realization).map_err(|_| {
         (
             ExplanationState::Corrupt,
-            "stored diagram meaning or binding is invalid; explicitly delete and regenerate".into(),
+            "stored diagram meaning or binding is invalid; preserve the original; explicitly prepare, compose and record a replacement from permitted evidence".into(),
         )
     })?;
     Ok(retained)

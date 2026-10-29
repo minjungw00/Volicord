@@ -10,8 +10,15 @@ pub(super) fn render(html: &mut String, r: &ViewerRequest, anchor: &str, work: &
     } else {
         html.push_str("<ol class=\"work-timeline\">");
         for state in work.reading.states.iter().rev() {
-            let (instant, calendar) = observation_time(state.observed_at);
-            html.push_str(&format!("<li data-checkpoint-id=\"{}\" data-checkpoint-revision=\"{}\"><span class=\"timeline-dot\" aria-hidden=\"true\"></span><div><div class=\"timeline-label\"><strong>{}</strong><time datetime=\"{}\" data-recorded-at=\"{}\">{}</time></div>",state.checkpoint_id,state.checkpoint_revision,work_state_label(state.work_state,r.locale),instant,state.observed_at.as_unix_micros(),calendar));
+            let time = if let Some((instant, calendar)) = observation_time(state.observed_at) {
+                format!("<time datetime=\"{instant}\" data-recorded-at=\"{}\" title=\"Unix microseconds: {}\">{calendar}</time>",state.observed_at.as_unix_micros(),state.observed_at.as_unix_micros())
+            } else {
+                format!(
+                    "<span>{}</span>",
+                    escape(&timestamp_label(state.observed_at, r.locale))
+                )
+            };
+            html.push_str(&format!("<li data-checkpoint-id=\"{}\" data-checkpoint-revision=\"{}\"><span class=\"timeline-dot\" aria-hidden=\"true\"></span><div><div class=\"timeline-label\"><strong>{}</strong>{time}</div>",state.checkpoint_id,state.checkpoint_revision,work_state_label(state.work_state,r.locale)));
             let change = work
                 .reading
                 .changes

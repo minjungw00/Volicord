@@ -266,7 +266,14 @@ impl WorkVerificationReport {
         .into_iter()
         .filter_map(|state| {
             let count = self.report_count(state);
-            (count > 0).then(|| format!("{count} {}", state.label(locale)))
+            (count > 0).then(|| match locale {
+                crate::FixedLocale::English => format!(
+                    "{count} {} {}",
+                    state.label(locale),
+                    if count == 1 { "report" } else { "reports" }
+                ),
+                crate::FixedLocale::Korean => format!("{} 보고 {count}건", state.label(locale)),
+            })
         })
         .collect::<Vec<_>>()
         .join(" · ");

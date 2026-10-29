@@ -350,13 +350,13 @@ pub fn explanation_answers(
             Some(ExplanationFailureReason::Deleted) => ("The explanation or required evidence was deleted; independent recorded facts remain readable.","설명 또는 필수 근거가 삭제되었습니다. 독립적인 기록된 사실은 계속 읽을 수 있습니다."),
             Some(ExplanationFailureReason::ComparisonUnavailable) => ("The current repository comparison is unavailable; no current-code explanation is shown. Independent recorded facts remain readable.","현재 저장소와 비교할 수 없어 현재 코드 설명을 표시하지 않습니다. 독립적인 기록된 사실은 계속 읽을 수 있습니다."),
             _ => match state {
-            ExplanationState::Stale=>("Explanation is stale; prepare and generate again.","설명의 근거가 변경되었습니다. 다시 준비하고 생성하세요."),
-            ExplanationState::Corrupt=>("Explanation is corrupt; delete and regenerate.","설명이 손상되었습니다. 삭제한 뒤 다시 생성하세요."),
-            ExplanationState::Unsupported=>("Explanation format is unsupported; delete and regenerate.","설명 형식을 지원하지 않습니다. 삭제한 뒤 다시 생성하세요."),
+            ExplanationState::Stale=>("The recorded basis changed. Read available records; a replacement requires explicit preparation, authorship and recording in local CLI/MCP.","기록된 근거가 변경되었습니다. 이용 가능한 기록을 읽으세요. 새 설명은 별도 로컬 CLI/MCP에서 명시적으로 준비·작성·기록해야 합니다."),
+            ExplanationState::Corrupt=>("The explanation failed its integrity check. Keep the original for inspection; a replacement requires explicit preparation, authorship and recording from permitted evidence in local CLI/MCP.","설명의 무결성을 확인할 수 없습니다. 원본을 보존해 점검하세요. 새 설명은 허용된 근거로 별도 로컬 CLI/MCP에서 준비·작성·기록해야 합니다."),
+            ExplanationState::Unsupported=>("This reader does not support the recorded explanation format. Available records remain readable. A replacement requires explicit preparation, authorship and recording in local CLI/MCP; deletion is not required.","이 Reader는 기록된 설명 형식을 지원하지 않습니다. 이용 가능한 기록은 계속 읽을 수 있습니다. 새 설명은 별도 로컬 CLI/MCP에서 준비·작성·기록할 수 있으며 기존 결과를 삭제할 필요는 없습니다."),
             ExplanationState::Deleted=>("Explanation was explicitly deleted; canonical facts remain readable. Generation requires a new explicit request.","설명이 명시적으로 삭제되었습니다. Canonical 사실은 계속 읽을 수 있습니다. 생성하려면 새로운 명시적 요청이 필요합니다."),
-            ExplanationState::Withheld=>("Explanation is withheld by the canonical forgetting read barrier; repair local cleanup before reading affected content.","정식 기록 삭제의 읽기 차단으로 설명이 보류되었습니다. 영향을 받은 내용을 읽기 전에 로컬 정리를 복구하세요."),
+            ExplanationState::Withheld=>("This explanation is withheld by a forgetting operation. Return to unaffected records; completing cleanup does not restore forgotten content.","기록 삭제 작업으로 이 설명의 읽기가 차단되었습니다. 영향을 받지 않은 기록으로 돌아가세요. 정리를 완료해도 삭제된 내용이 복구되지는 않습니다."),
             _ if reading.is_some()=>("Explanation is unavailable; canonical facts remain readable. Inspect the diagnostic for the affected dependency.","설명을 사용할 수 없습니다. Canonical 사실은 계속 읽을 수 있습니다. 영향을 받은 의존성은 진단에서 확인하세요."),
-            _=>("Interpretation has not been generated in this language. Prepare evidence and ask the active host to explain it.","이 언어의 해석이 아직 생성되지 않았습니다. 근거를 준비하고 현재 호스트에 설명을 요청하세요."),
+            _=>("No explanation is recorded in this language. Read available records; ask the active host to prepare, author and record an explanation through local CLI/MCP.","이 언어로 기록된 설명이 없습니다. 이용 가능한 기록을 읽으세요. 새 설명은 현재 호스트에 별도 로컬 CLI/MCP의 준비·작성·기록 경로로 요청할 수 있습니다."),
         }};
         vec![QuestionAnswer {
             question: "ExplanationAvailability".into(),

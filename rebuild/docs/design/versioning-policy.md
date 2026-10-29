@@ -355,7 +355,9 @@ synopsis are each optional singleton authored units; without them consumers pres
 original facts rather than extracting a title/result from another paragraph.
 Observation, comparison and reading-point units require exact citations. The recorder
 owns semantic_approval_status. Multiple narrative units preserve reader order. The old format is Unsupported with prose
-withheld; explicit delete/regenerate is the recovery, with no alternate decoder,
+withheld; explicit preparation, authorship/composition and recording from permitted
+evidence is the replacement path, with originals preserved and no deletion prerequisite,
+alternate decoder,
 conversion or historical campaign rewrite. Privacy SQL does not change.
 The current Privacy schema is 2 as specified under Bounded Source observation copies.
 Ephemeral current preparation now includes a mandatory `retention_budget`, hashed

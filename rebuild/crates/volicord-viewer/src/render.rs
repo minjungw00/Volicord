@@ -541,14 +541,14 @@ fn render_snapshot_basis(
         escape(text(request.locale, "Inspect Project, canonical, analysis, and freshness basis", "프로젝트, 정식 맥락, 분석 및 최신성 근거 검사")),
         escape(text(request.locale, "Project ID", "프로젝트 ID")),
         projection.overview.project_id,
-        escape(text(request.locale, "Canonical revision", "정식 리비전")),
+        escape(text(request.locale, "Canonical context revision", "정식 맥락 리비전")),
         projection.overview.canonical_revision,
         escape(text(request.locale, "Repository snapshots", "저장소 스냅샷")),
         escape(&bounded_names(&repository_snapshots, 8, request.locale)),
         escape(text(request.locale, "Analysis snapshots", "분석 스냅샷")),
         escape(&bounded_names(&analysis_snapshots, 8, request.locale)),
-        escape(text(request.locale, "Generated at", "생성 시각")),
-        generated_at.as_unix_micros(),
+        escape(text(request.locale, "Exported at", "내보낸 시각")),
+        timestamp_label(generated_at, request.locale),
         escape(text(request.locale, "Projection degradation and omissions", "프로젝션 저하 및 생략")),
         escape(&bounded_names(&issues, 8, request.locale)),
         escape(text(request.locale, "The snapshot was generated locally and does not transmit or upload this artifact.", "스냅샷은 로컬에서 생성되며 이 산출물을 전송하거나 업로드하지 않습니다."))
@@ -763,12 +763,10 @@ const fn user_acceptance_label(state: UserAcceptanceState, locale: ViewerLocale)
 
 fn timestamp_label(timestamp: TimestampMicros, locale: ViewerLocale) -> String {
     let micros = timestamp.as_unix_micros();
-    let seconds = micros.div_euclid(1_000_000);
-    let remainder = micros.rem_euclid(1_000_000);
-    format!(
-        "{} {seconds}.{remainder:06} s",
-        text(locale, "Unix time", "Unix 시각")
-    )
+    let calendar = observation_time(timestamp)
+        .map(|(_, calendar)| calendar)
+        .unwrap_or_else(|| text(locale, "Date unavailable", "날짜 확인 불가").into());
+    format!("{calendar} · Unix µs: {micros}")
 }
 
 const fn guarded_category_label(

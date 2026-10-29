@@ -184,7 +184,9 @@ inserts no partial record, mutates no canonical state and leaves prior valid exp
 bytes usable on their unchanged basis. Valid subsequent recording remains supported;
 size fit cannot satisfy a pending campaign observation or stale publication binding.
 Malformed retained content reports a fixed repair diagnostic without echoing JSON
-values. Oversized/corrupt content is withheld and explicitly deleted/regenerated.
+values. Oversized/corrupt content is withheld. Preserve original artifacts; explicit
+preparation, authorship/composition and recording can admit a replacement from
+permitted evidence without deleting the original first.
 
 New document/snapshot publication rechecks the canonical equality basis and the
 latest retained explanation under the existing mutation lock. Changed, deleted,
@@ -666,6 +668,15 @@ Atomic export recomputes its own read basis under publication validation rather
 than treating render-time success as current authority.
 
 ### Retained-reading recovery boundary — accepted 2026-10-27
+
+Unsupported or corrupt retained explanations require no deletion as a prerequisite
+to explicit replacement. Keep original artifacts for inspection; the existing
+CLI/MCP preparation, host authorship/composition and recording path can admit a
+new publication from permitted evidence. An unavailable evidence body is not
+recovered by that instruction. The read-only Viewer offers no regeneration or
+cleanup control; exports describe their export-time availability. Withheld/deleted
+content is never restored by finishing cleanup. Independent records and valid
+name/summary scopes remain usable within their own authority.
 
 The retained-reading policy in the Projection and Privacy owners supersedes prior
 blanket withholding on ordinary expiry/change. Safe read recovery needs no new

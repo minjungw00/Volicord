@@ -18,10 +18,11 @@ fn summary<'a>(e: &'a WorkCatalogueEntry, r: &ViewerRequest) -> &'a str {
     e.summary.as_deref().unwrap_or(text(r.locale,"Work summary is unavailable. Read the original instructions and available records in Work detail.","작업 요약을 사용할 수 없습니다. 작업 상세에서 원래 지시와 사용 가능한 기록을 읽을 수 있습니다."))
 }
 fn date(html: &mut String, r: &ViewerRequest, time: Option<i64>) {
-    if let Some(time) = time {
-        let (instant, calendar) = observation_time(TimestampMicros::from_unix_micros(time));
+    if let Some((time, (instant, calendar))) = time.and_then(|time| {
+        observation_time(TimestampMicros::from_unix_micros(time)).map(|value| (time, value))
+    }) {
         html.push_str(&format!(
-            "<time datetime=\"{instant}\" data-recorded-at=\"{time}\">{calendar}</time>"
+            "<time datetime=\"{instant}\" data-recorded-at=\"{time}\" title=\"Unix microseconds: {time}\">{calendar}</time>"
         ));
     } else {
         html.push_str(text(r.locale, "Date unavailable", "날짜 확인 불가"));
@@ -261,7 +262,7 @@ pub(super) fn overview(
             )
         ));
     }
-    html.push_str(&format!("</section><section class=\"repository-card\"><p class=\"card-topline\">{}</p><h2>{}</h2><p>{}</p><a class=\"text-action repository-reading-link\" href=\"{}\">{} →</a></section></div>",text(r.locale,"Repository explanation","저장소 설명"),text(r.locale,"Start with the structure","전체 구조부터 살펴보기"),text(r.locale,"Read the available article and its own snapshot and evidence limits. Project purpose is recorded separately.","이용 가능한 설명과 그 snapshot·근거 한계를 읽습니다. 프로젝트 목적은 별도 기록입니다."),escape(&reading::url(r,&ViewerView::RepositoryExplanation)),text(r.locale,"Read repository explanation","저장소 설명 읽기")));
+    html.push_str(&format!("</section><section class=\"repository-card\"><p class=\"card-topline\">{}</p><h2>{}</h2><p>{}</p><a class=\"text-action repository-reading-link\" href=\"{}\">{} →</a></section></div>",text(r.locale,"Repository explanation","저장소 설명"),text(r.locale,"Start with the structure","전체 구조부터 살펴보기"),text(r.locale,"Open the available repository article and inspect the code basis and limits stated there.","저장소 글을 열어 설명한 구조와 동작, 코드 기준과 한계를 확인하세요."),escape(&reading::url(r,&ViewerView::RepositoryExplanation)),text(r.locale,"Read repository explanation","저장소 설명 읽기")));
     html.push_str(&format!(
         "<div class=\"work-stats\"><a href=\"{}\">{} <b>{}</b></a>",
         escape(&href(r, WorkCatalogueQuery::default())),

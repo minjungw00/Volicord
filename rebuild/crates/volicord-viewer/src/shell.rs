@@ -177,5 +177,5 @@ pub(super) fn start(
     } else {
         format!("<button class=\"nav-backdrop\" hidden type=\"button\" tabindex=\"-1\" aria-label=\"{close_label}\"></button>")
     };
-    html.push_str(&format!("</div></div><footer class=\"rail-bottom\"><p>{}</p><p>{}</p><small>{}: {}</small></footer></aside></details>{backdrop}<main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">",text(r.locale,"Read-only","읽기 전용"),if snapshot{text(r.locale,"Export-time local context","내보낸 시점의 로컬 맥락")}else{text(r.locale,"Retained local records","보존된 로컬 기록")},text(r.locale,"Canonical revision","정식 리비전"),p.overview.canonical_revision));
+    html.push_str(&format!("</div></div><footer class=\"rail-bottom\"><p>{}</p><p>{}</p><small>{}: {}</small></footer></aside></details>{backdrop}<main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">",text(r.locale,"Read-only","읽기 전용"),if snapshot{text(r.locale,"Export-time local context","내보낸 시점의 로컬 맥락")}else{text(r.locale,"Retained local records","보존된 로컬 기록")},text(r.locale,"Canonical context revision","정식 맥락 리비전"),p.overview.canonical_revision));
 }

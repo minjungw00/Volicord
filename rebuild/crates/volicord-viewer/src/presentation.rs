@@ -37,8 +37,15 @@ pub(super) fn empty_state(html: &mut String, value: &str) {
 
 /// Calendar presentation of the actual observation instant, in explicit UTC.
 /// This does not infer Work creation/completion from a later observation.
-pub(super) fn observation_time(timestamp: volicord_context::TimestampMicros) -> (String, String) {
+pub(super) fn observation_time(
+    timestamp: volicord_context::TimestampMicros,
+) -> Option<(String, String)> {
     let seconds = timestamp.as_unix_micros().div_euclid(1_000_000);
+    // RFC 3339 calendar years 0001..9999. Invalid instants keep their raw
+    // identity in supporting detail, never an epoch/current-time substitute.
+    if !(-62_135_596_800..=253_402_300_799).contains(&seconds) {
+        return None;
+    }
     let days = seconds.div_euclid(86_400);
     let day_seconds = seconds.rem_euclid(86_400);
     // Gregorian civil date from days since 1970-01-01.
@@ -55,10 +62,10 @@ pub(super) fn observation_time(timestamp: volicord_context::TimestampMicros) -> 
     let hour = day_seconds / 3600;
     let minute = day_seconds % 3600 / 60;
     let second = day_seconds % 60;
-    (
+    Some((
         format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z"),
         format!("{year:04}.{month:02}.{day:02} {hour:02}:{minute:02} UTC"),
-    )
+    ))
 }
 
 pub(super) const fn text<'a>(locale: ViewerLocale, english: &'a str, korean: &'a str) -> &'a str {
@@ -150,8 +157,8 @@ mod calendar_tests {
                 super::observation_time(volicord_context::TimestampMicros::from_unix_micros(
                     seconds * 1_000_000
                 ))
-                .0,
-                date
+                .map(|v| v.0),
+                Some(date.into())
             );
         }
     }

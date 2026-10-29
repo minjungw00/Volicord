@@ -103,7 +103,7 @@ fn overview(
     }
     project_purpose(html, r, u);
     {
-        html.push_str(&format!("<p class=\"repository-reading-basis\">{}</p>", text(r.locale,"Repository reading is independent of Work and recorded Project purpose. Its article states the available snapshot and limits.","저장소 설명은 Work·기록된 Project Purpose와 독립적입니다. 설명 문서에서 이용 가능한 snapshot과 한계를 확인하세요.")));
+        html.push_str(&format!("<p class=\"repository-reading-basis\">{}</p>", text(r.locale,"Open the repository explanation to read any available article and its code basis and limits.","저장소 설명을 열어 이용 가능한 글과 그 코드 기준·한계를 확인하세요.")));
         html.push_str(&format!(
             "<p><a class=\"button secondary repository-reading-link\" href=\"{}\">{}</a></p>",
             if snapshot {
@@ -254,10 +254,19 @@ fn work_event_times(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork)
     ] {
         html.push_str(&format!("<span class=\"work-date\"><span>{}</span>", label));
         if let Some(event) = event {
-            let (instant, calendar) = observation_time(TimestampMicros::from_unix_micros(
+            if let Some((instant, calendar)) = observation_time(TimestampMicros::from_unix_micros(
                 event.recorded_at_unix_micros,
-            ));
-            html.push_str(&format!("<time datetime=\"{}\" data-recorded-at=\"{}\" data-event-kind=\"{}\" data-record-kind=\"{}\" data-record-id=\"{}\" data-revision=\"{}\" title=\"{} @{} · {}\">{}</time>",instant,event.recorded_at_unix_micros,event.kind,event.record_kind,escape(&event.record_identity),event.revision,escape(&event.record_identity),event.revision,event.kind,calendar));
+            )) {
+                html.push_str(&format!("<time datetime=\"{}\" data-recorded-at=\"{}\" data-event-kind=\"{}\" data-record-kind=\"{}\" data-record-id=\"{}\" data-revision=\"{}\" title=\"{} @{} · {} · Unix microseconds: {}\">{}</time>",instant,event.recorded_at_unix_micros,event.kind,event.record_kind,escape(&event.record_identity),event.revision,escape(&event.record_identity),event.revision,event.kind,event.recorded_at_unix_micros,calendar));
+            } else {
+                html.push_str(&format!(
+                    "<span class=\"event-absence\">{}</span>",
+                    escape(&timestamp_label(
+                        TimestampMicros::from_unix_micros(event.recorded_at_unix_micros),
+                        r.locale
+                    ))
+                ));
+            }
         } else {
             html.push_str(&format!("<span class=\"event-absence\">{}</span>", absent));
         }
@@ -2055,7 +2064,7 @@ fn render_applicability(
     ));
     for (index, (label, value)) in [
         (
-            text(r.locale, "Generated at", "설명 생성 시각"),
+            text(r.locale, "Explanation recorded at", "설명 기록 시각"),
             basis.generated_at_unix_micros,
         ),
         (
@@ -2406,7 +2415,15 @@ fn render_source_excerpts(
                 text(r.locale,"Observation scope and limits", "관측 범위와 한계"),text(r.locale,"Included unique cited text", "포함된 고유 인용 텍스트"),
                 answers.source_excerpts.iter().map(|e|e.text.len()).sum::<usize>(),volicord_projections::EXPLANATION_SOURCE_EXCERPT_BYTE_LIMIT,if snapshot {text(r.locale,"Offline: embedded windows only", "오프라인: 포함된 범위만 제공")} else {text(r.locale,"Live citation pages: up to 4,096 bytes", "실시간 인용 페이지: 최대 4,096바이트")}));
             diagram_source_returns(html, r, answers, index, n);
-            html.push_str(&format!("<details><summary>{}</summary><pre>{}</pre></details></section>",text(r.locale,"Source identity · observed scope","Source identity · 관측 범위"),escape(&format!("output: {}\nsubject: {:?}\ncitation: {c:#?}\nWork revision: {:?}\nobserved at: {:?}",provenance.realization_fingerprint,provenance.subject,excerpt.map(|e|e.work_revision),excerpt.map(|e|e.observed_at_unix_micros)))));
+            let observed = excerpt
+                .map(|e| {
+                    timestamp_label(
+                        TimestampMicros::from_unix_micros(e.observed_at_unix_micros),
+                        r.locale,
+                    )
+                })
+                .unwrap_or_else(|| text(r.locale, "Date unavailable", "날짜 확인 불가").into());
+            html.push_str(&format!("<details><summary>{}</summary><p>{}: {}</p><pre>{}</pre></details></section>",text(r.locale,"Source identity · observed scope","Source identity · 관측 범위"),text(r.locale,"Source observed at","근거 관측 시각"),escape(&observed),escape(&format!("output: {}\nsubject: {:?}\ncitation: {c:#?}\nCanonical Work revision: {:?}\nobserved at (Unix microseconds): {:?}",provenance.realization_fingerprint,provenance.subject,excerpt.map(|e|e.work_revision),excerpt.map(|e|e.observed_at_unix_micros)))));
         }
     }
     if answers.omitted_source_excerpt_count > 0 {

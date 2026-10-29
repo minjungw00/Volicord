@@ -81,11 +81,11 @@ fn reused_execution_keeps_both_checkpoint_reports_across_cli_mcp_live_and_offlin
     assert_eq!(report.report_count(ReportedCheckState::Passed), 1);
     let en_summary = report.report_summary(FixedLocale::English);
     let ko_summary = report.report_summary(FixedLocale::Korean);
-    assert!(
-        en_summary.contains("Verification reports (Work Checkpoint history): 1 passed · 2 failed")
-    );
+    assert!(en_summary.contains(
+        "Verification reports (Work Checkpoint history): 1 passed report · 2 failed reports"
+    ));
     assert!(en_summary.contains("no test total is inferred"));
-    assert!(ko_summary.contains("검증 보고 (Work Checkpoint 이력): 1 통과 · 2 실패"));
+    assert!(ko_summary.contains("검증 보고 (Work Checkpoint 이력): 통과 보고 1건 · 실패 보고 2건"));
     // The unstructured three-test quotations remain unchanged. They supply
     // neither six unique tests nor a test count for the unrelated passing report.
     let projection = f
@@ -538,6 +538,21 @@ fn conflict_corrupt_cache_and_absent_verification_do_not_claim_success(
         assert!(page.contains(label), "{label}: {page}");
         assert!(page.contains("data-question=\"RecordedNextStep\""));
         assert!(page.contains("Remove abandoned temporary files"));
+        assert!(page.contains("local CLI/MCP"));
+        assert!(!page.contains("delete and regenerate"));
+        let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+        let snapshot = viewer.render_snapshot(&volicord_viewer::ViewerRequest {
+            project_id: f.project,
+            locale: ViewerLocale::English,
+            requested_language: "en".into(),
+            view: ViewerView::Work { work: Some(work) },
+            guarded_request: None,
+        }, TimestampMicros::from_unix_micros(951_782_400_123_456))?;
+        assert!(snapshot.html.contains("Exported at"));
+        assert!(snapshot.html.contains("2000.02.29 00:00 UTC · Unix µs: 951782400123456"));
+        assert!(!snapshot.html.contains("delete and regenerate"));
+        assert!(!snapshot.html.contains("<form"));
+        assert!(!snapshot.html.contains("<script"));
         f.operations.delete_explanations(f.project,ExplanationSubject::Work(work))?;
     }
     assert_eq!(canonical, f.operations.canonical_basis(f.project)?);

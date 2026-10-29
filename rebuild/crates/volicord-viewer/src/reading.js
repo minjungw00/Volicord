@@ -89,7 +89,11 @@
       region.dataset.comparisonState = basis.repository_comparison;
       region.querySelector('summary').textContent = labels[basis.repository_comparison];
       const time = region.querySelector('[data-comparison-time]');
-      if (time && Number.isSafeInteger(basis.checked_at_unix_micros)) time.textContent = new Date(basis.checked_at_unix_micros/1000).toISOString();
+      if (time && Number.isSafeInteger(basis.checked_at_unix_micros)) {
+        const raw=basis.checked_at_unix_micros,date=new Date(Math.floor(raw/1000));
+        const valid=Number.isFinite(date.getTime())&&date.getUTCFullYear()>=1&&date.getUTCFullYear()<=9999;
+        time.textContent=(valid?date.toISOString().slice(0,16).replaceAll('-','.').replace('T',' ')+' UTC':(ko?'날짜 확인 불가':'Date unavailable'))+` · Unix µs: ${raw}`;
+      }
     }
   }
   let shell=null;
