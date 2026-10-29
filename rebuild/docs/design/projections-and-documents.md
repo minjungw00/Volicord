@@ -3027,6 +3027,15 @@ revoke distributed bytes or certify continuing/remote correspondence.
 These are technical acceptance controls, independent of R3 layout fidelity,
 semantic entailment and user/assistive acceptance. No visual redesign is included.
 
+Unavailable-state copy preserves the scope of expiry: an independent publication
+deadline refuses the article; an expired Source range preserves the separately
+permitted article and refuses only that body. CLI/MCP and live/native/export
+notices must not promise retained reading for an expired publication. Live
+comparison updates replace their date as well as their status: missing or unsafe
+times clear the previous value, and an initially absent comparison time keeps an
+explicit unavailable slot for later reads. UTC formatting never guesses seconds
+from a microsecond field or substitutes the browser clock.
+
 ### Shared project navigation and heading projection
 
 The Reader's adopted sidebar replaces the former top destination links. Local

@@ -49,6 +49,27 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  const native=await page.locator(`[id="${claimId}"] a.evidence-link`).first().getAttribute('href');
  await page.goto(address+native);await complete(page);assert.equal(await point().getAttribute('id'),sourceId,'native origin resolves its exact Source');
  await page.keyboard.press('Escape');await settle(page);assert.equal(await element.evaluate(n=>n===document.activeElement),true,'native deep entry returns to its exact element');
+ // A new comparison cannot inherit an earlier response's clock. These are
+ // response controls on a genuine publication, not new authored/history facts.
+ await page.goto(address+native);await complete(page);
+ const publicationForTime=await point().getAttribute('data-reader-publication');
+ const compared=page.locator(`.applicability[data-reader-publication="${publicationForTime}"] [data-comparison-time]`);
+ for(const [value,expected] of [
+  [0,'1970.01.01 00:00 UTC'],[null,null],[-1,'1969.12.31 23:59 UTC'],
+  [Number.MAX_SAFE_INTEGER+1,null],[1792494581,'1970.01.01 00:29 UTC'],[undefined,null]
+ ]){
+  await context.route('**/citation?*',async route=>{
+   const response=await route.fetch(),body=await response.json();
+   body.applicability.checked_at_unix_micros=value;
+   await route.fulfill({response,json:body});
+  });
+  await point().locator('.citation-read').click();await complete(page);
+  const shown=await compared.textContent();
+  if(expected){assert.ok(shown.startsWith(expected),'explicit UTC microsecond interpretation');assert.ok(shown.endsWith(`Unix µs: ${value}`),'exact valid machine time');}
+  else assert.match(shown,/^(Date unavailable|날짜 확인 불가)$/,'missing/unsafe time clears prior comparison date');
+  await context.unroute('**/citation?*');
+ }
+ notes.push('comparison dates reject stale, absent and unsafe values');
  await page.goto(address+native+'!foreign-claim');await settle(page);assert.equal(await page.locator('.source-point[data-selected]').count(),0);assert.equal(await page.locator('.fragment-unavailable').isVisible(),true);notes.push('native origin and foreign claim refusal');
  // A restored page revalidates selected evidence. A destroyed enhancement
  // aborts pending reads and releases inert/observers/listeners, even when a

@@ -119,6 +119,33 @@ fn assert_goal(w: &UnderstandingWork, r: &ViewerRequest) {
 }
 
 #[test]
+fn independent_record_basis_keeps_missing_comparison_time_explicit(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (mut w, mut r) = fixture()?;
+    let mut e = reading(&w, &r, "An independently recorded interpretation.");
+    e.applicability.generated_at_unix_micros = Some(1_792_494_581_594_629);
+    e.applicability.checked_at_unix_micros = None;
+    w.reading.explanations = vec![e];
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        r.locale = locale;
+        let questions = work_answers(&w, "en", locale.fixed());
+        let answers = ReaderAnswers::new(&questions, r.project_id, "work", "en", "article");
+        for snapshot in [false, true] {
+            let mut html = String::new();
+            render_applicability(&mut html, &r, &answers, snapshot);
+            assert!(html.contains(if locale == ViewerLocale::English {
+                "<dd data-comparison-time>Date unavailable</dd>"
+            } else {
+                "<dd data-comparison-time>날짜 확인 불가</dd>"
+            }));
+            assert!(html.contains("2026.10.20 11:09 UTC"));
+            assert!(!html.contains("1970"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn unavailable_and_stale_interpretations_cannot_supply_effect_headlines(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (mut w, r) = fixture()?;

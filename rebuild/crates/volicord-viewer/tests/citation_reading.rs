@@ -2642,6 +2642,69 @@ fn diagram_ui_locale_preserves_authored_english_claims_and_publication_identity(
 }
 
 #[test]
+fn publication_expiry_refuses_the_article_without_promising_retained_reading(
+) -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let retained = f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        diagram_control(&f, true)?,
+    )?;
+    // An independently imposed publication deadline is distinct from the
+    // Source-computed body deadline exercised by the following lifecycle test.
+    let db = rusqlite::Connection::open(f.ops.layout().privacy_store())?;
+    let raw: String = db.query_row(
+        "SELECT record_json FROM managed_derived WHERE json_extract(record_json,'$.purpose')=?1",
+        [format!("explanation:{}:en", retained.subject.key())],
+        |row| row.get(0),
+    )?;
+    let mut record: Value = serde_json::from_str(&raw)?;
+    record["retained_until"] = serde_json::json!(1);
+    db.execute(
+        "UPDATE managed_derived SET record_json=?1 WHERE json_extract(record_json,'$.purpose')=?2",
+        rusqlite::params![
+            record.to_string(),
+            format!("explanation:{}:en", retained.subject.key())
+        ],
+    )?;
+    drop(db);
+    for (locale, expected, misleading) in [
+        (
+            ViewerLocale::English,
+            "publication expired",
+            "explanation remains readable",
+        ),
+        (
+            ViewerLocale::Korean,
+            "설명 자체의 보존 기간이 만료",
+            "설명은 작성 당시 근거로 계속 읽을 수",
+        ),
+    ] {
+        let mut request = f.request();
+        request.locale = locale;
+        let adapter = ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()));
+        let response = f.get(&format!(
+            "/?view=repository&locale={}",
+            if locale == ViewerLocale::English {
+                "en"
+            } else {
+                "ko"
+            }
+        ))?;
+        let destination = f.temp.path().join(format!("expired-{locale:?}.html"));
+        adapter.export_snapshot(&request, &destination)?;
+        for html in [response, fs::read_to_string(destination)?] {
+            assert!(html.contains(expected), "{locale:?}: {html}");
+            assert!(!html.contains(misleading));
+            assert!(!html.contains("class=\"admitted-diagram\""));
+            assert!(!code_texts(&html).iter().any(|s| s == &f.originals[8]));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart(
 ) -> Result<(), Box<dyn Error>> {
     use volicord_context::{FixedClock, SystemIdGenerator, TimestampMicros};
@@ -2746,6 +2809,8 @@ fn admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart(
         assert!(!http.contains("return verify(value)"));
         let live = f.get("/?view=repository")?;
         assert!(live.contains("admitted-diagram") && live.contains("data-range-state=\"expired\""));
+        assert!(live.contains("The retained explanation remains readable on its original basis."));
+        assert!(!live.contains("This publication expired"));
         assert!(!code_texts(&live).iter().any(|s| s == &f.originals[8]));
         assert!(code_texts(&live).iter().any(|s| s == &f.originals[9]));
         let destination = f.temp.path().join("after-expiry.html");

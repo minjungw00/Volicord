@@ -1692,7 +1692,7 @@ fn render_source_scope(
                     .iter()
                     .find(|r| r.citation == *c && !r.available)
                 {
-                    limitation_label(r.locale, status.limitation)
+                    range_limitation_label(r.locale, status.limitation)
                 } else {
                     text(r.locale, "omitted", "생략")
                 }
@@ -1995,8 +1995,8 @@ fn limitation_label(
         ),
         Some(F::Expired) => text(
             locale,
-            "This evidence range expired. The retained explanation remains readable on its original basis.",
-            "이 근거 범위의 보존 기간이 만료되었습니다. 보존된 설명은 작성 당시 근거로 계속 읽을 수 있습니다.",
+            "This publication expired and cannot be read. Independent available records remain readable.",
+            "설명 자체의 보존 기간이 만료되어 읽을 수 없습니다. 독립적으로 이용 가능한 기록은 계속 읽을 수 있습니다.",
         ),
         Some(F::Deleted) => text(
             locale,
@@ -2033,6 +2033,21 @@ fn limitation_label(
             "A required dependency is unavailable. Independent recorded facts remain readable.",
             "필수 근거를 이용할 수 없습니다. 독립적인 기록된 사실은 계속 읽을 수 있습니다.",
         ),
+    }
+}
+
+fn range_limitation_label(
+    locale: ViewerLocale,
+    reason: Option<volicord_projections::ExplanationFailureReason>,
+) -> &'static str {
+    if reason == Some(volicord_projections::ExplanationFailureReason::Expired) {
+        text(
+            locale,
+            "This evidence range expired. The retained explanation remains readable on its original basis.",
+            "이 근거 범위의 보존 기간이 만료되었습니다. 보존된 설명은 작성 당시 근거로 계속 읽을 수 있습니다.",
+        )
+    } else {
+        limitation_label(locale, reason)
     }
 }
 
@@ -2116,17 +2131,17 @@ fn render_applicability(
     .into_iter()
     .enumerate()
     {
-        if let Some(value) = value {
-            html.push_str(&format!(
-                "<dt>{label}</dt><dd{}>{}</dd>",
-                if index == 1 {
-                    " data-comparison-time"
-                } else {
-                    ""
-                },
-                timestamp_label(TimestampMicros::from_unix_micros(value), r.locale)
-            ));
-        }
+        html.push_str(&format!(
+            "<dt>{label}</dt><dd{}>{}</dd>",
+            if index == 1 {
+                " data-comparison-time"
+            } else {
+                ""
+            },
+            value
+                .map(|value| timestamp_label(TimestampMicros::from_unix_micros(value), r.locale))
+                .unwrap_or_else(|| text(r.locale, "Date unavailable", "날짜 확인 불가").into())
+        ));
     }
     for source in &basis.explained_snapshots {
         html.push_str(&format!(
@@ -2384,7 +2399,7 @@ fn render_source_excerpts(
                                 .as_str()
                                 .unwrap_or("unavailable")
                         ),
-                        limitation_label(r.locale, status.limitation)
+                        range_limitation_label(r.locale, status.limitation)
                     ));
                 } else {
                     empty_state(

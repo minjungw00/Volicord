@@ -346,7 +346,7 @@ pub fn explanation_answers(
             .collect()
     } else {
         let (en,ko)=match reading.and_then(|r|r.applicability.limitation) {
-            Some(ExplanationFailureReason::Expired) => ("Retained evidence expired; canonical facts remain readable. Fresh observation and generation require an explicit request.","보존된 근거의 보존 기간이 만료되었습니다. 정식 기록은 계속 읽을 수 있으며 새 관측과 생성에는 명시적 요청이 필요합니다."),
+            Some(ExplanationFailureReason::Expired) => ("This publication expired; independent available records remain readable. A replacement requires explicit preparation, authorship and recording from permitted evidence in local CLI/MCP.","설명 자체의 보존 기간이 만료되었습니다. 독립적으로 이용 가능한 기록은 계속 읽을 수 있습니다. 새 설명은 허용된 근거로 별도 로컬 CLI/MCP에서 명시적으로 준비·작성·기록해야 합니다."),
             Some(ExplanationFailureReason::Deleted) => ("The explanation or required evidence was deleted; independent recorded facts remain readable.","설명 또는 필수 근거가 삭제되었습니다. 독립적인 기록된 사실은 계속 읽을 수 있습니다."),
             Some(ExplanationFailureReason::ComparisonUnavailable) => ("The current repository comparison is unavailable; no current-code explanation is shown. Independent recorded facts remain readable.","현재 저장소와 비교할 수 없어 현재 코드 설명을 표시하지 않습니다. 독립적인 기록된 사실은 계속 읽을 수 있습니다."),
             _ => match state {
