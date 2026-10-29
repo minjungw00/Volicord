@@ -4408,6 +4408,17 @@ retained even after failure. Low-space linker termination is not a failed test;
 retain its streams and distinguish a likely output-allocation failure from a
 confirmed compiler or Product defect.
 
+Reader expiry controls must exercise both scopes on actual HTTP and newly
+exported output: `citation_reading::publication_expiry_refuses_the_article_without_promising_retained_reading`
+refuses an independent publication deadline in both UI locales, while
+`admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart` preserves
+the same publication and refuses only expired body bytes. Both are mapped in
+the existing question-scoped consumer registry. `evidence_interactions.cjs`
+also checks actual citation responses with missing, unsafe, zero, negative and
+seconds-sized microsecond values; a new missing time must clear the previous
+date. These controls establish scope/time behavior, not authored explanation
+quality or reader acceptance.
+
 ### Connected temporal orientation and view-specific return controls
 
 Use the Reader's frozen closure/concept question mapping before layout selection.

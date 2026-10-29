@@ -234,6 +234,16 @@
           "admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss"
         ],
         [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/citation_reading.rs",
+          "publication_expiry_refuses_the_article_without_promising_retained_reading"
+        ],
+        [
+          "viewer",
+          "rebuild/crates/volicord-viewer/tests/citation_reading.rs",
+          "admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart"
+        ],
+        [
           "local_operations",
           "rebuild/crates/volicord-operations/tests/work_authority.rs",
           "answer_selection_tracks_every_grounded_history_prefix"
