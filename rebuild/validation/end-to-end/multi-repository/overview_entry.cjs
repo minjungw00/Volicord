@@ -16,24 +16,30 @@ async function observeOverview(figure, diagram) {
       const b=n.getBoundingClientRect();return b.width>0&&b.height>0;
     };
     const svg=figure.querySelector('svg');const viewport=svg?.closest('.diagram-viewport');
-    if(viewport&&(viewport.scrollLeft!==0||viewport.scrollTop!==0))errors.push('orientation was panned before its initial observation');
     if(!visible(svg))errors.push('connected map hidden or absent');
-    if(viewport&&viewport.scrollWidth>viewport.clientWidth+1)errors.push('ordinary orientation requires horizontal discovery');
-    if(viewport&&viewport.scrollHeight>viewport.clientHeight+1)errors.push('overview requires internal vertical discovery');
+    const travel={horizontal:!!viewport&&viewport.scrollWidth>viewport.clientWidth+1,vertical:!!viewport&&viewport.scrollHeight>viewport.clientHeight+1};
+    // Purpose/start/navigation replace the former blanket no-required-pan rule.
+    // Travel is observed, not a reading failure or a substitute for comprehension.
+    const caption=figure.querySelector('figcaption');
+    if(!visible(caption)||!caption.textContent.trim())errors.push('entry purpose absent');
+    if((travel.horizontal||travel.vertical)&&!(viewport?.getAttribute('aria-label')?.trim()&&viewport.tabIndex>=0))errors.push('navigation missing for spatial reading');
+    const bounds=viewport?.getBoundingClientRect();
+    const inViewport=n=>{if(!visible(n))return false;const b=n.getBoundingClientRect();return !bounds||(b.right>bounds.left&&b.left<bounds.right&&b.bottom>bounds.top&&b.top<bounds.bottom);};
+    if(!nodes.some(id=>[...document.getElementById(figure.id+'-'+id)?.querySelectorAll('text')||[]].some(inViewport)))errors.push('readable starting element absent');
     for(const id of nodes){
       const anchor=document.getElementById(figure.id+'-'+id);
       if(!anchor||![...anchor.querySelectorAll('text')].some(visible))errors.push('node not in visible map: '+id);
     }
     const glyphs=[...svg?.querySelectorAll('text tspan')||[]].filter(visible);
     // getScreenCTM accounts for CSS/SVG transforms, including miniature maps.
-    for(const g of glyphs){const m=g.getScreenCTM();const size=parseFloat(getComputedStyle(g).fontSize)*Math.hypot(m.a,m.b);if(size<(g.closest('.diagram-node-kind,.diagram-label-support')?11.9:g.closest('.relation-wording,.diagram-condition')?12.9:15.9))errors.push('essential text scaled below native reading size');}
+    for(const g of glyphs){const m=g.getScreenCTM();const size=parseFloat(getComputedStyle(g).fontSize)*Math.hypot(m.a,m.b);if(size<(g.closest('.diagram-node-kind,.diagram-label-support')?11.9:g.closest('.relation-wording,.diagram-condition,.world-support,.world-identifier')?12.9:15.9))errors.push('essential text scaled below native reading size');}
     if(!glyphs.length)errors.push('no rendered labels');
     const controls=figure.querySelector('.diagram-controls');
     const claims=[...figure.querySelectorAll('.diagram-claim')].filter(visible);
     if(claims.length)errors.push('detail selected before orientation');
     const b=svg?.getBoundingClientRect();
     if(controls&&visible(controls)){const c=controls.getBoundingClientRect();if(c.top<b.top&&c.bottom>b.top+1)errors.push('figure controls obscure the map');}
-    return {errors,initialInteractions,nodes:nodes.length,renderedGlyphRuns:glyphs.length,canvas:b?{width:b.width,height:b.height}:null,scroll:{pageY:scrollY,left:viewport?.scrollLeft,top:viewport?.scrollTop},classification:'technical supporting observation; comprehension assessment remains separate'};
+    return {errors,initialInteractions,travel,nodes:nodes.length,renderedGlyphRuns:glyphs.length,canvas:b?{width:b.width,height:b.height}:null,scroll:{pageY:scrollY,left:viewport?.scrollLeft,top:viewport?.scrollTop},classification:'technical supporting observation; comprehension assessment remains separate'};
   },{nodes,sequence:diagram.meaning.kind==='sequence'});
 }
 module.exports={observeOverview};

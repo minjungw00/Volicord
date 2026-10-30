@@ -575,3 +575,33 @@ clean install
   republication would require forbidden historical evidence recovery. Product
   history, reported checks, acceptance and possible illustrative A/B order remain
   unchanged. Publication creation is not a new Work execution.
+
+## Spatial reading comparison and selection boundary — 2026-10-30
+
+- Process/entry change: authorized by the supplied request, “The user requires
+  comparison and explicit selection before changing the default design.” The same
+  request states, “A recommendation is not user approval.” The updated Reader entry
+  contract permits directed movement with readable purpose/start/navigation; it
+  supersedes only the blanket no-required-pan restriction.
+- Design selection: **pending**. No user words select a new geometry/navigation,
+  editorial variant or scope. Keep the actual Product default and publications.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-11/index.html`;
+  manifest SHA-256 `54be23e11b62f1bfc3ee01a7d80246db523244fa2f38b9347ff9366de3aa6407`.
+  Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
+  compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
+  closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
+  on the same original geometry; `musicdeck-work-ko-CE1` is the proposed combined
+  camera/editorial inspection. `musicdeck-ko-{A,B,C}` is the separately reserved
+  browser-request-state transfer case, not another historical Work or new run.
+- User action: identify this package/hash, choose A/B/C for each primary case and
+  E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
+  valid. Recommendation or descriptive technical observations do not fill this field.
+- Selection permits subsequent scoped Product implementation planning. Draft
+  publication/admission, production integration, normal consumer coverage, assistive
+  observations and exact-candidate qualification remain distinct later work. Do not
+  infer universal camera use, new-format approval, corpus republication or completed
+  implementation acceptance from a design choice.
+- Revisit when actual reading feedback exposes lost context or unclear relations,
+  the held-out topology fails, or normal authoring/authority/return cannot preserve
+  selected meaning. Preserve the rejected candidate and actual feedback verbatim in
+  the existing evidence owner; do not rewrite the shared input or invent approval.

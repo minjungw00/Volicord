@@ -2897,9 +2897,11 @@ and before selected detail. The prior first-connection card with a closed full-l
 disclosure is superseded by the overview-first Reader decision. A connection appears
 only after deliberate selection; previous/next links remain secondary navigation.
 Graph enumeration and parallel operand enumeration assert no execution order.
-The map must be readable at desktop and narrow widths without discovering hidden
-endpoints by pan or opening a disclosure. Normal page scrolling is permitted.
-Merely exposing a huge clipped SVG or shrinking its labels is not completion.
+The Reader's 2026-10-30 entry contract supersedes the former no-required-pan rule.
+Purpose/scope, a readable start and discoverable navigation are required; deliberate
+movement may reveal further endpoints. Merely exposing an unexplained clipped SVG
+or shrinking its labels is not completion. Small inline figures remain appropriate;
+this contract does not mandate a camera for every diagram or select a new default.
 Complete authored predicates and short standalone names remain cited prose spans;
 rendering may reflow them, but cannot invent, truncate or infer meaning/grouping.
 Each graph annotation visibly repeats its exact admitted source and target names
@@ -3339,3 +3341,25 @@ with the original launch/finish ranges accessible; success does not establish
 confirmed playback. Correcting this authored mapping requires normal composition
 and a new publication, not renderer inference, deletion of the edge or rebinding
 the previous publication's fingerprints.
+
+### Local spatial comparison and pending selection
+
+The three geometry/navigation alternatives consume identical frozen publication
+meaning. The spacious scroll and camera cases must share exact SVG geometry bytes;
+camera state is ephemeral UI state. Element/claim/range selection retains Project,
+subject, language, publication, view and origin, with complete conditions and code.
+Return restores scale, location and focus; resizing preserves the semantic anchor
+within valid bounds. Keyboard and non-drag pointer controls complement dragging,
+ordinary scrolling, text selection and native links. Fit orientation never counts
+as readable-scale evidence. Script-free consumption retains readable local geometry
+and complete authorized alternatives, without claiming live lifecycle enforcement.
+
+Independent Work summaries are grounded in original canonical facts, not the
+article. Editorial comparison keeps diagram geometry fixed and orders question/
+result, mechanism, material limits, verification and supporting provenance as the
+case needs. Capture details may move; Goal, history, report units, state, source
+roles and material limits cannot be changed or hidden. Draft text is identified
+as unadmitted and cannot inherit an original claim/publication binding. Original
+support remains separately inspectable. New Product wording still requires normal
+preparation/composition/admission after selection; this local comparison grants
+no schema, retention, authority, republication or rollout exception.

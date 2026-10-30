@@ -3744,13 +3744,21 @@ contiguous 4,096-byte live citation page against original UTF-8 before asserting
 critical evidence. A first-page comparison cannot reject a correctly paginated range or
 establish complete Source coverage; no publication or excerpt limit is raised.
 
-Actual scripted figure checks require a complete node box inside the initial local
+Actual scripted figure checks require a readable starting node inside the initial local
 viewport at each tested width, before expansion or element focus can pan it. This
 complements page-overflow, native-size, exact-return and no-script relationship controls;
 an otherwise empty routing margin is not meaningful initial visual framing.
 The driver asserts that live pages contain scripting and static exports do not.
 Enabling JavaScript in the browser does not turn a script-free artifact into a
 scripted consumer; initial-framing assertions apply to the live path only.
+
+The 2026-10-30 entry contract permits directed spatial movement. The initial-node
+check remains a readable-start control, not a requirement to fit every relation.
+`overview_entry.cjs` records required horizontal/vertical travel and checks purpose,
+a readable start and labelled keyboard-accessible navigation. Its consumer retains
+hidden-map, miniature, assisted-entry, missing-guard, reversed/merged route,
+incomplete-label and invisible-focus negatives, and independently challenges absent
+purpose/start/navigation. A readable navigable timeline is now a positive control.
 
 ### Critical visual evidence consumers
 
@@ -4482,3 +4490,36 @@ workload or permission to raise a ceiling. A wrapper-only FE trial cannot establ
 declarative state/DOM or maintainability superiority. Preserve originals and all
 failed attempts; report exact candidate/asset scope, dependent visual judgment,
 unobserved independent/human/assistive acceptance and skipped qualification separately.
+
+### Controlled spatial-reading comparison — 2026-10-30
+
+Use the existing `viewer-design/spatial_comparison.cjs` tooling for isolated frozen
+exports, with the direct comparison/mode consumers described in its README. Freeze
+original identities, facts, claim/range hashes, questions and initial captures before
+tuning; reserve a structurally different real transfer case. Inspect content, display
+roles, geometry and camera separately. A/B/C hold meaning fixed; B/C use identical
+SVG bytes. Current/edited Work variants hold diagram geometry fixed. Inspect the
+proposed combination too; no combination is considered user-selected before actual
+user words identify it.
+
+Preserve first observations, failed versions, mistaken routes, repeated tracing,
+missed controls, context loss and order/familiarity effects. Source-first implementer
+inspection is dependent; missing fresh-reader evidence remains unobserved. A small
+descriptive comparison provides no statistical or universal claim. Neutral tasks
+belong in the separate index; independent expectations and original support remain
+outside any isolated presentation input. Ordinary screens carry no experiment UI.
+
+Check ordinary and manipulated states at 1440/1024/768/390/320 as applicable, plus
+actual file/loopback HTTP, readable native/no-JS fallback, keyboard/non-drag/drag,
+resize, exact claim/range/code and same-origin return. Record numeric exits and
+complete logs through `validate focused`, with exclusive output directories.
+Unsupported physical touch, browser chrome zoom and assistive observation must not
+be simulated as success. Frozen exports establish no live lifecycle/security or
+normal admission/producer/install success. Do not run aggregate/Final/official V11,
+provider qualification, whole-corpus publication or the authoritative gate here.
+
+Deliver immutable file/manifest hashes and runnable entry paths through the existing
+Decision/evidence owners. Missing explicit selection blocks default adoption, not
+delivery of the completed comparison. Raw inputs, code payloads, screens, failed
+outputs and the shared input/R3 remain ignored and unchanged. Only reusable local
+tooling, directly coupled consumer checks and reviewed owner summaries are maintained.

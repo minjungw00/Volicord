@@ -275,12 +275,25 @@ fallback은 **기록 접근성**의 완료 조건이다. 실제 근거가 충분
 
 ### Connected overview reading
 
-The latest overview-first decision supersedes the prior default connection card
-and closed full-layout choice. On ordinary entry, purpose and a readable connected
-map precede detail controls in live and script-free offline readers. Normal page
-scrolling is permitted. Opening a disclosure, manually panning to discover hidden
-endpoints, enumerating edges, or opening code must not be necessary for orientation.
-The selected connection remains a useful subsequent detail.
+The overview-first decision supersedes the prior default connection card and
+closed full-layout choice. The 2026-10-30 spatial-reading request supersedes its
+blanket prohibition on required panning: ordinary entry must explain purpose and
+scope, show a readable starting element and make navigation discoverable. Readers
+may deliberately move or zoom to inspect relationships. Do not force all endpoints
+into the first viewport by shrinking text or distorting routes. A fit view provides
+orientation, not proof of readable text. A hidden map, unexplained miniature or
+unguided clipped scene still fails. Record ordinary entry before interaction, then
+assess the directed reading journey separately. Selection remains subsequent detail.
+
+Compare the unchanged width-constrained baseline, spacious relationship geometry
+with native scroll/element navigation, and that exact geometry with a camera.
+Hold admitted prose, roles, directions, conditions and code fixed. Compare editorial
+order separately on one fixed geometry. Use frozen actual cases and reserve a
+different transfer case before tuning. Manual reference coordinates are permitted
+in explicitly identified local prototypes; they establish no general layout policy.
+The existing Product baseline remains installed until explicit user selection of
+the identified package, layout/navigation, editorial variant, scope and corrections.
+Recommendation, technical success, prior R3 adoption and silence are not selection.
 
 The [O1–O6 mapping](acceptance-scenarios.md#connected-repository-orientation-outcomes)
 is renderer-independent. Before candidate evaluation, record these case questions:
@@ -1099,9 +1112,11 @@ headers in addition to checking glyph containment and exact identity.
 
 ### Connected temporal entry and relationship hierarchy
 
-The remaining initial-reading discrepancy is independent of renderer 15's readable
+The earlier initial-reading discrepancy is independent of renderer 15's readable
 detail lanes: the actual five-participant closure occupies 664px inside 352/290px
-at 390/320px entry. Its offscreen actors cannot establish default orientation.
+at 390/320px entry. That clipping motivated the historical connected-stage baseline.
+Under the newer entry contract, offscreen actors alone no longer decide failure;
+readable purpose/start/navigation and the actual directed journey decide adequacy.
 The following Source-derived questions are frozen before selecting a replacement
 presentation. The R3 prototype is the visual hierarchy reference; its fewer actors
 do not define the Product's supported scope.

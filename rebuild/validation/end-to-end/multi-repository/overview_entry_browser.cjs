@@ -11,7 +11,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
  const rows=[];
  try{
  for(const c of C.cases){const pub=JSON.parse(fs.readFileSync(c.public));const d=pub.diagrams.find(d=>d.id===c.diagram);
-  for(const control of ['hidden-card','miniature','assisted-entry','incomplete-label','reversed-edge','merged-routes','invisible-focus',...(d.meaning.kind==='sequence'?['clipped-detail','missing-guard']:[])]){
+  for(const control of ['hidden-card','miniature','assisted-entry','incomplete-label','reversed-edge','merged-routes','invisible-focus','missing-navigation','missing-start','missing-purpose',...(d.meaning.kind==='sequence'?['navigable-detail','missing-guard']:[])]){
    // The export itself is script-free. Enable evaluation callbacks for the
    // observer's event/MutationObserver negative control; no-JS product journeys
    // run separately through grounded_diagrams_browser.cjs.
@@ -23,7 +23,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
    await figure.evaluate(n=>n.scrollIntoView({block:'start'}));
    await page.screenshot({path:path.join(C.output,c.key+'-'+control+'-initial.png')});
    await installEntryObserver(page);assert.deepEqual((await observeOverview(figure,d)).errors,[],'unmodified actual entry');
-   if(control==='clipped-detail'){
+   if(control==='navigable-detail'){
     await figure.evaluate(n=>{
      const scene=n.querySelector(':scope > .diagram-full-view svg');
      const timeline=n.querySelector('.diagram-timeline svg').cloneNode(true);
@@ -34,8 +34,19 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
      scene.replaceWith(timeline);
     });
     const observed=await observeOverview(figure,d);
-    assert(observed.errors.includes('ordinary orientation requires horizontal discovery'),'readable clipped detail cannot masquerade as initial orientation');
+    assert.equal(observed.travel.horizontal,true,'record the directed movement requirement');
+    assert.deepEqual(observed.errors,[],'readable purpose/start and labelled native navigation permit deliberate movement');
     rows.push({case:c.key,control,observed});
+   }else if(['missing-navigation','missing-start','missing-purpose'].includes(control)){
+    await figure.evaluate((n,control)=>{
+      const viewport=n.querySelector('.diagram-viewport');
+      if(control==='missing-navigation'){viewport.style.width='100px';viewport.removeAttribute('aria-label');viewport.removeAttribute('tabindex');}
+      if(control==='missing-start')n.querySelector(':scope > .diagram-full-view svg').style.transform='translateX(10000px)';
+      if(control==='missing-purpose')n.querySelector('figcaption').textContent='';
+    },control);
+    const observed=await observeOverview(figure,d);
+    const expected={'missing-navigation':'navigation missing for spatial reading','missing-start':'readable starting element absent','missing-purpose':'entry purpose absent'}[control];
+    assert(observed.errors.includes(expected),control+' must fail independently');rows.push({case:c.key,control,observed});
    }else if(control==='missing-guard'){
     const index=d.meaning.groups.findIndex(g=>g.condition);assert(index>=0,'real conditional sequence required');
     await figure.locator(':scope > .diagram-full-view svg').evaluate((svg,guard)=>{
