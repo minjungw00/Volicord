@@ -150,7 +150,19 @@ async function build(config) {
               // Move complete authored blocks, preserving claim/range origins and original text.
               const support=[...reading.children].find(n=>n.querySelector('[data-question="SectionHeading"]')?.textContent==='호출 연결과 원래 기록의 근거');
               const next=[...reading.children].find(n=>n.querySelector('[data-question="SectionHeading"]')?.textContent==='남은 단계');
-              const verification=doc.querySelector('.verification-report');if(verification){verification.open=false;reading.after(verification);}
+              const verification=doc.querySelector('.verification-report');if(verification){
+                verification.open=true;reading.after(verification);
+                for(const execution of verification.querySelectorAll(':scope > article.verification-execution')){
+                  const header=execution.querySelector(':scope > header'),label=header?.querySelector('h3');
+                  if(!label)throw Error('verification command label absent');
+                  const details=document.createElement('details');
+                  for(const attribute of execution.attributes)details.setAttribute(attribute.name,attribute.value);
+                  const summary=document.createElement('summary');
+                  label.style.display='inline';label.style.margin='0';summary.append(label);
+                  details.append(summary,...header.childNodes);header.remove();
+                  details.append(...execution.childNodes);execution.replaceWith(details);
+                }
+              }
               const limits=doc.querySelector('.limits-section');if(limits)verification?.before(limits);
               if(next)verification?.after(next);
               if(support)(next||verification||reading).after(support);

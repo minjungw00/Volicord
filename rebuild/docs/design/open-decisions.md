@@ -585,8 +585,8 @@ clean install
   supersedes only the blanket no-required-pan restriction.
 - Design selection: **pending**. No user words select a new geometry/navigation,
   editorial variant or scope. Keep the actual Product default and publications.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-12/index.html`;
-  manifest SHA-256 `35eee8b6adbcb47683454bfebb7891f6ca58fad59b83ddf7afdded8b11476957`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-13/index.html`;
+  manifest SHA-256 `6af35e119bc9c36c08e120361d6c3bd8ffd57092dea6bb382ef99504fa69b841`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -594,9 +594,12 @@ clean install
   camera/editorial inspection. `musicdeck-ko-{A,B,C}` is the separately reserved
   browser-request-state transfer case, not another historical Work or new run.
 - Scoped user feedback, verbatim: “E1에서 검증 카드는 접는 것이 좋아보입니다.”
-  E1 and its CE1 combination now start with the verification card collapsed;
-  native keyboard/pointer disclosure retains the complete report. Package 11 and
-  its observations remain preserved. This authorizes that candidate refinement,
+  Clarification, verbatim: “제 의도는 검증 섹션의 명령 라벨을 접는 것이었습니다.”
+  Package 12 incorrectly collapsed the entire verification section. Package 13
+  corrects that interpretation: E1 and CE1 keep the section/narrative expanded and
+  collapse each command-labelled execution entry independently. Native keyboard/
+  pointer disclosure preserves every report and exact Source identity. Packages
+  11/12 and observations remain preserved. This is a scoped candidate refinement,
   not a final layout/editorial selection, general policy or Product-default rollout.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
