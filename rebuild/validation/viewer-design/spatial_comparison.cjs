@@ -33,9 +33,51 @@ async function build(config) {
           await page.route('**/*', route=>route.abort());
           await page.setContent(original);
           assert.equal(await page.locator('script').count(),0,'only script-free exports are accepted');
-          await page.evaluate(({c, v, diagram, css, script})=>{
+          const embedded=await page.locator('.source-point').evaluateAll(points=>points.flatMap(p=>{
+            const code=p.querySelector(':scope > pre.code-region code');return code?[{id:p.id,text:code.textContent}]:[];
+          }));
+          const completeRanges=new Set(publicData.source_excerpts.filter(e=>e.omitted_utf8_bytes===0).map(e=>e.citation.range_sha256));
+          const codeHashes=Object.fromEntries(embedded.map(e=>[e.id,'sha256:'+hash(e.text)]));
+          for(const sha of Object.values(codeHashes))assert.ok(completeRanges.has(sha),'only complete originally embedded cited ranges may be folded');
+          await page.evaluate(({c, v, diagram, css, script, codeHashes})=>{
             const style=document.createElement('style');style.textContent=css;document.head.append(style);
             document.body.dataset.comparisonNavigation=v.navigation;
+            // Keep one physical copy of each frozen range in the same evidence pane.
+            // Native :target routing selects its disclosure without another navigation.
+            const payloads=new Map(),bindings=new Map();
+            function bind(target,details){
+              target.dataset.citedCode=details.id;
+              if(!bindings.has(details))bindings.set(details,new Set());bindings.get(details).add(target.id);
+            }
+            for(const point of document.querySelectorAll('.source-point')){
+              const pre=point.querySelector(':scope > pre.code-region');if(!pre)continue;
+              const details=document.createElement('details');details.className='cited-code';details.id=point.id+'-complete-code';
+              details.dataset.sourceId=point.dataset.sourceId;details.dataset.rangeSha256=codeHashes[point.id];
+              const summary=document.createElement('summary');summary.textContent='인용된 전체 코드 보기';details.append(summary);
+              const caption=point.querySelector(':scope > .code-caption');if(caption)details.append(caption);
+              details.append(pre);point.closest('.appendix').append(details);payloads.set(point,details);bind(point,details);
+              for(const alias of point.querySelectorAll(':scope > .shared-source-target')){
+                if(alias.dataset.sourceId!==details.dataset.sourceId||alias.dataset.rangeSha256!==details.dataset.rangeSha256)throw Error('shared code binding mismatch');
+                bind(alias,details);
+              }
+            }
+            for(const reference of document.querySelectorAll('.source-code-reference')){
+              const link=reference.querySelector('a[href]'),target=link&&document.getElementById(link.getAttribute('href').slice(1));
+              const details=target&&payloads.get(target.closest('.source-point'));
+              const origin=reference.closest('.source-origin-target')||reference.closest('.source-point');
+              if(!details||!origin||origin.closest('.source-point').dataset.sourceId!==details.dataset.sourceId||link.dataset.rangeSha256!==details.dataset.rangeSha256)throw Error('exact inline citation binding missing');
+              bind(origin,details);reference.remove();
+            }
+            for(const point of document.querySelectorAll('.source-point[data-cited-code]')){
+              const details=document.getElementById(point.dataset.citedCode);
+              for(const origin of point.querySelectorAll(':scope > .source-origin-target')){
+                if(origin.dataset.citedCode&&origin.dataset.citedCode!==details.id)throw Error('native origin range mismatch');
+                bind(origin,details);
+              }
+            }
+            const inlineStyle=document.createElement('style');
+            inlineStyle.textContent=[...bindings].map(([details,ids])=>`.appendix:has(:is(${[...ids].map(id=>'#'+CSS.escape(id)+':target').join(',')})) > #${CSS.escape(details.id)}{display:block}`).join('\n');
+            document.head.append(inlineStyle);
             const figure=document.querySelector(`.admitted-diagram[data-semantic-fingerprint="${diagram.semantic_fingerprint}"]`);
             if (!figure) throw Error('exact figure absent');
             // Freeze originals before replacing geometry. Anchors/claims/ranges stay original.
@@ -182,7 +224,7 @@ async function build(config) {
               doc.dataset.editorialDraft='true';
             }
             const s=document.createElement('script');s.type='application/x-local-reader';s.textContent=script;document.body.append(s);
-          },{c,v,diagram,css,script});
+          },{c,v,diagram,css,script,codeHashes});
           const file=c.key+'-'+v.id+'.html';
           const html='<!DOCTYPE html>\n'+(await page.locator('html').evaluate(n=>n.outerHTML)).replace('type="application/x-local-reader"','type="text/javascript"');
           fs.writeFileSync(path.join(out,file),html,{flag:'wx'});

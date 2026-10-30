@@ -30,8 +30,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The 2026-10-30 comparison starts at
-`rebuild/.local/spatial-reading-20261030/candidates-13/index.html`. Manifest SHA-256:
-`6af35e119bc9c36c08e120361d6c3bd8ffd57092dea6bb382ef99504fa69b841`.
+`rebuild/.local/spatial-reading-20261030/candidates-15/index.html`. Manifest SHA-256:
+`43975ba492e1e8a7c3e63ea9ebf51e1259267eb035ded52b77d6630f6f340132`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -48,6 +48,17 @@ expanded and makes each command-labelled execution entry a separate initially cl
 native disclosure. Reports, Source/check identities and code remain complete. The
 other ten candidate files are byte-identical to package 12; prior packages remain
 preserved. This is candidate feedback, not final design adoption or a general policy.
+
+Further feedback (2026-10-31): “인용된 전체 코드 보기는 새 창을 열기보다 접은 상태로
+근거 창에서 한 번에 볼 수 있으면 좋겠습니다.” Package 15 provides an initially
+closed complete-code disclosure in the same evidence pane for every comparison
+variant. Opening it neither changes the selected fragment nor creates a page. One
+physical copy of each existing complete range serves its exact native claim aliases;
+no new collection, body recovery, duplication, fetch or authority simulation occurs.
+Script-free file/HTTP reading uses the same native disclosure. The common code-reading
+controls additionally check fragment/page stability for this local presentation while
+retaining their existing Product path. Package 14's missing direct-native-origin binding
+and its failed inspection are preserved; package 15 binds those origins explicitly.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

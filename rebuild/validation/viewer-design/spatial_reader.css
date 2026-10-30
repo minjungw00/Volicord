@@ -26,4 +26,7 @@
 .spatial-selection{padding:12px;background:#f0f8ff;border-bottom:1px solid #d6e6f0;font:14px/1.7 system-ui;overflow-wrap:anywhere}
 .spatial-selection:empty{display:none}
 .draft-notice{padding:10px;background:#fff8ed;border-left:3px solid #b17921}
+.appendix > .cited-code{display:none;border-top:1px solid var(--line);padding-top:8px;margin-top:12px}
+.cited-code > summary{min-height:44px;padding:10px 0;color:var(--accent);font-size:12px;cursor:pointer}
+.cited-code > summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media(max-width:760px){.spatial-viewport{height:480px;max-height:65dvh}.spatial-navigation{gap:8px}.spatial-figure.world-expanded{inset:0}.spatial-navigation details[open] ul{width:75vw;left:-70px}}

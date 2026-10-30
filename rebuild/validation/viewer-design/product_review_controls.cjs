@@ -148,6 +148,8 @@ async function embeddedReference(point) {
  return point.locator(':scope > .source-code-reference a');
 }
 async function embeddedCode(point) {
+ const inline=await inlineCodeDisclosure(point);
+ if(inline)return inline.locator(':scope > pre.code-region code');
  const own=point.locator(':scope > pre.code-region code');
  if(await own.count())return own;
  const ref=await embeddedReference(point);
@@ -163,6 +165,14 @@ async function embeddedCode(point) {
  return target.locator('xpath=..').locator(':scope > pre.code-region code');
 }
 async function openEmbeddedCode(point) {
+ const inline=await inlineCodeDisclosure(point);
+ if(inline){
+  const url=point.page().url(),pages=point.page().context().pages().length;
+  if(!await inline.evaluate(n=>n.open)){const summary=inline.locator(':scope > summary');await summary.focus();await summary.press('Enter');}
+  const code=inline.locator(':scope > pre.code-region code');await code.waitFor({state:'visible'});
+  assert.equal(point.page().url(),url,'inline code preserves exact claim/range fragment');
+  assert.equal(point.page().context().pages().length,pages,'inline code opens no new page');return code;
+ }
  const code=await embeddedCode(point),ref=await embeddedReference(point);
  if(await ref.count() && await code.count()) {
   await ref.focus();await ref.press('Enter');await code.waitFor({state:'visible'});
@@ -170,6 +180,8 @@ async function openEmbeddedCode(point) {
  return code;
 }
 async function returnFromEmbeddedCode(point) {
+ const inline=await inlineCodeDisclosure(point);
+ if(inline){if(await inline.evaluate(n=>n.open)){const summary=inline.locator(':scope > summary');await summary.focus();await summary.press('Enter');}return;}
  const ref=await embeddedReference(point);
  if(await ref.count()) {
   const href=await ref.getAttribute('href');
@@ -177,6 +189,16 @@ async function returnFromEmbeddedCode(point) {
   await back.focus();await back.press('Enter');
   await point.waitFor({state:'visible'});
  }
+}
+async function inlineCodeDisclosure(point){
+ const id=await point.evaluate(n=>{
+  const target=document.getElementById(decodeURIComponent(location.hash.slice(1).split('!')[0]));
+  return (target?.closest('.source-point')===n&&target.dataset.citedCode)||n.dataset.citedCode||null;
+ });
+ if(!id)return null;
+ const disclosure=point.page().locator('details.cited-code[id="'+id+'"]');assert.equal(await disclosure.count(),1,'one physical inline cited range');
+ assert.equal(await disclosure.getAttribute('data-source-id'),await point.getAttribute('data-source-id'),'inline Source identity');
+ return disclosure;
 }
 module.exports.embeddedCode=embeddedCode;
 module.exports.openEmbeddedCode=openEmbeddedCode;

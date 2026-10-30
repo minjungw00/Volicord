@@ -585,8 +585,8 @@ clean install
   supersedes only the blanket no-required-pan restriction.
 - Design selection: **pending**. No user words select a new geometry/navigation,
   editorial variant or scope. Keep the actual Product default and publications.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-13/index.html`;
-  manifest SHA-256 `6af35e119bc9c36c08e120361d6c3bd8ffd57092dea6bb382ef99504fa69b841`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-15/index.html`;
+  manifest SHA-256 `43975ba492e1e8a7c3e63ea9ebf51e1259267eb035ded52b77d6630f6f340132`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -601,6 +601,14 @@ clean install
   pointer disclosure preserves every report and exact Source identity. Packages
   11/12 and observations remain preserved. This is a scoped candidate refinement,
   not a final layout/editorial selection, general policy or Product-default rollout.
+- Further scoped feedback (2026-10-31), verbatim: “인용된 전체 코드 보기는 새 창을
+  열기보다 접은 상태로 근거 창에서 한 번에 볼 수 있으면 좋겠습니다.” Package 15
+  replaces the separate code-target link with an initially collapsed full-range
+  disclosure inside the same evidence pane, across the comparison variants. Native
+  disclosure keeps the selected claim/range fragment and exact return; one physical
+  copy of each complete embedded range remains shared. Earlier packages stay intact.
+  This changes local comparison presentation, not Source authority, admission,
+  retention, final design selection or Product defaults.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.
