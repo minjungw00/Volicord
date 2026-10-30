@@ -1,5 +1,78 @@
 # Viewer journey comparison
 
+`spatial_comparison.cjs CONFIG` builds disposable, hash-bound comparisons from
+explicit script-free local exports and public semantic records. It reads no Runtime,
+invokes no provider and changes no Product default. Run with `validate focused`.
+The JSON input supplies `playwright`, `chromium`, `fontconfig`, an absent ignored
+`output`, frozen `input_hashes`, neutral `tasks`, and `cases`. Each case names
+`key`, `offline`, `public`, original `repository`, exact `diagram`, optional `work`,
+and `variants` (`id`, `navigation`: baseline/scroll/camera, `editorial`: current/edited).
+Spacious geometry is explicit reference input: `world`, and either sequence `lanes`
+or graph `positions`/`routes`; it is not a reusable Product layout algorithm.
+An editorial Work additionally supplies independently grounded draft `summary` and
+`lead`. Draft text receives no admitted claim/publication identity. Original claims,
+history and source payloads remain available. No original input is overwritten.
+
+`spatial_comparison_check.cjs CONFIG` consumes those outputs with an absent ignored
+`check_output`; it checks original role inventories, full claim/range code, actual
+endpoints, source equality, readable-scale geometry and precise return at five
+widths. Optional per-case `elements` names explicit valid role IDs for round trips;
+the complete inventory/wording/endpoint checks are never filtered.
+`spatial_modes_check.cjs CONFIG` uses an absent ignored `mode_output` for
+file/loopback HTTP, script-free evidence/return and camera input transitions.
+Both are direct controls, not a framework, qualification gate, independent reader
+or user selection. A separate index holds variant identities, tasks and limitations;
+ordinary candidate screens contain only reading controls and truthful draft status.
+Failed versions and complete raw observations stay ignored. The current bounded
+comparison and pending selection are described by the existing Reader, Projection,
+Decision and validation owners.
+
+### Bounded spatial comparison evidence
+
+The 2026-10-30 comparison starts at
+`rebuild/.local/spatial-reading-20261030/candidates-11/index.html`. Manifest SHA-256:
+`54be23e11b62f1bfc3ee01a7d80246db523244fa2f38b9347ff9366de3aa6407`.
+Its twelve file hashes identify three alternatives for the Volicord concept map,
+three for the historical Music Deck closure Work, current/edited fixed-layout Work
+and the proposed camera/editorial combination, plus the reserved request-state
+transfer case. B/C SVG hashes match per case; E0/E1 SVG hashes match. A is the
+unchanged document-width **native export geometry**, not a claim to reproduce every
+live enhancement. Current HEAD was `c4230e75`; its graph/stage/CSS/figure modules
+are unchanged from the retained export basis. Existing live pan/zoom was inspected,
+not treated as missing.
+
+Original context/R3 and 44 input files remain ignored and unchanged; 107 original
+claim/range bindings were byte-verified. Source-first inspection independently
+checked Work/ContextItem roles, explicit joins, submitted-Promise settlement and
+rejection, token/attempt limits and distinct received-close effects. The original
+canonical preparation independently supports the broad Goal, Paused/NotRequested,
+two reports of three existing VM cases and retest linkage. Edited Work keeps all
+25 original explanatory units, timeline and 13 embedded code payloads. Its new
+summary/lead are unadmitted drafts with separate supporting original claims.
+
+Dependent visual findings: spacious geometry separates the concept roles and gives
+the closure stable participant lanes. It also requires more deliberate movement;
+at 320/390 a starting node is readable while destinations need navigation. Camera
+fit is an orientation aid with tiny text, requiring a return to reading scale.
+Selected captions and narrow toolbars remain long. The held-out state graph keeps
+its native-launch guard and owner but still has crossing routes: no general layout
+success is established. The proposed C/E1 combination is a recommendation for
+explicit scoped review, not a selected Product design. No fresh reader's first
+response, observed wrong answer, measured hesitation/retracing count, physical touch,
+screen-reader result or human acceptance is claimed. Source familiarity and the
+fixed A/B/C inspection order limit these implementer judgments.
+
+Preserved failed evidence lives beside the sealed files: `checks-03` records wrong
+harness selectors/closed-range activation; `checks-04`/`checks-05` record the actual
+SVG-anchor click exception; `checks-09` records the actual camera-return regression
+from treating evidence-layout changes as user resize. `interaction-01` clicked empty
+route bounds; `interaction-02` assumed a native popup unsupported by that headless
+file-fragment run; `interaction-03` exposed actual modified-click selection loss.
+Each has its original result/screens/logs; later revisions do not erase it. Earlier
+assisted narrow captures were replaced by separate fresh-entry captures, not relabelled
+as ordinary entry. Raw observations stay ignored. Static frozen exports establish
+no new live permission, deletion, retention, admission, device result or qualification.
+
 Current Product requirements and AC responsibility/status are in the maintained
 [reader experience entry](../../docs/design/reader-experience-design.md).
 The evaluations below, including the original Product integration evaluation,
