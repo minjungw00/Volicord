@@ -150,7 +150,7 @@ async function build(config) {
               // Move complete authored blocks, preserving claim/range origins and original text.
               const support=[...reading.children].find(n=>n.querySelector('[data-question="SectionHeading"]')?.textContent==='호출 연결과 원래 기록의 근거');
               const next=[...reading.children].find(n=>n.querySelector('[data-question="SectionHeading"]')?.textContent==='남은 단계');
-              const verification=doc.querySelector('.verification-report');if(verification){verification.open=true;reading.after(verification);}
+              const verification=doc.querySelector('.verification-report');if(verification){verification.open=false;reading.after(verification);}
               const limits=doc.querySelector('.limits-section');if(limits)verification?.before(limits);
               if(next)verification?.after(next);
               if(support)(next||verification||reading).after(support);

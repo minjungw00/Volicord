@@ -30,8 +30,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The 2026-10-30 comparison starts at
-`rebuild/.local/spatial-reading-20261030/candidates-11/index.html`. Manifest SHA-256:
-`54be23e11b62f1bfc3ee01a7d80246db523244fa2f38b9347ff9366de3aa6407`.
+`rebuild/.local/spatial-reading-20261030/candidates-12/index.html`. Manifest SHA-256:
+`35eee8b6adbcb47683454bfebb7891f6ca58fad59b83ddf7afdded8b11476957`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -40,6 +40,12 @@ unchanged document-width **native export geometry**, not a claim to reproduce ev
 live enhancement. Current HEAD was `c4230e75`; its graph/stage/CSS/figure modules
 are unchanged from the retained export basis. Existing live pan/zoom was inspected,
 not treated as missing.
+
+Scoped user feedback: “E1에서 검증 카드는 접는 것이 좋아보입니다.” Package 12
+applies only that initial-disclosure refinement to E1 and CE1. The report remains
+complete and opens through its native summary. The other ten candidate files are
+byte-identical to package 11, which remains preserved. This is candidate feedback,
+not a final design selection or general production disclosure policy.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently
