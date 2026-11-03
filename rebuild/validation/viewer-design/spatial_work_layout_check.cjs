@@ -38,6 +38,7 @@ function inventory(){
             assert.deepEqual(actual.units,original.units,'all original unit identities and wording survive');
             assert.deepEqual(actual.texts,original.texts,'all original heading/lead/body wording survives');
             assert.deepEqual(actual.code,original.code,'one physical copy of every original code payload');
+            assert.deepEqual(actual.checks,original.checks,'each complete original verification fact appears once');
             assert.equal(actual.goal,original.goal);assert.equal(actual.json,original.json);
             for(const id of original.ids)assert.ok(actual.ids.includes(id),'original fragment lost: '+id);
             assert.equal(new Set(actual.allIds).size,actual.allIds.length,'unique fragment identities');
@@ -46,13 +47,13 @@ function inventory(){
               headingNumbers:[...doc.querySelectorAll('[data-section-number]')].map(n=>[n.dataset.sectionNumber,getComputedStyle(n,'::before').content]),
               history:doc.querySelector('.recorded-timeline').closest('[data-reading-group]').dataset.readingGroup,
               commands:[...doc.querySelectorAll('.verification-execution')].map(n=>[n.closest('[data-reading-group]').dataset.readingGroup,n.open]),
-              facts:[...doc.querySelectorAll('.verification-check-summary')].map(n=>[...n.children].map(n=>n.textContent)),
+              rawCommands:doc.querySelector('[id$="-verification-originals"]').querySelectorAll('.verification-execution').length,
               primary:[...doc.querySelector('[data-reading-group="work"]').querySelectorAll('h2')].map(n=>n.textContent),
               navGroups:doc.querySelectorAll('.document-nav .work-toc-group').length,
             }));
             assert.deepEqual(groupState.groups,['work','checks','records']);assert.equal(groupState.history,'records');
-            assert.deepEqual(groupState.facts,original.checks,'readable report preserves independent original facts');
-            assert.ok(groupState.commands.length>0);assert.ok(groupState.commands.every(([group,open])=>group==='records'&&!open));
+            assert.equal(groupState.rawCommands,0,'raw inspection does not duplicate the detailed cards');
+            assert.ok(groupState.commands.length>0);assert.ok(groupState.commands.every(([group,open])=>group==='checks'&&!open));
             assert.equal(groupState.navGroups,3);assert.equal(groupState.headingNumbers.length,3);
             groupState.headingNumbers.forEach(([number,content],i)=>{assert.equal(number,String(i+1).padStart(2,'0'));assert.equal(content,JSON.stringify(number));});
             assert.ok(!groupState.primary.some(s=>/기록의 흐름|호출 연결과 원래 기록|무엇을 확인/.test(s)));
@@ -124,7 +125,10 @@ function inventory(){
             if(!await raw.evaluate(n=>n.open)){await raw.locator(':scope > summary').focus();await page.keyboard.press('Enter');}
             const targetBox=await raw.locator(':scope > summary').boundingBox(),navBox=await nav.boundingBox();
             assert.ok(targetBox.y>=navBox.y+navBox.height,'selected original heading remains below persistent TOC');
-            const command=raw.locator('.verification-execution').first();await command.locator(':scope > summary').focus();await page.keyboard.press('Enter');
+            const recordsLink=raw.locator('.verification-records-return'),recordsHref=await recordsLink.getAttribute('href');await recordsLink.focus();await page.keyboard.press('Enter');
+            const records=page.locator('[id="'+recordsHref.slice(1)+'"]');
+            if(!await records.evaluate(n=>n.open)){await records.locator(':scope > summary').focus();await page.keyboard.press('Enter');}
+            const command=records.locator('.verification-execution').first();await command.locator(':scope > summary').focus();await page.keyboard.press('Enter');
             assert.ok(await command.evaluate(n=>n.open));
             const checkId=await command.locator('.verification-check').first().getAttribute('id');
             await page.goto(url.split('#')[0]+'#'+checkId);await page.locator('[id="'+checkId+'"]').waitFor({state:'visible'});

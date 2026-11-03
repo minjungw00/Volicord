@@ -52,23 +52,19 @@ function arrangeWork({work}) {
   const historyBox=wrap('기록의 흐름',prefix+'-record-history');historyBox.append(history);
   evidenceBody.prepend(editorial,summaryBasis,index,historyBox,codeScope);
 
-  // Report facts stay in the report. Command/capture/identifier disclosures and
-  // the original structured read model are available together in the third group.
+  // Keep one physical detailed record per execution. The report owns the grouped
+  // native cards; raw inspection owns the original read model and prior wording.
   const raw=wrap('검증 원문',prefix+'-verification-originals');
-  const reportList=make('div','verification-report-list');
-  for(const execution of [...verification.querySelectorAll(':scope > .verification-execution')]){
+  const executions=[...verification.querySelectorAll(':scope > .verification-execution')];
+  const reportList=wrap('개별 검증 기록 · '+executions.length+'개 항목',prefix+'-verification-records');
+  reportList.classList.add('verification-report-list');
+  const originalReport=wrap('원래 검증 설명과 해석 기준',prefix+'-verification-basis');
+  for(const paragraph of [...verification.querySelectorAll(':scope > p')])originalReport.append(paragraph);
+  for(const heading of [...verification.querySelectorAll('[data-question="SectionHeading"]')])originalReport.append(heading.closest('.unit'));
+  for(const execution of executions){
     const source=execution.dataset.executionSource;
     execution.id=prefix+'-execution-'+source;
-    const row=make('details','verification-report-row'),label=make('summary');
-    label.append(make('h3','',execution.querySelector('summary h3').textContent));row.append(label);
-    for(const check of execution.querySelectorAll('.verification-check')){
-      // Readable result, purpose, date, assertion and coverage are original facts.
-      const summary=make('div','verification-check-summary');
-      for(const child of check.children)if(child.matches('h4, dl, blockquote'))summary.append(child.cloneNode(true));
-      row.append(summary);
-    }
-    const link=make('a','','명령·캡처 원문 보기');link.href='#'+execution.id;row.append(link);
-    reportList.append(row);execution.open=false;raw.append(execution);
+    execution.classList.add('verification-report-row');execution.open=false;reportList.append(execution);
   }
   verification.append(reportList);
   const reportSection=make('section',verification.className);
@@ -76,7 +72,8 @@ function arrangeWork({work}) {
   const reportHeading=make('h2','reading-layer-heading',verification.querySelector(':scope > summary').textContent);
   verification.querySelector(':scope > summary').replaceWith(reportHeading);
   reportSection.append(...verification.childNodes);verification.replaceWith(reportSection);
-  const json=required('[id$="-full-verification"]');raw.append(json);records.append(raw);
+  const json=required('[id$="-full-verification"]'),recordsLink=make('a','verification-records-return','개별 검증 기록 보기');recordsLink.href='#'+reportList.id;
+  raw.append(recordsLink,json,originalReport);records.append(raw);
   audit.remove();
 
   // Keep one clear level of categories under full evidence. Capture objects and

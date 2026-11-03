@@ -43,8 +43,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The comparison started on 2026-10-30; the latest scoped refinement starts at
-`rebuild/.local/spatial-reading-20261030/candidates-27/index.html`. Manifest SHA-256:
-`da9f7a700994981ef00708fc4c5ca8fda471926758651f599f17e80e40464774`.
+`rebuild/.local/spatial-reading-20261030/candidates-28/index.html`. Manifest SHA-256:
+`48afa99182533c8c11ec7474503f317e905317110e3a5cc1936f8c137a9aacdb`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -148,6 +148,18 @@ section gaps, peer heading styles and keyboard expansion of both report boxes.
 Existing exact code/expanded-figure return and original byte/identity controls also
 pass. This change touches no transport, Runtime or Rust code; the workspace-wide
 aggregate/official V11/provider gate remains outside this local comparison scope.
+
+Package 28 follows the 2026-11-04 verification feedback. A small status/date gap
+separates basic facts. The verification paragraphs read under one report heading;
+the prior authored subsection heading and generic interpretation notes stay in raw
+inspection. One initially closed parent groups the actual original command/check
+cards, each still individually folded. The builder moves those originals instead
+of cloning their facts; raw verification no longer repeats the card UI. Its complete
+original JSON and interpretation basis remain, with an exact native bridge back.
+Twenty layout/native/byte conditions and ten presentation/modal conditions pass,
+including exact original checks once, no cards in the raw area, two-level disclosure
+and fresh native fragments into the relocated records. Earlier packages stay intact.
+There is no transport, Runtime, Rust, aggregate or provider change.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

@@ -25,18 +25,28 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
         assert.equal(await listBadge.locator('.state-dot').evaluate(n=>getComputedStyle(n).backgroundColor),color,'catalogue reuses sidebar state icon/color');
         assert.deepEqual(await detailBadge.evaluate(n=>[getComputedStyle(n).color,getComputedStyle(n).backgroundColor]),await listBadge.evaluate(n=>[getComputedStyle(n).color,getComputedStyle(n).backgroundColor]));
         assert.equal(await doc.locator('.record-strip').evaluate(n=>getComputedStyle(n).borderBottomWidth),'0px','no line between status and dates');
+        const stripBox=await doc.locator('.record-strip').boundingBox(),datesBox=await doc.locator('.doc-head > .work-dates').boundingBox();
+        assert.ok(datesBox.y-stripBox.y-stripBox.height>=7&&datesBox.y-stripBox.y-stripBox.height<=12,'status/date facts have modest whitespace');
         const gaps=await doc.locator('.work-section-stack > .article-section').evaluateAll(ns=>ns.slice(1).map((n,i)=>n.getBoundingClientRect().top-ns[i].getBoundingClientRect().bottom));
         assert.equal(gaps.length,2);assert.ok(gaps.every(gap=>gap>=24&&gap<=40));assert.ok(Math.abs(gaps[0]-gaps[1])<1,'actual section gaps are consistent');
         const layerHeads=doc.locator('[data-reading-group="checks"] > section > h2.reading-layer-heading');
         assert.deepEqual(await layerHeads.allTextContents(),['검증 보고','설명 한계']);
         const layerStyles=await layerHeads.evaluateAll(ns=>ns.map(n=>{const s=getComputedStyle(n);return [s.fontSize,s.fontWeight,s.lineHeight,s.color,s.margin,n.getBoundingClientRect().left];}));
         assert.deepEqual(layerStyles[0],layerStyles[1],'report and limits have the same heading depth/style');
-        const reports=doc.locator('.verification-report-row');assert.equal(await reports.count(),await doc.locator('.verification-execution').count());
+        const reportSection=doc.locator('.verification-report'),recordGroup=reportSection.locator('details.verification-report-list');
+        assert.equal(await reportSection.locator('[data-question="SectionHeading"]').count(),0,'verification prose has one section title');
+        assert.ok(await reportSection.locator('.unit [data-question="Verification"]').count()>0,'original verification prose is directly under the report');
+        assert.equal(await recordGroup.evaluate(n=>n.open),false,'one initially closed group contains all detailed cards');
+        assert.equal(await doc.locator('.verification-check-summary').count(),0,'no copied detailed fact UI');
+        assert.equal(await doc.locator('[id$="-verification-originals"] .verification-execution').count(),0,'no repeated detailed cards in raw inspection');
+        await recordGroup.locator(':scope > summary').focus();await page.keyboard.press('Enter');
+        const reports=recordGroup.locator('.verification-report-row');assert.equal(await reports.count(),await doc.locator('.verification-execution').count());
         for(const row of await reports.all()){
           assert.equal(await row.evaluate(n=>n.tagName),'DETAILS');assert.equal(await row.evaluate(n=>n.open),false);
           assert.equal(await row.evaluate(n=>getComputedStyle(n).borderTopStyle),'solid');
-          const summary=row.locator(':scope > summary');await summary.focus();await summary.press('Enter');assert.ok(await row.locator('.verification-check-summary').first().isVisible());await summary.press('Enter');
+          const summary=row.locator(':scope > summary');await summary.focus();await summary.press('Enter');assert.ok(await row.locator('.verification-check').first().isVisible());await summary.press('Enter');
         }
+        await recordGroup.locator(':scope > summary').focus();await page.keyboard.press('Enter');
         await doc.locator('[data-reading-group="checks"]').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`${candidate.id}-${width}-checks.png`)});
         await page.evaluate(()=>{location.hash='works';});await card.waitFor({state:'visible'});await page.screenshot({path:path.join(out,`${candidate.id}-${width}-catalogue.png`)});
         await card.locator('a.card-action').click();

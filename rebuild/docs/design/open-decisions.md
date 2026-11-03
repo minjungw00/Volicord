@@ -586,8 +586,8 @@ clean install
 - Geometry/navigation selection and full editorial acceptance: **pending**. The
   2026-11-03 instruction authorizes the reviewed local Work arrangement below;
   it does not select A/B/C or authorize Product-default changes/republication.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-27/index.html`;
-  manifest SHA-256 `da9f7a700994981ef00708fc4c5ca8fda471926758651f599f17e80e40464774`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-28/index.html`;
+  manifest SHA-256 `48afa99182533c8c11ec7474503f317e905317110e3a5cc1936f8c137a9aacdb`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -667,6 +667,17 @@ clean install
   boxes and presents verification/limits as peer h2 sections. Original state,
   event provenance, report facts and cited ranges remain unchanged. Scope remains
   local E1/CE1 refinement, not a geometry choice or Product-default rollout.
+- Further scoped feedback on 2026-11-04, verbatim: “기록된 상태와 생성 시간 사이에
+  여백이 조금 있어야 할 것으로 보입니다.” “검증 보고와 무엇을 확인했다고 보고했나의
+  내용을 검증 보고로 합할 수 있을 것으로 보입니다.” “개별 검증 항목이 더 많아질
+  경우를 고려해 개별 검증 항목들도 한 번 더 감싸야 할 것으로 보입니다. 그리고
+  이들은 이후 구성된 검증 원문과 내용이 중복됩니다.” Package 28 adds the small
+  status/date gap, combines verification prose under one report heading and groups
+  individual records in one initially closed disclosure. Original execution/check
+  cards appear once in that group. Raw verification keeps original JSON, prior
+  wording/interpretation basis and a bridge to the detailed group. Every original
+  unit, Source/check identity and byte payload survives. This is another local
+  E1/CE1 refinement and does not select geometry or authorize a default rollout.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.

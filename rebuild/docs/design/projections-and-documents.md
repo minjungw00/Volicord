@@ -3405,3 +3405,12 @@ authored explanation sections share one parent/spacing rule. Verification report
 and explanation limits are peer sections with identical h2 presentation; named
 report items are separate initially closed native boxes. Their original facts,
 execution identities, exact range actions and raw-report destinations survive.
+
+The 2026-11-04 verification follow-up presents the authored verification paragraphs
+under the single report heading. Prior subsection wording and generic interpretation
+notes remain in deliberate raw inspection. A closed parent disclosure groups the
+individual command records for longer histories. Each original execution/check is
+moved into that group once, retaining its exact identity and original facts, instead
+of cloning facts into report cards and rendering the same cards again in raw reads.
+Raw verification retains the original JSON and interpretation basis, with a native
+link back to the sole detailed record group. Status and event times have a small gap.
