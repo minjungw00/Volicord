@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
 const {pathToFileURL} = require('node:url');
+const {arrangeWork} = require('./spatial_work_layout.cjs');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 
 async function build(config) {
@@ -225,6 +226,7 @@ async function build(config) {
             }
             const s=document.createElement('script');s.type='application/x-local-reader';s.textContent=script;document.body.append(s);
           },{c,v,diagram,css,script,codeHashes});
+          if(v.editorial==='edited')await page.evaluate(arrangeWork,{work:c.work});
           const file=c.key+'-'+v.id+'.html';
           const html='<!DOCTYPE html>\n'+(await page.locator('html').evaluate(n=>n.outerHTML)).replace('type="application/x-local-reader"','type="text/javascript"');
           fs.writeFileSync(path.join(out,file),html,{flag:'wx'});
@@ -239,11 +241,11 @@ async function build(config) {
     }
   } finally {await browser.close();}
   const manifest={kind:'local-reading-comparison',selection:null,candidates,inputs:config.input_hashes,
-    tooling:Object.fromEntries(['spatial_comparison.cjs','spatial_reader.css','spatial_reader.js'].map(n=>[n,hash(fs.readFileSync(path.join(__dirname,n)))]))};
+    tooling:Object.fromEntries(['spatial_comparison.cjs','spatial_work_layout.cjs','spatial_reader.css','spatial_reader.js'].map(n=>[n,hash(fs.readFileSync(path.join(__dirname,n)))]))};
   fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2),{flag:'wx'});
   const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
   const rows=candidates.map(c=>`<tr><td><a href="${c.file}#${c.entry}">${escape(c.id)}</a></td><td>${escape(c.navigation)}</td><td>${escape(c.editorial)}</td><td><code>${c.sha256}</code></td></tr>`).join('');
-  fs.writeFileSync(path.join(out,'index.html'),`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>읽기 비교</title><style>body{font:16px/1.7 system-ui;max-width:1000px;margin:40px auto;padding:20px;color:#152e40}table{border-collapse:collapse;width:100%}td,th{padding:12px;border-bottom:1px solid #cddfe9;text-align:left}code{font-size:11px;overflow-wrap:anywhere}a{color:#087bb8}li{margin:10px 0}table{display:block;overflow:auto}</style><h1>읽기 비교</h1><p>A는 현재 폭 제한 배치, B는 넓은 배치와 스크롤, C는 B와 같은 배치에 카메라를 더한 후보입니다. A/B/C의 내용은 같습니다. E0/E1은 A의 고정 배치에서 현재/편집 정보를 비교합니다. CE1은 상호작용 확인용 결합안입니다.</p><p>이 자료는 고정된 과거 발행물의 로컬 비교입니다. 좌표는 수동 참조 배치이며 일반 배치 엔진의 성공을 주장하지 않습니다. 편집안은 미발행 초안입니다. 실제 Runtime·권한·보존 수명을 시험하지 않으며, 기기 검사·사용자 승인·새 분석을 추가하지 않습니다.</p><h2>중립 과제</h2><ol>${config.tasks.map(t=>`<li>${escape(t)}</li>`).join('')}</ol><p>처음 답, 망설임, 잘못 간 곳, 반복 추적, 놓친 조작, 맥락 손실을 그대로 기록하세요. 읽은 순서와 이미 아는 내용을 함께 남기세요. 실패한 후보도 유지합니다. 작은 비교는 통계적 우월성의 근거가 아닙니다.</p><table><thead><tr><th>후보</th><th>이동</th><th>편집</th><th>SHA-256</th></tr></thead><tbody>${rows}</tbody></table><h2>선택할 항목</h2><p>이 패키지의 manifest 해시, 각 실제 사례의 A/B/C 선택, Work의 E0/E1 선택, 적용 범위와 필요한 수정을 명시해 주세요. 권고·테스트 통과·응답 없음은 선택이 아닙니다. 선택 전에는 기본 화면을 바꾸지 않습니다.</p><p>HTTP: 이 디렉터리에서 <code>python3 -m http.server 8765 --bind 127.0.0.1</code> 후 localhost:8765/index.html. 파일 URL도 지원하며 JavaScript를 끄면 읽을 수 있는 원래 크기 SVG·스크롤·근거 링크가 남습니다.</p></html>`,{flag:'wx'});
+  fs.writeFileSync(path.join(out,'index.html'),`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>읽기 비교</title><style>body{font:16px/1.7 system-ui;max-width:1000px;margin:40px auto;padding:20px;color:#152e40}table{border-collapse:collapse;width:100%}td,th{padding:12px;border-bottom:1px solid #cddfe9;text-align:left}code{font-size:11px;overflow-wrap:anywhere}a{color:#087bb8}li{margin:10px 0}table{display:block;overflow:auto}</style><h1>읽기 비교</h1><p>A는 현재 폭 제한 배치, B는 넓은 배치와 스크롤, C는 B와 같은 배치에 카메라를 더한 후보입니다. A/B/C의 내용은 같습니다. E0/E1은 같은 원래 SVG를 쓰는 현재/편집안입니다. E1/CE1은 세 묶음의 작업 구성, 문단별 근거 보기와 초기 전체 보기를 반영했습니다. 상세 본문 문장은 유지했으며 본문 전체를 다시 쓴 비교는 아닙니다. CE1은 카메라 결합안입니다. 후속 조작 변경을 포함하므로 E0/E1의 차이는 순서만의 효과가 아닙니다.</p><p>이 자료는 고정된 과거 발행물의 로컬 비교입니다. 좌표는 수동 참조 배치이며 일반 배치 엔진의 성공을 주장하지 않습니다. 편집안은 미발행 초안입니다. 실제 Runtime·권한·보존 수명을 시험하지 않으며, 기기 검사·사용자 승인·새 분석을 추가하지 않습니다.</p><h2>중립 과제</h2><ol>${config.tasks.map(t=>`<li>${escape(t)}</li>`).join('')}</ol><p>처음 답, 망설임, 잘못 간 곳, 반복 추적, 놓친 조작, 맥락 손실을 그대로 기록하세요. 읽은 순서와 이미 아는 내용을 함께 남기세요. 실패한 후보도 유지합니다. 작은 비교는 통계적 우월성의 근거가 아닙니다.</p><table><thead><tr><th>후보</th><th>이동</th><th>편집</th><th>SHA-256</th></tr></thead><tbody>${rows}</tbody></table><h2>선택할 항목</h2><p>이 패키지의 manifest 해시, 각 실제 사례의 A/B/C 선택, Work의 E0/E1 선택, 적용 범위와 필요한 수정을 명시해 주세요. 권고·테스트 통과·응답 없음은 선택이 아닙니다. 선택 전에는 기본 화면을 바꾸지 않습니다.</p><p>HTTP: 이 디렉터리에서 <code>python3 -m http.server 8765 --bind 127.0.0.1</code> 후 localhost:8765/index.html. 파일 URL도 지원하며 JavaScript를 끄면 읽을 수 있는 원래 크기 SVG·스크롤·근거 링크가 남습니다.</p></html>`,{flag:'wx'});
   console.log(JSON.stringify({output:out,candidates:candidates.length,manifest_sha256:hash(fs.readFileSync(path.join(out,'manifest.json')))}));
 }
 if(require.main===module)build(JSON.parse(fs.readFileSync(process.argv[2]))).catch(e=>{console.error(e);process.exitCode=1;});

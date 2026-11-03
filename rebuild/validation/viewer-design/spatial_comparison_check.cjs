@@ -63,12 +63,13 @@ async function check(config){
         }
         return {errors,world:[svg.dataset.worldWidth,svg.dataset.worldHeight]};
        },m);assert.deepEqual(geometry.errors,[],'complete readable-size world bounds and actual endpoints');
+       if(v.editorial==='edited'&&v.navigation==='camera')await figure.locator('[data-world-action="reset"]').click();
        await viewport.focus();const left=await viewport.evaluate(n=>n.scrollLeft);await page.keyboard.press('ArrowRight');await page.waitForTimeout(150);assert.ok(await viewport.evaluate(n=>n.scrollLeft)>left,'native keyboard pan');
        if(v.navigation==='camera'){
         await figure.locator('[data-world-action="fit"]').click();assert.match(await figure.locator('output').innerText(),/위치 확인용/);
-        await figure.locator('[data-world-action="reset"]').click();assert.equal(await figure.locator('output').innerText(),'100%');
+        await figure.locator('[data-world-action="reset"]').click();assert.equal(await figure.locator('output').innerText(),v.editorial==='edited'?'75%':'100%');
         await figure.locator('[data-world-action="right"]').click();assert.ok(await viewport.evaluate(n=>n.scrollLeft)>0,'non-drag pointer pan');
-        await figure.locator('[data-world-action="in"]').click();assert.equal(await figure.locator('output').innerText(),'125%');
+        await figure.locator('[data-world-action="in"]').click();assert.equal(await figure.locator('output').innerText(),v.editorial==='edited'?'100%':'125%');
        }
       }
       // Optional explicit tasks exercise source-frozen questions at every width.

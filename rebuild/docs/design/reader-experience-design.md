@@ -130,15 +130,17 @@ are technical observations, never human approval. Originals stay immutable.
 | --- | --- | --- |
 | Goal-grounded Work name, authored article/section heading, nonassertive label | No prominent inline Source action; a heading is navigational structure, not proof of its section | Exact admitted unit in Evidence index; independent name publication in record provenance |
 | Lead / synopsis | Quiet provenance in Evidence index by default; substantive mechanisms/results must also be explained with precise actions in the body | Exact original lead claim/range; absent body coverage is a semantic gap, never inferred from matching files |
-| Technical mechanism, cause, flow, condition or result | Clear adjacent Source action for each separately admitted range/purpose | Exact Source panel, original bytes, claim and return point |
+| Technical mechanism, cause, flow, condition or result | Clear adjacent Source action opening the exact citation or the complete separately bound citation set for that paragraph | Exact Source panel, original bytes, claim and return point |
 | Recorded test / Decision | Recorded authority and outcome visible in context; actual command/check and choice/reasons have their own supporting reading layer | Named verification report, original Decision and exact permitted cited ranges; never equate a record with code proof |
 | Optional provenance / diagnostics | Closed supporting disclosure | All admitted unit/evidence-key/citation bindings, original records, identities and lifecycle; exact CLI/MCP diagnostics remain available |
 
 Repeated Source actions in a subsection justify themselves by independent claims,
 ranges or reading purposes. The same file may support multiple distinct assertions:
-never deduplicate across claims or substitute one file-level authority. Exact duplicate
-actions within one unit may share one visible action only when their entire citation
-binding is identical; every original binding remains inspectable. No prose heuristics
+never deduplicate across claims or substitute one file-level authority. One paragraph
+action may open its complete citation chooser, retaining every distinct claim/range
+binding and allowing each citation to be selected in the evidence pane. It must not
+select the first citation as proof of the aggregate. Exact duplicate bindings may
+share their physical payload; every original binding remains inspectable. No prose heuristics
 or CSS-only hiding may strand code. Heading roles cannot mechanically prove a heading
 nonassertive; a materially assertive heading/lead needs source-first semantic review
 and a precise body explanation. This UI delivery does not change v6 admission.

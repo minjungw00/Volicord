@@ -3363,3 +3363,22 @@ as unadmitted and cannot inherit an original claim/publication binding. Original
 support remains separately inspectable. New Product wording still requires normal
 preparation/composition/admission after selection; this local comparison grants
 no schema, retention, authority, republication or rollout exception.
+
+The 2026-11-03 scoped comparison refinement groups Work reading into (1) title/lead,
+basic facts, technical explanation and recorded next step; (2) verification report
+and explanation limits; (3) original instructions, full evidence and verification
+originals. The third group nests editorial/summary support, the evidence index,
+record history and included-code scope. Report facts remain readable separately
+from command/capture/identifier originals. Actual call connections may explain the
+mechanism; Goal/capture provenance is inspection, not another explanatory chapter.
+Original units, report identities and bytes remain intact, with conclusion-changing
+conditions beside their technical claims. This is a local draft arrangement, not
+a requirement to generate empty sections or a Product-default rollout.
+
+Its single paragraph evidence action exposes the complete original citation set
+in the same pane; choosing a range retains its exact claim and return. Initial
+whole-scene orientation and an explicit 75% reading control are compared separately
+from the unchanged SVG geometry. Fit text is not counted as readable evidence.
+Native radio/disclosure/fragment controls retain script-free reading. These viewport
+and entry-control refinements make the latest E0/E1 review broader than order alone;
+they do not represent a complete rewrite of the detailed article.

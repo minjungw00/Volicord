@@ -20,6 +20,13 @@ widths. Optional per-case `elements` names explicit valid role IDs for round tri
 the complete inventory/wording/endpoint checks are never filtered.
 `spatial_modes_check.cjs CONFIG` uses an absent ignored `mode_output` for
 file/loopback HTTP, script-free evidence/return and camera input transitions.
+`spatial_work_layout_check.cjs CONFIG` uses an absent ignored `work_layout_output`
+to consume grouped E1/CE1 drafts at five widths with/without JavaScript. It compares
+original wording, semantic fragments, Goal, report facts, JSON and physical code
+payloads; exercises complete paragraph citation sets, original source bytes, overview/
+75% controls, document navigation and direct fragments into closed original records.
+The builder's `spatial_work_layout.cjs` moves the frozen units into three reading
+groups; it does not author a replacement article or enforce live authority.
 Both are direct controls, not a framework, qualification gate, independent reader
 or user selection. A separate index holds variant identities, tasks and limitations;
 ordinary candidate screens contain only reading controls and truthful draft status.
@@ -29,9 +36,9 @@ Decision and validation owners.
 
 ### Bounded spatial comparison evidence
 
-The 2026-10-30 comparison starts at
-`rebuild/.local/spatial-reading-20261030/candidates-15/index.html`. Manifest SHA-256:
-`43975ba492e1e8a7c3e63ea9ebf51e1259267eb035ded52b77d6630f6f340132`.
+The comparison started on 2026-10-30; the latest scoped refinement starts at
+`rebuild/.local/spatial-reading-20261030/candidates-20/index.html`. Manifest SHA-256:
+`a8510ec29a90f271357fb93f8deec42f021b4954ab1b4195469a908190a46ce1`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -59,6 +66,40 @@ Script-free file/HTTP reading uses the same native disclosure. The common code-r
 controls additionally check fragment/page stability for this local presentation while
 retaining their existing Product path. Package 14's missing direct-native-origin binding
 and its failed inspection are preserved; package 15 binds those origins explicitly.
+
+On 2026-11-03 the user authorized the reviewed three-group organization with
+“작업을 진행하세요.” Package 20 applies it to E1/CE1 only: Work explanation and
+next step; readable verification and limits; original instructions/full evidence/
+verification originals. History, editorial/summary basis and the evidence index
+belong to the third group. Command-labelled originals remain separately collapsed;
+the independent report facts stay readable. Each paragraph opens its complete
+citation set with one action, and keeps exact selection/bytes/return. Initial fit
+and native/scripted 75% controls address the diagram feedback; fit is orientation,
+not a readability pass. Article section numbers follow actual order (01/02/03).
+All original detailed wording survives; this is not a full prose rewrite. The SVG
+hashes remain fixed, but the requested viewport/control changes mean latest E0/E1
+is no longer solely an order comparison. Earlier packages remain intact; Product
+defaults, publications and pending geometry selection do not change.
+
+Package 19 exposed a real TOC overlay issue: after selecting a destination, the
+expanded list still covered its heading. Package 20 closes that list on ordinary
+scripted selection and reveals the exact target's native disclosure ancestors.
+Without JavaScript the persistent native summary remains available to close the
+list. The grouped driver exercises both paths and fresh fragments into closed
+command records. Earlier selector/count failures and the interrupted wrapper run
+remain original artifacts; their later internal success is not a numeric wrapper
+pass. The final package has its own completed focused results.
+
+Package 20's focused final run exits 0: 20 grouped-reading conditions (E1/CE1,
+five widths, JavaScript on/off) and 108 file/HTTP/native/scripted conditions pass.
+All 25 original Work text units, the original Goal/full verification JSON and 13
+physical code payloads survive; every paragraph's full original citation set is
+checked. Twelve SVG geometry hashes match package 15, and all 44 frozen input
+hashes pass. Native fit uses CSS typed division/zoom observed in this Chromium;
+other browsers and physical/assistive usability remain unobserved. The preceding
+package 19 also passes 60 role/endpoint/condition/return conditions against original
+public records and repository bytes; the later correction only changes grouped TOC
+selection. No Rust/aggregate/official V11/provider gate is run for this local tooling.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

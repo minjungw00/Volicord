@@ -583,10 +583,11 @@ clean install
   request states, “A recommendation is not user approval.” The updated Reader entry
   contract permits directed movement with readable purpose/start/navigation; it
   supersedes only the blanket no-required-pan restriction.
-- Design selection: **pending**. No user words select a new geometry/navigation,
-  editorial variant or scope. Keep the actual Product default and publications.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-15/index.html`;
-  manifest SHA-256 `43975ba492e1e8a7c3e63ea9ebf51e1259267eb035ded52b77d6630f6f340132`.
+- Geometry/navigation selection and full editorial acceptance: **pending**. The
+  2026-11-03 instruction authorizes the reviewed local Work arrangement below;
+  it does not select A/B/C or authorize Product-default changes/republication.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-20/index.html`;
+  manifest SHA-256 `a8510ec29a90f271357fb93f8deec42f021b4954ab1b4195469a908190a46ce1`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -609,6 +610,30 @@ clean install
   copy of each complete embedded range remains shared. Earlier packages stay intact.
   This changes local comparison presentation, not Source authority, admission,
   retention, final design selection or Product defaults.
+- Further scoped feedback, verbatim: “본문에서 문단의 근거가 여러개일 때에도 문단
+  아래에 근거 버튼을 하나만 두는 것이 좋아보입니다.” “도식은 처음에 전체 내용이
+  보이도록 표시하는 것이 좋아보입니다. 100%일 때 도식의 내용이 너무 크게 보이는
+  것 같기도 합니다.” “무엇을 확인했다고 보고했나, 호출 연결과 원래 기록의 근거,
+  기록의 흐름은 원래 지시나 전체 근거와 같이 작업 내용을 설명하지 않는 객관적
+  사실 보고입니다. 이런 내용들을 마치 설명인 것처럼 배치하지 않는 것이
+  좋아보입니다.” “본문에서 소제목의 인덱스가 모든 섹션에 01로 표기되는 것으로
+  보입니다.”
+- The user proposed three groups: title/lead, basic facts, explanation, next step;
+  verification report and explanation limits; original instructions, full evidence
+  (editorial/summary support, evidence index and other provenance), verification
+  originals. After review they authorized implementation on 2026-11-03, verbatim:
+  “작업을 진행하세요.” Package 20 applies this to local E1/CE1. Actual mechanism
+  connections stay in explanation; Goal/report provenance and history move into
+  supporting records. Report facts stay readable, command-labelled originals stay
+  closed. One paragraph entry opens the complete separately bound citation set;
+  each exact range/code/return remains available. Whole-scene entry, explicit 75%
+  reading and sequential article numbers address the preceding feedback. Detailed
+  prose remains original; this is not a full-content rewrite. SVG geometry remains
+  fixed, but viewport/control refinements make E0/E1 broader than order alone.
+  Earlier packages and all original records remain intact.
+  Package 19's reproduced TOC overlay is corrected in 20: ordinary scripted
+  selection closes the menu and reveals the selected original record. Native
+  script-free disclosure and fragments remain independently available.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.
