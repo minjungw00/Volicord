@@ -43,8 +43,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The comparison started on 2026-10-30; the latest scoped refinement starts at
-`rebuild/.local/spatial-reading-20261030/candidates-26/index.html`. Manifest SHA-256:
-`dc66ca931892ba9dcd09383945a240aeabb21f448e5d6f6cf23f5b7d13c2f656`.
+`rebuild/.local/spatial-reading-20261030/candidates-27/index.html`. Manifest SHA-256:
+`da9f7a700994981ef00708fc4c5ca8fda471926758651f599f17e80e40464774`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -134,6 +134,20 @@ code-return conditions and 108 file/HTTP conditions. The twelve original SVG has
 citation families remain intact. Screenshot review checked ordinary/expanded figures,
 TOC, selected evidence and record categories; its source familiarity is unchanged.
 These local UI checks invoke no Rust aggregate, official V11 or provider gate.
+
+Package 27 follows the additional Work-detail feedback: catalogue/detail state
+badges reuse the sidebar's typed state dots/colors and retain the status text;
+the state/date divider is removed without altering event provenance. The third
+authored section now shares the first two sections' grid parent and actual gap.
+Verification and limits are peer sections with identical h2 presentation. Named
+verification report items are independent initially closed boxed disclosures;
+the original raw execution entries stay separately available.
+The focused layout check passes 20 file/script-free conditions; presentation passes
+10 conditions at five widths, including catalogue/detail color equality, actual
+section gaps, peer heading styles and keyboard expansion of both report boxes.
+Existing exact code/expanded-figure return and original byte/identity controls also
+pass. This change touches no transport, Runtime or Rust code; the workspace-wide
+aggregate/official V11/provider gate remains outside this local comparison scope.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

@@ -37,6 +37,12 @@
 .doc[data-work-layout="grouped"] .work-reading-group > .reading-section{margin:0;padding:0;border:0}
 .doc[data-work-layout="grouped"] .work-reading-group > .reading-section + .reading-section{margin-top:32px}
 .doc[data-work-layout="grouped"] .article-section + .article-section{margin-top:32px}
+.doc[data-work-layout="grouped"] .work-section-stack{display:grid;gap:32px}
+.doc[data-work-layout="grouped"] .work-section-stack > .article-section{min-width:0;margin:0}
+.doc[data-work-layout="grouped"] .work-section-stack > .article-section + .article-section{margin:0}
+.doc[data-work-layout="grouped"] .record-strip{align-items:center;gap:8px;border-bottom:0;padding-bottom:0}
+.doc[data-work-layout="grouped"] .record-status-label{font-size:10px;color:var(--muted)}
+.grouped-reading .work-state-badge{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:5px;padding:3px 8px;font-size:10px;line-height:1.6;font-weight:500;white-space:nowrap}
 .doc[data-work-layout="grouped"] .article-section > .unit:has(h2){counter-increment:none;padding-left:0}
 .doc[data-work-layout="grouped"] .article-section > .unit:has(h2)::before{content:none}
 .doc[data-work-layout="grouped"] .article-section > .unit[data-section-number]{padding-left:39px}
@@ -82,7 +88,11 @@
 .doc[data-work-layout="grouped"] [data-reading-group="records"] .work-disclosure .unit h2{font-size:15px;margin:0 0 12px}
 .doc[data-work-layout="grouped"] [data-reading-group="records"] .unit-text{font-size:12px;line-height:1.9}
 .doc[data-work-layout="grouped"] .raw-disclosure pre{max-height:360px;overflow:auto;font-size:11px;line-height:1.7;padding:16px;border-radius:6px;background:#f5f9fd;color:var(--body)}
-.doc[data-work-layout="grouped"] .verification-report > summary{font-size:18px;min-height:40px;font-weight:700;color:var(--ink)}
+.doc[data-work-layout="grouped"] [data-reading-group="checks"] > .reading-section > .reading-layer-heading{font-size:18px;line-height:1.6;font-weight:700;color:var(--ink);letter-spacing:-.3px;margin:0 0 16px;padding:0}
+.doc[data-work-layout="grouped"] .verification-report-list > .verification-report-row{margin:12px 0 0;padding:0 16px;border:1px solid var(--line);border-radius:8px;background:white}
+.doc[data-work-layout="grouped"] .verification-report-list > .verification-report-row > summary{min-height:56px;padding:12px 0;font-size:12px;font-weight:500;color:var(--body)}
+.doc[data-work-layout="grouped"] .verification-report-list > .verification-report-row > summary h3{font:inherit;margin:0}
+.doc[data-work-layout="grouped"] .verification-report-list > .verification-report-row[open]{padding-bottom:16px}
 /* Diagram controls share the drawing frame, with no separate toolbar bands. */
 .grouped-reading .work-overview{overflow:visible}
 .grouped-reading .work-overview > figcaption{padding:14px 16px;min-height:0}

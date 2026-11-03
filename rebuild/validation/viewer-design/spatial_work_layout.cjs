@@ -7,6 +7,15 @@ function arrangeWork({work}) {
   const required=selector=>{const n=doc.querySelector(selector);if(!n)throw Error('missing Work section: '+selector);return n;};
   const wrap=(title,id)=>{const d=make('details','reading-section work-record');if(id)d.id=id;d.append(make('summary','',title));return d;};
   const head=required('.doc-head'),verification=required('.verification-report'),limits=required('.limits-section');
+  // Reuse the sidebar's typed state and icon styling in list and detail facts.
+  for(const card of document.querySelectorAll('.work-card[data-work-state]')){
+    const status=card.querySelector('.work-status');if(!status)continue;
+    status.dataset.state=card.dataset.workState;status.classList.add('work-badge','work-state-badge');
+    const dot=make('span','state-dot');dot.setAttribute('aria-hidden','true');status.prepend(dot);
+  }
+  const card=document.querySelector(`.work-card[data-work-id="${work}"]`),badge=card?.querySelector('.work-state-badge');
+  if(!badge)throw Error('exact Work status required');
+  const strip=head.querySelector('.record-strip');strip.replaceChildren(make('span','record-status-label','기록된 상태'),badge.cloneNode(true));
   const audit=required('.audit'),original=required('.record-box:has([id$="-original"])');
   const evidence=required('.record-box:has([id$="-audit"])'),evidenceBody=evidence.querySelector('[id$="-audit"]');
   const next=[...doc.querySelectorAll('.article-section')].find(n=>n.querySelector('[data-question="SectionHeading"]')?.textContent==='남은 단계');
@@ -17,11 +26,11 @@ function arrangeWork({work}) {
   const checks=make('section','work-reading-group');checks.dataset.readingGroup='checks';checks.setAttribute('aria-label','검증과 설명 한계');
   const records=make('section','work-reading-group');records.dataset.readingGroup='records';records.setAttribute('aria-label','원문과 근거');
   doc.querySelector('.breadcrumb').after(main,checks,records);
-  main.append(head,reading,next);
+  main.append(head,reading);reading.append(next);reading.classList.add('work-section-stack');
   checks.append(verification,limits);
-  const limitsHeading=limits.querySelector('h2');limitsHeading.textContent='설명 한계';
-  const limitsHeader=limitsHeading.parentElement===limits?limitsHeading:limitsHeading.parentElement;
-  limitsHeader.after(required('.reading-warning'));
+  const limitsHeading=limits.querySelector('h2');limitsHeading.textContent='설명 한계';limitsHeading.classList.add('reading-layer-heading');
+  const guard=limits.querySelector(':scope > .guard');if(guard){const body=make('div','reading-layer-body');body.append(...guard.childNodes);guard.replaceWith(body);}
+  limits.prepend(limitsHeading);limits.append(required('.reading-warning'));
   original.querySelector(':scope > summary').textContent='원래 지시';
   evidence.querySelector(':scope > summary').textContent='전체 근거';
   records.append(original,evidence);
@@ -50,8 +59,8 @@ function arrangeWork({work}) {
   for(const execution of [...verification.querySelectorAll(':scope > .verification-execution')]){
     const source=execution.dataset.executionSource;
     execution.id=prefix+'-execution-'+source;
-    const row=make('section','verification-report-row');
-    row.append(make('h3','',execution.querySelector('summary h3').textContent));
+    const row=make('details','verification-report-row'),label=make('summary');
+    label.append(make('h3','',execution.querySelector('summary h3').textContent));row.append(label);
     for(const check of execution.querySelectorAll('.verification-check')){
       // Readable result, purpose, date, assertion and coverage are original facts.
       const summary=make('div','verification-check-summary');
@@ -62,6 +71,11 @@ function arrangeWork({work}) {
     reportList.append(row);execution.open=false;raw.append(execution);
   }
   verification.append(reportList);
+  const reportSection=make('section',verification.className);
+  for(const attribute of verification.attributes)if(attribute.name!=='open')reportSection.setAttribute(attribute.name,attribute.value);
+  const reportHeading=make('h2','reading-layer-heading',verification.querySelector(':scope > summary').textContent);
+  verification.querySelector(':scope > summary').replaceWith(reportHeading);
+  reportSection.append(...verification.childNodes);verification.replaceWith(reportSection);
   const json=required('[id$="-full-verification"]');raw.append(json);records.append(raw);
   audit.remove();
 
@@ -147,7 +161,7 @@ function arrangeWork({work}) {
     group.append(list);nav.append(group);
   }
   navList('작업 설명',headings.map(h=>[h,h.textContent,h.parentElement.dataset.sectionNumber]));
-  navList('검증과 한계',[[verification,'검증 보고'],[limits,'설명 한계']]);
+  navList('검증과 한계',[[reportSection,'검증 보고'],[limits,'설명 한계']]);
   navList('원문과 근거',[[original,'원래 지시'],[evidence,'전체 근거'],[raw,'검증 원문']],true);
 
   // One SVG per scene; a native radio control also works without JavaScript.

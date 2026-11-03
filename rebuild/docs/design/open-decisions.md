@@ -586,8 +586,8 @@ clean install
 - Geometry/navigation selection and full editorial acceptance: **pending**. The
   2026-11-03 instruction authorizes the reviewed local Work arrangement below;
   it does not select A/B/C or authorize Product-default changes/republication.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-26/index.html`;
-  manifest SHA-256 `dc66ca931892ba9dcd09383945a240aeabb21f448e5d6f6cf23f5b7d13c2f656`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-27/index.html`;
+  manifest SHA-256 `da9f7a700994981ef00708fc4c5ca8fda471926758651f599f17e80e40464774`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -654,6 +654,19 @@ clean install
   levels and independently folded raw originals. Native links/disclosures remain.
   Every original binding/body and diagram geometry survives. This feedback does
   not select A/B/C, approve the complete design or authorize default rollout.
+- Further scoped feedback, verbatim: “작업 기본 정보에서 기록된 상태와 생성 시간
+  사이의 가로선은 없어도 될 것으로 보입니다. 기록된 상태는 상태별 작업의 아이콘과
+  색상을 사용하면 좋을 것 같습니다. 이는 작업 목록에서도 마찬가지입니다.” “작업
+  설명의 1번 섹션과 2번 섹션의 사이 여백과 2번 섹션과 3번 섹션의 사이 여백이
+  일관적이지 않습니다. 대부분의 구간에서 디자인 일관성을 유지해야 합니다.”
+  “Existing tab-closure regression suite, explicit subtests 아이템들도 박스로
+  접어두어야 할 것으로 보입니다.” “검증 보고와 설명 한계는 같은 depth로 다뤄질
+  내용으로 보이는데 지금은 그렇지 않습니다.” Package 27 removes the state/date
+  divider, reuses exact typed sidebar markers/colors in catalogue/detail, gives
+  all three explanation sections one spacing parent, folds named report items in
+  boxes and presents verification/limits as peer h2 sections. Original state,
+  event provenance, report facts and cited ranges remain unchanged. Scope remains
+  local E1/CE1 refinement, not a geometry choice or Product-default rollout.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.

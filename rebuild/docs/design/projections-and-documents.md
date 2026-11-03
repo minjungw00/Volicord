@@ -3398,3 +3398,10 @@ At the established breakpoints evidence remains nonmodal at >=1200px, a sheet at
 full-screen treatment. One local modal owner coordinates inert state, Tab, Escape,
 close and exact expanded-figure return. This frozen-export behavior is not live
 Privacy/lifetime enforcement or evidence of assistive/human acceptance.
+
+The next scoped detail refinement reuses the sidebar's typed state marker/colors
+in catalogue and detail, retaining labels and original event times. All three
+authored explanation sections share one parent/spacing rule. Verification report
+and explanation limits are peer sections with identical h2 presentation; named
+report items are separate initially closed native boxes. Their original facts,
+execution identities, exact range actions and raw-report destinations survive.

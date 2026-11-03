@@ -16,6 +16,30 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
         await page.route('**/*',r=>r.request().url().startsWith('file:')?r.continue():r.abort());
         await page.goto(pathToFileURL(path.join(c.output,candidate.file)).href+'#work-'+source.work);await page.evaluate(()=>document.fonts.ready);
         const doc=page.locator('.doc[data-work-layout]'),nav=doc.locator('.document-nav'),trigger=nav.locator(':scope > summary');
+        const card=page.locator('#works .work-card[data-work-id="'+source.work+'"]'),state=await card.getAttribute('data-work-state');
+        const listBadge=card.locator('.work-state-badge'),detailBadge=doc.locator('.record-strip .work-state-badge');
+        assert.equal(await detailBadge.getAttribute('data-state'),state);assert.equal(await listBadge.getAttribute('data-state'),state);
+        const sidebarDot=page.locator('.status-side-link[data-state="'+state+'"] .state-dot');
+        const color=await sidebarDot.evaluate(n=>getComputedStyle(n).backgroundColor);
+        assert.equal(await detailBadge.locator('.state-dot').evaluate(n=>getComputedStyle(n).backgroundColor),color,'detail reuses sidebar state icon/color');
+        assert.equal(await listBadge.locator('.state-dot').evaluate(n=>getComputedStyle(n).backgroundColor),color,'catalogue reuses sidebar state icon/color');
+        assert.deepEqual(await detailBadge.evaluate(n=>[getComputedStyle(n).color,getComputedStyle(n).backgroundColor]),await listBadge.evaluate(n=>[getComputedStyle(n).color,getComputedStyle(n).backgroundColor]));
+        assert.equal(await doc.locator('.record-strip').evaluate(n=>getComputedStyle(n).borderBottomWidth),'0px','no line between status and dates');
+        const gaps=await doc.locator('.work-section-stack > .article-section').evaluateAll(ns=>ns.slice(1).map((n,i)=>n.getBoundingClientRect().top-ns[i].getBoundingClientRect().bottom));
+        assert.equal(gaps.length,2);assert.ok(gaps.every(gap=>gap>=24&&gap<=40));assert.ok(Math.abs(gaps[0]-gaps[1])<1,'actual section gaps are consistent');
+        const layerHeads=doc.locator('[data-reading-group="checks"] > section > h2.reading-layer-heading');
+        assert.deepEqual(await layerHeads.allTextContents(),['검증 보고','설명 한계']);
+        const layerStyles=await layerHeads.evaluateAll(ns=>ns.map(n=>{const s=getComputedStyle(n);return [s.fontSize,s.fontWeight,s.lineHeight,s.color,s.margin,n.getBoundingClientRect().left];}));
+        assert.deepEqual(layerStyles[0],layerStyles[1],'report and limits have the same heading depth/style');
+        const reports=doc.locator('.verification-report-row');assert.equal(await reports.count(),await doc.locator('.verification-execution').count());
+        for(const row of await reports.all()){
+          assert.equal(await row.evaluate(n=>n.tagName),'DETAILS');assert.equal(await row.evaluate(n=>n.open),false);
+          assert.equal(await row.evaluate(n=>getComputedStyle(n).borderTopStyle),'solid');
+          const summary=row.locator(':scope > summary');await summary.focus();await summary.press('Enter');assert.ok(await row.locator('.verification-check-summary').first().isVisible());await summary.press('Enter');
+        }
+        await doc.locator('[data-reading-group="checks"]').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`${candidate.id}-${width}-checks.png`)});
+        await page.evaluate(()=>{location.hash='works';});await card.waitFor({state:'visible'});await page.screenshot({path:path.join(out,`${candidate.id}-${width}-catalogue.png`)});
+        await card.locator('a.card-action').click();
         await trigger.focus();await trigger.press('Enter');
         assert.equal(Math.round((await trigger.boundingBox()).height),56,'one compact TOC trigger size');
         const list=nav.locator(':scope > nav'),listBox=await list.boundingBox(),navBox=await nav.boundingBox();
