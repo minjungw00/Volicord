@@ -40,7 +40,10 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
       await page.mouse.move(blank.x,blank.y);await page.mouse.down();await page.mouse.move(blank.x-140,blank.y-20,{steps:6});await page.mouse.up();
       assert.ok(await viewport.evaluate(n=>n.scrollLeft)>20,'blank-background mouse pan');
       await figure.locator('[data-world-action="expand"]').click();assert.ok(await figure.evaluate(n=>n.classList.contains('world-expanded')));await page.keyboard.press('Escape');assert.equal(await figure.evaluate(n=>n.classList.contains('world-expanded')),false);
-      await figure.locator('[data-world-action="right"]').click();const selected=figure.locator('.spatial-world [data-element="'+e.id+'"]');await selected.focus();const name=await selected.getAttribute('aria-label');
+      if(!await figure.locator('[data-world-action="right"]').isVisible())await figure.locator('.spatial-navigation details > summary').click();
+      await figure.locator('[data-world-action="right"]').click();
+      if(candidate.editorial==='edited')await figure.locator('.spatial-navigation details > summary').click();
+      const selected=figure.locator('.spatial-world [data-element="'+e.id+'"]');await selected.focus();const name=await selected.getAttribute('aria-label');
       await page.setViewportSize({width:width===1440?390:1440,height:1000});assert.ok((await figure.locator('.spatial-selection').innerText()).includes(name),'resize retains selected meaning');
       await viewport.focus();const y=await page.evaluate(()=>scrollY);await page.mouse.wheel(0,200);assert.ok(await page.evaluate(()=>scrollY)>=y,'wheel does not hijack browser/page semantics');
       // Native Tab can leave the viewport; no focus trap is installed.

@@ -586,8 +586,8 @@ clean install
 - Geometry/navigation selection and full editorial acceptance: **pending**. The
   2026-11-03 instruction authorizes the reviewed local Work arrangement below;
   it does not select A/B/C or authorize Product-default changes/republication.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-20/index.html`;
-  manifest SHA-256 `a8510ec29a90f271357fb93f8deec42f021b4954ab1b4195469a908190a46ce1`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-26/index.html`;
+  manifest SHA-256 `dc66ca931892ba9dcd09383945a240aeabb21f448e5d6f6cf23f5b7d13c2f656`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -634,6 +634,26 @@ clean install
   Package 19's reproduced TOC overlay is corrected in 20: ordinary scripted
   selection closes the menu and reveals the selected original record. Native
   script-free disclosure and fragments remain independently available.
+- Further current-version feedback on 2026-11-03, verbatim: “간격 및 여백, 평행선
+  등 전체적인 디자인 일관성이 무너진 것으로 보입니다.” “상단의 목차 네비게이션의
+  UI가 망가진 것으로 보입니다. 규격을 일관성 있게 유지해야 합니다.” “도식 조작
+  버튼은 도식 위에 별도로 두기보다 도식 내부에 UI로 두는 것이 더 좋아보입니다.”
+  “도식의 여백이 너무 크다고 느껴집니다.” “팝업 창의 일관성이 떨어져보입니다.
+  도식 크게 보기 창이나 근거 보기 창이 그렇습니다.” “근거 보기 버튼이 너무 크고
+  존재감이 강해 읽기 경험을 떨어트리는 것 같습니다. 버튼을 문단의 우하단으로
+  옮기고 지금보다 더 약한 디자인이 필요해 보입니다.” “근거 보기는 이전 버전과
+  같이 dropbox를 사용해 선택한 근거를 표시하는 방식을 유지하는 것이 좋아보입니다.
+  지금은 근거를 보기까지의 depth가 깊습니다.” “접을 수 있는 요소들 간의 계층
+  관계가 뒤죽박죽인 상태이며, 디자인적으로 명확히 구분되지 않고 있습니다. 이
+  문제는 대부분의 위치에서 발생하며 특히 전체 근거 섹션에서 그렇습니다.” “전체
+  근거에서의 원문 소스 코드는 바로 보여지는 것을 피해야 할 것으로 보입니다.”
+  Package 26 applies the scoped refinement to E1/CE1: one bounded compact TOC,
+  quiet lower-right paragraph action, direct selected evidence with a complete
+  dropdown family, in-frame diagram controls and reduced toolbar/viewport whitespace,
+  common panel chrome and coordinated modal focus/return, consistent disclosure
+  levels and independently folded raw originals. Native links/disclosures remain.
+  Every original binding/body and diagram geometry survives. This feedback does
+  not select A/B/C, approve the complete design or authorize default rollout.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.

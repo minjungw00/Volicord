@@ -27,7 +27,13 @@ payloads; exercises complete paragraph citation sets, original source bytes, ove
 75% controls, document navigation and direct fragments into closed original records.
 The builder's `spatial_work_layout.cjs` moves the frozen units into three reading
 groups; it does not author a replacement article or enforce live authority.
-Both are direct controls, not a framework, qualification gate, independent reader
+`spatial_presentation_check.cjs CONFIG` uses an absent ignored `presentation_output`
+for actual TOC bounds, quiet lower-right evidence actions, direct dropdown selection,
+in-frame controls, shared header/modal geometry, focus/expanded-figure-to-code return
+and raw-record disclosure at five widths. Original bytes come from the frozen public
+bindings and repository files, not the rendered panel. Screens are dependent visual
+inspection, not independent reading or a human design pass.
+These are direct controls, not a framework, qualification gate, independent reader
 or user selection. A separate index holds variant identities, tasks and limitations;
 ordinary candidate screens contain only reading controls and truthful draft status.
 Failed versions and complete raw observations stay ignored. The current bounded
@@ -37,8 +43,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The comparison started on 2026-10-30; the latest scoped refinement starts at
-`rebuild/.local/spatial-reading-20261030/candidates-20/index.html`. Manifest SHA-256:
-`a8510ec29a90f271357fb93f8deec42f021b4954ab1b4195469a908190a46ce1`.
+`rebuild/.local/spatial-reading-20261030/candidates-26/index.html`. Manifest SHA-256:
+`dc66ca931892ba9dcd09383945a240aeabb21f448e5d6f6cf23f5b7d13c2f656`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -100,6 +106,34 @@ other browsers and physical/assistive usability remain unobserved. The preceding
 package 19 also passes 60 role/endpoint/condition/return conditions against original
 public records and repository bytes; the later correction only changes grouped TOC
 selection. No Rust/aggregate/official V11/provider gate is run for this local tooling.
+
+Package 26 follows the current-version spacing/navigation/popup/evidence feedback.
+Its E1/CE1 compact TOC uses the existing native 56px trigger and one bounded scroll
+list, rather than allowing the wide horizontal style to leak into grouped contents.
+Diagram controls sit inside the frame; normal viewports are 400px/340px instead of
+the spacious prototype's 620px/480px. SVG geometry and the initial whole-scene meaning
+are unchanged. One restrained paragraph action opens a real original range directly;
+the same pane's dropdown enumerates the complete family. Matching legacy selectors
+are removed only after comparing their exact href sets. No intermediate list or
+first-range-as-aggregate proof is introduced; native links remain without JavaScript.
+
+Figure/evidence headers share size, padding, close/focus treatment and mobile full
+screen. Local modal ownership coordinates inert background, focus, Escape/backdrop
+close and exact expanded-figure return. Categories and subordinate source/raw-data
+disclosures use one hierarchy; opening full evidence never directly dumps raw pre
+blocks. Original code stays folded in the evidence pane with one physical payload.
+Earlier packages, the toolbar's inherited-margin/negative-menu-position failures,
+the interrupted numeric wrapper and the test-script declaration error are preserved.
+Layout/byte, scripted presentation, exact-role and file/HTTP checks remain distinct
+from technical qualification, other-browser/assistive use and human acceptance.
+
+Package 26's final focused run exits 0 in all four children: 20 layout/byte/native
+conditions, 10 presentation/modal/expanded-return conditions, 10 scoped role/guard/
+code-return conditions and 108 file/HTTP conditions. The twelve original SVG hashes,
+25 Work units, original Goal/verification JSON, 13 Work code payloads and complete
+citation families remain intact. Screenshot review checked ordinary/expanded figures,
+TOC, selected evidence and record categories; its source familiarity is unchanged.
+These local UI checks invoke no Rust aggregate, official V11 or provider gate.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

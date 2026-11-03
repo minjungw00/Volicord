@@ -145,6 +145,15 @@ or CSS-only hiding may strand code. Heading roles cannot mechanically prove a he
 nonassertive; a materially assertive heading/lead needs source-first semantic review
 and a precise body explanation. This UI delivery does not change v6 admission.
 
+The 2026-11-03 local comparison feedback refines the action's presentation: a quiet
+control at the paragraph's lower right opens an actual selected range immediately,
+with the complete separately bound family in a dropdown in that same pane. An
+explicit selected range is not proof for all claims in the paragraph. The native
+fallback provides exact range links. Complete code stays initially folded. This
+refines E1/CE1 presentation; it does not select a Product-default geometry or waive
+grounding/availability checks. Compact TOC, in-frame diagram controls, panel headers
+and disclosure levels use consistent dimensions and spacing.
+
 ### 3.1 ‘취소선’ 의견의 처리
 
 사용자는 클릭 요소의 선 장식을 없애고 버튼 등의 UI를 요구했다. 직전 코드·HTML 검토에서는 실제 취소선 요소가 아니라 밑줄 링크와 버튼의 혼재가 확인되었다. 따라서 **기존 동작이 취소선을 사용했다는 사실을 새로 만들지 않되, 주요 동작을 명확한 버튼형·제어형 UI로 정리한다는 요구를 적용한다.** 이동은 `a`, 동작은 `button`, 펼침은 적절한 disclosure 의미와 키보드 동작을 유지할 수 있다. 이것은 태그 이름을 전부 버튼으로 바꾸라는 지시가 아니다.

@@ -3382,3 +3382,19 @@ from the unchanged SVG geometry. Fit text is not counted as readable evidence.
 Native radio/disclosure/fragment controls retain script-free reading. These viewport
 and entry-control refinements make the latest E0/E1 review broader than order alone;
 they do not represent a complete rewrite of the detailed article.
+
+The subsequent presentation refinement removes the intermediate citation-list
+destination: the paragraph action selects an original range directly and the pane's
+dropdown enumerates its whole original family. Switching retains the exact native
+claim/Source/return origin; it cannot promote the selected first range into aggregate
+proof. Script-free readers keep complete native links. Full code and raw original
+record data require deliberate expansion, with one physical code payload per range.
+The Work's three reading groups retain their distinct responsibilities.
+
+The isolated reader uses one compact TOC trigger/list, diagram controls inside the
+drawing frame, common 56px panel headers and independent category/detail disclosures.
+At the established breakpoints evidence remains nonmodal at >=1200px, a sheet at
+761–1199px and full screen at <=760px; expanded figures share its chrome and mobile
+full-screen treatment. One local modal owner coordinates inert state, Tab, Escape,
+close and exact expanded-figure return. This frozen-export behavior is not live
+Privacy/lifetime enforcement or evidence of assistive/human acceptance.

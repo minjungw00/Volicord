@@ -57,9 +57,9 @@ function inventory(){
             groupState.headingNumbers.forEach(([number,content],i)=>{assert.equal(number,String(i+1).padStart(2,'0'));assert.equal(content,JSON.stringify(number));});
             assert.ok(!groupState.primary.some(s=>/기록의 흐름|호출 연결과 원래 기록|무엇을 확인/.test(s)));
 
-            const figure=page.locator('.work-overview'),viewport=figure.locator(':scope > .diagram-full-view > .diagram-viewport').first(),svg=viewport.locator(':scope > svg');
+            const figure=page.locator('.work-overview'),viewport=figure.locator('.diagram-stage > .diagram-viewport').first(),svg=viewport.locator(':scope > svg');
             await figure.scrollIntoViewIfNeeded();
-            await page.waitForFunction(()=>{const v=document.querySelector('.work-overview .diagram-full-view > .diagram-viewport'),b=v.querySelector('svg').getBoundingClientRect();return b.width>0&&b.height>0&&b.width<=v.clientWidth+1&&b.height<=v.clientHeight+1;});
+            await page.waitForFunction(()=>{const v=document.querySelector('.work-overview .diagram-stage > .diagram-viewport'),b=v.querySelector('svg').getBoundingClientRect();return b.width>0&&b.height>0&&b.width<=v.clientWidth+1&&b.height<=v.clientHeight+1;});
             assert.equal(await svg.count(),1,'one primary drawing without an overview copy');
             await page.screenshot({path:path.join(out,`${candidate.id}-${scripted}-${width}-overview.png`)});
             if(scripted&&candidate.navigation==='camera'){
@@ -78,8 +78,10 @@ function inventory(){
               if(!await text.count()||!entry.links.length)continue;
               assert.equal(await unit.locator(':scope > .evidence-actions a').count(),1);
               const action=unit.locator('.paragraph-evidence-action');
-              const group=page.locator('[id="'+(await action.getAttribute('href')).slice(1)+'"]');
-              assert.deepEqual(await group.locator('.paragraph-evidence-list a').evaluateAll(ns=>ns.map(n=>({href:n.getAttribute('href'),origin:n.dataset.origin}))),entry.links,'complete exact citation set');
+              assert.equal(await action.getAttribute('href'),entry.links[0].href,'single action directly selects an actual citation');
+              assert.deepEqual(JSON.parse(await action.getAttribute('data-citation-targets')),entry.links.map(n=>n.href),'complete exact citation set');
+              const target=page.locator('[id="'+entry.links[0].href.slice(1)+'"]');
+              assert.deepEqual(await target.locator(':scope > .paragraph-source-picker select option').evaluateAll(ns=>ns.map(n=>n.value)),entry.links.map(n=>n.href));
             }
             // Multiple code citations, a material condition, and report facts use
             // the same actual keyboard route into a single evidence pane.
@@ -88,26 +90,33 @@ function inventory(){
               const unit=page.locator('[id="'+originalEntry.unit+'"]');
               await page.evaluate(id=>{let n=document.getElementById(id);while(n){if(n.tagName==='DETAILS')n.open=true;n=n.parentElement;}},originalEntry.unit);
               const action=unit.locator('.paragraph-evidence-action');await action.focus();await page.keyboard.press('Enter');
-              const group=page.locator('.paragraph-evidence-target:target');await group.waitFor({state:'visible'});
+              assert.equal(new URL(page.url()).hash,originalEntry.links[0].href,'one action reaches the selected evidence directly');
               for(let i=0;i<originalEntry.links.length;i++){
-                const link=group.locator('.paragraph-evidence-list a').nth(i),href=await link.getAttribute('href');await link.focus();await page.keyboard.press('Enter');
+                const href=originalEntry.links[i].href;
+                const current=page.locator('[id="'+decodeURIComponent(new URL(page.url()).hash.slice(1))+'"]');
+                if(scripted){await current.locator(':scope > .paragraph-source-picker select').selectOption(href);}
+                else{
+                  const fallback=current.locator(':scope > .paragraph-source-picker .native-range-list');
+                  if(!await fallback.evaluate(n=>n.open)){await fallback.locator(':scope > summary').focus();await page.keyboard.press('Enter');}
+                  const link=fallback.locator('.paragraph-evidence-list a').nth(i);await link.focus();await page.keyboard.press('Enter');
+                }
+                await page.waitForFunction(href=>decodeURIComponent(location.hash)===href,href);
                 const point=await citationPoint(page,href);await point.waitFor({state:'visible'});
                 const citation=pub.prose[index-1]?.citations[i];
                 if(citation&&await point.getAttribute('data-cited-code')){
                   const expected=fs.readFileSync(path.join(source.repository,citation.locator)).subarray(citation.start_byte,citation.end_byte).toString();
                   assert.equal(await(await openEmbeddedCode(point)).textContent(),expected);await returnFromEmbeddedCode(point);
                 }
-                const switcher=point.locator(':scope > .point-bar .paragraph-evidence-switch');
-                await switcher.focus();await page.keyboard.press('Enter');await group.waitFor({state:'visible'});
               }
-              const back=group.locator('a.return');await back.focus();await page.keyboard.press('Enter');
+              const active=page.locator('[id="'+decodeURIComponent(new URL(page.url()).hash.slice(1))+'"]');
+              const back=active.locator(':scope > .point-bar a.return');await back.focus();await page.keyboard.press('Enter');
               assert.equal(new URL(page.url()).hash,'#'+originalEntry.unit);
             }
 
             // Closed original records must be reachable from the real document
             // navigation and on a fresh direct-fragment load without JavaScript.
             const nav=page.locator('.doc[data-work-layout] .document-nav');await nav.evaluate(n=>n.open=true);
-            const originalNav=nav.locator('.work-toc-group').last();await originalNav.locator('summary').focus();await page.keyboard.press('Enter');
+            const originalNav=nav.locator('.work-toc-group').last();
             const rawLink=originalNav.locator('a').last(),href=await rawLink.getAttribute('href');await rawLink.focus();await page.keyboard.press('Enter');
             if(scripted)assert.equal(await nav.evaluate(n=>n.open),false,'TOC selection closes its overlay');
             else if(await nav.evaluate(n=>n.open)){await nav.locator(':scope > summary').focus();await page.keyboard.press('Enter');}

@@ -5,7 +5,7 @@ function arrangeWork({work}) {
   const make=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n;};
   const reading=doc.querySelector('[id$="-reading"]'),prefix=reading.id.replace(/-reading$/,'');
   const required=selector=>{const n=doc.querySelector(selector);if(!n)throw Error('missing Work section: '+selector);return n;};
-  const wrap=(title,id)=>{const d=make('details','reading-section work-record');d.id=id;d.append(make('summary','',title));return d;};
+  const wrap=(title,id)=>{const d=make('details','reading-section work-record');if(id)d.id=id;d.append(make('summary','',title));return d;};
   const head=required('.doc-head'),verification=required('.verification-report'),limits=required('.limits-section');
   const audit=required('.audit'),original=required('.record-box:has([id$="-original"])');
   const evidence=required('.record-box:has([id$="-audit"])'),evidenceBody=evidence.querySelector('[id$="-audit"]');
@@ -65,27 +65,69 @@ function arrangeWork({work}) {
   const json=required('[id$="-full-verification"]');raw.append(json);records.append(raw);
   audit.remove();
 
-  // A single paragraph action opens its complete citation set, rather than
-  // treating the first citation as evidence for the entire paragraph.
+  // Keep one clear level of categories under full evidence. Capture objects and
+  // original data require their own deliberate disclosure, even after opening it.
+  if(retained){
+    const retainedSummary=retained.querySelector(':scope > summary');retainedSummary.remove();
+    editorial.append(...retained.childNodes);retained.remove();
+  }
+  const recordData=wrap('기록 상태와 발행 정보',prefix+'-record-data');
+  for(const child of [...evidenceBody.children])if(![editorial,summaryBasis,index,historyBox,codeScope].includes(child))recordData.append(child);
+  evidenceBody.append(recordData);
+  for(const pre of records.querySelectorAll('pre')){
+    const disclosure=wrap(pre.classList.contains('publication-provenance')?'발행 정보 원문':'원문 데이터',pre.id?pre.id+'-disclosure':'');
+    disclosure.classList.add('raw-disclosure');pre.before(disclosure);disclosure.append(pre);
+  }
+  for(const details of doc.querySelectorAll('.work-reading-group details')){
+    if(details.closest('.admitted-diagram'))continue;
+    details.classList.add('work-disclosure');
+    let level=1;for(let parent=details.parentElement;parent&&parent!==doc;parent=parent.parentElement)if(parent.tagName==='DETAILS')level++;
+    details.dataset.disclosureLevel=String(level);
+    if(records.contains(details))details.open=false;
+  }
+
+  // Open a selected range directly, with its complete original citation family
+  // available in the pane. No intermediate citation-list page or code copy.
   const appendix=document.querySelector('.appendix');
+  function rangePicker(links,family){
+    for(let i=0;i<links.length;i++){
+      const target=document.getElementById(links[i].getAttribute('href').slice(1));if(!target)throw Error('citation target missing');
+      const picker=make('div','paragraph-source-picker'),label=make('label'),select=make('select','evidence-range-select');
+      label.append(make('span','','근거 선택 · '+links.length+'개 범위'));select.setAttribute('aria-label','이 설명의 근거 선택');
+      select.dataset.citationFamily=family;
+      const fallback=make('details','native-range-list'),list=make('ul','paragraph-evidence-list');fallback.append(make('summary','','다른 근거 선택'));
+      for(let j=0;j<links.length;j++){
+        const link=links[j],point=document.getElementById(link.getAttribute('href').slice(1));
+        const sourcePath=point.querySelector('.source-path')||point.closest('.source-point')?.querySelector('.source-path');
+        const option=make('option','',(j+1)+'. '+(sourcePath?.textContent||link.getAttribute('title')||link.textContent));
+        option.value=link.getAttribute('href');option.defaultSelected=j===i;select.append(option);
+        const li=make('li'),copy=link.cloneNode(true);copy.removeAttribute('id');li.append(copy);if(sourcePath)li.append(make('span','source-note',sourcePath.textContent));list.append(li);
+      }
+      label.append(select);picker.append(label);fallback.append(list);picker.append(fallback);
+      for(const previous of target.querySelectorAll(':scope > .native-range-selector,:scope > .range-selector')){
+        const old=[...previous.querySelectorAll('a[href]')].map(n=>n.getAttribute('href')),current=links.map(n=>n.getAttribute('href'));
+        if(old.every(href=>current.includes(href))&&current.every(href=>old.includes(href)))previous.remove();else fallback.append(previous);
+      }
+      const after=target.querySelector(':scope > .evidence-selection-context')||target.querySelector(':scope > .evidence-claim');
+      if(after)after.after(picker);else target.prepend(picker);
+    }
+  }
   for(const actions of doc.querySelectorAll('.unit > .evidence-actions')){
     const unit=actions.parentElement,text=unit.querySelector(':scope > p.unit-text');
     const links=[...actions.querySelectorAll('a.evidence-link')];
     if(!text||!links.length)continue;
-    const group=make('section','paragraph-evidence-target');group.id=unit.id+'-evidence';group.tabIndex=-1;
-    const bar=make('div','point-bar'),back=make('a','return','← 설명으로 돌아가기');back.href='#'+unit.id;bar.append(back);
-    group.append(bar,make('h2','evidence-claim',text.textContent));
-    const list=make('ol','paragraph-evidence-list');
-    for(const link of links){
-      const target=document.getElementById(link.getAttribute('href').slice(1));if(!target)throw Error('citation target missing');
-      const item=make('li'),path=target.querySelector('.source-path')||target.closest('.source-point')?.querySelector('.source-path');
-      item.append(link);if(path)item.append(make('p','source-note',path.textContent));list.append(item);
-      const pointBar=target.querySelector(':scope > .point-bar');
-      if(pointBar){const switcher=make('a','paragraph-evidence-switch','이 문단의 근거 목록');switcher.href='#'+group.id;pointBar.append(switcher);}
-    }
-    group.append(list);appendix.append(group);
-    const action=make('a','evidence-link paragraph-evidence-action','근거 보기');action.href='#'+group.id;action.dataset.origin=unit.id;
+    rangePicker(links,unit.id);
+    const action=make('a','evidence-link paragraph-evidence-action','근거 보기');action.href=links[0].getAttribute('href');action.dataset.origin=unit.id;
+    action.dataset.citationTargets=JSON.stringify(links.map(n=>n.getAttribute('href')));
     action.setAttribute('aria-label','이 문단의 근거 '+links.length+'개 보기');actions.replaceChildren(action);
+  }
+  for(const claim of doc.querySelectorAll('.diagram-claim')){
+    const links=[...claim.querySelectorAll('a.evidence-link')];if(links.length)rangePicker(links,claim.id);
+  }
+  for(const bar of appendix.querySelectorAll('.point-bar')){
+    bar.classList.add('reading-panel-header');
+    bar.prepend(make('strong','','근거'));
+    const back=bar.querySelector('a.return');if(back){back.classList.add('panel-close');back.textContent='×';back.setAttribute('aria-label','근거 닫고 설명으로 돌아가기');}
   }
 
   // Use explicit reading-order numbers; nested section counter scopes previously
@@ -93,8 +135,9 @@ function arrangeWork({work}) {
   const headings=[...main.querySelectorAll('.article-section > .unit > h2.unit-text')];
   headings.forEach((h,i)=>h.parentElement.dataset.sectionNumber=String(i+1).padStart(2,'0'));
   const nav=required('.document-nav nav');nav.replaceChildren();
+  nav.parentElement.dataset.overflow='true';
   function navList(title,items,fold=false){
-    const group=make(fold?'details':'div','work-toc-group');group.append(make(fold?'summary':'p','toc-caption',title));
+    const group=make('div','work-toc-group');group.append(make('p','toc-caption',title));
     const list=make('ol',fold?'toc-records':'toc-primary');
     for(const [target,label,number] of items){
       if(!target.id){target.id=prefix+'-navigation-'+nav.querySelectorAll('a').length+'-'+list.children.length;target.tabIndex=-1;}
@@ -124,10 +167,27 @@ function arrangeWork({work}) {
     }
     const help=make('p','spatial-help work-overview-help','전체 보기로 시작합니다. 작은 글은 읽기 75%나 확대 기능으로 확인하세요.');
     viewport.before(scales,help);
+    const stage=make('div','diagram-stage');viewport.before(stage);stage.append(viewport);
+    stage.prepend(scales);
+    const navigation=figure.querySelector('.spatial-navigation');if(navigation)stage.prepend(navigation);
+    const toggle=make('input','native-expand-toggle');toggle.type='checkbox';toggle.id=figure.id+'-expand';
+    const expand=make('label','native-expand-control','↗');expand.htmlFor=toggle.id;expand.title='도식 크게 보기';expand.setAttribute('aria-label','도식 크게 보기');
+    scales.append(toggle,expand);
+    const header=make('header','reading-panel-header figure-panel-header'),close=make('label','panel-close','×');close.htmlFor=toggle.id;close.dataset.panelClose='';close.setAttribute('aria-label','도식 닫기');header.append(make('strong','','도식 크게 보기'),close);figure.prepend(header);
     const reset=figure.querySelector('[data-world-action="reset"]');if(reset){reset.textContent='읽기 75%';reset.setAttribute('aria-label','읽기 75%');}
     const fit=figure.querySelector('[data-world-action="fit"]');if(fit){fit.textContent='전체 보기';fit.setAttribute('aria-label','전체 보기');}
     const cameraHelp=figure.querySelector('.spatial-camera-help');if(cameraHelp)cameraHelp.textContent='빈 배경 끌기·방향 버튼/키로 이동합니다. 전체 보기에서 위치를 파악하고, 읽기 75% 또는 선택 관계로 확대해 읽으세요. Tab과 Enter로 근거를 엽니다. Esc로 돌아갑니다.';
+    const helpBox=make('details','diagram-help work-disclosure');helpBox.append(make('summary','','도식 조작 안내'));for(const p of figure.querySelectorAll('.spatial-help'))helpBox.append(p);figure.querySelector('.diagram-full-view').after(helpBox);
+    if(navigation){
+      const chooser=navigation.querySelector('details');chooser.querySelector('summary').textContent='이동';
+      const menu=make('div','diagram-jump-menu'),pan=make('div','diagram-pan-controls');
+      for(const action of ['left','right','up','down','focus']){const button=navigation.querySelector('[data-world-action="'+action+'"]');if(button)pan.append(button);}
+      menu.append(pan,chooser.querySelector('ul'));chooser.append(menu);
+      for(const [action,label] of [['fit','전체'],['reset','75%'],['expand','↗']]){const button=navigation.querySelector('[data-world-action="'+action+'"]');if(button){button.textContent=label;button.dataset.compactLabel=label;}}
+    }
+    for(const detail of figure.querySelectorAll(':scope > details'))detail.classList.add('work-disclosure');
   }
   doc.dataset.workLayout='grouped';
+  document.body.classList.add('grouped-reading');
 }
 module.exports={arrangeWork};
