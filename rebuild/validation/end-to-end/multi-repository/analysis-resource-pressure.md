@@ -548,3 +548,154 @@ previous gates, runtimes, executables, archives and review materials were retain
 These measurements support the repair mechanism; qualification still requires
 the maintained gate on its exact clean committed candidate with unchanged
 workload, limits, collection and external-transmission scope.
+
+## Rolling-byte arithmetic and retained inspection memory
+
+The 2026-11-04 investigation starts at `d932ba60b55071c864338111126da8f4b6f67297`.
+The original `c4230e75` 906,840.081 ms V11 failure remains unchanged. These are
+bounded local diagnostics, with no gate, Final, official V11, provider replay,
+presentation change or reserved reading-transfer evaluation.
+
+The earlier diagnostic's `normalize_and_finish` guard lived until function exit:
+its approximately 6.5-second measurement includes chunking, compression and delta
+generation. It does not isolate normalization. Its original source and logs are
+preserved. New copied-source instrumentation uses disjoint marks within each
+group; nested groups must still not be added together. A local C probe reads
+glibc `mallinfo2` only at explicit body-free phase markers. It intercepts no
+allocations, trims no memory and changes no Product allocator policy.
+
+### Located costs and memory ownership
+
+On the unchanged seven-call public CLI/MCP diagnostic at source revision
+`c4230e758c84ff6b0386324975baa773d4b1e392`, instrumented MCP lifetime was
+51,606.239 ms, user/system CPU 50.08/3.83 seconds and peak RSS 4,152,123,392 bytes.
+There were zero sampling errors. Physical reads were 57,344 bytes while `rchar`
+was 961,986,604 bytes. This local slice is CPU-heavy; it does not retrospectively
+partition the original V11's provider waits, CLI work or driver costs.
+
+Each of its two publications took about 6.96 seconds for normalized encoding and
+another 2.98–3.06 seconds for cache publication. JSON normalization alone was
+3.430–3.441 seconds. Shape boundaries took 276–278 ms, current-value boundaries
+635–638 ms, and base unpack/boundary/hash matching 924–937 ms. Shape compression
+and hashing were only 58–62 ms; competing complete-value compression was about
+349 ms. Source hashes, validation and durable publication are retained.
+
+The fixed actual graph reconstructs 1,265,898,743 JSON bytes and 60,769,312
+scalars. A counting sink observed 261,022,929 serializer writes in 581.695 ms;
+this is an emitter diagnostic, not a valid replacement encoding. Structural facts
+account for 665,340,984 JSON bytes and semantic results 545,545,110. Nested
+supporting ranges account for 361,296,107 bytes, and semantic provenance alone
+205,814,528. These are overlapping field-attribution dimensions, not additional
+payloads to sum. Storage already interns 1,487,552 unique scalar symbols and
+compresses/deltas the result, but normal publication still walks the entire
+expanded graph for normalized JSON and named MessagePack. Omitting provenance,
+relations, freshness or authority checks is not an optimization alternative.
+
+The first health inspection began with malloc arena usage 1,639,760 bytes,
+free arena space 2,859,129,520 bytes, no malloc mmap allocation, and current RSS
+2,885,656,576 bytes. The prior graph objects had been released into retained
+allocator space. Full JSON reconstruction then allocated a 1,266,147,328-byte
+mmap and increased the same process's current RSS by exactly 1,266,147,328 bytes.
+Typed decoding subsequently reused arena space. Reconstruction was 568 ms and
+typed slice decoding 1,620 ms in that first inspection. This observed high-water
+mechanism combines retained free heap with the full JSON buffer; it is not
+evidence that old graph bodies remained live across requests. It also does not
+prove that every historical peak has this cause.
+
+The 67 public phase records and their 15,003-byte log include `/proc` sampling,
+formatting, stderr and allocator-probe overhead. That overhead and possible
+allocator perturbation have not been independently isolated. An instrumented
+run's smaller RSS is not a memory repair. The separate fixed-input instrumented
+roundtrip retained both full graphs, added inventory measurements, and exited 0
+in 29,840.564 ms with 4,597,391,360-byte wait-time HWM. Neither diagnostic is a
+qualification result.
+
+### Exact byte mapping correction
+
+Rolling chunk boundaries repeatedly computed the same two 64-bit multiplications
+and shifts for each incoming/outgoing byte, although the input alphabet has only
+256 values. `chunk_byte_hash` now uses a 2 KiB compile-time mapping with the exact
+original values. This retains the global rolling window, first-base selection,
+chunk boundaries, integrity hashes and all storage bytes. It introduces no body
+cache, request lifetime, language restriction, authorization reuse or format
+change. The maintained regression pins the original little-endian mapping's
+SHA-256 over all 256 values:
+`33ba31e3638819c4c7eb8c80c94bd1b864ae49b0df709e50c2a8fc0255753b73`.
+
+Frozen release native controls alternated AB, BA, AB on the same immutable graph.
+A is the original arithmetic; B is the lookup. Both retain the existing test-only
+memory marks; fine clocks, inventory and allocator probes are absent. No builds
+or other task-owned timed work overlapped samples. Every exit was 0.
+
+| Order | Side | Native wall ms | User CPU s | System CPU s | HWM bytes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 1 | A | 29,130.842 | 27.226 | 4.047 | 4,592,234,496 |
+| 2 | B | 27,598.026 | 25.896 | 3.714 | 4,592,103,424 |
+| 3 | B | 27,536.682 | 25.837 | 3.716 | 4,592,205,824 |
+| 4 | A | 28,813.923 | 26.967 | 3.975 | 4,592,492,544 |
+| 5 | A | 28,708.724 | 27.036 | 3.797 | 4,592,111,616 |
+| 6 | B | 27,625.198 | 25.882 | 3.777 | 4,592,025,600 |
+
+Median native wall time decreased 4.22%. All six runs preserved the complete
+graph roundtrip, corrupt-value rejection, original input, identical input/output
+manifest hash `afc7ea9a6be5c68e4ab75efbfcea94904d510a4d2cd2aab490ff24c58067f3aa`,
+value hash `810857104708d602d5cbf5f4058f12a5d8d689953ed9f91e00f22179e5cf0045`,
+metadata hash `1b191258ae31c4e06c2ac7dd0bf297d1dc7ee1805c1a0016d3e547e4eeb5e757`
+and 4,549 shape chunks. There is no material native memory improvement.
+
+The supplied, frozen, uninstrumented Product CLI/MCP executables then ran the
+unchanged seven-call public diagnostic in the same order. Each sample performed
+normal CLI setup and retained three snapshots in a fresh disposable Runtime.
+The source revision above stayed fixed; OS caches were uncontrolled. All six
+drivers/processes exited 0 with zero sampling errors and identical analysis
+contract fingerprint
+`cf8f53bf31100b7020ba7a494dbcd94aece503639db9ac4695da50cfcc515740`.
+
+| Order | Side | MCP lifetime ms | User CPU s | System CPU s | Peak RSS bytes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 1 | A | 50,915.054 | 49.69 | 3.83 | 4,183,035,904 |
+| 2 | B | 50,195.155 | 49.12 | 3.75 | 4,182,573,056 |
+| 3 | B | 50,835.883 | 49.51 | 3.83 | 4,151,754,752 |
+| 4 | A | 51,622.991 | 50.26 | 3.98 | 4,183,199,744 |
+| 5 | A | 50,907.536 | 49.90 | 3.82 | 4,509,687,808 |
+| 6 | B | 50,448.670 | 49.01 | 3.82 | 4,151,275,520 |
+
+Median MCP lifetime decreased 0.92%, and median own-process CPU 53.72 to
+52.87 seconds. The public effect is smaller than the native control; neither
+percentage is projected into whole-V11 success. CLI analysis setup remains
+separately retained: 24,977.647/25,371.069/25,652.848/25,792.181/25,949.235/
+25,883.532 ms in order. Driver storage observation was 749–779 ms per journey.
+All physical/logical storage and child CPU/I/O receipts are preserved; fresh
+Source/time identities legitimately change compressed sizes. No storage or
+memory improvement is established. One baseline public sample and every large
+native control exceed 4 GiB; all samples remain visible.
+
+### Validation and remaining boundaries
+
+The actual changed implementation passed release Operations library (39),
+analysis recovery (8), storage footprint (4), Work authority (75), Viewer citation
+reading (31), navigation (6) and one selected Host workflow test. These cover
+normal/negative Project/publication/language selection, replacement, expiry,
+deletion, code-complete reads, retained explanations, native consumers and
+immutable analysis history. Scoped Operations Clippy with `-D warnings`, nested
+workspace formatting and metadata passed. All nine packages and local dependencies
+remain under `rebuild/`, with no legacy workflow dependencies. Post-commit direct
+checks are recorded in the task conversation.
+
+Original review/shared inputs, failed attempts and prior measurements are
+preserved. The seven original delivered publications do not cite `analysis_io.rs`;
+no semantic/renderer output, preparation, retained format, body lifetime or
+publication capacity changed. Original v9 publications are not converted or
+republished from expired Sources. Publication pressure from repeated citation
+metadata remains a separate representation/policy responsibility.
+
+Raw sources, copied instrumentation, the isolated counterfactual, frozen binaries,
+all samples and numeric exits remain under ignored
+`rebuild/.local/cost-cause-20261104-01/`, its named `analysis-memory` workloads and
+focused validation outputs. The host was Linux x86_64 WSL2, Rust/Cargo 1.97.1,
+Python 3.12.3, with release opt-level 3 and debug information disabled. Original
+archives/gates and the shared spatial-reading context were not changed or deleted.
+Whole-V11 attribution of the original 6,840.081 ms excess remains unresolved.
+Future work must separately address expanded-graph traversal and bulk inspection
+memory with complete integrity/history retained, and qualify an exact clean
+candidate through the maintained authorized workflow with unchanged ceilings.

@@ -931,11 +931,24 @@ fn content_defined_ranges(bytes: &[u8]) -> Vec<Range<usize>> {
     output
 }
 
+// Chunking visits hundreds of megabytes twice, including the outgoing byte of
+// each rolling window. The byte alphabet is fixed; preserve the exact mixing
+// values without repeating their arithmetic for every visit.
+const CHUNK_BYTE_HASHES: [u64; 256] = {
+    let mut hashes = [0; 256];
+    let mut index = 0;
+    while index < hashes.len() {
+        let mut value = (index as u64).wrapping_add(0x9e37_79b9_7f4a_7c15);
+        value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        hashes[index] = value ^ (value >> 31);
+        index += 1;
+    }
+    hashes
+};
+
 fn chunk_byte_hash(byte: u8) -> u64 {
-    let mut value = u64::from(byte).wrapping_add(0x9e37_79b9_7f4a_7c15);
-    value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-    value ^ (value >> 31)
+    CHUNK_BYTE_HASHES[usize::from(byte)]
 }
 
 enum DeltaOperation {
@@ -1365,6 +1378,18 @@ mod tests {
         assert!(selected_base.is_none());
         assert_eq!(unpack_blob(&standalone)?, replacement);
         Ok(())
+    }
+
+    #[test]
+    fn chunk_byte_hashes_preserve_existing_mapping() {
+        let bytes = (0_u8..=u8::MAX)
+            .flat_map(|byte| chunk_byte_hash(byte).to_le_bytes())
+            .collect::<Vec<_>>();
+        // Captured independently from the original arithmetic for all 256 bytes.
+        assert_eq!(
+            digest(&bytes),
+            "33ba31e3638819c4c7eb8c80c94bd1b864ae49b0df709e50c2a8fc0255753b73"
+        );
     }
 
     /// With no override this uses actual small polyglot Product output. A retained
