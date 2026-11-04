@@ -36,6 +36,12 @@ inspection, not independent reading or a human design pass.
 These are direct controls, not a framework, qualification gate, independent reader
 or user selection. A separate index holds variant identities, tasks and limitations;
 ordinary candidate screens contain only reading controls and truthful draft status.
+`spatial_evidence_panel_check.cjs CONFIG` uses an absent ignored `panel_output` for
+default exact-code visibility, original-limit navigation, deduplicated statement/
+bound-context reading, Work-style disclosure metrics, pointer/keyboard resizing,
+bounds/default reset and Source/fold preservation at six widths including 1200px.
+The ordinary file/HTTP driver additionally checks initially expanded code for edited
+candidates. Baseline alternatives retain their earlier expansion policy.
 Failed versions and complete raw observations stay ignored. The current bounded
 comparison and pending selection are described by the existing Reader, Projection,
 Decision and validation owners.
@@ -43,8 +49,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The comparison started on 2026-10-30; the latest scoped refinement starts at
-`rebuild/.local/spatial-reading-20261030/candidates-37/index.html`. Manifest SHA-256:
-`060df5ffc10a07bde20e9b90cbaffff3b83e72299c9db49a9466a396104584dd`.
+`rebuild/.local/spatial-reading-20261030/candidates-42/index.html`. Manifest SHA-256:
+`62c6e7085f8cc23c547606bf146436f7c250e7fe979e77833b48334853b66353`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -257,6 +263,44 @@ are verified. Dependent screenshot review inspects normal width fit, hover, sele
 claims and evidence at 1440/390. Physical touch, assistive technology, other engines
 and independent human reading remain unobserved; no Rust/aggregate/V11/provider or
 live Product lifecycle run is part of this isolated comparison.
+
+Package 42 follows the latest limit-original/evidence-window feedback. Recorded
+Checkpoint limits and Source-observation notes move into verification originals;
+authored limits retain a quiet link to their actual quoted body. Targeting the content
+inside the disclosure opens the native ancestors as well as the scripted view.
+E1/CE1 start with complete already embedded cited code open. Scripted range changes
+open the newly bound range, while readers can still fold it; width changes do not
+override that choice. Native exports start expanded without requiring a script or
+another page. Every original physical code payload stays unique and byte-exact.
+
+The pane uses Work typography/disclosure cards and a dark code card. Observation
+metadata is deliberate supporting content; missing-code notes remain visible. All
+27 inspected ordinary original-sentence quotes duplicate their point headings, so
+the pane does not display both. A differing diagram label still has its explicitly
+bound connected body, named separately and conditionally exposed using the original
+point relationship. No Source association is guessed from a filename/shared range.
+Above 760px, dragging the left separator or using arrows/Home/End adjusts bounded
+width; Enter, double-click or the header reset restores defaults. Desktop article
+width follows the evidence width, tablet focus/modal ownership remains, and mobile
+uses full screen. Width stays in page memory, never storage or canonical state.
+
+Intermediate 38–41 and all original attempts stay preserved. A first raw-limit link
+targeted a closed summary instead of its body and was corrected. The new reset button
+initially inherited an oversized minimum height; the corrected header is again 56px.
+One context assertion assumed a paragraph instead of the original blockquote; the
+corrected check reads the original body without changing its words. Main SVG bytes,
+all Source/claim/range bindings, substantive Work units and record payloads survive.
+Package 42's focused children exit 0: 20 layout/native/original-byte conditions,
+10 presentation/expanded-return conditions, 12 evidence-window conditions at
+1440/1200/1024/768/390/320 and 18 edited-candidate file/HTTP/native/scripted conditions.
+The window checks exercise actual pointer capture, arrows, min/max, default reset,
+same-fragment/Source/code preservation, explicit fold state, range-change focus,
+distinct frozen connected-body text and mobile full-screen behavior. All 44 frozen
+inputs, four tooling hashes, twelve primary SVG hashes and the 14-file archive verify.
+Dependent screenshot review checks wide/narrow windows, expanded code and connected
+context. Physical touch, assistive technology, other engines and independent human
+acceptance remain unobserved. No Rust/aggregate/V11/provider or live-lifecycle run is
+part of this local presentation refinement.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

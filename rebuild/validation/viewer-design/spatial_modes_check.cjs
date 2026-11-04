@@ -29,7 +29,12 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
      await page.screenshot({path:path.join(out,`${candidate.id}-${mode}-${width}-initial.png`)});
      const element=figure.locator(`[id="${id}-${e.id}"]`);await element.focus();await page.keyboard.press('Enter');
      const claim=page.locator('[id="'+(await element.getAttribute('href')).slice(1)+'"]'),link=claim.locator('a.evidence-link').first();await link.focus();await page.keyboard.press('Enter');
-     const point=await citationPoint(page,await link.getAttribute('href'));assert.equal(await(await openEmbeddedCode(point)).textContent(),expected);await returnFromEmbeddedCode(point);
+     const point=await citationPoint(page,await link.getAttribute('href'));
+     if(candidate.editorial==='edited'){
+      const codeId=await page.locator(':target').getAttribute('data-cited-code'),code=page.locator('[id="'+codeId+'"]');
+      assert.ok(codeId);assert.equal(await code.evaluate(n=>n.open),true,'native and scripted evidence starts with complete code expanded');assert.ok(await code.locator('pre.code-region code').isVisible());
+     }
+     assert.equal(await(await openEmbeddedCode(point)).textContent(),expected);await returnFromEmbeddedCode(point);
      const back=point.locator(':scope > .source-origin-target:target a.return, :scope > .point-bar a.return').filter({visible:true}).first();await back.focus();await page.keyboard.press('Enter');
      assert.equal(new URL(page.url()).hash,'#'+id+'-'+e.id);
      if(mode==='http-scripted'&&candidate.navigation==='camera'){

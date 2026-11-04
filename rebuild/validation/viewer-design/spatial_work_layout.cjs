@@ -116,6 +116,15 @@ function arrangeWork({work}) {
   if(facts)for(const p of [...facts.querySelectorAll(':scope > p')]){
     if(/^(검증 보고 \(|보고된 검증 상태:|기록된 검증 인용:)/.test(p.textContent)||[...limits.querySelectorAll('p')].some(n=>n.textContent===p.textContent))p.remove();
   }
+  const limitOriginal=wrap('기록된 한계 원문',prefix+'-limit-originals');
+  for(const p of limits.querySelectorAll(':scope > .reading-layer-body > p'))limitOriginal.append(p);
+  const sourceWarning=limits.querySelector(':scope > .reading-warning');if(sourceWarning)limitOriginal.append(sourceWarning);
+  if(limitOriginal.children.length>1){
+    const content=make('div','limit-original-body');content.id=limitOriginal.id+'-content';
+    for(const child of [...limitOriginal.childNodes])if(child.nodeName!=='SUMMARY')content.append(child);limitOriginal.append(content);
+    raw.append(limitOriginal);
+    const link=make('a','paragraph-evidence-action verification-records-return','기록된 한계 원문 보기');link.href='#'+content.id;limits.append(link);
+  }
   evidenceBody.append(publication,recordData);
   // Update index navigation labels to the current composition, keeping bindings.
   for(const entry of index.querySelectorAll('.evidence-entry')){
@@ -201,7 +210,40 @@ function arrangeWork({work}) {
     bar.classList.add('reading-panel-header');
     bar.prepend(make('strong','','근거'));
     const back=bar.querySelector('a.return');if(back){back.classList.add('panel-close');back.textContent='×';back.setAttribute('aria-label','근거 닫고 설명으로 돌아가기');}
+    const reset=make('button','panel-width-reset','↔');reset.type='button';reset.setAttribute('aria-label','근거 창 기본 너비');reset.title='기본 너비';bar.querySelector('strong').after(reset);
   }
+  // Keep one selected explanation, with distinct supporting context only when it
+  // differs. Common observation metadata uses the same disclosure hierarchy as Work.
+  const normalize=text=>text.replace(/\s+/g,' ').trim();
+  const sharedContextStyles=[];
+  for(const point of appendix.querySelectorAll('.source-point,.source-origin-target')){
+    const heading=point.querySelector(':scope > .evidence-claim');if(!heading)continue;
+    heading.before(make('p','evidence-context-label','선택한 설명'));
+    for(const original of point.querySelectorAll(':scope > details')){
+      const label=original.querySelector(':scope > summary');if(!label||!['원래 문장','원래 주장'].includes(label.textContent.trim()))continue;
+      const text=[...original.children].filter(n=>n!==label).map(n=>n.textContent).join('');
+      const same=normalize(text)===normalize(heading.textContent);
+      const aliases=same?[...point.querySelectorAll(':scope > .source-origin-target')].filter(n=>n.dataset.selectedPoint===point.id&&normalize(n.querySelector(':scope > .evidence-claim')?.textContent||'')!==normalize(text)):[];
+      if(same&&!aliases.length)original.remove();
+      else{
+        label.textContent='연결된 본문 문장';original.classList.remove('evidence-original');original.classList.add('evidence-connected-context','evidence-disclosure');
+        if(same){original.classList.add('source-shared-context');sharedContextStyles.push('#'+CSS.escape(point.id)+':has(:is('+aliases.map(n=>'#'+CSS.escape(n.id)+':target').join(',')+')) > .source-shared-context{display:block}');}
+      }
+    }
+    const metadata=make('details','source-metadata evidence-disclosure');metadata.append(make('summary','',point.classList.contains('source-point')?'관측 정보와 한계':'설명 연결 정보'));
+    for(const child of [...point.children]){
+      if(child.matches('.point-bar,.point-title,.evidence-context-label,.evidence-claim,.evidence-selection-context,.paragraph-source-picker,.source-path,.evidence-correspondence,.source-origin-target,.shared-source-target,.evidence-connected-context,[id],[data-statement-role]'))continue;
+      if(!point.dataset.citedCode&&child.matches('.source-note'))continue;
+      metadata.append(child);
+    }
+    if(metadata.children.length>1)point.append(metadata);
+    for(const detail of point.querySelectorAll('details'))if(!detail.closest('.paragraph-source-picker'))detail.classList.add('evidence-disclosure');
+  }
+  const contextStyle=make('style');contextStyle.textContent=sharedContextStyles.join('\n');document.head.append(contextStyle);
+  for(const code of appendix.querySelectorAll(':scope > .cited-code')){
+    code.open=true;code.dataset.defaultExpanded='true';code.classList.add('evidence-disclosure');code.querySelector(':scope > summary').textContent='인용된 전체 코드';
+  }
+  const resizer=make('div','evidence-resize-handle');resizer.tabIndex=0;resizer.setAttribute('role','separator');resizer.setAttribute('aria-orientation','vertical');resizer.setAttribute('aria-label','근거 창 너비');resizer.title='끌어서 너비 조절 · 좌우 방향키 · Enter 기본 너비';appendix.prepend(resizer);
 
   // Use explicit reading-order numbers; nested section counter scopes previously
   // restarted at 01. Verification and original records have no article numbers.

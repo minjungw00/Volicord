@@ -3442,7 +3442,8 @@ share the same quiet visual treatment. Caption evidence opens its exact complete
 range family directly. Selected claims show the original assertion/conditions,
 a single complete-family action and a restrained return link. Only the selected
 Source context exposes a range chooser; an enclosing shared body Source cannot add
-another visible chooser. Complete code remains independently folded in the pane.
+another visible chooser. Complete code stays in the same pane, with initial expansion
+following the latest scoped feedback below.
 
 Visible operation-help, duplicate participant timeline, relationship-link list and
 textual diagram dump are removed from these local candidates at user request. The
@@ -3451,3 +3452,24 @@ Source aliases that used to return to the duplicate timeline now return to the s
 primary semantic role. Hover and keyboard focus emphasize labels, nodes, messages,
 identifiers and conditions without painting strokes over text glyphs. These changes
 remain scoped to the comparison and grant no Product-default or authority change.
+
+The latest evidence-window refinement moves recorded Checkpoint-limit originals and
+Source-observation notes from explanation limits into verification originals. The
+authored limitation remains readable; its quiet link targets the actual quoted body
+inside the closed record, so native and scripted navigation reveal it directly.
+
+E1/CE1 initially expand the existing complete cited range. Switching a scripted
+selection opens the newly bound range; explicit folding remains possible and survives
+window resizing. Script-free exports start with the same authorized code expanded.
+No additional bytes, fetches or Source authority are introduced. Work-style disclosure
+cards group observation metadata; code keeps the dark code palette. Repeated original
+sentences are suppressed when the selected explanation already shows the same text.
+For a different diagram label, the explicitly bound Source-point relationship retains
+the original body as a separately named connected passage; matching a file is never
+used to infer that relationship. Missing-code observation notes stay visible.
+
+At widths above 760px, a bounded draggable separator and keyboard controls resize
+the evidence window; a reset action restores its default width. Desktop article space
+adjusts with the panel. Tablet sheets retain modal ownership, and small screens retain
+full-screen evidence. Width is transient UI state in the current page, with no storage,
+canonical write or effect on exact claim/Source identity, code bytes or return.

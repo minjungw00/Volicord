@@ -12,6 +12,8 @@ function inventory(){
     ids:identified.filter(n=>!n.closest('svg')||n.matches('a')).map(n=>n.id),allIds:identified.map(n=>n.id),
     code:[...document.querySelectorAll('pre.code-region code')].map(n=>n.textContent).sort(),
     goal:doc.querySelector('blockquote.goal').textContent,
+    canonicalLimits:[...doc.querySelectorAll('.limits-section p')].filter(n=>n.textContent.startsWith('최신 Checkpoint에 기록된 한계:')).map(n=>n.textContent),
+    sourceLimitText:doc.querySelector('.reading-warning').textContent,
     intro:{id:intro.closest('[id]').id,text:intro.textContent},
     json:doc.querySelector('[id$="-full-verification"] pre').textContent,
     raw:[...doc.querySelectorAll('pre:not(.code-region,.diagram-text)')].map(n=>n.textContent).sort(),
@@ -50,6 +52,9 @@ function inventory(){
             assert.deepEqual(actual.code,original.code,'one physical copy of every original code payload');
             assert.deepEqual(actual.checks,original.checks,'each complete original verification fact appears once');
             assert.equal(actual.goal,original.goal);assert.equal(actual.json,original.json);
+            assert.deepEqual(await page.locator('[id$="-limit-originals"] .unit-text').allTextContents(),original.canonicalLimits,'the exact recorded limit quote moves to verification originals');
+            assert.equal(await page.locator('[id$="-limit-originals"] .reading-warning').textContent(),original.sourceLimitText,'original source-observation limitations remain intact');
+            assert.deepEqual(actual.canonicalLimits,[],'the explanation layer no longer repeats the canonical original');
             assert.deepEqual(actual.raw,original.raw,'every original record/provenance payload remains byte-exact');
             assert.deepEqual(actual.diagramRoles,original.diagramRoles,'the sole drawing retains every original selectable role and exact claim target');
             assert.deepEqual(actual.diagramClaims,original.diagramClaims,'all original claims, conditions and complete citation families survive');
@@ -159,6 +164,8 @@ function inventory(){
             assert.equal(await originalIntro.textContent(),original.intro.text,'the original intro fragment reveals the exact original passage');
             const introBox=await originalIntro.boundingBox(),introNav=await nav.boundingBox();
             assert.ok(introBox.y>=introNav.y+introNav.height&&introBox.y+introBox.height<=1000,'the original passage is in view below the persistent contents');
+            const limitsLink=page.locator('.limits-section a[href$="-limit-originals-content"]');await limitsLink.focus();await page.keyboard.press('Enter');
+            assert.ok(await page.locator('[id$="-limit-originals"]').evaluate(n=>n.open),'native/scripted limit navigation opens the original text, not just its closed summary');
             assert.ok(original.timelineReturns.length>0,'frozen source aliases supply a real former timeline return');
             const former=original.timelineReturns[0];await page.goto(url.split('#')[0]+'#'+former.origin);
             const formerPoint=page.locator('[id="'+former.origin+'"]');

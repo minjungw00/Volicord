@@ -586,8 +586,8 @@ clean install
 - Geometry/navigation selection and full editorial acceptance: **pending**. The
   2026-11-03 instruction authorizes the reviewed local Work arrangement below;
   it does not select A/B/C or authorize Product-default changes/republication.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-37/index.html`;
-  manifest SHA-256 `060df5ffc10a07bde20e9b90cbaffff3b83e72299c9db49a9466a396104584dd`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-42/index.html`;
+  manifest SHA-256 `62c6e7085f8cc23c547606bf146436f7c250e7fe979e77833b48334853b66353`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -729,6 +729,25 @@ clean install
   text-stroke/duplicate-picker issues. Main SVG bytes, original substantive prose,
   record payloads and exact Source bindings survive. This is local E1/CE1 refinement;
   geometry/default adoption and broader Product republication remain unselected.
+- Further scoped feedback on 2026-11-04, verbatim: “설명 한계에 작성된 원문도 검증
+  원문으로 옮겨야 할 필요가 있어보입니다.” “근거 선택의 인용된 전체 코드를 기본으로
+  보여주는 것이 좋아보입니다.” “근거 선택 창의 가로 크기를 직접 조절할 수 있으면
+  좋겠습니다.” “근거 선택 창의 디자인도 작업 상세와의 일관성을 유지하도록 수정하는
+  것이 좋아보입니다.” “근거 선택 창의 원래 문장은 근거 이름과 같은 것으로 보입니다.”
+  Package 42 moves recorded limit originals/observation notes into verification
+  originals and retains authored limits with a native direct-content link. E1/CE1
+  expand the already embedded complete citation by default and allow deliberate
+  folding. The evidence window shares Work typography/cards and supports bounded
+  pointer/keyboard resizing and default-width reset above 760px; small screens remain
+  full screen. Desktop content makes room, tablet modal/focus ownership is preserved,
+  and width remains transient page state. All 27 inspected original-sentence records
+  duplicate their ordinary point heading. Their repeated display is suppressed there;
+  explicit diagram-to-point bindings retain distinct connected body context without
+  inferring it from shared filenames or code payloads. Raw observation metadata stays
+  inspectable and absent-code notes stay visible. Intermediate 38–41 and observations
+  remain preserved, including direct-content navigation and header-size corrections.
+  Original code, identities and factual obligations remain unchanged. This is local
+  candidate feedback, not Product-default selection, admission or republication.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.
