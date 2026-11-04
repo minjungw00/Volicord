@@ -514,12 +514,12 @@ raw-file length and compact realization length are different measurements.
 | Boundary | Inclusive limit | Measurement / action |
 | --- | ---: | --- |
 | Preparation | 131,072 | Complete compact `ExplanationPlan`, including its final fingerprint and retention budget; reject unrepresentable evidence before generation |
-| Response | 53,248 maximum | Complete compact `ExplanationRealization`, including every Source/claim citation; actual admission uses the plan's `response_byte_capacity` |
+| Response | 56,320 maximum | Complete compact `ExplanationRealization`, including every Source/claim citation; actual admission uses the plan's `response_byte_capacity` |
 | CLI / Dogfood input file | 65,536 | Raw JSON bytes, including formatting; compact-response validation still applies after parsing; remove whitespace for transport excess |
-| Retained content / decoder | 163,840 | Complete compact `RetainedExplanation` in managed Derived `content`; same limit at record, Privacy body admission and explanation decoding; inspection preserves accepted bodies |
+| Retained content / decoder | 164,864 | Complete compact `RetainedExplanation` in managed Derived `content`; same limit at record, Privacy body admission and explanation decoding; inspection preserves accepted bodies |
 | Privacy short fields | 16,384 | Purpose, retention basis and unrelated existing short metadata retain their independent bounds |
 
-The retained bound is 163,840 bytes independently of the response ceiling;
+The retained bound is 164,864 bytes independently of the response ceiling;
 neither Privacy short fields nor Source body bounds expand. Citation metadata can
 use available envelope space instead of displacing a short grounded explanation.
 Preparation publishes mandatory
@@ -533,7 +533,7 @@ identity limitation. Only original evidence bodies and Source `observation` are
 excluded, as already required by retention; grounding is never pruned.
 
 An admitted plan still guarantees the **full** 16,384-byte response. Its exact
-capacity is `min(53,248, 163,840 - metadata_byte_reserve)`, so previously supported
+capacity is `min(56,320, 164,864 - metadata_byte_reserve)`, so previously supported
 metadata-heavy plans retain at least their guaranteed capacity without pruning
 grounding. If required metadata plus the guaranteed response cannot fit,
 preparation rejects the evidence shape
@@ -544,14 +544,28 @@ Record recomputes the current plan and budget under the mutation lock, validates
 exact fingerprint/language/grounding, then measures the actual complete envelope
 before opening/writing storage. Size fit never admits a changed/stale plan.
 Individual paragraphs keep the MCP limit of 16,384 characters on both CLI and MCP.
-The budget is part of the preparation fingerprint: a resource-policy change makes
-older cached interpretations stale without deleting them or changing canonical
-records. Re-recording requires an explicit fresh preparation. A caller preserving
-an actual host output must retain its original request, prose, Source selections
+The budget is part of the **new-publication** preparation fingerprint. A changed
+resource policy makes an older preparation ineligible for compose/record, without
+invalidating an already admitted permitted publication. Reading selects the same
+canonical dependencies through a request-owned `ExplanationBasis`, independently
+of producer instructions, preparation JSON size and response reservations. It
+compares the complete retained evidence identities/revisions/fields/Sources,
+Source status, conflicts, subject/question and recorder statuses, then applies the
+shared language, unit, claim-hash and diagram-seal validator. Operations separately
+checks managed/latest identity, current authority and every Source dependency.
+The original well-formed preparation hash remains unchanged provenance; it is not
+recomputed from today's instructions or treated as cryptographic proof of an
+unavailable original preimage. No old-policy numeric branch or conversion exists.
+Canonical correction, forgetting, deletion, withdrawal and replacement still block
+their affected content. Expired evidence bodies stay absent. New or repeated
+publication requires explicit fresh preparation and current permitted evidence.
+This read/admission separation was explicitly accepted on 2026-11-05 in
+[open decisions](open-decisions.md#retained-reading-and-new-publication-admission--accepted-2026-11-05).
+A caller preserving an actual host output must retain its original request, prose, Source selections
 and failure, and disclose any purely mechanical fingerprint rebinding; that
 rebinding is not another model invocation or semantic approval.
 
-The causal-reading correction reproduces a distinct retained-envelope constraint:
+The earlier causal-reading correction reproduced a distinct retained-envelope constraint:
 the complete English article with a guarded publication-failure path needs 39,450
 response bytes, while its current 113,874-byte metadata reserve leaves only 33,582
 under the former 147,456-byte bound. Shortening conditions or dropping permission/
@@ -566,11 +580,27 @@ This also gives realistic wording/claim variation space; actual multilingual
 publication and expanded-wording measurements must accompany boundary tests.
 Privacy's managed body storage uses the same bound; its short fields, Source
 permissions, retention and canonical authority do not expand. The budget changes
-preparation fingerprints, so affected articles and independent current short
-publications require explicit fresh preparation/composition/recording. No stored
+preparation fingerprints, so any new or repeated article/name/summary publication
+requires explicit fresh preparation/composition/recording; existing permitted
+publications retain independent readability. No stored
 format revision, older decoder or automatic conversion is introduced. Earlier
 144 KiB envelope and 48 KiB response measurements below remain historical, not
 the current capacity policy.
+
+The 2026-11-05 capacity correction follows preserved original refusals and actual
+complete-wording controls. The original Korean Music Deck draft needs 53,871
+response bytes; its untrimmed expansion needs 55,653, with prose +22.99% and a
+critical explanation +55.97%. The Volicord expansion needs 50,741 response /
+164,611 retained bytes, with prose +22.97% and a critical explanation +95.43%; its
+113,874-byte metadata reserve previously limited the response to 49,966. The
+response policy therefore adds 3 KiB (55 KiB total) and retained content adds
+1 KiB (161 KiB total). All code, distinct claim bindings and diagram meaning remain.
+Preparation, raw input, Source collection, code windows, public transport and
+qualification ceilings remain unchanged. Exact current writer/decoder is still
+format 9; existing permitted v9 publications retain their original identity,
+meaning and preparation provenance. Historical capacities below are measurements,
+not the current policy. Downstream resource, boundary and lifetime evidence is in
+[the bounded-capacity report](../../validation/end-to-end/multi-repository/explanation-capacity.md).
 
 The 40 KiB realization policy follows feedback-guided revisions of two independently
 reviewed real-repository articles, needing 35,732 and 40,138 compact bytes for missing responsibilities
@@ -579,7 +609,7 @@ change, not a larger preparation, retained envelope, Source copy, citation page,
 HTTP or MCP transport grant. Source-first quality and cost must still be assessed
 on each actual publication; fitting the new ceiling establishes no semantic pass.
 
-The current ceiling is 48 KiB. A subsequent Source-first execution-location overview,
+An earlier ceiling was 48 KiB. The Source-first execution-location overview,
 overlapping-sync scene, received-close effects and browser-request state view needed
 42,501 English / 43,104 Korean compact bytes and was refused at 40 KiB. The distinct
 claims retain their own bindings, including execution wiring, content/MAIN-world
@@ -3249,7 +3279,7 @@ exact identifiers when names repeat. Live and script-free output use the same
 admitted roles; layout, ports, wrapping and selection remain Derived state.
 Limits remain 32 explanatory units, four figures, 12 nodes, 20 relations/messages,
 12 sequence groups, 96 printable characters per display field and the existing
-53,248/163,840 response/retained bytes. Independent role text does not add evidence
+56,320/164,864 response/retained bytes. Independent role text does not add evidence
 authority, an extra retention store or a second decoder.
 
 The read-side `DiagramElement` inventory binds every selectable role to its

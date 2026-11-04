@@ -1133,7 +1133,7 @@ fn dispatch_explanation_action(
                 .read_to_end(&mut bytes)
                 .map_err(|e| Error::with_source("cannot read generated response", e))?;
             if bytes.len() > volicord_projections::EXPLANATION_INPUT_BYTE_LIMIT {
-                return Err(Error::new(format!("explanation input file exceeds {} UTF-8 bytes (read at least {}); remove formatting whitespace or reduce response prose/metadata, preserve grounding, then retry; compact realization limit remains {} bytes",
+                return Err(Error::new(format!("explanation input file exceeds {} UTF-8 bytes (read at least {}); remove formatting whitespace and retry; if compact JSON still exceeds the limit, preserve the complete explanation and grounding and seek Product support; compact realization limit remains {} bytes",
                     volicord_projections::EXPLANATION_INPUT_BYTE_LIMIT, bytes.len(), volicord_projections::EXPLANATION_BYTE_LIMIT)));
             }
             let header: Value = serde_json::from_slice(&bytes)

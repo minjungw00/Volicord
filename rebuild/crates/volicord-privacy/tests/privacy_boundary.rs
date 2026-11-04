@@ -965,21 +965,21 @@ fn managed_content_has_its_own_byte_bound_and_short_fields_stay_bounded(
         retained_until: None,
         retention_basis: "authored control".into(),
     };
-    assert_eq!(MANAGED_DERIVED_CONTENT_BYTE_LIMIT, 163840);
-    for bytes in [163839, 163840] {
+    assert_eq!(MANAGED_DERIVED_CONTENT_BYTE_LIMIT, 164864);
+    for bytes in [164863, 164864] {
         let record = privacy.record_managed_derived(draft(bytes))?;
         assert_eq!(privacy.get_derived(f.project.id, record.id)?, record);
     }
     let before = privacy.inspect_project(f.project.id)?;
     let error = privacy
-        .record_managed_derived(draft(163841))
+        .record_managed_derived(draft(164865))
         .err()
         .ok_or("oversize accepted")?
         .to_string();
     assert!(
         error.contains("content body")
-            && error.contains("163841")
-            && error.contains("163840")
+            && error.contains("164865")
+            && error.contains("164864")
             && error.contains("retry"),
         "{error}"
     );

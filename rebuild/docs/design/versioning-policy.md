@@ -783,3 +783,31 @@ order; narrow views retain a single column. The full timeline, selectable invent
 and per-view origins remain complete. Explanation 9 and metadata 11, existing
 publications, preparation seals and original Source deadlines are unchanged.
 No semantic phase title is inferred from a group ordinal or its geometry.
+
+
+### Retained reading and bounded publication policy — 2026-11-05
+
+Exact-current explanation 9, generated-document metadata 11, Privacy schema 2 and
+all canonical/Analysis/Source-copy/bundle formats remain unchanged. Response
+capacity is 56,320 bytes and retained body/decoder admission 164,864, following
+preserved 53,871-byte response and 164,611-byte retained controls. Raw input,
+preparation, Source and public transport bounds are unchanged.
+
+A new publication must use its exact current budget-bearing preparation fingerprint.
+An existing admitted v9 publication instead revalidates the complete canonical
+basis and shared content/claim/diagram constraints, independently of producer
+instructions, preparation size and response reservations. Its original preparation
+hash remains syntactically checked provenance, not a recomputation against an
+unavailable historical preimage. Publication/realization/page hashes still bind
+exact current read bytes; Source hashes, coordinates, revisions and permissions
+remain enforced. This explicitly supersedes earlier statements that a producer
+budget/instruction change alone makes a supported retained publication unreadable.
+It does not supersede canonical correction, authority withdrawal, forgetting,
+explicit deletion, corrupted content, replacement selection or exact-current format.
+
+No history conversion, new version, automatic rebinding, old-policy numeric branch
+or parallel decoder is introduced. Reads preserve original IDs, timestamps, generator
+status, diagrams, prose and fingerprint. Re-recording remains explicit admission;
+missing/expired bodies cannot be recovered to republish. The accepted decision is
+owned by `open-decisions.md`; detailed read/resource semantics by
+`projections-and-documents.md` and `privacy-and-provider-boundary.md`.

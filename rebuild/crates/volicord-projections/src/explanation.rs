@@ -9,13 +9,13 @@ use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, Decis
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
 pub const EXPLANATION_VERSION: u32 = 9;
 /// Complete claim bindings and prose share this limit; retention stays independent.
-pub const EXPLANATION_BYTE_LIMIT: usize = 53_248;
+pub const EXPLANATION_BYTE_LIMIT: usize = 56_320;
 /// Preserve the response space guaranteed before citation metadata grew.
 pub const EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY: usize = 16_384;
 pub const EXPLANATION_PARAGRAPH_CHARACTER_LIMIT: usize = 16_384;
 pub const EXPLANATION_PLAN_BYTE_LIMIT: usize = 131_072;
 /// Independent bound for the complete compact retained envelope.
-pub const EXPLANATION_RETAINED_BYTE_LIMIT: usize = 163_840;
+pub const EXPLANATION_RETAINED_BYTE_LIMIT: usize = 164_864;
 /// File transport allows formatting; compact realization admission is independent.
 pub const EXPLANATION_INPUT_BYTE_LIMIT: usize = 65_536;
 const GENERATOR_IDENTITY_STATUS: &str = "self_reported_not_independently_verified";
@@ -148,6 +148,32 @@ pub struct ExplanationPlan {
     pub instructions: String,
     pub retention_budget: ExplanationRetentionBudget,
     pub fingerprint: String,
+}
+/// Request-owned evidence selection shared by preparation and retained reading.
+/// This is not a stored format or an authoring grant. Producer instructions,
+/// preparation fingerprints and generation budgets do not determine readability.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExplanationBasis {
+    pub project_id: String,
+    pub subject: ExplanationSubject,
+    pub question: String,
+    pub requested_language: String,
+    pub evidence: Vec<ExplanationEvidence>,
+    pub source_status: Vec<Value>,
+    pub conflicts: Vec<Value>,
+}
+impl From<&ExplanationPlan> for ExplanationBasis {
+    fn from(plan: &ExplanationPlan) -> Self {
+        Self {
+            project_id: plan.project_id.clone(),
+            subject: plan.subject,
+            question: plan.question.clone(),
+            requested_language: plan.requested_language.clone(),
+            evidence: plan.evidence.clone(),
+            source_status: plan.source_status.clone(),
+            conflicts: plan.conflicts.clone(),
+        }
+    }
 }
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -307,6 +333,15 @@ pub fn prepare_explanation(
     subject: ExplanationSubject,
     language: &str,
 ) -> Result<ExplanationPlan, String> {
+    finish_plan(explanation_basis(canonical, subject, language)?)
+}
+
+/// Select current canonical dependencies without applying producer resource policy.
+pub fn explanation_basis(
+    canonical: &CanonicalReadBasis,
+    subject: ExplanationSubject,
+    language: &str,
+) -> Result<ExplanationBasis, String> {
     if language.trim().is_empty() || language.len() > 128 || language.chars().any(char::is_control)
     {
         return Err("a bounded nonempty requested language is required".into());
@@ -316,7 +351,7 @@ pub fn prepare_explanation(
         | ExplanationSubject::WorkName(work)
         | ExplanationSubject::WorkSummary(work) => work,
         ExplanationSubject::Decision(decision) => {
-            return prepare_decision(canonical, decision, language)
+            return decision_basis(canonical, decision, language)
         }
         ExplanationSubject::Repository(_) => {
             return Err(
@@ -339,7 +374,9 @@ pub fn prepare_explanation(
         } else {
             "work_summary"
         };
-        return finish_plan(canonical, subject, question, language, evidence);
+        return Ok(finish_basis(
+            canonical, subject, question, language, evidence,
+        ));
     }
     let selected = history.materialize(canonical);
     let mut evidence = Vec::new();
@@ -503,13 +540,19 @@ pub fn prepare_explanation(
         );
     }
     for decision_id in &selected.decision_ids {
-        let decision_plan = prepare_decision(canonical, *decision_id, language)?;
-        evidence.extend(decision_plan.evidence.into_iter().map(|mut e| {
+        let decision = decision_basis(canonical, *decision_id, language)?;
+        evidence.extend(decision.evidence.into_iter().map(|mut e| {
             e.key = format!("decision:{decision_id}:{}", e.key);
             e
         }));
     }
-    finish_plan(canonical, subject, "work_outcome", language, evidence)
+    Ok(finish_basis(
+        canonical,
+        subject,
+        "work_outcome",
+        language,
+        evidence,
+    ))
 }
 
 /// Select fields, not the article history. Every qualification has its own exact
@@ -651,11 +694,11 @@ fn short_work_evidence(
     evidence
 }
 
-fn prepare_decision(
+fn decision_basis(
     canonical: &CanonicalReadBasis,
     id: DecisionId,
     language: &str,
-) -> Result<ExplanationPlan, String> {
+) -> Result<ExplanationBasis, String> {
     let lifecycle = canonical
         .active_decisions
         .iter()
@@ -710,13 +753,13 @@ fn prepare_decision(
                 "question_revision":lifecycle.decision.question_revision,
                 "reason":"Exact originating Question revision is unavailable; do not reconstruct its problem or history"}) },
     });
-    finish_plan(
+    Ok(finish_basis(
         canonical,
         ExplanationSubject::Decision(id),
         "decision_rationale",
         language,
         evidence,
-    )
+    ))
 }
 
 /// Operations supplies the verified exact snapshot/binding scope. It is Derived
@@ -728,6 +771,24 @@ pub fn prepare_repository_explanation(
     basis: Value,
     language: &str,
 ) -> Result<ExplanationPlan, String> {
+    finish_plan(repository_explanation_basis(
+        canonical,
+        analysis,
+        repository_source,
+        basis,
+        language,
+    )?)
+}
+
+/// Operations supplies the retained, exact snapshot basis when reading history;
+/// no repository body or generation preparation is reconstructed here.
+pub fn repository_explanation_basis(
+    canonical: &CanonicalReadBasis,
+    analysis: volicord_repository_intelligence::AnalysisSnapshotId,
+    repository_source: volicord_context::SourceId,
+    basis: Value,
+    language: &str,
+) -> Result<ExplanationBasis, String> {
     if language.trim().is_empty() || language.len() > 128 || language.chars().any(char::is_control)
     {
         return Err("a bounded nonempty requested language is required".into());
@@ -756,22 +817,22 @@ pub fn prepare_repository_explanation(
             content: json!(item.statement),
         });
     }
-    finish_plan(
+    Ok(finish_basis(
         canonical,
         ExplanationSubject::Repository(analysis),
         "repository_understanding",
         language,
         evidence,
-    )
+    ))
 }
 
-fn finish_plan(
+fn finish_basis(
     canonical: &CanonicalReadBasis,
     subject: ExplanationSubject,
     question: &str,
     language: &str,
     evidence: Vec<ExplanationEvidence>,
-) -> Result<ExplanationPlan, String> {
+) -> ExplanationBasis {
     let sources = evidence
         .iter()
         .flat_map(|e| e.sources.iter())
@@ -809,6 +870,27 @@ fn finish_plan(
         })
         .map(|r| json!({"from":r.from_identity,"relation":r.relation_kind,"to":r.to_identity}))
         .collect();
+    ExplanationBasis {
+        project_id: canonical.project.id.to_string(),
+        subject,
+        question: question.into(),
+        requested_language: language.into(),
+        evidence,
+        source_status,
+        conflicts,
+    }
+}
+
+fn finish_plan(basis: ExplanationBasis) -> Result<ExplanationPlan, String> {
+    let ExplanationBasis {
+        project_id,
+        subject,
+        question,
+        requested_language,
+        evidence,
+        source_status,
+        conflicts,
+    } = basis;
     let questions = match subject {
         ExplanationSubject::WorkName(_) => "Author exactly one heading naming this Work from its original Goal. Describe the requested problem/action, never claim an implementation or successful outcome. No technical Source is needed for a request-grounded name.",
         ExplanationSubject::WorkSummary(_) => "Author exactly one concise current-progress synopsis connecting the Goal to the actually reported approach/result and latest state. Use all selected field keys; summarize material qualifications rather than listing metadata. Without result, keep the report missing while describing supported progress. Preserve partial, failed, paused, abandoned and no-change outcomes. Review and acceptance are independent, including explicit resets; checks never imply completion or acceptance. Latest nonempty verification is a recorded fact, not current-code proof; verification_coverage marks a later meaningful change even with blank report. Preserve result_limits and current limits and next direction; a blank next_step has no older fallback. Canonical reports and checks establish reported meaning without command bodies. Claims about observed implementation/execution beyond these facts need their own permitted Source citations. Never invent an approach, completion or acceptance or extract article prose. This summary has independent admission and lifetime.",
@@ -817,8 +899,8 @@ fn finish_plan(
         ExplanationSubject::Decision(_) => "Explain question_context, alternatives/consequences, recorded recommendation AND its rationale, actual user choice/delegation and only recorded user_rationale, scope/assumptions/revisit limits. Distinguish later interpretation. Missing technical Source limits verification, never erases recorded reasons. Selection proves no implementation or performance. Invent no user reason.",
     };
     let question_grounding = question_grounding(subject, &evidence);
-    let mut plan = ExplanationPlan { project_id:canonical.project.id.to_string(), subject,
-        question:question.into(), requested_language:language.into(), evidence, source_status, conflicts,
+    let mut plan = ExplanationPlan { project_id, subject,
+        question, requested_language, evidence, source_status, conflicts,
         instructions:format!("{questions} Units need exact evidence_keys per question_grounding; citations supplement keys. Both comparison fragments need grounding. Observation/comparison/flow_step/reading_point need citations. All units share validation/lifecycle. Reports, state, execution, review and acceptance differ; prior checks cannot cover later changes. Use requested language, format {EXPLANATION_VERSION}, exact fingerprint and self-reported generator (unknown model null). Compose derives Source/claim UTF-8 coordinates/hashes. Host authority is external: missing data means neither denial nor consent. Preserve uncertainty; admission is not semantic approval. Return paragraphs question/text/evidence_keys/citations."), question_grounding, retention_budget:ExplanationRetentionBudget { response_byte_limit:EXPLANATION_BYTE_LIMIT,
             retained_byte_limit:EXPLANATION_RETAINED_BYTE_LIMIT, metadata_byte_reserve:0, response_byte_capacity:0 }, fingerprint:String::new() };
     if matches!(subject, ExplanationSubject::Repository(_)) {
@@ -986,14 +1068,11 @@ pub fn validate_explanation(
     {
         return Err("stale preparation or language mismatch; prepare again".into());
     }
-    if response.generator.host.trim().is_empty() || response.generator.session.trim().is_empty() {
-        return Err("active host and session provenance are required".into());
-    }
     let response_bytes = serde_json::to_vec(response)
         .map_err(|e| e.to_string())?
         .len();
     if response_bytes > EXPLANATION_BYTE_LIMIT {
-        return Err(format!("explanation compact realization JSON is {response_bytes} bytes; limit {EXPLANATION_BYTE_LIMIT}; reduce response prose or generator metadata, preserve useful reader content and evidence keys, then retry recording"));
+        return Err(format!("explanation compact realization JSON is {response_bytes} bytes; limit {EXPLANATION_BYTE_LIMIT}; preserve the complete explanation and grounding; seek Product support for this measured capacity limitation"));
     }
     let budget = explanation_retention_budget(plan)?;
     if plan.retention_budget != budget {
@@ -1009,16 +1088,74 @@ pub fn validate_explanation(
     if plan.question_grounding != grounding {
         return Err("question grounding does not match prepared evidence; prepare again".into());
     }
+    validate_explanation_content(
+        plan.subject,
+        &plan.requested_language,
+        &plan.evidence,
+        &grounding,
+        response,
+    )
+}
+
+/// Revalidate an already admitted publication against its exact current canonical
+/// dependencies. The stored preparation hash is original provenance, not a claim
+/// that today's instructions/budget generated it. This cannot admit new writes.
+pub fn validate_retained_explanation(
+    basis: &ExplanationBasis,
+    retained: &RetainedExplanation,
+) -> Result<(), String> {
+    let mut expected = retain_basis(
+        basis.clone(),
+        retained.realization.clone(),
+        retained.generated_at_unix_micros,
+    );
+    expected.publication_id = retained.publication_id.clone();
+    if *retained != expected {
+        return Err("publication canonical grounding or admission metadata changed".into());
+    }
+    let grounding = question_grounding(basis.subject, &basis.evidence);
+    validate_explanation_content(
+        basis.subject,
+        &basis.requested_language,
+        &basis.evidence,
+        &grounding,
+        &retained.realization,
+    )
+}
+
+fn validate_explanation_content(
+    subject: ExplanationSubject,
+    requested_language: &str,
+    evidence: &[ExplanationEvidence],
+    grounding: &[ExplanationQuestionGrounding],
+    response: &ExplanationRealization,
+) -> Result<(), String> {
+    if response.format_kind != EXPLANATION_KIND || response.format_version != EXPLANATION_VERSION {
+        return Err("unsupported explanation format".into());
+    }
+    if response.language != requested_language {
+        return Err("explanation language mismatch".into());
+    }
+    if !response
+        .plan_fingerprint
+        .strip_prefix("sha256:")
+        .is_some_and(|hash| hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
+        return Err("invalid original preparation fingerprint".into());
+    }
+    if response.generator.host.trim().is_empty() || response.generator.session.trim().is_empty() {
+        return Err("active host and session provenance are required".into());
+    }
     if response.paragraphs.is_empty() || response.paragraphs.len() > 32 {
         return Err("a reader document requires 1..32 grounded units".into());
     }
     crate::article_sections(response.generated_units().map(|p| p.question))?;
-    crate::validate_diagrams(plan.subject, response)?;
+    crate::validate_diagrams(subject, response)?;
     if response.generated_texts().any(|s| s.contains('\0')) {
         return Err("generated content contains NUL".into());
     }
     if matches!(
-        plan.subject,
+        subject,
         ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
     ) && (response.paragraphs.len() != 1
         || !response.paragraphs[0]
@@ -1030,16 +1167,13 @@ pub fn validate_explanation(
             "Work name/summary requires one independently grounded unit including goal".into(),
         );
     }
-    if matches!(plan.subject, ExplanationSubject::WorkName(_))
-        && response.citations().next().is_some()
-    {
+    if matches!(subject, ExplanationSubject::WorkName(_)) && response.citations().next().is_some() {
         return Err(
             "Work name describes the Goal; technical claims belong in summary/article".into(),
         );
     }
-    if matches!(plan.subject, ExplanationSubject::WorkSummary(_))
-        && plan
-            .evidence
+    if matches!(subject, ExplanationSubject::WorkSummary(_))
+        && evidence
             .iter()
             .any(|e| !response.paragraphs[0].evidence_keys.contains(&e.key))
     {
@@ -1109,7 +1243,7 @@ pub fn validate_explanation(
                     .into(),
             );
         }
-        if matches!(plan.subject, ExplanationSubject::Repository(_))
+        if matches!(subject, ExplanationSubject::Repository(_))
             && p.question != ExplanationQuestion::Limits
             && p.citations.is_empty()
         {
@@ -1129,7 +1263,7 @@ pub fn validate_explanation(
             {
                 return Err("invalid citation claim binding or Source range".into());
             }
-            if matches!(plan.subject, ExplanationSubject::Decision(_)) {
+            if matches!(subject, ExplanationSubject::Decision(_)) {
                 return Err("Work Source citations require a Work subject".into());
             }
         }
@@ -1140,7 +1274,7 @@ pub fn validate_explanation(
             || p.evidence_keys.is_empty()
             || p.evidence_keys
                 .iter()
-                .any(|key| !plan.evidence.iter().any(|e| &e.key == key))
+                .any(|key| !evidence.iter().any(|e| &e.key == key))
         {
             return Err(
                 "each answer requires nonempty text and exact prepared evidence keys".into(),
@@ -1174,13 +1308,25 @@ pub fn retain_explanation(
     realization: ExplanationRealization,
     generated_at_unix_micros: i64,
 ) -> RetainedExplanation {
-    let mut evidence = plan.evidence.clone();
+    retain_basis(
+        ExplanationBasis::from(plan),
+        realization,
+        generated_at_unix_micros,
+    )
+}
+
+fn retain_basis(
+    basis: ExplanationBasis,
+    realization: ExplanationRealization,
+    generated_at_unix_micros: i64,
+) -> RetainedExplanation {
+    let mut evidence = basis.evidence;
     for e in &mut evidence {
         if e.record_kind != "analysis_snapshot" {
             e.content = Value::Null;
         }
     }
-    let mut source_status = plan.source_status.clone();
+    let mut source_status = basis.source_status;
     for status in &mut source_status {
         if let Some(object) = status.as_object_mut() {
             object.remove("observation");
@@ -1189,12 +1335,12 @@ pub fn retain_explanation(
     RetainedExplanation {
         publication_id: None,
         realization,
-        project_id: plan.project_id.clone(),
-        subject: plan.subject,
-        question: plan.question.clone(),
+        project_id: basis.project_id,
+        subject: basis.subject,
+        question: basis.question,
         evidence,
         source_status,
-        conflicts: plan.conflicts.clone(),
+        conflicts: basis.conflicts,
         generated_at_unix_micros,
         generator_identity_status: GENERATOR_IDENTITY_STATUS.into(),
         semantic_approval_status: "not_established".into(),
@@ -1245,4 +1391,162 @@ pub fn encode_retained_explanation(retained: &RetainedExplanation) -> Result<Str
         return Err(format!("explanation retained envelope is {} bytes; limit {EXPLANATION_RETAINED_BYTE_LIMIT}; no recording was published; prepare again or seek Product support for this evidence shape",content.len()));
     }
     Ok(content)
+}
+
+#[cfg(test)]
+mod retained_read_tests {
+    use super::*;
+
+    fn basis(subject: ExplanationSubject) -> ExplanationBasis {
+        ExplanationBasis {
+            project_id: "01".repeat(16),
+            subject,
+            question: "authored_resource_control".into(),
+            requested_language: "ko".into(),
+            evidence: vec![ExplanationEvidence {
+                key: "goal".into(),
+                record_kind: "context_item".into(),
+                identity: "02".repeat(16),
+                revision: 1,
+                field: "statement".into(),
+                sources: vec![],
+                content: json!("원래 요청을 보존합니다."),
+            }],
+            source_status: vec![],
+            conflicts: vec![],
+        }
+    }
+
+    fn response(plan: &ExplanationPlan) -> ExplanationRealization {
+        ExplanationRealization {
+            diagrams: vec![],
+            format_kind: EXPLANATION_KIND.into(),
+            format_version: EXPLANATION_VERSION,
+            plan_fingerprint: plan.fingerprint.clone(),
+            language: "ko".into(),
+            generator: ExplanationGenerator {
+                host: "authored-control".into(),
+                session: "resource-policy-control".into(),
+                agent: None,
+                model: None,
+            },
+            paragraphs: vec![ExplanationParagraph {
+                question: if matches!(plan.subject, ExplanationSubject::WorkSummary(_)) {
+                    ExplanationQuestion::Synopsis
+                } else {
+                    ExplanationQuestion::Heading
+                },
+                text: "원래 요청을 보존합니다.".into(),
+                evidence_keys: vec!["goal".into()],
+                citations: vec![],
+            }],
+        }
+    }
+
+    #[test]
+    fn historical_preparation_is_provenance_but_new_admission_requires_current_plan(
+    ) -> Result<(), String> {
+        let id = ContextItemId::from_bytes([2; 16]);
+        for subject in [
+            ExplanationSubject::Work(id),
+            ExplanationSubject::WorkName(id),
+            ExplanationSubject::WorkSummary(id),
+        ] {
+            let basis = basis(subject);
+            let current = finish_plan(basis.clone())?;
+            let mut earlier = current.clone();
+            // Authored earlier policy, not an old-policy production decoder.
+            earlier.retention_budget.response_byte_limit = 53_248;
+            earlier.retention_budget.retained_byte_limit = 163_840;
+            earlier.retention_budget.response_byte_capacity = 53_248;
+            earlier.fingerprint.clear();
+            earlier.fingerprint =
+                explanation_text_hash(&serde_json::to_string(&earlier).map_err(|e| e.to_string())?);
+            let output = response(&earlier);
+            let retained = retain_explanation(&earlier, output.clone(), 42);
+            validate_retained_explanation(&basis, &retained)?;
+            assert_eq!(retained.realization.plan_fingerprint, earlier.fingerprint);
+            assert!(validate_explanation(&current, &output).is_err());
+            validate_explanation(&current, &response(&current))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn historical_reading_still_rejects_changed_grounding_identity_and_malformed_content(
+    ) -> Result<(), String> {
+        let basis = basis(ExplanationSubject::WorkName(ContextItemId::from_bytes(
+            [2; 16],
+        )));
+        let plan = finish_plan(basis.clone())?;
+        let retained = retain_explanation(&plan, response(&plan), 42);
+        for change in [
+            "project", "subject", "question", "language", "revision", "field", "source", "status",
+            "conflict",
+        ] {
+            let mut changed = basis.clone();
+            match change {
+                "project" => changed.project_id = "03".repeat(16),
+                "subject" => {
+                    changed.subject = ExplanationSubject::Work(ContextItemId::from_bytes([2; 16]))
+                }
+                "question" => changed.question = "another_question".into(),
+                "language" => changed.requested_language = "en".into(),
+                "revision" => changed.evidence[0].revision += 1,
+                "field" => changed.evidence[0].field = "another_field".into(),
+                "source" => changed.evidence[0].sources.push("03".repeat(16)),
+                "status" => changed
+                    .source_status
+                    .push(json!({"availability":"Unavailable"})),
+                "conflict" => changed.conflicts.push(json!({"relation":"contradicts"})),
+                _ => return Err("unknown control".into()),
+            }
+            assert!(
+                validate_retained_explanation(&changed, &retained).is_err(),
+                "{change}"
+            );
+        }
+        for change in [
+            "hash", "format", "host", "text", "key", "role", "language", "approval",
+        ] {
+            let mut corrupt = retained.clone();
+            match change {
+                "hash" => corrupt.realization.plan_fingerprint = "invalid".into(),
+                "format" => corrupt.realization.format_version -= 1,
+                "host" => corrupt.realization.generator.host.clear(),
+                "text" => corrupt.realization.paragraphs[0].text.push('\0'),
+                "key" => corrupt.realization.paragraphs[0].evidence_keys = vec!["foreign".into()],
+                "role" => {
+                    corrupt.realization.paragraphs[0].question = ExplanationQuestion::Observation
+                }
+                "language" => corrupt.realization.language = "en".into(),
+                "approval" => corrupt.semantic_approval_status = "invented".into(),
+                _ => return Err("unknown control".into()),
+            }
+            assert!(
+                validate_retained_explanation(&basis, &corrupt).is_err(),
+                "{change}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn retained_basis_does_not_apply_producer_preparation_or_metadata_reservations(
+    ) -> Result<(), String> {
+        let mut basis = basis(ExplanationSubject::WorkName(ContextItemId::from_bytes(
+            [2; 16],
+        )));
+        let plan = finish_plan(basis.clone())?;
+        // Authored resource control: a complete bounded retained envelope still
+        // reads even when today's instructions cannot fit its generation plan.
+        basis.source_status = vec![json!({"actor":"a".repeat(133_000)})];
+        let retained = retain_basis(basis.clone(), response(&plan), 42);
+        assert!(encode_retained_explanation(&retained)?.len() < 164_864);
+        let error = finish_plan(basis.clone())
+            .err()
+            .ok_or("oversize preparation admitted")?;
+        assert!(error.contains("preparation JSON"), "{error}");
+        validate_retained_explanation(&basis, &retained)
+    }
 }

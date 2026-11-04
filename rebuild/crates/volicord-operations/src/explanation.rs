@@ -250,8 +250,8 @@ impl LocalOperations {
                 );
             }
         }
-        let plan = self.retained_plan(canonical, &retained)?;
-        if !retained_matches(&plan, &retained) {
+        let basis = self.retained_basis(canonical, &retained)?;
+        if validate_retained_explanation(&basis, &retained).is_err() {
             return Err(
                 Error::new("publication basis changed; reopen the current explanation")
                     .with_reading_failure(ExplanationFailureReason::Changed),
@@ -744,11 +744,11 @@ impl LocalOperations {
     /// Reconstruct the admitted metadata using the stored repository basis,
     /// never a current file or a replacement Source body. Canonical correction
     /// remains a separate authority boundary.
-    fn retained_plan(
+    fn retained_basis(
         &self,
         canonical: &CanonicalReadBasis,
         retained: &RetainedExplanation,
-    ) -> Result<ExplanationPlan, Error> {
+    ) -> Result<ExplanationBasis, Error> {
         if let ExplanationSubject::Repository(id) = retained.subject {
             let evidence = retained
                 .evidence
@@ -762,7 +762,7 @@ impl LocalOperations {
                 .sources
                 .first()
                 .ok_or_else(|| Error::new("publication repository Source missing"))?;
-            volicord_projections::prepare_repository_explanation(
+            volicord_projections::repository_explanation_basis(
                 canonical,
                 id,
                 SourceId::from_bytes(parse_identity(source)?),
@@ -771,11 +771,12 @@ impl LocalOperations {
             )
             .map_err(Error::new)
         } else {
-            self.prepare_subject_explanation(
+            volicord_projections::explanation_basis(
                 canonical,
                 retained.subject,
                 &retained.realization.language,
             )
+            .map_err(Error::new)
         }
     }
 
@@ -867,18 +868,6 @@ fn decode_explanation(
     Ok(retained)
 }
 
-fn retained_matches(plan: &ExplanationPlan, retained: &RetainedExplanation) -> bool {
-    let mut expected = retain_explanation(
-        plan,
-        retained.realization.clone(),
-        retained.generated_at_unix_micros,
-    );
-    // Store identity is assigned separately after decode/record, never retained
-    // content or part of preparation equality. Citation selection checks it.
-    expected.publication_id = retained.publication_id.clone();
-    *retained == expected && validate_explanation(plan, &retained.realization).is_ok()
-}
-
 #[cfg(test)]
 mod size_tests {
     use super::*;
@@ -910,16 +899,16 @@ mod size_tests {
             generator_identity_status: "self_reported_not_independently_verified".into(),
             semantic_approval_status: "not_established".into(),
         };
-        for target in [163839, 163840, 163841] {
+        for target in [164863, 164864, 164865] {
             let mut content = encode_retained_explanation(&retained)?;
             content.push_str(&" ".repeat(target - content.len()));
             let result = decode_explanation(Some(&content));
-            if target <= 163840 {
+            if target <= 164864 {
                 assert_eq!(result.map_err(|(_, e)| e)?, retained);
             } else {
                 let (state, error) = result.err().ok_or("oversize accepted")?;
                 assert_eq!(state, ExplanationState::Corrupt);
-                assert!(error.contains("163841") && error.contains("163840"));
+                assert!(error.contains("164865") && error.contains("164864"));
             }
         }
         let mut malformed = serde_json::to_value(&retained).map_err(|e| e.to_string())?;
@@ -968,7 +957,7 @@ mod size_tests {
             ExplanationState::Corrupt
         );
         // The writer measures complete compact JSON, including UTF-8 and escaping.
-        for target in [163839, 163840, 163841] {
+        for target in [164863, 164864, 164865] {
             let mut e = retained.clone();
             e.realization.generator.session = "한\"\\\n".repeat(20);
             let base = serde_json::to_vec(&e).map_err(|e| e.to_string())?.len();
@@ -977,7 +966,7 @@ mod size_tests {
                 .session
                 .push_str(&"x".repeat(target - base));
             let result = encode_retained_explanation(&e);
-            if target <= 163840 {
+            if target <= 164864 {
                 assert_eq!(result?.len(), target);
             } else {
                 assert!(result.is_err());

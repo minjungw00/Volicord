@@ -21,11 +21,11 @@ import codex_events
 import document_realization
 
 SCHEMA_VERSION = 2
-RESPONSE_BYTE_LIMIT = 53248
+RESPONSE_BYTE_LIMIT = 56320
 MIN_RESPONSE_BYTE_CAPACITY = 16384
 PARAGRAPH_CHARACTER_LIMIT = 16384
 PLAN_BYTE_LIMIT = 131072
-RETAINED_BYTE_LIMIT = 163840
+RETAINED_BYTE_LIMIT = 164864
 INPUT_BYTE_LIMIT = 65536
 WORK_QUESTIONS = {'purpose', 'reported_change', 'expected_effect', 'verification', 'next_step'}
 DECISION_QUESTIONS = {'user_rationale', 'recommendation', 'consequences', 'applicability'}

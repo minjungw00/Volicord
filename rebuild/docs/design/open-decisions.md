@@ -789,3 +789,29 @@ clean install
   the held-out topology fails, or normal authoring/authority/return cannot preserve
   selected meaning. Preserve the rejected candidate and actual feedback verbatim in
   the existing evidence owner; do not rewrite the shared input or invent approval.
+
+
+## Retained reading and new publication admission — accepted 2026-11-05
+
+- Status: `accepted` by the user's explicit answer, “읽기·새 발행 검증 분리 허용 (권장)”,
+  to the identified conflict between budget-bearing preparation fingerprints and
+  continued reading of permitted existing v9 publications.
+- Separate retained-read validation from new-publication preparation freshness.
+  Preserve the original preparation fingerprint as provenance. Reading revalidates
+  complete canonical dependencies, exact managed/latest/subject/language identity,
+  authority, Source lifecycle/ranges, claim hashes and diagram seals. Producer
+  instructions, preparation size and generation reservations do not age an intact
+  admitted publication. A stored hash is not a revalidated historical preimage.
+- New compose/record still requires the current complete preparation fingerprint,
+  permitted evidence and inclusive byte budgets. A readable historical output is
+  not permission to re-record from expired/withdrawn evidence or reuse an old plan.
+- Scope includes the measured response 56,320 / retained 164,864 byte correction
+  and coupled consumers. Format 9 and document metadata 11 remain exact-current;
+  no conversion, same-ID rewriting, old-policy branch, body recovery, retention
+  renewal, visual/default choice or qualification-limit change is authorized.
+- This supersedes producer-policy-only stale withholding of admitted v9 content.
+  Canonical correction, explicit deletion/withdrawal/forgetting, malformed or
+  unsupported content and latest-publication selection keep their existing effect.
+- Revisit if dependency comparison admits corrected/foreign meaning, a read exposes
+  forbidden bodies, or complete useful content still cannot fit the measured bound.
+  Preserve originals and diagnose the responsible owner before another policy change.

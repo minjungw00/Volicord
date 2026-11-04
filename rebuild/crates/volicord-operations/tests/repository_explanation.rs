@@ -174,7 +174,8 @@ fn source_rich_repository_publication_preserves_content_above_40_kib_and_refuses
     );
     let before = f.ops.privacy_status(f.project)?;
     let mut oversized = realization.clone();
-    oversized.paragraphs[0].text.push_str(&"x".repeat(10_000));
+    oversized.paragraphs[0].text.push_str(&"x".repeat(14_000));
+    assert!(serde_json::to_vec(&oversized)?.len() > 56_320);
     oversized.paragraphs[0].citations[0].claim_end_byte = oversized.paragraphs[0].text.len();
     oversized.paragraphs[0].citations[0].claim_sha256 =
         explanation_text_hash(&oversized.paragraphs[0].text);

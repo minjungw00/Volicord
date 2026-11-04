@@ -419,8 +419,10 @@ Work readback uses `status`; Decision readback uses `decisions`. A subject outsi
 the returned bound is explicitly unresolvable. No Work-specific MCP tool exists.
 There is no provider dispatch, new transmission authority or generation quota.
 Input files may contain up to 65,536 raw bytes; the complete compact realization is
-still limited to 16,384 bytes. Current plans expose a mandatory evidence-bound
-`retention_budget` reserving the full response within a 147,456-byte retained body.
+bounded by the exact prepared capacity, at most 56,320 bytes. Current plans expose
+mandatory evidence-bound `retention_budget`, guaranteeing the full 16,384-byte
+response within a 164,864-byte retained body; metadata may leave a smaller capacity
+than the response ceiling.
 Collector preparation/response/receipt validation and private typed plan projection
 use this same current contract; formatting is not counted as semantic response bytes.
 Ordinary readback provenance contains exactly the paragraph-cited evidence, with
@@ -1346,9 +1348,14 @@ Per-case `widths` may refine the configured matrix: retain every figure in the
 declared corpus, and separately cover all five Reader widths and mixed UI/content
 locales with the affected sequence/flow/state journeys.
 
-Current Product capacity is 53,248 response / 163,840 retained bytes; preparation, raw input, Source,
+Current Product capacity is 56,320 response / 164,864 retained bytes; preparation, raw input, Source,
 SVG and public transport bounds remain independent. Record expanded actual wording
 through normal publication and code-complete export as well as boundary tests.
+Also read genuinely older admitted v9 publications with the final consumer, preserving
+original ID/fingerprint/text/diagrams without rewriting storage. Old preparations
+must remain invalid for new compose/record. Reading uses complete canonical grounding
+and authority/content checks rather than today's producer instructions/reservations.
+See [bounded capacity evidence](end-to-end/multi-repository/explanation-capacity.md).
 Pin the selected executable bytes for long consumer attempts so a later diagnostic
 build cannot replace their CLI/MCP/Viewer paths. Preserve interrupted/mixed attempts
 and bind new results to their fresh publication and frozen executable identities.

@@ -801,13 +801,16 @@ sanitized delivery.
 
 ### Reader evidence visibility and authority
 
-The measured causal-reading publication correction raises managed Derived content
-body storage from 147,456 to 163,840 UTF-8 bytes, matching Projection's complete
-retained-envelope contract. This is local storage capacity, not a Source capture,
+The measured complete-explanation correction bounds managed Derived content at
+164,864 UTF-8 bytes (previously 163,840), matching Projection's complete retained
+envelope. The one-KiB increase admits the measured 164,611-byte untrimmed control. This is local storage capacity, not a Source capture,
 short-field, transmission, provider, lifetime or canonical authority grant. Source
 window and aggregate read budgets remain unchanged. Fresh explicit publication is
-required where the prepared budget fingerprint changes; reading cannot renew or
-convert the old publication.
+required for any new compose/record where the prepared budget fingerprint changes.
+An already admitted intact publication retains its meaning and original preparation
+hash while every current authority/forgetting/deletion and Source-range check still
+applies. Reading cannot renew, rewrite or convert that publication, recover an
+expired body, or substitute a still-live same-file observation for a denied identity.
 
 Typed reading limitation and comparison metadata report existing authority and
 checks; they grant no body access. Publication pages and exact citation reads

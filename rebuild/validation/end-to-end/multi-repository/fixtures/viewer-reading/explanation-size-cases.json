@@ -16,7 +16,7 @@
   "invariants": {
     "plan_bytes": 131072,
     "compact_response_bytes": 16384,
-    "retained_content_bytes": 163840,
+    "retained_content_bytes": 164864,
     "raw_input_bytes": 65536,
     "privacy_short_field_bytes": 16384,
     "preserve": [

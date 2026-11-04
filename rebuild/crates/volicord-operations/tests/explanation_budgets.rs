@@ -379,7 +379,7 @@ fn compact_response_and_raw_input_boundaries_are_atomic() -> Result<(), Box<dyn 
                     assert!(pretty.len() > 16384);
                     let retained = value(record(&pretty)?)?["explanation"].clone();
                     assert_eq!(retained["realization"], serde_json::to_value(&r)?);
-                    assert!(serde_json::to_vec(&retained)?.len() <= 163840);
+                    assert!(serde_json::to_vec(&retained)?.len() <= 164864);
                     let privacy = f.operations.privacy_status(f.project)?;
                     rejected(
                         record(&serde_json::to_vec(&response(&plan, capacity + 1)?)?)?,
@@ -515,7 +515,7 @@ fn preparation_checks_final_json_and_impossible_metadata_before_generation(
                 "ko",
             ],
         )?;
-        rejected(out, "retained envelope", "metadata", "163840");
+        rejected(out, "retained envelope", "metadata", "164864");
         assert!(impossible
             .operations
             .privacy_status(impossible.project)?
@@ -574,7 +574,7 @@ fn envelopes_above_the_old_read_bound_round_trip_through_actual_cli(
                 serde_json::from_value(result["explanation"].clone())?;
             let size = serde_json::to_vec(&retained)?.len();
             println!("near-read-bound {kind}/{language}: retained={size}");
-            assert!(size > 131072 && size <= 163840);
+            assert!(size > 131072 && size <= 164864);
             let budget = &plan.retention_budget;
             assert!(size <= budget.metadata_byte_reserve + 39450);
             assert!(budget.response_byte_capacity >= EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY);

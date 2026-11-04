@@ -792,6 +792,20 @@ real Product-backed Dogfood collection, correction and immutable historical/fina
 selection with the metadata-heavy fixture. These are structural support, not fresh
 model generation, authoritative gate, measured Dogfood, human review or Phase 9.
 
+The 2026-11-05 retained-read correction adds independent old-producer/current-reader
+controls: original fingerprint/ID/prose/diagrams remain exact while new writes reject
+old preparations atomically. `retained_read_tests` isolates dependency/identity/content
+negatives and a retained envelope whose current producer preparation cannot fit.
+Actual old-binary publications plus final CLI/MCP pages, Source reads and static
+exports must cover the original rejected drafts, >=20% prose and >=50% critical-claim
+growth, complete code, expiry within one live process, replacement, foreign selectors,
+withdrawal/deletion/forgetting and unavailable evidence. Current response/retained
+limits are 56,320/164,864; all other bounds remain independent. Complete original
+streams, binaries, attempts, costs and receipts stay ignored; the maintained
+[capacity report](../../validation/end-to-end/multi-repository/explanation-capacity.md)
+separates structural results, current execution, earlier evidence and absent semantic/
+human/official qualification. No producer limit is reapplied as historical freshness.
+
 ### Browser supporting observations under V11
 
 The bounded `end-to-end/multi-repository/viewer_browser.py` runner and coupled
