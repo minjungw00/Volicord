@@ -12,6 +12,7 @@ function inventory(){
     code:[...document.querySelectorAll('pre.code-region code')].map(n=>n.textContent).sort(),
     goal:doc.querySelector('blockquote.goal').textContent,
     json:doc.querySelector('[id$="-full-verification"] pre').textContent,
+    raw:[...doc.querySelectorAll('pre:not(.code-region)')].map(n=>n.textContent).sort(),
     citations:[...doc.querySelectorAll('.unit > .evidence-actions')].map(n=>({unit:n.parentElement.id,links:[...n.querySelectorAll('a.evidence-link')].map(a=>({href:a.getAttribute('href'),origin:a.dataset.origin}))})),
     checks:[...doc.querySelectorAll('.verification-check')].map(n=>[...n.children].filter(n=>n.matches('h4, dl, blockquote')).map(n=>n.textContent))};
 }
@@ -35,25 +36,30 @@ function inventory(){
             const url=pathToFileURL(path.join(c.output,candidate.file)).href+'#work-'+source.work;
             await page.goto(url);await page.evaluate(()=>document.fonts.ready);
             const actual=await page.evaluate(inventory);
-            assert.deepEqual(actual.units,original.units,'all original unit identities and wording survive');
-            assert.deepEqual(actual.texts,original.texts,'all original heading/lead/body wording survives');
+            const retired=original.units.filter(([id])=>/-p(15|20)$/.test(id));
+            assert.deepEqual(retired.map(([,text])=>text).sort(),['무엇을 확인했다고 보고했나','호출 연결과 원래 기록의 근거'].sort(),'only known obsolete presentation headings may be retired');
+            assert.deepEqual(actual.units,original.units.filter(([id])=>!retired.some(([old])=>old===id)),'all substantive original units and their identities survive');
+            assert.deepEqual(actual.texts,original.texts.filter(text=>!retired.some(([,old])=>old===text)),'body prose stays exact; obsolete headings are removed rather than archived');
             assert.deepEqual(actual.code,original.code,'one physical copy of every original code payload');
             assert.deepEqual(actual.checks,original.checks,'each complete original verification fact appears once');
             assert.equal(actual.goal,original.goal);assert.equal(actual.json,original.json);
+            assert.deepEqual(actual.raw,original.raw,'every original record/provenance payload remains byte-exact');
             for(const id of original.ids)assert.ok(actual.ids.includes(id),'original fragment lost: '+id);
             assert.equal(new Set(actual.allIds).size,actual.allIds.length,'unique fragment identities');
             const groupState=await page.locator('.doc[data-work-layout]').evaluate(doc=>({
               groups:[...doc.querySelectorAll(':scope > [data-reading-group]')].map(n=>n.dataset.readingGroup),
               headingNumbers:[...doc.querySelectorAll('[data-section-number]')].map(n=>[n.dataset.sectionNumber,getComputedStyle(n,'::before').content]),
               history:doc.querySelector('.recorded-timeline').closest('[data-reading-group]').dataset.readingGroup,
+              historyPeer:doc.querySelector('.recorded-timeline').closest('[id$="-record-history"]').parentElement.dataset.readingGroup,
               commands:[...doc.querySelectorAll('.verification-execution')].map(n=>[n.closest('[data-reading-group]').dataset.readingGroup,n.open]),
               rawCommands:doc.querySelector('[id$="-verification-originals"]').querySelectorAll('.verification-execution').length,
               primary:[...doc.querySelector('[data-reading-group="work"]').querySelectorAll('h2')].map(n=>n.textContent),
               navGroups:doc.querySelectorAll('.document-nav .work-toc-group').length,
             }));
             assert.deepEqual(groupState.groups,['work','checks','records']);assert.equal(groupState.history,'records');
-            assert.equal(groupState.rawCommands,0,'raw inspection does not duplicate the detailed cards');
-            assert.ok(groupState.commands.length>0);assert.ok(groupState.commands.every(([group,open])=>group==='checks'&&!open));
+            assert.equal(groupState.historyPeer,'records','history is a peer of original instructions and full evidence');
+            assert.equal(groupState.rawCommands,groupState.commands.length,'raw verification is the sole detailed-record destination');
+            assert.ok(groupState.commands.length>0);assert.ok(groupState.commands.every(([group,open])=>group==='records'&&!open));
             assert.equal(groupState.navGroups,3);assert.equal(groupState.headingNumbers.length,3);
             groupState.headingNumbers.forEach(([number,content],i)=>{assert.equal(number,String(i+1).padStart(2,'0'));assert.equal(content,JSON.stringify(number));});
             assert.ok(!groupState.primary.some(s=>/기록의 흐름|호출 연결과 원래 기록|무엇을 확인/.test(s)));
@@ -125,7 +131,7 @@ function inventory(){
             if(!await raw.evaluate(n=>n.open)){await raw.locator(':scope > summary').focus();await page.keyboard.press('Enter');}
             const targetBox=await raw.locator(':scope > summary').boundingBox(),navBox=await nav.boundingBox();
             assert.ok(targetBox.y>=navBox.y+navBox.height,'selected original heading remains below persistent TOC');
-            const recordsLink=raw.locator('.verification-records-return'),recordsHref=await recordsLink.getAttribute('href');await recordsLink.focus();await page.keyboard.press('Enter');
+            const recordsLink=page.locator('.verification-report .verification-records-return'),recordsHref=await recordsLink.getAttribute('href');await recordsLink.focus();await page.keyboard.press('Enter');
             const records=page.locator('[id="'+recordsHref.slice(1)+'"]');
             if(!await records.evaluate(n=>n.open)){await records.locator(':scope > summary').focus();await page.keyboard.press('Enter');}
             const command=records.locator('.verification-execution').first();await command.locator(':scope > summary').focus();await page.keyboard.press('Enter');

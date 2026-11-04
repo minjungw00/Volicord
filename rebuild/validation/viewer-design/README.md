@@ -43,8 +43,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The comparison started on 2026-10-30; the latest scoped refinement starts at
-`rebuild/.local/spatial-reading-20261030/candidates-28/index.html`. Manifest SHA-256:
-`48afa99182533c8c11ec7474503f317e905317110e3a5cc1936f8c137a9aacdb`.
+`rebuild/.local/spatial-reading-20261030/candidates-31/index.html`. Manifest SHA-256:
+`495f66690367206bc9a45c29da78be6f6bdd5e09b4662ad1afe387249eb3f48c`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -161,13 +161,44 @@ including exact original checks once, no cards in the raw area, two-level disclo
 and fresh native fragments into the relocated records. Earlier packages stay intact.
 There is no transport, Runtime, Rust, aggregate or provider change.
 
+Package 31 follows the next verification/evidence-organization feedback. The result
+report retains its exact substantive prose and a quiet native link; the sole grouped
+command/check originals move to verification originals. No rule separates a second
+report-card presentation from the report. Raw inspection now contains a purpose-specific
+orientation, the individual records and complete original JSON, without the copied
+old report/prose archive. The two obsolete headings are retired from visible units
+and index labels while every original fragment remains reachable. The other 23
+substantive original units and every raw record/provenance payload remain byte-exact.
+
+History is a peer of original instructions, full evidence and verification originals;
+state-observation originals belong with chronology. Full evidence has seven named
+categories: editorial support, summary support, evidence index, included-code scope,
+recorded repository comparison, publication provenance and record-state/support limits.
+Copied body paragraphs, repeated report overviews and duplicate index headings are
+removed. All categories share disclosure styles and spacing; index/command cards use
+the same subordinate style, with separate deliberate raw-data expansion. Distinct
+Source identifiers distinguish identical command labels. Intermediate 29/30 snapshots
+and observations remain preserved, including the corrected marker-wrap and inherited
+top-level margin defects. Original publications/default routes are unchanged.
+
+Package 31's focused children exit 0: 20 layout/native/original-byte conditions,
+10 presentation/modal/expanded-return conditions and 108 file/HTTP/native/scripted
+conditions. All 44 frozen inputs, twelve SVG geometry hashes and four tooling hashes
+match their declared bases. The 14-member delivery archive is byte-verified. Direct
+visual review inspected each category, index entries, chronology and expanded original
+records at 1440/390, including zero document-width overflow; this remains dependent
+implementer inspection. Physical devices, assistive technology, other engines and
+independent human acceptance remain unobserved. No Rust, aggregate, official V11 or
+provider check is run for these local presentation changes.
+
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently
 checked Work/ContextItem roles, explicit joins, submitted-Promise settlement and
 rejection, token/attempt limits and distinct received-close effects. The original
 canonical preparation independently supports the broad Goal, Paused/NotRequested,
-two reports of three existing VM cases and retest linkage. Edited Work keeps all
-25 original explanatory units, timeline and 13 embedded code payloads. Its new
+two reports of three existing VM cases and retest linkage. The original Work has
+25 units; package 31 retires only the two obsolete headings, preserving the other
+23 units, all original fragment aliases, timeline and 13 embedded code payloads. Its new
 summary/lead are unadmitted drafts with separate supporting original claims.
 
 Dependent visual findings: spacious geometry separates the concept roles and gives

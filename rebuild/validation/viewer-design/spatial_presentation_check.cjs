@@ -33,20 +33,27 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
         assert.deepEqual(await layerHeads.allTextContents(),['검증 보고','설명 한계']);
         const layerStyles=await layerHeads.evaluateAll(ns=>ns.map(n=>{const s=getComputedStyle(n);return [s.fontSize,s.fontWeight,s.lineHeight,s.color,s.margin,n.getBoundingClientRect().left];}));
         assert.deepEqual(layerStyles[0],layerStyles[1],'report and limits have the same heading depth/style');
-        const reportSection=doc.locator('.verification-report'),recordGroup=reportSection.locator('details.verification-report-list');
+        const reportSection=doc.locator('.verification-report'),recordGroup=doc.locator('[id$="-verification-originals"] details.verification-report-list');
         assert.equal(await reportSection.locator('[data-question="SectionHeading"]').count(),0,'verification prose has one section title');
         assert.ok(await reportSection.locator('.unit [data-question="Verification"]').count()>0,'original verification prose is directly under the report');
         assert.equal(await recordGroup.evaluate(n=>n.open),false,'one initially closed group contains all detailed cards');
         assert.equal(await doc.locator('.verification-check-summary').count(),0,'no copied detailed fact UI');
-        assert.equal(await doc.locator('[id$="-verification-originals"] .verification-execution').count(),0,'no repeated detailed cards in raw inspection');
+        assert.equal(await reportSection.locator('.verification-execution,details').count(),0,'report contains prose and a quiet link, with no separate card boundary');
+        assert.equal(await doc.locator('[id$="-verification-basis"]').count(),0,'no obsolete report archive');
+        assert.equal(await doc.locator('h2,h3,summary').evaluateAll(ns=>ns.some(n=>/무엇을 확인했다고 보고했나|호출 연결과 원래 기록의 근거/.test(n.textContent))),false,'obsolete presentation labels are absent');
+        await reportSection.locator('.verification-records-return').click();
+        const rawSection=doc.locator('[id$="-verification-originals"]');
+        assert.ok(await rawSection.evaluate(n=>n.open),'report link opens raw destination');
         await recordGroup.locator(':scope > summary').focus();await page.keyboard.press('Enter');
         const reports=recordGroup.locator('.verification-report-row');assert.equal(await reports.count(),await doc.locator('.verification-execution').count());
         for(const row of await reports.all()){
+          assert.equal(await row.locator('.record-item-meta').textContent(),'명령 Source · '+await row.getAttribute('data-execution-source'),'identical command labels remain distinguishable by their real Source');
           assert.equal(await row.evaluate(n=>n.tagName),'DETAILS');assert.equal(await row.evaluate(n=>n.open),false);
           assert.equal(await row.evaluate(n=>getComputedStyle(n).borderTopStyle),'solid');
           const summary=row.locator(':scope > summary');await summary.focus();await summary.press('Enter');assert.ok(await row.locator('.verification-check').first().isVisible());await summary.press('Enter');
         }
         await recordGroup.locator(':scope > summary').focus();await page.keyboard.press('Enter');
+        await rawSection.evaluate(n=>n.open=false);
         await doc.locator('[data-reading-group="checks"]').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`${candidate.id}-${width}-checks.png`)});
         await page.evaluate(()=>{location.hash='works';});await card.waitFor({state:'visible'});await page.screenshot({path:path.join(out,`${candidate.id}-${width}-catalogue.png`)});
         await card.locator('a.card-action').click();
@@ -113,7 +120,21 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
         // Opening the overall evidence category must not dump source/record data.
         const records=doc.locator('[data-reading-group="records"]'),full=records.locator(':scope > details').nth(1);
         await full.locator(':scope > summary').click();assert.equal(await full.locator('pre:visible').count(),0);
-        const categories=full.locator('[id$="-audit"] > details');assert.ok(await categories.count()>=6);
+        const categories=full.locator('[id$="-audit"] > details');
+        assert.deepEqual(await categories.locator(':scope > summary').allTextContents(),['편집 근거','요약 근거','근거 색인','포함된 코드 범위','저장소 비교 기준','발행 정보','기록 상태와 근거 한계']);
+        const peers=records.locator(':scope > details');
+        assert.deepEqual(await peers.locator(':scope > summary').allTextContents(),['원래 지시','전체 근거','기록의 흐름','검증 원문']);
+        const peerStyles=await peers.evaluateAll(ns=>ns.map(n=>{const s=getComputedStyle(n),h=getComputedStyle(n.querySelector(':scope > summary'));return [s.marginTop,h.minHeight,h.padding,h.fontSize,h.fontWeight];}));
+        for(const style of peerStyles)assert.deepEqual(style,peerStyles[0],'top-level originals/history/evidence have identical spacing and summary style');
+        const categoryStyles=await categories.locator(':scope > summary').evaluateAll(ns=>ns.map(n=>{const s=getComputedStyle(n);return [s.fontSize,s.lineHeight,s.minHeight,s.padding,s.color];}));
+        for(const style of categoryStyles)assert.deepEqual(style,categoryStyles[0],'all evidence categories share disclosure design');
+        assert.equal(await full.locator('.evidence-entry').evaluateAll(ns=>ns.some(n=>n.querySelector(':scope > summary small')?.textContent===n.querySelector(':scope > summary > span > span')?.textContent)),false,'index labels do not repeat their own section title');
+        for(const category of await categories.all()){
+          await category.evaluate(n=>n.open=true);
+          assert.equal(await category.locator('pre:visible').count(),0,'category opens content, leaving original data folded');
+          assert.ok(await category.locator(':scope > summary').isVisible());
+          await category.evaluate(n=>n.open=false);
+        }
         await categories.last().locator(':scope > summary').click();assert.equal(await full.locator('pre:visible').count(),0,'raw originals have their own closed disclosure');
         await records.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`${candidate.id}-${width}-records.png`)});
         assert.deepEqual(errors,[]);rows.push({candidate:candidate.id,width,compact_toc:true,quiet_action:true,direct_range_picker:true,internal_controls:true,shared_panel_header:true,modal_focus_and_return:true,folded_raw_originals:true});

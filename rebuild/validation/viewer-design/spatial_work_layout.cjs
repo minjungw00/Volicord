@@ -34,6 +34,14 @@ function arrangeWork({work}) {
   original.querySelector(':scope > summary').textContent='원래 지시';
   evidence.querySelector(':scope > summary').textContent='전체 근거';
   records.append(original,evidence);
+  // Superseded headings are navigation aliases, not archived explanatory prose.
+  // Baseline publications retain the old wording; this edited draft uses its new titles.
+  function retireHeading(unit){
+    for(const heading of unit.querySelectorAll('.unit-text')){
+      const anchor=make('span');if(heading.id)anchor.id=heading.id;heading.replaceWith(anchor);
+    }
+    unit.className='unit-anchor';unit.tabIndex=-1;
+  }
 
   // The three actual call connections explain the mechanism. Original Goal/report
   // provenance belongs to inspection. Every original unit and citation is moved intact.
@@ -42,6 +50,7 @@ function arrangeWork({work}) {
     if(unit.querySelector('[data-question="Narrative"]')&&!unit.querySelector('.unit-text').textContent.startsWith('원래 Goal'))mechanism.append(unit);
   }
   const editorial=wrap('편집 근거',prefix+'-editorial-basis');
+  retireHeading(support.querySelector('.unit:has([data-question="SectionHeading"])'));
   editorial.append(support);
   const retained=[...doc.querySelectorAll('details')].find(n=>n.querySelector(':scope > summary')?.textContent==='원래 도입과 편집 근거');
   if(retained)editorial.append(retained);
@@ -49,44 +58,78 @@ function arrangeWork({work}) {
   const summaryPublication=evidence.querySelector('[data-publication-scope="summary"]');
   if(summaryPublication)summaryBasis.append(summaryPublication);
   const index=required('.evidence-index'),history=required('.recorded-timeline'),codeScope=required('.code-reading-scope');
-  const historyBox=wrap('기록의 흐름',prefix+'-record-history');historyBox.append(history);
-  evidenceBody.prepend(editorial,summaryBasis,index,historyBox,codeScope);
+  const historyBox=wrap('기록의 흐름',prefix+'-record-history');historyBox.append(history);records.append(historyBox);
+  const historyHeading=history.querySelector(':scope > h2');if(historyHeading){const anchor=make('span');if(historyHeading.id)anchor.id=historyHeading.id;historyHeading.replaceWith(anchor);}
+  codeScope.querySelector(':scope > summary').textContent='포함된 코드 범위';
+  evidenceBody.prepend(editorial,summaryBasis,index,codeScope);
 
-  // Keep one physical detailed record per execution. The report owns the grouped
-  // native cards; raw inspection owns the original read model and prior wording.
+  // The report explains results and scope. Original commands, reports and capture
+  // metadata have one home under raw verification, never a second report card UI.
   const raw=wrap('검증 원문',prefix+'-verification-originals');
   const executions=[...verification.querySelectorAll(':scope > .verification-execution')];
   const reportList=wrap('개별 검증 기록 · '+executions.length+'개 항목',prefix+'-verification-records');
   reportList.classList.add('verification-report-list');
-  const originalReport=wrap('원래 검증 설명과 해석 기준',prefix+'-verification-basis');
-  for(const paragraph of [...verification.querySelectorAll(':scope > p')])originalReport.append(paragraph);
-  for(const heading of [...verification.querySelectorAll('[data-question="SectionHeading"]')])originalReport.append(heading.closest('.unit'));
+  for(const paragraph of [...verification.querySelectorAll(':scope > p')])paragraph.remove();
+  for(const heading of [...verification.querySelectorAll('[data-question="SectionHeading"]')])retireHeading(heading.closest('.unit'));
   for(const execution of executions){
     const source=execution.dataset.executionSource;
     execution.id=prefix+'-execution-'+source;
-    execution.classList.add('verification-report-row');execution.open=false;reportList.append(execution);
+    execution.classList.add('verification-report-row','record-item');execution.open=false;reportList.append(execution);
+    execution.querySelector(':scope > summary h3').append(make('small','record-item-meta','명령 Source · '+source));
   }
-  verification.append(reportList);
   const reportSection=make('section',verification.className);
   for(const attribute of verification.attributes)if(attribute.name!=='open')reportSection.setAttribute(attribute.name,attribute.value);
   const reportHeading=make('h2','reading-layer-heading',verification.querySelector(':scope > summary').textContent);
   verification.querySelector(':scope > summary').replaceWith(reportHeading);
   reportSection.append(...verification.childNodes);verification.replaceWith(reportSection);
-  const json=required('[id$="-full-verification"]'),recordsLink=make('a','verification-records-return','개별 검증 기록 보기');recordsLink.href='#'+reportList.id;
-  raw.append(recordsLink,json,originalReport);records.append(raw);
+  const json=required('[id$="-full-verification"]'),recordsLink=make('a','verification-records-return','검증 원문에서 개별 기록 확인');recordsLink.href='#'+reportList.id;
+  reportSection.append(recordsLink);
+  raw.append(make('p','record-intro','Checkpoint에 기록된 보고를 명령 Source별로 묶었습니다. 항목을 열면 보고 원문, 실행 메타데이터와 캡처 근거를 확인할 수 있습니다. 보고 건수는 테스트 수나 새 실행 횟수가 아닙니다.'),reportList,json);records.append(raw);
   audit.remove();
 
-  // Keep one clear level of categories under full evidence. Capture objects and
-  // original data require their own deliberate disclosure, even after opening it.
+  // Each evidence category has one purpose. Do not retain copied body paragraphs,
+  // repeated test reports or a mixed bag of publication and state observations.
   if(retained){
-    const retainedSummary=retained.querySelector(':scope > summary');retainedSummary.remove();
-    editorial.append(...retained.childNodes);retained.remove();
+    const lead=retained.querySelector('.lead');if(lead){const intro=wrap('원래 도입문');intro.append(lead);editorial.append(intro);}
+    const applicability=retained.querySelector('.applicability');if(applicability){applicability.querySelector(':scope > summary').textContent='저장소 비교 기준';evidenceBody.append(applicability);}
+    for(const old of retained.querySelectorAll('[id]')){const anchor=make('span');anchor.id=old.id;editorial.append(anchor);}
+    retained.remove();
   }
-  const recordData=wrap('기록 상태와 발행 정보',prefix+'-record-data');
-  for(const child of [...evidenceBody.children])if(![editorial,summaryBasis,index,historyBox,codeScope].includes(child))recordData.append(child);
-  evidenceBody.append(recordData);
+  const publication=wrap('발행 정보',prefix+'-publication-data'),recordData=wrap('기록 상태와 근거 한계',prefix+'-record-data');
+  const observations=wrap('상태 관측 원문',prefix+'-state-observations');
+  for(const child of [...evidenceBody.children]){
+    if([editorial,summaryBasis,index,codeScope].includes(child)||child.matches('.applicability'))continue;
+    if(child.matches('.state-observation')){observations.append(child);continue;}
+    if(child.matches('pre.publication-provenance')||child.matches('pre')&&child.textContent.startsWith('ExplanationProvenance ')){
+      child.dataset.rawLabel=child.textContent.includes('question: "work_name"')?'작업 이름 발행 정보':child.textContent.includes('question: "work_summary"')?'작업 요약 발행 정보':'작업 설명 발행 정보';publication.append(child);continue;
+    }
+    if(child.matches('p')){publication.append(child);continue;}
+    recordData.append(child);
+  }
+  if(observations.children.length>1)historyBox.append(observations);
+  const facts=recordData.querySelector('.record-facts');
+  if(facts)for(const p of [...facts.querySelectorAll(':scope > p')]){
+    if(/^(검증 보고 \(|보고된 검증 상태:|기록된 검증 인용:)/.test(p.textContent)||[...limits.querySelectorAll('p')].some(n=>n.textContent===p.textContent))p.remove();
+  }
+  evidenceBody.append(publication,recordData);
+  // Update index navigation labels to the current composition, keeping bindings.
+  for(const entry of index.querySelectorAll('.evidence-entry')){
+    for(const node of entry.querySelectorAll('summary *'))if(!node.children.length){
+      if(node.textContent==='무엇을 확인했다고 보고했나')node.textContent='검증 보고';
+      if(node.textContent==='호출 연결과 원래 기록의 근거')node.textContent='편집 근거';
+    }
+    const context=entry.querySelector(':scope > summary small'),label=entry.querySelector(':scope > summary > span > span');
+    if(context&&label&&context.textContent===label.textContent)context.textContent='섹션 제목';
+    entry.classList.add('record-item');
+  }
+  // The summary already has a category disclosure; avoid another identical layer.
+  const summaryEvidence=summaryBasis.querySelector('.publication-evidence');
+  if(summaryEvidence){summaryEvidence.querySelector(':scope > summary')?.remove();summaryEvidence.replaceWith(...summaryEvidence.childNodes);}
   for(const pre of records.querySelectorAll('pre')){
-    const disclosure=wrap(pre.classList.contains('publication-provenance')?'발행 정보 원문':'원문 데이터',pre.id?pre.id+'-disclosure':'');
+    const parent=pre.parentElement;
+    if(parent.matches('details')&&parent.children.length===2&&parent.querySelector(':scope > summary')){parent.classList.add('raw-disclosure');continue;}
+    const label=pre.dataset.rawLabel||(pre.closest('.state-observation')?'관측 데이터':pre.textContent.startsWith('Work: ')?'작업 기록 원문':'원문 데이터');
+    const disclosure=wrap(label,pre.id?pre.id+'-disclosure':'');
     disclosure.classList.add('raw-disclosure');pre.before(disclosure);disclosure.append(pre);
   }
   for(const details of doc.querySelectorAll('.work-reading-group details')){
@@ -159,7 +202,7 @@ function arrangeWork({work}) {
   }
   navList('작업 설명',headings.map(h=>[h,h.textContent,h.parentElement.dataset.sectionNumber]));
   navList('검증과 한계',[[reportSection,'검증 보고'],[limits,'설명 한계']]);
-  navList('원문과 근거',[[original,'원래 지시'],[evidence,'전체 근거'],[raw,'검증 원문']],true);
+  navList('원문과 근거',[[original,'원래 지시'],[evidence,'전체 근거'],[historyBox,'기록의 흐름'],[raw,'검증 원문']],true);
 
   // One SVG per scene; a native radio control also works without JavaScript.
   for(const figure of main.querySelectorAll('.admitted-diagram')){

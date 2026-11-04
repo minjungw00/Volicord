@@ -586,8 +586,8 @@ clean install
 - Geometry/navigation selection and full editorial acceptance: **pending**. The
   2026-11-03 instruction authorizes the reviewed local Work arrangement below;
   it does not select A/B/C or authorize Product-default changes/republication.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-28/index.html`;
-  manifest SHA-256 `48afa99182533c8c11ec7474503f317e905317110e3a5cc1936f8c137a9aacdb`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-31/index.html`;
+  manifest SHA-256 `495f66690367206bc9a45c29da78be6f6bdd5e09b4662ad1afe387249eb3f48c`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -678,6 +678,29 @@ clean install
   wording/interpretation basis and a bridge to the detailed group. Every original
   unit, Source/check identity and byte payload survives. This is another local
   E1/CE1 refinement and does not select geometry or authorize a default rollout.
+- Further scoped feedback on 2026-11-04, verbatim: “검증 보고와 개별 검증 기록 사이의
+  수평선이 두 요소가 별개 요소인 것처럼 보이게 합니다.” “개별 검증 기록을 검증
+  보고에 두는 것이 좋을지, 검증 원문으로 이동하는 것이 좋을지 검토하세요. 만약
+  유지한다면, 다른 접는 항목과 디자인을 통일하게 유지해야 합니다.” “검증 원문의
+  원래 검증 설명과 해석 기준에 이전 검증 보고의 내용을 그대로 붙여넣은 것으로
+  보입니다. 구성이 변경됨에 따라 내용을 수정해야 합니다. 무엇을 확인했다고 보고했나
+  같은 잘못된 문구가 남아 있는 것을 보세요.” “전체 근거의 하위 내용들의 디자인과
+  내용 구성을 정리해야 합니다.” “전체 근거의 기록의 흐름을 별도로 빼내야 하는지
+  검토하세요. 빼낸다면 원래 지시, 전체 근거와 같은 단계로 다루어져야 합니다.”
+  “작업을 대충하지 마세요.” Package 31 keeps result/scope prose in the report and
+  moves the sole command/check group to verification originals: commands, captures
+  and identifiers serve inspection rather than the initial result reading. The report
+  provides a quiet direct link without a dividing rule. The old prose/interpretation
+  archive is removed; two obsolete presentation headings keep native fragment aliases
+  and current index labels. Original baseline wording, substantive article units,
+  record bytes, canonical facts and exact Source bindings remain preserved.
+  History is now a peer of original instructions/full evidence/verification originals,
+  since chronology is an independent inspection task. Full evidence separates seven
+  content categories with shared disclosure styles; publication metadata, repository
+  comparison, state facts and observation originals have explicit homes. Copied body
+  lists and redundant report-fact overviews are removed. Earlier packages, including
+  intermediate 29/30 visual inspections, remain preserved. This remains local E1/CE1
+  feedback implementation; geometry selection and Product-default rollout are pending.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.

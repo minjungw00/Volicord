@@ -3406,11 +3406,24 @@ and explanation limits are peer sections with identical h2 presentation; named
 report items are separate initially closed native boxes. Their original facts,
 execution identities, exact range actions and raw-report destinations survive.
 
-The 2026-11-04 verification follow-up presents the authored verification paragraphs
-under the single report heading. Prior subsection wording and generic interpretation
-notes remain in deliberate raw inspection. A closed parent disclosure groups the
-individual command records for longer histories. Each original execution/check is
-moved into that group once, retaining its exact identity and original facts, instead
-of cloning facts into report cards and rendering the same cards again in raw reads.
-Raw verification retains the original JSON and interpretation basis, with a native
-link back to the sole detailed record group. Status and event times have a small gap.
+The latest 2026-11-04 refinement separates report reading from original inspection:
+authored verification paragraphs and their material limits remain under one report
+heading, followed by a quiet native link to the detailed originals. The sole grouped
+command/check disclosures live in verification originals beside the complete original
+JSON. Repeated generic report prose and the obsolete subsection-heading archive are
+removed from the edited composition, rather than preserved as another reading layer.
+Two superseded presentation headings retain fragment aliases, not visible duplicate
+titles; substantive units, every record payload and all exact bindings remain intact.
+Status and event times keep their small gap.
+
+Record history is a peer of original instructions, full evidence and verification
+originals. It owns chronological events and independently folded state-observation
+data. Full evidence has explicit editorial support, summary support, evidence index,
+included-code scope, recorded repository comparison, publication provenance and
+record-state/support-limit categories. It no longer mixes state observations with
+publication data or repeats body paragraphs in an editorial list. Repeated report
+quotes in the record-facts overview defer to the sole detailed originals; chronological
+events retain their own historical reports. Category disclosures share one design,
+index/command entries share a subordinate card design, and raw data remains folded
+until explicitly opened. These are isolated comparison refinements, not Product
+adoption, new authorship authority or a change to canonical facts.
