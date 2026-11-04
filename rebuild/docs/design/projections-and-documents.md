@@ -3514,3 +3514,24 @@ the evidence window; a reset action restores its default width. Desktop article 
 adjusts with the panel. Tablet sheets retain modal ownership, and small screens retain
 full-screen evidence. Width is transient UI state in the current page, with no storage,
 canonical write or effect on exact claim/Source identity, code bytes or return.
+
+### Selected CE1 Product boundary — 2026-11-05
+
+The current user clarification selects package-43 CE1 as recorded in
+[the decision owner](open-decisions.md#ce1-selection-clarification--2026-11-05).
+Work preparation now concisely directs independent authorship of technical explanation,
+next step, Verification and Limits, with identities/capture/chronology in supporting
+records. The existing v9 units and separately admitted summary suffice; no new group,
+stage, citation-role field, format sidecar or historical conversion is introduced.
+Preparation byte checks still measure the complete final JSON and never truncate
+facts to fit instructions. Previously admitted intact publications retain their
+original preparation provenance under the accepted retained-reading policy.
+
+Viewer computes sequence world geometry independently of available viewport width.
+Its camera consumes that geometry, not Source or canonical authority. Selected claims
+keep their complete qualification; all covering Source ranges retain exact identities.
+Native exports use the same full-size local drawing and ordinary evidence/return links.
+Duplicate primary/timeline scenes and their duplicate text/menu views are replaced by
+one fully labelled temporal scene; structured CLI/MCP diagram meaning stays complete.
+Pure camera/layout changes require no new semantic publication. Actual editorial
+changes still use ordinary prepare/compose/record and separate summary authority.

@@ -103,11 +103,12 @@ async function inspectDiagram(svg, diagram, prose) {
         const heading=stages&&g.order==='sequential'?(ko?'순차':'Sequential')+(root.clientWidth>=760?(ko?' · 왼쪽부터 읽고 다음 줄로':' · left to right, then next row'):''):order;
         const header=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===`${gi+1}. ${heading}`);
         if(!header)errors.push({kind:'wrong-group-order',group:gi+1,expected:order});
-        // Panning participant lanes must not pan the local order/guard heading
-        // out of the initial article reading column.
+        // Inline scenes keep local context in the reading column. Spacious worlds
+        // permit deliberate horizontal navigation; every exact group/guard and
+        // the message-local qualified scope above are still required.
         const viewport=root.closest('.diagram-viewport');
-        if(header && bounds(header).x+bounds(header).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1});
-        if(g.condition){const guard=pick(anchor('guard:'+(gi+1)),'text');if(guard && bounds(guard).x+bounds(guard).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1,role:'condition'});}
+        if(!root.classList.contains('spatial-world') && header && bounds(header).x+bounds(header).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1});
+        if(g.condition){const guard=pick(anchor('guard:'+(gi+1)),'text');if(!root.classList.contains('spatial-world') && guard && bounds(guard).x+bounds(guard).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1,role:'condition'});}
         for(const message of g.messages) {
           if(!visibleTexts(anchor(message.id)).some(t=>t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
           // The primary action, concise endpoints and local scope are the whole

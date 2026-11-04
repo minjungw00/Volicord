@@ -406,9 +406,17 @@ fn reader_citation_actions(
         return;
     }
     html.push_str("<div class=\"evidence-actions\">");
+    let mut more = false;
     for (n, c) in answers.prose[index].citations.iter().enumerate() {
         if unique && answers.prose[index].citations[..n].contains(c) {
             continue;
+        }
+        if n > 0 && !more {
+            more = true;
+            html.push_str(&format!(
+                "<details class=\"other-claim-ranges\"><summary>{}</summary>",
+                text(r.locale, "All supporting ranges", "전체 근거 범위")
+            ));
         }
         let claim = answers.prose[index]
             .text
@@ -448,6 +456,9 @@ fn reader_citation_actions(
         html.push_str(&format!("<span class=\"evidence-choice\"><a class=\"evidence-link\" data-origin=\"{}\" href=\"#{}\" aria-label=\"{} · {}\" title=\"{}\">{} ↗</a>",reader_claim_anchor(answers,index),source_point_anchor(answers,index,n),escape(&action),escape(&label),escape(&label),escape(&visible_action)));
         source_window_omission(html, r, answers, c);
         html.push_str("</span>");
+    }
+    if more {
+        html.push_str("</details>");
     }
     html.push_str("</div>");
 }
@@ -547,14 +558,7 @@ fn diagram_namespaces(
     d: &volicord_projections::GroundedDiagram,
 ) -> Vec<String> {
     let ns = diagram_namespace(answers, d);
-    if matches!(
-        d.meaning,
-        volicord_projections::DiagramMeaning::Sequence { .. }
-    ) {
-        vec![ns.clone(), format!("{ns}:timeline")]
-    } else {
-        vec![ns]
-    }
+    vec![ns]
 }
 
 // A detail is an existing directed relationship, never a renderer-inferred
@@ -684,7 +688,10 @@ fn render_diagrams(
         html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" tabindex=\"-1\" data-realization=\"{}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"{}><figcaption>{}</figcaption>",escape(realization),escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),publication_scope(answers),escape(title)));
         let mut visual = String::new();
         visual.push_str("<div class=\"diagram-full-view\">");
-        let controls = format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{ns}-viewport\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"reset\">{}</button></div>",text(r.locale,"Zoom and pan view","확대·이동 보기"),text(r.locale,"Zoom diagram out","도식 축소"),text(r.locale,"Zoom diagram in","도식 확대"),text(r.locale,"Reset","원래 크기"));
+        let controls = format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{ns}-viewport\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"fit\">{}</button><button type=\"button\" data-diagram-action=\"reset\">75%</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"focus\">{}</button><button type=\"button\" data-diagram-action=\"left\" aria-label=\"{}\">←</button><button type=\"button\" data-diagram-action=\"right\" aria-label=\"{}\">→</button><button type=\"button\" data-diagram-action=\"up\" aria-label=\"{}\">↑</button><button type=\"button\" data-diagram-action=\"down\" aria-label=\"{}\">↓</button></div>",text(r.locale,"Expand","크게 보기"),text(r.locale,"Full position","전체 위치"),text(r.locale,"Zoom out","축소"),text(r.locale,"Zoom in","확대"),text(r.locale,"Selected relationship","선택 관계"),text(r.locale,"Move left","왼쪽 이동"),text(r.locale,"Move right","오른쪽 이동"),text(r.locale,"Move up","위로 이동"),text(r.locale,"Move down","아래로 이동"));
+        if !snapshot {
+            visual.push_str(&controls);
+        }
         match crate::diagram::svg(d,&texts,&ns,&|id,_|format!("{ns}-{id}-claim"),r.locale.fixed()) {
             Ok(svg)=>visual.push_str(&format!("<div id=\"{ns}-viewport\" class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용"))),
             Err(_)=>{
@@ -693,9 +700,6 @@ fn render_diagrams(
             },
         }
         visual.push_str("</div>");
-        if !snapshot {
-            html.push_str(&format!("<div class=\"figure-bar\">{controls}</div>"));
-        }
         let mut caption = String::new();
         let caption_open = if ordinal == 0 && answers.prose[index].question == "Narrative" {
             format!("<div class=\"unit diagram-caption\" id=\"{}\" tabindex=\"-1\"><p class=\"unit-text\" data-question=\"Narrative\" lang=\"{}\" data-content-language=\"{}\">",reader_claim_anchor(answers,index),escape(&content_language_tag(&answers.language)),escape(&answers.language))
@@ -707,36 +711,7 @@ fn render_diagrams(
                 "{caption_open}{}</p>",
                 escape(texts.get(d.caption_unit).copied().unwrap_or(""))
             ));
-            if matches!(
-                d.meaning,
-                volicord_projections::DiagramMeaning::Sequence { .. }
-            ) {
-                caption.push_str(&format!(
-                    "<details class=\"diagram-caption-claims\"><summary>{}</summary>",
-                    text(
-                        r.locale,
-                        "Evidence and claims behind this scene",
-                        "이 장면의 근거와 주장"
-                    )
-                ));
-                reader_citations(&mut caption, r, answers, d.caption_unit);
-                let units = d
-                    .presentation_elements()
-                    .into_iter()
-                    .filter_map(|e| e.label().map(|l| l.unit))
-                    .collect::<std::collections::BTreeSet<_>>();
-                caption.push_str("<ul>");
-                for unit in units.into_iter().filter(|u| *u != d.caption_unit) {
-                    caption.push_str(&format!(
-                        "<li><a href=\"#{}\">{} {} · {}</a></li>",
-                        reader_claim_anchor(answers, unit),
-                        text(r.locale, "Original claim", "원래 주장"),
-                        unit + 1,
-                        escape(&answers.prose[unit].text)
-                    ));
-                }
-                caption.push_str("</ul></details>");
-            }
+            reader_citations(&mut caption, r, answers, d.caption_unit);
             caption.push_str("</div>");
         } else {
             caption.push_str(&format!(
@@ -756,34 +731,6 @@ fn render_diagrams(
             html.push_str(&caption);
         }
         html.push_str(&visual);
-        if matches!(
-            d.meaning,
-            volicord_projections::DiagramMeaning::Sequence { .. }
-        ) {
-            let detail_ns = format!("{ns}:timeline");
-            match crate::diagram::timeline_svg(
-                d,
-                &texts,
-                &detail_ns,
-                &|id, _| format!("{detail_ns}-{id}-claim"),
-                r.locale.fixed(),
-            ) {
-                Ok(svg) => {
-                    html.push_str(&format!("<details class=\"diagram-timeline\" id=\"{ns}:timeline-view\"><summary>{}</summary><p class=\"diagram-scene-return\"><a href=\"#{ns}\">{}</a></p><div class=\"diagram-full-view\"><div class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div></div></details>",
-                    text(r.locale, "Full participant timeline · scroll horizontally in detail", "전체 참여자 타임라인 · 상세에서 가로로 이동"),
-                    text(r.locale, "Return to connected scene", "연결된 장면으로 돌아가기"),
-                    text(r.locale, "Detailed timeline · same groups, messages and conditions", "상세 타임라인 · 같은 그룹·메시지·조건")));
-                }
-                Err(_) => {
-                    html.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Detailed timeline rendering failed. The admitted meaning remains below.","상세 타임라인 렌더링에 실패했습니다. 검증된 의미는 아래에 남아 있습니다.")));
-                    for (id, _) in crate::diagram::elements(d) {
-                        html.push_str(&format!(
-                            "<span id=\"{detail_ns}-{id}\" tabindex=\"-1\"></span>"
-                        ));
-                    }
-                }
-            }
-        }
         if !matches!(
             d.meaning,
             volicord_projections::DiagramMeaning::Sequence { .. }
@@ -831,7 +778,7 @@ fn render_diagrams(
                     html.push_str("</nav>");
                 }
                 diagram_connection_detail(html, r, d, &ns, &id, &texts);
-                html.push_str(&format!("<details class=\"diagram-claim-context\"><summary>{}</summary><p>{}</p></details><div class=\"evidence-actions\">",text(r.locale,"Original claim and material qualification","원래 주장과 중요한 조건"),escape(&unit.text)));
+                html.push_str(&format!("<div class=\"diagram-claim-context\"><p class=\"source-note\">{}</p><p>{}</p></div><div class=\"evidence-actions\">",text(r.locale,"Original claim and material qualification","원래 주장과 중요한 조건"),escape(&unit.text)));
                 let mut other_ranges = false;
                 for (covering, (n, c)) in unit
                     .citations
@@ -861,101 +808,6 @@ fn render_diagrams(
             }
         }
         html.push_str("</div>");
-        if let volicord_projections::DiagramMeaning::Concept { relations, .. }
-        | volicord_projections::DiagramMeaning::Component { relations, .. }
-        | volicord_projections::DiagramMeaning::Flowchart { relations, .. }
-        | volicord_projections::DiagramMeaning::State { relations, .. } = &d.meaning
-        {
-            html.push_str(&format!(
-                "<details class=\"diagram-relations\"><summary>{}</summary><ol>",
-                text(
-                    r.locale,
-                    "Relationships · select a claim to inspect evidence",
-                    "관계 · 주장을 선택해 근거 확인"
-                )
-            ));
-            for (number, relation) in relations.iter().enumerate() {
-                let wording =
-                    volicord_projections::diagram_label(&relation.label, &texts).unwrap_or("");
-                html.push_str(&format!("<li><a class=\"diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\">E{} · {}: {}</a>",escape(&relation.id),escape(&relation.id),number+1,escape(&crate::diagram::element_caption(d,&relation.id,&texts,r.locale.fixed())),escape(wording)));
-                if let Some(condition) = &relation.condition {
-                    html.push_str(&format!(
-                        " <span class=\"diagram-guard\">[{} {}]</span>",
-                        text(r.locale, "if", "조건:"),
-                        escape(
-                            volicord_projections::diagram_label(condition, &texts).unwrap_or("")
-                        )
-                    ));
-                }
-                html.push_str("</li>");
-            }
-            html.push_str("</ol></details>");
-        }
-        if let volicord_projections::DiagramMeaning::Sequence { groups, .. } = &d.meaning {
-            html.push_str(&format!(
-                "<details class=\"diagram-relations\"><summary>{}</summary>",
-                text(
-                    r.locale,
-                    "Messages · select a connection to read its endpoints and evidence",
-                    "메시지 · 연결을 선택해 양끝과 근거 읽기"
-                )
-            ));
-            for (gi, group) in groups.iter().enumerate() {
-                let order = match group.order {
-                    volicord_projections::DiagramOrder::Sequential => {
-                        text(r.locale, "sequential", "순차")
-                    }
-                    volicord_projections::DiagramOrder::Parallel => text(
-                        r.locale,
-                        "parallel · no relative order",
-                        "병렬 · 상대 순서 없음",
-                    ),
-                };
-                html.push_str(&format!("<p>{} · {order}", gi + 1));
-                if let Some(condition) = &group.condition {
-                    html.push_str(&format!(
-                        " · {} {}",
-                        text(r.locale, "if", "조건:"),
-                        escape(
-                            volicord_projections::diagram_label(condition, &texts).unwrap_or("")
-                        )
-                    ));
-                }
-                html.push_str("</p><ul>");
-                for (mi, message) in group.messages.iter().enumerate() {
-                    html.push_str(&format!("<li><a class=\"diagram-text-link\" data-element=\"{ns}-{}\" href=\"#{ns}-{}-claim\">{}.{} · {}: {}</a></li>",escape(&message.id),escape(&message.id),gi+1,mi+1,escape(&crate::diagram::element_caption(d,&message.id,&texts,r.locale.fixed())),escape(volicord_projections::diagram_label(&message.label,&texts).unwrap_or(""))));
-                }
-                html.push_str("</ul>");
-            }
-            html.push_str("</details>");
-        }
-        html.push_str(&format!(
-            "<details class=\"diagram-alternative\"><summary>{}</summary>",
-            text(
-                r.locale,
-                "Diagram meaning and element claims",
-                "도식 의미와 요소별 설명"
-            )
-        ));
-        match volicord_projections::diagram_text_localized(d, &texts, r.locale.fixed()) {
-            Ok(value) => html.push_str(&format!(
-                "<pre class=\"diagram-text\">{}</pre>",
-                escape(&value)
-            )),
-            Err(_) => html.push_str(&format!(
-                "<p role=\"status\">{}</p>",
-                text(
-                    r.locale,
-                    "Diagram meaning unavailable.",
-                    "도식 의미를 사용할 수 없습니다."
-                )
-            )),
-        }
-        html.push_str("<ul>");
-        for (id, _) in crate::diagram::elements(d) {
-            html.push_str(&format!("<li><a class=\"button secondary diagram-text-link\" data-element=\"{ns}-{id}\" href=\"#{ns}-{id}-claim\">{}</a></li>",escape(&crate::diagram::element_caption(d,&id,&texts,r.locale.fixed()))));
-        }
-        html.push_str("</ul></details>");
         html.push_str("</figure>");
     }
 }
@@ -1236,13 +1088,7 @@ fn render_document_body(
             .sections
             .iter()
             .any(|s| s.layer == volicord_projections::ArticleLayer::Verification);
-    let has_limits = answers.prose.iter().any(|a| a.question == "Limits")
-        || answers.facts.iter().any(|a| {
-            matches!(
-                a.question.as_str(),
-                "RecordedLimits" | "RecordedNonGoals" | "KnownLimit"
-            )
-        });
+    let has_limits = answers.prose.iter().any(|a| a.question == "Limits");
     let current = answers.provenance.is_some();
     let (back_view, back_id, back_label, kind) = if work.is_some() {
         (
@@ -1334,7 +1180,7 @@ fn render_document_body(
     }
     if let Some(w) = work {
         html.push_str(&format!(
-            "<p class=\"record-strip\"><span>{}: {}</span></p>",
+            "<p class=\"record-strip\"><span class=\"work-status\">{}: {}</span></p>",
             text(r.locale, "Recorded state", "기록된 상태"),
             understanding_work_state_label(w.state, r.locale)
         ));
@@ -1379,17 +1225,8 @@ fn render_document_body(
     if let Some(d) = decision {
         render_recorded_choice(html, r, answers, d);
     }
-    if let Some(work) = work {
-        super::work_timeline::render(html, r, &document_anchor(answers, "timeline"), work);
-        render_verification(
-            html,
-            r,
-            answers,
-            &work.reading.verification_report,
-            snapshot,
-        );
-    } else if has_verification {
-        html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary>",document_anchor(answers,"verification"),text(r.locale,"Verification","검증")));
+    if has_verification {
+        html.push_str(&format!("<section class=\"reading-section verification-reading\" id=\"{}\" tabindex=\"-1\"><h2>{}</h2>", document_anchor(answers,"verification"), text(r.locale,"Verification report","검증 보고")));
         render_article_layer(
             html,
             r,
@@ -1397,10 +1234,24 @@ fn render_document_body(
             volicord_projections::ArticleLayer::Verification,
             snapshot,
         );
-        html.push_str("</details>");
+        if let Some(w) = work {
+            verification::render_digest(html, r, answers, &w.reading.verification_report);
+        }
+        if work.is_some() {
+            html.push_str(&format!(
+                "<p><a class=\"evidence-link\" href=\"#{}\">{}</a></p>",
+                document_anchor(answers, "verification-originals"),
+                text(
+                    r.locale,
+                    "Inspect original verification records",
+                    "검증 원문에서 개별 기록 확인"
+                )
+            ));
+        }
+        html.push_str("</section>");
     }
     if has_limits {
-        html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><aside class=\"guard\"><h2>{}</h2>",document_anchor(answers,"limits"),answer_title("Limits",r.locale)));
+        html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><aside class=\"guard\"><h2>{}</h2>",document_anchor(answers,"limits"),text(r.locale,"Explanation limits","설명 한계")));
         render_article_layer(
             html,
             r,
@@ -1408,18 +1259,6 @@ fn render_document_body(
             volicord_projections::ArticleLayer::Limits,
             snapshot,
         );
-        for fact in answers.facts.iter().filter(|a| {
-            matches!(
-                a.question.as_str(),
-                "RecordedLimits" | "RecordedNonGoals" | "KnownLimit"
-            )
-        }) {
-            html.push_str(&format!(
-                "<p class=\"unit-text\" data-question=\"{}\" lang=\"\">{}</p>",
-                escape(&fact.question),
-                escape(&fact.text)
-            ));
-        }
         html.push_str("</aside></section>");
     }
     if !related.is_empty() {
@@ -1436,13 +1275,18 @@ fn render_document_body(
         html.push_str(related);
         html.push_str("</section>");
     }
-    render_source_scope(html, r, answers, snapshot);
-    render_evidence_index(html, r, answers);
     html.push_str("<div class=\"audit\">");
     if let Some(w) = work {
         html.push_str(&format!("<details class=\"record-box\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\"><blockquote class=\"goal\" lang=\"\" data-statement-role=\"verified-canonical\">{}</blockquote><pre>{}</pre></div></details>",text(r.locale,"Original instructions · complete Goal","원래 지시 · 전체 Goal"),document_anchor(answers,"original"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title)),escape(&format!("{:?}",w.reading.goal.basis))));
     }
-    html.push_str(&format!("<details class=\"record-box\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\"><div class=\"record-facts\" data-statement-role=\"deterministic-derived\">",text(r.locale,"Full evidence · states · output identity","전체 근거 · 상태 · 출력 identity"),document_anchor(answers,"audit")));
+    html.push_str(&format!(
+        "<details class=\"record-box\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\">",
+        text(r.locale, "Full evidence", "전체 근거"),
+        document_anchor(answers, "audit")
+    ));
+    render_source_scope(html, r, answers, snapshot);
+    render_evidence_index(html, r, answers);
+    html.push_str(&format!("<details class=\"record-category\"><summary>{}</summary><div class=\"record-facts\" data-statement-role=\"deterministic-derived\">",text(r.locale,"Recorded facts and limits","기록된 사실과 한계")));
     for fact in &answers.facts {
         html.push_str(&format!(
             "<p data-question=\"{}\">{}</p>",
@@ -1450,17 +1294,30 @@ fn render_document_body(
             escape(&fact.text)
         ));
     }
-    html.push_str("</div>");
+    html.push_str("</div></details>");
+    if current {
+        if let Some(summary) = &answers.work_summary {
+            html.push_str(&format!(
+                "<details class=\"record-category\"><summary>{}</summary>",
+                text(
+                    r.locale,
+                    "Independent summary and its basis",
+                    "독립 요약과 작성 근거"
+                )
+            ));
+            render_card_publication(html, r, &answers.publication(summary, "summary"), "summary");
+            html.push_str("</details>");
+        }
+    }
+    html.push_str(&format!(
+        "<details class=\"record-category\"><summary>{}</summary>",
+        text(r.locale, "Publication provenance", "발행 정보")
+    ));
     for scoped in answers.work_name.iter().chain(answers.work_summary.iter()) {
         html.push_str(&format!(
             "<pre class=\"publication-provenance\">{}</pre>",
             escape(&format!("{:?}", scoped.provenance))
         ));
-    }
-    if current {
-        if let Some(summary) = &answers.work_summary {
-            render_card_publication(html, r, &answers.publication(summary, "summary"), "summary");
-        }
     }
     if let Some(provenance) = &answers.provenance {
         repository_boundaries(html, r, answers, provenance);
@@ -1474,46 +1331,30 @@ fn render_document_body(
             escape(&format!("{provenance:?}"))
         ));
     }
+    html.push_str("</details>");
+    html.push_str(records);
+    html.push_str("</div></details>");
     if let Some(w) = work {
         html.push_str(&format!(
-            "<details id=\"{}\" data-verification-work=\"{}\"><summary>{}</summary><pre>{}</pre></details>",
-            document_anchor(answers,"full-verification"),w.work_item_id,
-            text(
-                r.locale,
-                "Complete verification read model (JSON)",
-                "전체 검증 읽기 모델 (JSON)"
-            ),
-            escape(
-                &serde_json::to_string_pretty(&w.reading.verification_report).unwrap_or_default()
-            )
+            "<details class=\"record-box\"><summary>{}</summary>",
+            text(r.locale, "Recorded history", "기록의 흐름")
         ));
+        super::work_timeline::render(html, r, &document_anchor(answers, "timeline"), w);
         for state in &w.reading.states {
-            html.push_str(&format!(
-                "<section class=\"state-observation\"><h3>{} · {}</h3>",
-                timestamp_label(state.observed_at, r.locale),
-                work_state_label(state.work_state, r.locale)
-            ));
-            for fact in &state.verification {
-                html.push_str(&format!(
-                    "<p>{}: {} · {}</p>",
-                    text(r.locale, "Verification", "검증"),
-                    verification_state_label(fact.state, r.locale),
-                    escape(fact.outcome.as_deref().unwrap_or(""))
-                ));
-            }
-            html.push_str(&format!(
-                "<p>{}: {} · {}: {}</p><pre>{}</pre></section>",
-                text(r.locale, "Review", "검토"),
-                user_review_label(state.user_review.state, r.locale),
-                text(r.locale, "Acceptance", "수용"),
-                user_acceptance_label(state.user_acceptance.state, r.locale),
-                escape(&format!("{state:?}"))
-            ));
+            html.push_str(&format!("<details class=\"state-observation\"><summary>{} · {}</summary><pre>{}</pre></details>",timestamp_label(state.observed_at,r.locale),work_state_label(state.work_state,r.locale),escape(&format!("{state:?}"))));
         }
-        html.push_str(&format!("<pre>{}</pre>", escape(&format!("Work: {}\nGoal basis: {:?}\nchanges: {:?}\nCheckpoints: {:?}\nDecisions: {:?}\nQuestions: {:?}\nresult: {:?}\nnext step: {:?}", w.work_item_id,w.reading.goal.basis,w.reading.changes,w.checkpoint_ids,w.decision_ids,w.open_question_ids,w.reading.answers.result,w.reading.next_step))));
+        html.push_str("</details>");
+        html.push_str(&format!(
+            "<details class=\"record-box\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\">",
+            text(r.locale, "Verification originals", "검증 원문"),
+            document_anchor(answers, "verification-originals")
+        ));
+        render_verification(html, r, answers, &w.reading.verification_report, snapshot);
+        html.push_str(&format!("<details id=\"{}\" data-verification-work=\"{}\"><summary>{}</summary><pre>{}</pre></details>",document_anchor(answers,"full-verification"),w.work_item_id,text(r.locale,"Complete verification read model (JSON)","전체 검증 읽기 모델 (JSON)"),escape(&serde_json::to_string_pretty(&w.reading.verification_report).unwrap_or_default())));
+        html.push_str(&format!("<details><summary>{}</summary><pre>{}</pre></details>",text(r.locale,"Original Work basis","Work 원본 근거"),escape(&format!("Work: {}\nGoal basis: {:?}\nchanges: {:?}\nCheckpoints: {:?}\nDecisions: {:?}\nQuestions: {:?}\nresult: {:?}\nnext step: {:?}",w.work_item_id,w.reading.goal.basis,w.reading.changes,w.checkpoint_ids,w.decision_ids,w.open_question_ids,w.reading.answers.result,w.reading.next_step))));
+        html.push_str("</div></details>");
     }
-    html.push_str(records);
-    html.push_str("</div></details></div></article>");
+    html.push_str("</div></article>");
     insert_contents(html, article_start, r, answers);
     // Every Source pane is a sibling of the reading article. On narrow
     // screens the article becomes inert while its selected pane is open.
@@ -1970,9 +1811,6 @@ fn opening_context(
         };
         reading_warning(html, r, kind, severity, title, &fact.text);
     }
-    if let Some(w) = work {
-        verification::render_digest(html, r, answers, &w.reading.verification_report);
-    }
     if decision.is_some() {
         for fact in answers
             .facts
@@ -2245,7 +2083,8 @@ fn render_source_excerpts(
                 !first_payload && excerpt.is_some(),
                 false,
             );
-            html.push_str(&format!(
+            let mut context = String::new();
+            context.push_str(&format!(
                 "<p class=\"evidence-correspondence\" data-evidence-comparison>{}</p>",
                 comparison_label(
                     r.locale,
@@ -2288,11 +2127,10 @@ fn render_source_excerpts(
             if first_payload {
                 html.push_str(&format!("<span id=\"{}\"></span>", escape(&range)));
             }
-            html.push_str(&format!(
+            context.push_str(&format!(
                 "<p class=\"source-note\">{}</p>",
                 citation_use_label(r.locale, c.use_kind)
             ));
-            let mut context = String::new();
             if let Some(e) = excerpt {
                 if c.use_kind == volicord_projections::ExplanationSourceUse::CurrentCode {
                     let comparison=match e.comparison.as_deref() {

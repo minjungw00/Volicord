@@ -50,8 +50,6 @@ fn node_kind(node: &DiagramNode, locale: FixedLocale, common_type: bool) -> Stri
 #[path = "diagram_graph.rs"]
 mod graph_layout;
 use graph_layout::graph;
-#[path = "diagram_stages.rs"]
-mod stages;
 
 fn sequence<'a>(
     d: &'a GroundedDiagram,
@@ -75,7 +73,7 @@ fn sequence<'a>(
     // names into one-glyph columns. Message wording still uses the article's
     // reading width; expanding the canvas must not create unreadable wide bands.
     let reading_width = width - 32;
-    let message_width = reading_width.min(400);
+    let message_width = reading_width.min(440);
     let width = width.max(24 + n * 128);
     let endpoint = |i: usize| -> Result<String, String> {
         let name = label(&nodes[i].label)?;
@@ -176,8 +174,8 @@ fn sequence<'a>(
             .transpose()?;
         // Group context belongs to the article reading column, independently
         // of the wider panning participant canvas.
-        let context_width = reading_width - 8;
-        let context_center = 16 + reading_width / 2;
+        let context_width = (reading_width - 8).min(600);
+        let context_center = 16 + context_width / 2;
         let hh = 18 * count(&heading, context_width, 12) + 12;
         let gh = guard
             .as_ref()
@@ -248,7 +246,10 @@ fn sequence<'a>(
                 + 18 * count(&association, w - 16, 12)
                 + 18 * count(&context, w - 16, 12)
                 + 16;
-            let mut out = String::new();
+            let mut out = format!(
+                "<g class=\"sequence-message\" data-from=\"{}\" data-to=\"{}\">",
+                message.from, message.to
+            );
             panel(&mut out, center - w / 2, y, w, h, "message-label");
             let mut ty = y + 24;
             sized_text(&mut out, center, ty, name, w - 16, 16, 24);
@@ -277,6 +278,7 @@ fn sequence<'a>(
                 marker,
                 message.kind == DiagramMessageKind::Return,
             );
+            out.push_str("</g>");
             layout.elements.insert(message.id.clone(), out);
             layout.order.push(message.id.clone());
             y = baseline + 36;
@@ -313,17 +315,7 @@ pub(super) fn svg(
     target: &dyn Fn(&str, &DiagramLabel) -> String,
     locale: FixedLocale,
 ) -> Result<String, String> {
-    render(d, texts, ns, target, locale, false)
-}
-
-pub(super) fn timeline_svg(
-    d: &GroundedDiagram,
-    texts: &[&str],
-    ns: &str,
-    target: &dyn Fn(&str, &DiagramLabel) -> String,
-    locale: FixedLocale,
-) -> Result<String, String> {
-    render(d, texts, ns, target, locale, true)
+    render(d, texts, ns, target, locale)
 }
 
 fn render(
@@ -332,42 +324,59 @@ fn render(
     ns: &str,
     target: &dyn Fn(&str, &DiagramLabel) -> String,
     locale: FixedLocale,
-    timeline: bool,
 ) -> Result<String, String> {
     let marker = format!("{ns}:arrow");
     let layout = |width| {
         if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
-            if timeline {
-                sequence(d, texts, width, &marker, locale)
-            } else {
-                stages::sequence(d, texts, width, &marker, locale)
-            }
+            sequence(d, texts, width, &marker, locale)
         } else {
             graph(d, texts, width, &marker, locale)
         }
     };
-    let wide = layout(760)?;
-    let medium = layout(520)?;
-    let narrow = layout(272)?;
+    let spatial = matches!(&d.meaning, DiagramMeaning::Sequence { participants, groups }
+        if participants.len() > 3 || groups.iter().map(|g| g.messages.len()).sum::<usize>() > 4);
+    // A single world is independent of the article/panel width. A camera never
+    // selects different meaning or geometry. Small scenes retain inline layout.
+    let world_width = if spatial {
+        d.nodes().len() * 320 + 32
+    } else {
+        760
+    };
+    let wide = layout(world_width)?;
+    let medium = if spatial { None } else { Some(layout(520)?) };
+    let narrow = if spatial { None } else { Some(layout(272)?) };
+    let medium = medium.as_ref().unwrap_or(&wide);
+    let narrow = narrow.as_ref().unwrap_or(&wide);
     let title = diagram_label(&d.title, texts)?;
     // No viewBox: each variant keeps native 16px text. CSS selects geometry,
     // never scales an overview to a miniature. The semantic anchors exist once.
-    let mut out=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" style=\"--map-wide-width:{}px;--map-wide-height:{}px;--map-medium-width:{}px;--map-medium-height:{}px;--map-narrow-width:{}px;--map-narrow-height:{}px\" class=\"connected-overview\" role=\"group\" aria-label=\"{}\" data-renderer=\"{RENDERER_ID}\"><defs><marker id=\"{marker}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0 0L10 5L0 10Z\"/></marker></defs><g class=\"diagram-content\"><g class=\"map-wide\">{}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g>",wide.width,wide.height,wide.width,wide.height,medium.width,medium.height,narrow.width,narrow.height,esc(title),wide.background,medium.background,narrow.background);
+    let mut out=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" style=\"--map-wide-width:{}px;--map-wide-height:{}px;--map-medium-width:{}px;--map-medium-height:{}px;--map-narrow-width:{}px;--map-narrow-height:{}px\" class=\"connected-overview\" role=\"group\" aria-label=\"{}\" data-renderer=\"{RENDERER_ID}\"><defs><marker id=\"{marker}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0 0L10 5L0 10Z\"/></marker></defs><g class=\"diagram-content\"><g class=\"map-wide\">{}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g>",wide.width,wide.height,wide.width,wide.height,medium.width,medium.height,narrow.width,narrow.height,esc(title),wide.background,if spatial { "" } else { &medium.background },if spatial { "" } else { &narrow.background });
     let labels = elements(d).into_iter().collect::<BTreeMap<_, _>>();
     if wide.order.len() != labels.len() || wide.order != narrow.order || wide.order != medium.order
     {
         return Err("incomplete responsive elements".into());
     }
     let mode = if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
-        if timeline {
-            "timeline"
-        } else {
-            "stages"
-        }
+        "timeline"
     } else {
         "graph"
     };
     out = out.replacen("class=\"connected-overview\"", &format!("class=\"connected-overview\" data-sequence-layout=\"{mode}\" data-origin-namespace=\"{}\"", esc(ns)), 1);
+    if spatial {
+        out = out.replacen(
+            "class=\"connected-overview\"",
+            "class=\"connected-overview spatial-world\"",
+            1,
+        );
+        out = out.replacen(
+            "<svg ",
+            &format!(
+                "<svg data-world-width=\"{}\" data-world-height=\"{}\" ",
+                wide.width, wide.height
+            ),
+            1,
+        );
+    }
     let mut relationship: Option<&str> = None;
     for id in &wide.order {
         if relationship.is_some_and(|r| id != &format!("{r}:condition")) {
@@ -384,15 +393,15 @@ fn render(
             relationship = Some(id);
             out.push_str(&format!(
                 "<a class=\"diagram-route diagram-text-link\" data-element=\"{}-{}\" href=\"#{}\" tabindex=\"-1\" aria-label=\"{}\"><g class=\"map-wide\">{route}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g></a>",
-                esc(ns), esc(id), esc(&target(id, label)), esc(&name), medium.routes.get(id).ok_or("missing medium route")?, narrow.routes.get(id).ok_or("missing narrow route")?
+                esc(ns), esc(id), esc(&target(id, label)), esc(&name), if spatial { "" } else { medium.routes.get(id).ok_or("missing medium route")? }, if spatial { "" } else { narrow.routes.get(id).ok_or("missing narrow route")? }
             ));
         }
         open(&mut out, ns, id, label, &name, target);
         out.push_str(&format!(
             "<g class=\"map-wide\">{}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g></a>",
             wide.elements.get(id).ok_or("missing wide element")?,
-            medium.elements.get(id).ok_or("missing medium element")?,
-            narrow.elements.get(id).ok_or("missing narrow element")?
+            if spatial { "" } else { medium.elements.get(id).ok_or("missing medium element")? },
+            if spatial { "" } else { narrow.elements.get(id).ok_or("missing narrow element")? }
         ));
     }
     if relationship.is_some() {

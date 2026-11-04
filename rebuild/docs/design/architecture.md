@@ -824,3 +824,11 @@ They communicate through explicit injected operations. Only the modal coordinato
 sets inert/dialog state and traps modal keys. All listeners, frames and resize
 observers belong to the page lifetime. These local modules enhance the server's
 native HTML; no client renderer becomes a second semantic or permission authority.
+
+The selected CE1 sequence path now has one server-computed world and one ephemeral
+viewport owner rather than parallel folded/timeline scene owners. Admitted roles
+remain Projection-owned; `reader_figures.js` consumes geometry and exposes scoped
+capture/restore/suspend operations to navigation. `reader_evidence.js` owns only
+range-chooser presentation and bounded panel width. `reader_citations.js` retains
+exclusive code/permission/expiry ownership, and the shared modal owner retains focus
+and inert authority. None of these modules grants Source collection or admission.

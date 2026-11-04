@@ -59,7 +59,7 @@ async function inspect(page,c,qa,url,width,mode,language) {
   for(const role of ['Verification','Limits']) {
     const nodes=doc.locator(`[data-question="${role}"]`);
     assert.deepEqual(await nodes.allTextContents(),qa.prose.filter(u=>u.question===role).map(u=>u.text));
-    if(await nodes.count())assert.equal(await nodes.first().evaluate((n,role)=>!!n.closest(role==='Limits'?'.limits-section':'.verification-report'),role),true);
+    if(await nodes.count())assert.equal(await nodes.first().evaluate((n,role)=>!!n.closest(role==='Limits'?'.limits-section':'.verification-reading'),role),true);
   }
   assert.equal(await doc.locator('.doc-head p.lead').count(),1,'one article lead');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no ordinary overflow');

@@ -1195,3 +1195,37 @@ while participant lanes retain their readable panning width. Centering these
 headings on the enlarged canvas previously hid scope at initial narrow entry.
 Message-local conditions/order and primary action remain complete. No new wording,
 prose definition, canonical fact, frontend runtime or stored layout is introduced.
+
+### Selected Work reading — CE1, 2026-11-05
+
+The current invocation clarified the package-43 freeze with “이전 확정안은 CE1을
+기준으로 진행했습니다.” The [decision record](open-decisions.md#ce1-selection-clarification--2026-11-05)
+binds the exact variant/hash and limits. This supersedes the pending E1/CE1 choice
+above for the representative Work journey. It does not select unrelated A/B/C
+examples or treat design selection as implemented-reader acceptance.
+
+A complex sequence uses one bounded world computed from admitted participants,
+messages and guards. Participant lanes remain stable across page and evidence-panel
+widths. Small scenes remain inline. The primary temporal world replaces the folded
+stages plus duplicate timeline; original groups, all roles and exact native origins
+remain. No phase heading or execution is inferred. Initial width fit is orientation;
+75%/zoom, full-position, selected-relationship and expanded controls support deliberate
+reading. Mouse background drag, native scroll, pointer buttons and keyboard controls
+share one camera owner; browser zoom, text selection and native focus remain available.
+
+Navigation stores publication/figure/view/element, scale and position. Compatible
+geometry restores position; changed available width restores the exact semantic
+anchor within bounds. Opening code suspends an expanded figure and returns to its
+saved view. Publication denial disconnects the world and releases its return memories.
+No minimap, renderer cache, external dependency or second semantic tree is introduced.
+
+Work reading places explanation/next step before readable verification/limitations.
+Original instructions, full evidence, history and verification originals are supporting
+peer disclosures. Command executions are independently folded; reports, tests, runs,
+review and acceptance remain distinct. These roles use existing v9 authoring, not
+headings or file names parsed by the renderer. An old article is not automatically
+rewritten. The new representative article and independent summary were separately
+composed/admitted against explicitly authorized new bounded observations; the old
+Sources remain expired. Code precedes observation metadata. Exact paragraph/diagram
+range families have one chooser; native links retain every original range and return.
+Evidence resizing is bounded transient page state, with pointer/keyboard/default reset.

@@ -811,3 +811,10 @@ status, diagrams, prose and fingerprint. Re-recording remains explicit admission
 missing/expired bodies cannot be recovered to republish. The accepted decision is
 owned by `open-decisions.md`; detailed read/resource semantics by
 `projections-and-documents.md` and `privacy-and-provider-boundary.md`.
+
+Renderer 19 records the selected CE1 temporal presentation: one content-derived
+world, bounded camera, native full-size reading and reorganized supporting records.
+Explanation 9, generated-document metadata 11 and all durable formats remain exact
+current. Work authoring guidance changes current preparation fingerprints only;
+existing publications keep their original hashes and authority checks. Editorial
+rewrites are separately composed/admitted publications, never same-ID conversions.

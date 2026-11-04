@@ -108,7 +108,7 @@ pub(super) fn render_digest(
     html.push_str(&escape(&report.report_summary(r.locale.fixed())));
     html.push_str(&format!(
         " <a href=\"#{}\">{}</a></p>",
-        document_anchor(answers, "verification"),
+        document_anchor(answers, "verification-originals"),
         text(r.locale, "Verification details", "검증 상세")
     ));
 }
@@ -293,10 +293,10 @@ pub(super) fn render_verification(
     snapshot: bool,
 ) {
     html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary><p>{}</p><p class=\"source-note\">{}</p>",
-        document_anchor(answers,"verification"),text(r.locale,"Verification report", "검증 보고"),
+        document_anchor(answers,"verification-records"),text(r.locale,"Individual verification records", "개별 검증 기록"),
         text(r.locale,"Each entry is a Checkpoint verification report, not a test. Reported test counts remain attributed original text; repeated reports are not extra tests or newly observed runs. Observed executions have separate provenance. Exit status proves no assertions.", "각 항목은 테스트 개수가 아닌 Checkpoint 검증 보고입니다. 보고된 테스트 수는 원문에 귀속하며 반복 보고를 추가 테스트나 새 관측 실행으로 세지 않습니다. 실행 관측의 출처는 별도이며 종료 코드만으로 검사 조건의 충족 여부를 확정하지 않습니다."),
         if report.checks.iter().all(|c|matches!(c.scoped_run,EvidenceDetail::NotObserved)) {text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Environment, assertion detail and coverage are shown only when observed.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 환경·검사 조건 상세·확인 범위는 관측되었을 때만 표시합니다.")} else {text(r.locale,"Only explicit recorded relationships support comparison. Earlier failures remain original facts; environment and coverage descriptions are attributed operator reports.","명시적으로 기록된 관계만 비교를 뒷받침합니다. 이전 실패는 원래 사실로 보존하며 환경과 확인 범위 설명은 작업자 보고로 표시합니다.")}));
-    render_article_layer(html, r, answers, ArticleLayer::Verification, snapshot);
+    let _ = snapshot; // Authored report is rendered once in the reading layer.
     if report.checks.is_empty() {
         html.push_str(&format!(
             "<p>{}</p>",
@@ -309,7 +309,7 @@ pub(super) fn render_verification(
     }
     // Identity joins only. Equal labels, statuses and adjacent times never merge runs.
     for execution in report.executions.iter().take(32) {
-        html.push_str(&format!("<article class=\"verification-execution\" data-execution-source=\"{}\"><header><h3>{}</h3><p class=\"source-note\">{}</p></header><dl>",escape(&execution.source_id),escape(&execution.command_label),text(r.locale,"Recorded command label · one exact Source execution", "기록된 명령 라벨 · 하나의 정확한 Source 실행")));
+        html.push_str(&format!("<details class=\"verification-execution\" data-execution-source=\"{}\"><summary>{}</summary><header><p class=\"source-note\">{}</p></header><dl>",escape(&execution.source_id),escape(&execution.command_label),text(r.locale,"Recorded command label · one exact Source execution", "기록된 명령 라벨 · 하나의 정확한 Source 실행")));
         definition(
             html,
             text(r.locale, "Process termination", "프로세스 종료"),
@@ -426,7 +426,7 @@ pub(super) fn render_verification(
             "Invocation fingerprint",
             &execution.invocation_fingerprint,
         );
-        html.push_str("</dl></details></article>");
+        html.push_str("</dl></details></details>");
     }
     for c in report.checks.iter().take(64).filter(|c| {
         !report
@@ -436,7 +436,7 @@ pub(super) fn render_verification(
             .any(|e| c.source_id.as_deref() == Some(&e.source_id))
     }) {
         html.push_str(&format!(
-            "<article class=\"verification-record-only\"><h3>{}</h3>",
+            "<details class=\"verification-record-only\"><summary>{}</summary>",
             text(
                 r.locale,
                 "Recorded verification · execution details unavailable",
@@ -444,7 +444,7 @@ pub(super) fn render_verification(
             )
         ));
         check(html, r, answers, c);
-        html.push_str("</article>");
+        html.push_str("</details>");
     }
     html.push_str(&format!(
         "<p class=\"source-note\">{}: {} / {} · {}: {} / {}. <a href=\"#{}\">{}</a></p></details>",

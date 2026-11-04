@@ -689,3 +689,19 @@ publication state and numeric browser/Source costs while excluding raw commands,
 streams, runtime paths and evaluator answers. The document-navigation journey
 checks section keyboard focus and consistency between the current-location cue
 and its single `aria-current` link.
+
+### Selected Product journey
+
+`selected_reading_browser.cjs CONFIG` checks the real installed/development Product
+through list, independent summary, article, diagram, exact original code and return.
+It starts an actual loopback Viewer and consumes an actual script-free export with
+JavaScript disabled, without changing that export. Config supplies local `viewer`,
+`runtime`, `project`, `work`, `repository`, admitted `realization`, independently
+admitted `summary`, `offline`, `diagram`, `element`, browser/font paths and a new
+ignored `output`. Default widths are 1440/1024/768/390/320; modes are live,
+live-no-js and offline. Geometry expectations come from admitted semantics and code
+bytes from original repository ranges. It also checks resized evidence, exact camera
+return and typed deletion denial after prior successful reading. It changes no
+Sources or persistent Runtime state. Run through `validate focused`; loopback/browser
+execution may require the session's normal sandbox approval. This is dependent
+technical support, not independent human/assistive acceptance or an aggregate gate.

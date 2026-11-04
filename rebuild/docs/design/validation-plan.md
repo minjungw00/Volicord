@@ -4540,3 +4540,46 @@ Decision/evidence owners. Missing explicit selection blocks default adoption, no
 delivery of the completed comparison. Raw inputs, code payloads, screens, failed
 outputs and the shared input/R3 remain ignored and unchanged. Only reusable local
 tooling, directly coupled consumer checks and reviewed owner summaries are maintained.
+
+### Selected CE1 representative Product support — 2026-11-05
+
+The current invocation's user clarification selects package-43 CE1; the Decision
+owner records its exact hash, provenance and scope. R3's ZIP/extraction, all twelve
+candidate files, forty-four frozen inputs, four comparison tools and delivery ZIP
+were byte-verified through `spatial-selected-inputs` / `spatial-first-inputs-recheck`.
+Shared inputs, prototypes, original Runtime homes and failed attempts remain intact.
+
+An actual ordinary Source read failed `source_body_expired`. Only after the user
+explicitly authorized the representative eight files/thirteen windows were new bounded
+observations created in a private Runtime (28,482 bytes, new IDs, 24-hour retention).
+No old deadline, Work, check or reported result changed. Independent summary and
+article used normal prepare/compose/record; current article/summary publications are
+separate identities. `selected-reading-d0xl1chz/authored-02/` preserves every command,
+stream and numeric exit; raw inputs/publications remain ignored.
+
+Focused support, not Final/V11 or an authoritative gate:
+
+- `spatial-selected-expanded-browser` exit 0: fifteen actual Product conditions at
+  1440/1024/768/390/320, live HTTP, live no-JS and script-free offline; independent
+  list summary, original admitted words, one complete scene, source-derived geometry,
+  complete exact code, resize and camera/focus return. Expanded-view return and
+  deletion-denial/history/resize controls are included. Native pages are never
+  rewritten or script-enabled. Initial width-fit screens are orientation captures,
+  not readable-text passes; deliberate reading is checked separately.
+- `spatial-viewer-readers` exit 0: 139 Viewer unit/integration tests pass; four
+  explicit fixture/profile/large-catalogue tests remain ignored, not passed.
+- `spatial-producer-budgets` exit 0: nine Operations budget/CLI tests, including
+  final preparation bytes and complete ordinary readback.
+- `spatial-preparation-byte-regression` exit 0 after preserving the two failed
+  instruction-expansion attempts (131,388 and 131,088 bytes against 131,072).
+  The final Work clause is 402 bytes versus the baseline 405; no evidence/limits
+  were trimmed or raised. Earlier presentation-assumption failures remain recorded.
+- Focused Clippy with warnings denied, format, Reader lifetime/modal and fixture
+  registry checks pass. The registry initially failed because baseline `59e917b9`
+  already contained fixture bytes with a stale registered hash; the committed-tree
+  hash was independently checked and the registry corrected without fixture edits.
+
+Browser/implementer inspection is source-familiar and dependent. Physical touch,
+other browser engines, native assistive reading and independent first-reading/user
+acceptance remain unobserved. The transfer case remains `browser-request-states`
+from the original frozen plan; its first Product result must precede general fixes.

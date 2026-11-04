@@ -2446,7 +2446,7 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
         assert_eq!(document.matches("class=\"document-nav\"").count(), 1);
         assert!(nav.contains("How the constant reaches the caller"));
         assert!(nav.contains("What this inspection establishes"));
-        assert!(!nav.contains("Execution was not observed"));
+        assert!(nav.contains("Execution was not observed"));
         assert!(
             nav.contains("No downstream coverage"),
             "visible nested limit heading belongs in the full contents"
@@ -2455,7 +2455,7 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
             .find("How the constant reaches the caller</h2>")
             .ok_or("authored topic")?;
         let verification = page
-            .find("class=\"reading-section verification-report\"")
+            .find("class=\"reading-section verification-reading\"")
             .ok_or("verification")?;
         let limits = page
             .find("class=\"reading-section limits-section\"")

@@ -103,6 +103,7 @@
   const figures=createReaderFigures({lifetime,modal});
   const citations=createCitationReader({lifetime,isSelected:point=>selected===point,
     selectedSource:()=>selected?.dataset.sourceId,withholdPublication,updateComparison});
+  const evidence=createReaderEvidence({lifetime,navigate,state});
   const fragmentNotice = document.createElement('p');
   fragmentNotice.className = 'fragment-unavailable';
   fragmentNotice.setAttribute('role', 'status');
@@ -165,8 +166,11 @@
       const context=point.querySelector(':scope > .evidence-selection-context');
       const wording=origin?.querySelector('.diagram-selected-label')?.textContent;
       if(title)title.textContent=wording||point.querySelector('.claim-quote')?.textContent||'';
+      const original=point.querySelector(':scope > .evidence-original');
+      if(original){original.hidden=!wording||wording.replace(/\s+/g,' ').trim()===point.querySelector('.claim-quote')?.textContent.replace(/\s+/g,' ').trim();original.querySelector('summary').textContent=ko?'연결된 본문':'Connected explanation';}
+
       if(context){context.textContent=wording?origin.querySelector('h3').textContent:'';context.hidden=!wording;}
-      if (changed) citations.read(point);
+      if (changed) {evidence.show(point,diagramOrigin);citations.read(point);}
       if (changed && !narrow.matches && !state().sourceReturn) origin?.scrollIntoView({block:'center'});
       if (!point.contains(document.activeElement)) (point.querySelector('a.return')||point).focus({preventScroll:true});
     } else if (selected) {
@@ -190,7 +194,7 @@
           // navigation, without taking focus from another user-selected control.
           if (active !== target && active !== destination && active !== document.body) return;
           if(sourceReturn?.figure?.isConnected){sourceReturn.figure.scrollLeft=sourceReturn.figureLeft;sourceReturn.figure.scrollTop=sourceReturn.figureTop;}
-          if(sourceReturn?.viewport?.isConnected){sourceReturn.viewport.scrollLeft=sourceReturn.left;sourceReturn.viewport.scrollTop=sourceReturn.top;}
+          if(sourceReturn?.viewport?.isConnected){if(!figures.restore(sourceReturn.figure,sourceReturn.camera)){sourceReturn.viewport.scrollLeft=sourceReturn.left;sourceReturn.viewport.scrollTop=sourceReturn.top;}}
           destination.focus({preventScroll:true});
           if (offset !== undefined) {window.scrollTo(0, offset);if(sourceReturn.triggerTop!==undefined)window.scrollBy(0,destination.getBoundingClientRect().top-sourceReturn.triggerTop);}
           else destination.scrollIntoView({block:'center'});
@@ -215,7 +219,7 @@
         const claim=document.getElementById(prior.claim);
         if (claim?.matches('.diagram-claim') && claim.closest('.admitted-diagram')===figure) claim.dataset.active='true';
         figure.scrollLeft=prior.figureLeft;figure.scrollTop=prior.figureTop;
-        viewport.scrollLeft=prior.left;viewport.scrollTop=prior.top;
+        if(!figures.restore(figure,prior.camera)){viewport.scrollLeft=prior.left;viewport.scrollTop=prior.top;}
         window.scrollTo(0,prior.y);
         const trigger=prior.trigger?.isConnected?prior.trigger:target;
         window.scrollBy(0,trigger.getBoundingClientRect().top-prior.triggerTop);
@@ -235,7 +239,8 @@
   function openEvidence(link, trigger=link, activation=null) {
     outline.close();
     const figure=trigger.closest('.admitted-diagram'),viewport=trigger.closest('.diagram-viewport')||figure?.querySelector('.diagram-viewport');
-    const token=remember(sourceReturns,{claim:link.dataset.origin,trigger,y:activation?.y??scrollY,triggerTop:activation?.triggerTop??trigger.getBoundingClientRect().top,figure,figureLeft:activation?.figureLeft??figure?.scrollLeft,figureTop:activation?.figureTop??figure?.scrollTop,viewport,left:activation?.left??viewport?.scrollLeft,top:activation?.top??viewport?.scrollTop});
+    const token=remember(sourceReturns,{camera:activation?.camera??figures.capture(figure,trigger.matches('.diagram-element')?trigger.id:null),claim:link.dataset.origin,trigger,y:activation?.y??scrollY,triggerTop:activation?.triggerTop??trigger.getBoundingClientRect().top,figure,figureLeft:activation?.figureLeft??figure?.scrollLeft,figureTop:activation?.figureTop??figure?.scrollTop,viewport,left:activation?.left??viewport?.scrollLeft,top:activation?.top??viewport?.scrollTop});
+    figures.suspend(figure);
     const next={...state(),sourceReturn:token};
     history.replaceState({...state(),sourceBack:token},'');
     const hash=link.getAttribute('href')+(link.closest('.diagram-claim')?'!'+link.dataset.origin:'');
@@ -254,7 +259,7 @@
         event.preventDefault();
         const figure=viewport.closest('.admitted-diagram');
         const claim=[...figure.querySelectorAll('.diagram-claim')].find(n=>n.getClientRects().length);
-        const token=remember(diagramReturns,{element:id,trigger:diagramLink,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop,
+        const token=remember(diagramReturns,{camera:figures.capture(figure,id),element:id,trigger:diagramLink,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop,
           claim:claim?.id || null,figureLeft:figure.scrollLeft,figureTop:figure.scrollTop,
           triggerTop:diagramLink.getBoundingClientRect().top});
         const next={...state(),diagramReturn:token};
@@ -304,6 +309,7 @@
     const nativeHash=location.hash.split('!')[0];
     if(fragment().target&&nativeHash!==location.hash)location.replace(nativeHash);
     diagramReturns.clear();sourceReturns.clear();evidenceBackdrop.remove();fragmentNotice.remove();
+    document.querySelectorAll('.source-point > .evidence-original').forEach(n=>{n.hidden=false;});
     document.querySelectorAll('.source-point > .evidence-selection-context').forEach(n=>{n.hidden=true;n.textContent='';});
     delete document.body.dataset.readerEnhanced;delete document.body.dataset.sourceOpen;
     document.querySelectorAll('.source-point[data-selected],.appendix[data-open],.diagram-claim[data-active]').forEach(node=>{delete node.dataset.selected;delete node.dataset.open;delete node.dataset.active;});

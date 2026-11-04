@@ -8,6 +8,8 @@ pub(crate) const SCRIPT: &str = concat!(
     "\n",
     include_str!("reader_figures.js"),
     "\n",
+    include_str!("reader_evidence.js"),
+    "\n",
     include_str!("reader_outline.js"),
     "\n",
     include_str!("shell.js"),

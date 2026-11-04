@@ -585,8 +585,8 @@ clean install
   supersedes only the blanket no-required-pan restriction.
 - Shared Work/evidence-window presentation: **confirmed as the current reference**
   on 2026-11-04, with the exact user statement and scope recorded below.
-  A/B/C geometry/navigation choice, E1 versus CE1 navigation preference and full
-  detailed-prose acceptance remain separate from this presentation confirmation.
+  The 2026-11-05 clarification below selects CE1 for the representative Work.
+  Unrelated A/B/C alternatives and implemented-Product acceptance remain separate.
 - Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-43/index.html`;
   manifest SHA-256 `b74b585e451994a0809fc01ac6b3437ba3af60e6ab3731da10c5aa328b82c5a6`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
@@ -776,7 +776,7 @@ clean install
   Earlier manifests remain immutable historical artifacts (`selection: null` at
   creation); this maintained record carries the subsequent scoped confirmation.
   Frozen Source facts and the example Work's Paused/NotRequested records do not change.
-- Remaining geometry/navigation decision: identify this package/hash, choose A/B/C
+- At the 2026-11-04 freeze, the remaining decision was: identify this package/hash, choose A/B/C
   for the primary cases and native E1 versus camera CE1 navigation for the Work, and
   specify scope/corrections. The shared edited Work arrangement is already confirmed;
   these alternative navigation choices are not supplied by a recommendation or test.
@@ -790,6 +790,30 @@ clean install
   selected meaning. Preserve the rejected candidate and actual feedback verbatim in
   the existing evidence owner; do not rewrite the shared input or invent approval.
 
+
+### CE1 selection clarification — 2026-11-05
+
+The user answered the current invocation's explicit package-43 selection question:
+“이전 확정안은 CE1을 기준으로 진행했습니다.” This is a current user clarification,
+not an inference from the earlier freeze or the manifest's historical null selection.
+It selects `musicdeck-work-ko-CE1`, SHA-256
+`295961bcee3df01f9a7c7bfab126b33ce2ad00cc6b9fcdebc34b088e8d794046`, in the
+package and manifest identified above. CE1 combines the reviewed edited Work
+arrangement with spacious geometry and camera navigation. The shared presentation
+corrections through package 43 remain included. Implement the representative
+normal Work journey first; preserve the predeclared `browser-request-states`
+transfer case and its first result before broader application. This does not
+select every unrelated A/B/C candidate, prescribe manual coordinates, approve a
+new semantic format, authorize denied Source reuse, or establish implemented
+Product acceptance. Return a material design departure for review.
+
+The same invocation separately authorized “작업용 Runtime의 명시적 새 관측 허용”
+after an actual normal Source read returned `source_body_expired`. Scope is the
+representative historical acc07330 Work's eight files/thirteen cited windows
+(28,482 bytes), new observations/IDs in an isolated task Runtime, no old deadline
+renewal, new test execution or external transmission. New captures do not turn the
+historical reported VM results into current executions. Raw originals and earlier
+publications remain unchanged.
 
 ## Retained reading and new publication admission — accepted 2026-11-05
 

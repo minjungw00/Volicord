@@ -28,7 +28,7 @@ async function navigate(page,destination,width){
 }
 async function timelineReturn(page,details,element,origin,c,state){
  assert.equal(new URL(page.url()).hash,'#'+origin,'native primary return retains timeline role, not its equal-worded scene');
- assert.equal(await details.getAttribute('open'),'','native return reveals the exact timeline');
+ if(await details.count())assert.equal(await details.getAttribute('open'),'','native return reveals the exact timeline');
  assert(await element.isVisible());await cue(page,state.kind,c,state.width,state.snapshot,state.projectName);
 }
 // A timeline's native Source aliases live outside its disclosure. Check the
@@ -49,8 +49,8 @@ async function timelineOrigins(page,c,{kind,width,snapshot,projectName,prefix,ad
   const selections=[{id:last.id,label:last.label},...(guard<0?[]:[{id:'guard:'+(guard+1),label:groups[guard].condition}])];
   for(const selection of selections){
    await page.goto(documentAddress.href);await pause(page);
-   if(!await details.evaluate(n=>n.open))await details.locator(':scope > summary').click();await pause(page);
-   const origin=ns+':timeline-'+selection.id,element=figure.locator(`a[id="${origin}"]`);
+   if(await details.count()&&!await details.evaluate(n=>n.open))await details.locator(':scope > summary').click();await pause(page);
+   const origin=ns+'-'+selection.id,element=figure.locator(`a[id="${origin}"]`);
    await element.focus();assert(await element.evaluate(n=>n===document.activeElement),'activate the actual visible timeline role');await page.keyboard.press('Enter');await pause(page);
    const claim=page.locator(`[id="${origin}-claim"]`),unit=publication.prose[selection.label.unit];
    const index=unit.citations.findIndex(q=>q.claim_start_byte<=selection.label.start_byte&&q.claim_end_byte>=selection.label.end_byte);
