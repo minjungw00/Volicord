@@ -43,8 +43,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The comparison started on 2026-10-30; the latest scoped refinement starts at
-`rebuild/.local/spatial-reading-20261030/candidates-32/index.html`. Manifest SHA-256:
-`e96a45911ba3e18a47ec6f19b0feb2882eb27e9b0b43b48b912f7fe8c33759ae`.
+`rebuild/.local/spatial-reading-20261030/candidates-33/index.html`. Manifest SHA-256:
+`498cf94247c5b229a6c2a130e53cb93fe88bb96bb6b8480baf7352e60bbdcd3b`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -198,9 +198,25 @@ driver checks fresh original-intro fragments, exact text and visible position be
 the persistent contents at every width, with JavaScript on/off. The seven categories,
 report/raw split and presentation remain as in 31. No original bytes or identities
 change, and the earlier defect/observations remain preserved.
-Its focused layout/presentation/transport children pass 20/10/108 conditions with
+Its precommit layout/presentation/transport children pass 20/10/108 conditions with
 numeric wrapper exits 0. Frozen inputs, SVG geometry, tooling hashes and the new
 14-member delivery archive are independently verified again.
+The stronger postcommit first-line-position check fails when previously opened
+verification originals leave enough content below the destination: an alias after
+the passage can scroll its first line behind the sticky contents. Package 33 puts
+the alias before the passage, inside the same disclosure. The failed postcommit
+attempt remains preserved. The grouped journey retains its real preceding open
+disclosures and checks the whole original passage below the contents, rather than
+weakening the position assertion or testing only a fresh page with all records closed.
+Package 33 passes 20 layout/native/position and 10 presentation conditions, with
+numeric focused exits 0. An all-twelve-candidate transport attempt was interrupted
+(exec exit 143; no focused result or child completion), so it is not a pass. A new
+explicit E1/CE1-only transport fixture copies the exact hash-verified delivery bytes
+and records its source manifest; its 18 file/HTTP/native/scripted conditions exit 0.
+The resulting 48 scoped conditions apply to the changed candidates. Input/tooling/
+geometry/archive integrity and the open-originals return screenshots also exit 0;
+all prior evidence stays preserved. Physical/assistive/other-engine and live Runtime
+observations remain outside this local presentation delivery.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

@@ -586,8 +586,8 @@ clean install
 - Geometry/navigation selection and full editorial acceptance: **pending**. The
   2026-11-03 instruction authorizes the reviewed local Work arrangement below;
   it does not select A/B/C or authorize Product-default changes/republication.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-32/index.html`;
-  manifest SHA-256 `e96a45911ba3e18a47ec6f19b0feb2882eb27e9b0b43b48b912f7fe8c33759ae`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-33/index.html`;
+  manifest SHA-256 `498cf94247c5b229a6c2a130e53cb93fe88bb96bb6b8480baf7352e60bbdcd3b`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -704,6 +704,10 @@ clean install
   Package 32 corrects a subsequent reproduced original-intro navigation defect: its
   old fragment alias now lives inside the new disclosure, so fresh native/scripted
   navigation opens the exact retained passage. The record organization is unchanged.
+  Package 33 moves that alias before the passage after a stronger postcommit check
+  reproduces first-line occlusion with other originals already open. The check retains
+  that real navigation sequence, verifies the passage below the sticky contents and
+  preserves the failed package/attempt. No record meaning or organization changes.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.
