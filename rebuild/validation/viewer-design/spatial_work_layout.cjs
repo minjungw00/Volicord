@@ -90,9 +90,11 @@ function arrangeWork({work}) {
   // Each evidence category has one purpose. Do not retain copied body paragraphs,
   // repeated test reports or a mixed bag of publication and state observations.
   if(retained){
-    const lead=retained.querySelector('.lead');if(lead){const intro=wrap('원래 도입문');intro.append(lead);editorial.append(intro);}
+    const lead=retained.querySelector('.lead'),leadAliases=new Set();
+    for(let n=lead?.parentElement;n&&n!==retained;n=n.parentElement)if(n.id)leadAliases.add(n.id);
+    const intro=lead?wrap('원래 도입문'):null;if(intro){intro.append(lead);editorial.append(intro);}
     const applicability=retained.querySelector('.applicability');if(applicability){applicability.querySelector(':scope > summary').textContent='저장소 비교 기준';evidenceBody.append(applicability);}
-    for(const old of retained.querySelectorAll('[id]')){const anchor=make('span');anchor.id=old.id;editorial.append(anchor);}
+    for(const old of retained.querySelectorAll('[id]')){const anchor=make('span');anchor.id=old.id;(leadAliases.has(old.id)?intro:editorial).append(anchor);}
     retained.remove();
   }
   const publication=wrap('발행 정보',prefix+'-publication-data'),recordData=wrap('기록 상태와 근거 한계',prefix+'-record-data');

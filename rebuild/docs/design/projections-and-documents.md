@@ -3427,3 +3427,5 @@ events retain their own historical reports. Category disclosures share one desig
 index/command entries share a subordinate card design, and raw data remains folded
 until explicitly opened. These are isolated comparison refinements, not Product
 adoption, new authorship authority or a change to canonical facts.
+Retained-intro fragment aliases live inside their disclosure, so an original index
+link reveals the actual passage in both native and scripted reading.

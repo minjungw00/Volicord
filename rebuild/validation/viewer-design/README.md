@@ -43,8 +43,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The comparison started on 2026-10-30; the latest scoped refinement starts at
-`rebuild/.local/spatial-reading-20261030/candidates-31/index.html`. Manifest SHA-256:
-`495f66690367206bc9a45c29da78be6f6bdd5e09b4662ad1afe387249eb3f48c`.
+`rebuild/.local/spatial-reading-20261030/candidates-32/index.html`. Manifest SHA-256:
+`e96a45911ba3e18a47ec6f19b0feb2882eb27e9b0b43b48b912f7fe8c33759ae`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -190,6 +190,17 @@ records at 1440/390, including zero document-width overflow; this remains depend
 implementer inspection. Physical devices, assistive technology, other engines and
 independent human acceptance remain unobserved. No Rust, aggregate, official V11 or
 provider check is run for these local presentation changes.
+
+Package 32 additionally fixes a reproduced direct-fragment defect in 31: the retained
+intro's old fragment was outside its new closed disclosure, so targeting it did not
+reveal the original passage. Its alias now belongs inside that disclosure. The grouped
+driver checks fresh original-intro fragments, exact text and visible position beneath
+the persistent contents at every width, with JavaScript on/off. The seven categories,
+report/raw split and presentation remain as in 31. No original bytes or identities
+change, and the earlier defect/observations remain preserved.
+Its focused layout/presentation/transport children pass 20/10/108 conditions with
+numeric wrapper exits 0. Frozen inputs, SVG geometry, tooling hashes and the new
+14-member delivery archive are independently verified again.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

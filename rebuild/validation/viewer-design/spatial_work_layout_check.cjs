@@ -5,12 +5,14 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
 
 function inventory(){
   const doc=document.querySelector('.snapshot-page[id^="work-"] .doc');
+  const intro=doc.querySelector('[data-original-summary]')||doc.querySelector('.doc-head [data-question="Synopsis"]');
   const units=[...doc.querySelectorAll('.unit[id]')].filter(n=>n.querySelector(':scope > .unit-text')).map(n=>[n.id,n.querySelector(':scope > .unit-text').textContent]).sort();
   const identified=[...document.querySelectorAll('[id]')];
   return {units,texts:[...doc.querySelectorAll('.unit-text')].map(n=>n.textContent).sort(),
     ids:identified.filter(n=>!n.closest('svg')||n.matches('a')).map(n=>n.id),allIds:identified.map(n=>n.id),
     code:[...document.querySelectorAll('pre.code-region code')].map(n=>n.textContent).sort(),
     goal:doc.querySelector('blockquote.goal').textContent,
+    intro:{id:intro.closest('[id]').id,text:intro.textContent},
     json:doc.querySelector('[id$="-full-verification"] pre').textContent,
     raw:[...doc.querySelectorAll('pre:not(.code-region)')].map(n=>n.textContent).sort(),
     citations:[...doc.querySelectorAll('.unit > .evidence-actions')].map(n=>({unit:n.parentElement.id,links:[...n.querySelectorAll('a.evidence-link')].map(a=>({href:a.getAttribute('href'),origin:a.dataset.origin}))})),
@@ -138,6 +140,11 @@ function inventory(){
             assert.ok(await command.evaluate(n=>n.open));
             const checkId=await command.locator('.verification-check').first().getAttribute('id');
             await page.goto(url.split('#')[0]+'#'+checkId);await page.locator('[id="'+checkId+'"]').waitFor({state:'visible'});
+            await page.goto(url.split('#')[0]+'#'+original.intro.id);
+            const originalIntro=page.locator('.doc [data-original-summary]');await originalIntro.waitFor({state:'visible'});
+            assert.equal(await originalIntro.textContent(),original.intro.text,'the original intro fragment reveals the exact original passage');
+            const introBox=await originalIntro.boundingBox(),introNav=await nav.boundingBox();
+            assert.ok(introBox.y>=introNav.y+introNav.height&&introBox.y+introBox.height<=1000,'the original passage is in view below the persistent contents');
             assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
             rows.push({candidate:candidate.id,scripted,width,original_units:actual.texts.length,code_payloads:actual.code.length,all_citation_sets:true,overview:true,nested_record_navigation:true});
           }catch(error){await page.screenshot({path:path.join(out,`${candidate.id}-${scripted}-${width}-failure.png`)});throw error;}finally{await context.close();}
