@@ -149,10 +149,20 @@ The 2026-11-03 local comparison feedback refines the action's presentation: a qu
 control at the paragraph's lower right opens an actual selected range immediately,
 with the complete separately bound family in a dropdown in that same pane. An
 explicit selected range is not proof for all claims in the paragraph. The native
-fallback provides exact range links. Complete code stays initially folded. This
+fallback provides exact range links. Its original code treatment was initially folded;
+the subsequently confirmed local reference below starts cited code expanded. This
 refines E1/CE1 presentation; it does not select a Product-default geometry or waive
 grounding/availability checks. Compact TOC, in-frame diagram controls, panel headers
 and disclosure levels use consistent dimensions and spacing.
+
+On 2026-11-04 the user confirmed the current reviewed state: “현재 상태를 우선
+확정하겠습니다.” Package 43's common E1/CE1 Work-reading and evidence-window
+presentation is the current reference, including expanded code before observation
+metadata, resizable evidence and the reviewed diagram controls/disclosures. The
+[decision owner](open-decisions.md#spatial-reading-comparison-and-selection-boundary--2026-10-30)
+binds the exact artifact hashes, user provenance, accepted scope and revisit conditions.
+Geometry/navigation alternatives remain distinct; this scoped presentation freeze
+does not change the installed Product default or frozen historical Work facts.
 
 ### 3.1 ‘취소선’ 의견의 처리
 

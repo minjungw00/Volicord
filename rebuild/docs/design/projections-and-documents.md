@@ -3344,6 +3344,14 @@ the previous publication's fingerprints.
 
 ### Local spatial comparison and pending selection
 
+The current shared E1/CE1 presentation is confirmed as reference by the user's
+2026-11-04 statement, “현재 상태를 우선 확정하겠습니다.” The
+[decision owner](open-decisions.md#spatial-reading-comparison-and-selection-boundary--2026-10-30)
+identifies package 43, exact hashes, source commit and scope. The remaining selection
+boundary concerns geometry/navigation alternatives and subsequent Product integration;
+it does not leave the reviewed common presentation unconfirmed. Preserve the
+delivered artifacts and use this reference for later scoped refinements.
+
 The three geometry/navigation alternatives consume identical frozen publication
 meaning. The spacious scroll and camera cases must share exact SVG geometry bytes;
 camera state is ephemeral UI state. Element/claim/range selection retains Project,

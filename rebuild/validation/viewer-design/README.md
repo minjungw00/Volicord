@@ -48,6 +48,15 @@ Decision and validation owners.
 
 ### Bounded spatial comparison evidence
 
+Current presentation reference: **confirmed by the user on 2026-11-04** with
+“현재 상태를 우선 확정하겠습니다.” The statement immediately follows the package
+43 delivery at source commit `d84da286`; it confirms the reviewed common E1/CE1 UI.
+The [decision owner](../../docs/design/open-decisions.md#spatial-reading-comparison-and-selection-boundary--2026-10-30)
+records accepted scope, artifact/ZIP hashes and remaining geometry choices. No new
+candidate is generated for the freeze, and the delivered files/manifests stay
+immutable. Prior technical checks remain evidence for their original candidates;
+this confirmation is scoped user review, not a new independent-reading or gate pass.
+
 The comparison started on 2026-10-30; the latest scoped refinement starts at
 `rebuild/.local/spatial-reading-20261030/candidates-43/index.html`. Manifest SHA-256:
 `b74b585e451994a0809fc01ac6b3437ba3af60e6ab3731da10c5aa328b82c5a6`.

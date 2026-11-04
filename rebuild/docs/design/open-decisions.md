@@ -583,9 +583,10 @@ clean install
   request states, “A recommendation is not user approval.” The updated Reader entry
   contract permits directed movement with readable purpose/start/navigation; it
   supersedes only the blanket no-required-pan restriction.
-- Geometry/navigation selection and full editorial acceptance: **pending**. The
-  2026-11-03 instruction authorizes the reviewed local Work arrangement below;
-  it does not select A/B/C or authorize Product-default changes/republication.
+- Shared Work/evidence-window presentation: **confirmed as the current reference**
+  on 2026-11-04, with the exact user statement and scope recorded below.
+  A/B/C geometry/navigation choice, E1 versus CE1 navigation preference and full
+  detailed-prose acceptance remain separate from this presentation confirmation.
 - Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-43/index.html`;
   manifest SHA-256 `b74b585e451994a0809fc01ac6b3437ba3af60e6ab3731da10c5aa328b82c5a6`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
@@ -754,9 +755,31 @@ clean install
   blocks retain their exact Source-context binding and original contents; the shared
   code stays one physical payload. This applies to local E1/CE1 and leaves the earlier
   packages and pending Product-default selection unchanged.
-- User action: identify this package/hash, choose A/B/C for each primary case and
-  E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
-  valid. Recommendation or descriptive technical observations do not fill this field.
+- Current-state confirmation on 2026-11-04, verbatim: “현재 상태를 우선 확정하겠습니다.”
+  Provenance: the user supplied this statement immediately after delivery of package
+  43 (`candidates-43/index.html`, source commit `d84da286`). Its manifest SHA-256 is
+  `b74b585e451994a0809fc01ac6b3437ba3af60e6ab3731da10c5aa328b82c5a6`; delivery ZIP
+  SHA-256 is `4948776baf1e2475470ec26bb52e3da7d77295ec785d1e1505061571e19f6ed0`.
+  Accepted scope is the reviewed current presentation shared by local E1/CE1:
+  three reading groups and peer record-history placement; consistent contents,
+  spacing, status markers and disclosure hierarchy; quiet paragraph/diagram evidence
+  actions with exact range selection/return; width-fit entry, hover and in-frame
+  diagram controls without redundant helper views; resizable evidence with expanded
+  complete code before observation metadata; distinct connected-body context and
+  original verification/limit records. Future presentation refinements use this
+  reference and reopen only the affected aspect when new feedback requires it.
+  This confirms the current UI baseline, including the code-before-observation
+  correction, rather than leaving these shared presentation choices pending.
+  The statement does not distinguish the native E1 geometry from camera CE1 or choose
+  alternatives for other cases. Keep those alternatives identifiable; do not infer
+  universal camera adoption or begin Product rollout/republication from this freeze.
+  Earlier manifests remain immutable historical artifacts (`selection: null` at
+  creation); this maintained record carries the subsequent scoped confirmation.
+  Frozen Source facts and the example Work's Paused/NotRequested records do not change.
+- Remaining geometry/navigation decision: identify this package/hash, choose A/B/C
+  for the primary cases and native E1 versus camera CE1 navigation for the Work, and
+  specify scope/corrections. The shared edited Work arrangement is already confirmed;
+  these alternative navigation choices are not supplied by a recommendation or test.
 - Selection permits subsequent scoped Product implementation planning. Draft
   publication/admission, production integration, normal consumer coverage, assistive
   observations and exact-candidate qualification remain distinct later work. Do not
