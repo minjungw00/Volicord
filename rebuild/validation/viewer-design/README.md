@@ -49,8 +49,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The comparison started on 2026-10-30; the latest scoped refinement starts at
-`rebuild/.local/spatial-reading-20261030/candidates-42/index.html`. Manifest SHA-256:
-`62c6e7085f8cc23c547606bf146436f7c250e7fe979e77833b48334853b66353`.
+`rebuild/.local/spatial-reading-20261030/candidates-43/index.html`. Manifest SHA-256:
+`b74b585e451994a0809fc01ac6b3437ba3af60e6ab3731da10c5aa328b82c5a6`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -301,6 +301,18 @@ Dependent screenshot review checks wide/narrow windows, expanded code and connec
 context. Physical touch, assistive technology, other engines and independent human
 acceptance remain unobserved. No Rust/aggregate/V11/provider or live-lifecycle run is
 part of this local presentation refinement.
+
+Package 43 follows the requested code-before-observation reading order. Original
+observation/connection disclosures now follow the cited code in actual DOM order;
+exact target/context selectors expose only the corresponding original supporting
+blocks. Shared code payloads, selected Source/range, default expansion, native reading
+and width controls are unchanged. The evidence-window journey checks rendered
+positions and DOM order for ordinary citations and range changes at six widths.
+The focused panel journey passes 12 conditions and original-byte/native/alias
+navigation passes 20 conditions, all with numeric wrapper exits 0. The 14-file
+archive, 44 frozen inputs, four tooling hashes and twelve primary SVG hashes verify.
+Wide/mobile screenshots confirm the order. This scoped change invokes no Rust,
+aggregate/V11/provider or live-lifecycle run; physical/assistive use remains unobserved.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

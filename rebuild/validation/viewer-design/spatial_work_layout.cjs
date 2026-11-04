@@ -216,6 +216,7 @@ function arrangeWork({work}) {
   // differs. Common observation metadata uses the same disclosure hierarchy as Work.
   const normalize=text=>text.replace(/\s+/g,' ').trim();
   const sharedContextStyles=[];
+  const observationBlocks=[];
   for(const point of appendix.querySelectorAll('.source-point,.source-origin-target')){
     const heading=point.querySelector(':scope > .evidence-claim');if(!heading)continue;
     heading.before(make('p','evidence-context-label','선택한 설명'));
@@ -236,13 +237,19 @@ function arrangeWork({work}) {
       if(!point.dataset.citedCode&&child.matches('.source-note'))continue;
       metadata.append(child);
     }
-    if(metadata.children.length>1)point.append(metadata);
+    if(metadata.children.length>1){
+      metadata.id=point.id+'-observation-data';metadata.dataset.sourceContext=point.id;
+      sharedContextStyles.push('.appendix:has(#'+CSS.escape(point.id)+':target,#'+CSS.escape(point.id)+' :target,#'+CSS.escape(metadata.id)+':target,#'+CSS.escape(metadata.id)+' :target) > #'+CSS.escape(metadata.id)+'{display:block}');
+      for(const detail of metadata.querySelectorAll('details'))detail.classList.add('evidence-disclosure');
+      observationBlocks.push(metadata);
+    }
     for(const detail of point.querySelectorAll('details'))if(!detail.closest('.paragraph-source-picker'))detail.classList.add('evidence-disclosure');
   }
   const contextStyle=make('style');contextStyle.textContent=sharedContextStyles.join('\n');document.head.append(contextStyle);
   for(const code of appendix.querySelectorAll(':scope > .cited-code')){
     code.open=true;code.dataset.defaultExpanded='true';code.classList.add('evidence-disclosure');code.querySelector(':scope > summary').textContent='인용된 전체 코드';
   }
+  appendix.append(...observationBlocks);
   const resizer=make('div','evidence-resize-handle');resizer.tabIndex=0;resizer.setAttribute('role','separator');resizer.setAttribute('aria-orientation','vertical');resizer.setAttribute('aria-label','근거 창 너비');resizer.title='끌어서 너비 조절 · 좌우 방향키 · Enter 기본 너비';appendix.prepend(resizer);
 
   // Use explicit reading-order numbers; nested section counter scopes previously

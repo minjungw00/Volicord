@@ -586,8 +586,8 @@ clean install
 - Geometry/navigation selection and full editorial acceptance: **pending**. The
   2026-11-03 instruction authorizes the reviewed local Work arrangement below;
   it does not select A/B/C or authorize Product-default changes/republication.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-42/index.html`;
-  manifest SHA-256 `62c6e7085f8cc23c547606bf146436f7c250e7fe979e77833b48334853b66353`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-43/index.html`;
+  manifest SHA-256 `b74b585e451994a0809fc01ac6b3437ba3af60e6ab3731da10c5aa328b82c5a6`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -748,6 +748,12 @@ clean install
   remain preserved, including direct-content navigation and header-size corrections.
   Original code, identities and factual obligations remain unchanged. This is local
   candidate feedback, not Product-default selection, admission or republication.
+- Further scoped feedback, verbatim: “근거 선택 창의 인용된 전체 코드가 관측 정보와
+  한계보다 먼저 나와야 합니다.” Package 43 orders the selected original code before
+  observation/connection metadata in both DOM and rendered reading order. Supporting
+  blocks retain their exact Source-context binding and original contents; the shared
+  code stays one physical payload. This applies to local E1/CE1 and leaves the earlier
+  packages and pending Product-default selection unchanged.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.

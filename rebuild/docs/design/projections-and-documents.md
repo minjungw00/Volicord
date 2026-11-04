@@ -3462,7 +3462,10 @@ E1/CE1 initially expand the existing complete cited range. Switching a scripted
 selection opens the newly bound range; explicit folding remains possible and survives
 window resizing. Script-free exports start with the same authorized code expanded.
 No additional bytes, fetches or Source authority are introduced. Work-style disclosure
-cards group observation metadata; code keeps the dark code palette. Repeated original
+cards group observation metadata after the cited code, in both DOM and rendered reading
+order. Exact Source-context bindings select the original supporting record without
+duplicating or moving the shared code payload. Code keeps the dark code palette.
+Repeated original
 sentences are suppressed when the selected explanation already shows the same text.
 For a different diagram label, the explicitly bound Source-point relationship retains
 the original body as a separately named connected passage; matching a file is never

@@ -25,6 +25,11 @@ const {pathToFileURL}=require('node:url');
     assert.equal(await disclosure.evaluate(n=>n.open),true,'complete code is already expanded without another action');
     const code=disclosure.locator('pre.code-region code');assert.ok(await code.isVisible());
     assert.equal(await code.textContent(),fs.readFileSync(path.join(source.repository,citation.locator)).subarray(citation.start_byte,citation.end_byte).toString());
+    const codeBox=await disclosure.boundingBox();
+    for(const metadata of await pane.locator(':scope > .source-metadata:visible').all()){
+     const metadataBox=await metadata.boundingBox();assert.ok(codeBox.y+codeBox.height<=metadataBox.y+1,'complete code precedes observation information in rendered reading order');
+     assert.ok(await metadata.evaluate((n,id)=>!!(document.getElementById(id).compareDocumentPosition(n)&Node.DOCUMENT_POSITION_FOLLOWING),codeId),'DOM/keyboard reading order also puts code before metadata');
+    }
     assert.equal(await pane.locator('.evidence-range-select:visible').count(),1);assert.equal(p.context().pages().length,1);return disclosure;
    }
    let code=await activeCode(pub.prose[11].citations[0]);const initialWidth=(await pane.boundingBox()).width;
