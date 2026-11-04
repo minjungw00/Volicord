@@ -71,6 +71,10 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
         assert.ok(Math.abs(buttonBox.x+buttonBox.width-unitBox.x-unitBox.width)<3,'quiet action sits at paragraph lower right');
         const style=await button.evaluate(n=>{const s=getComputedStyle(n);return {font:parseFloat(s.fontSize),background:s.backgroundColor,border:s.borderTopWidth};});
         assert.ok(style.font<=12);assert.equal(style.border,'0px');assert.equal(style.background,'rgba(0, 0, 0, 0)');
+        const actionStyle=n=>{const s=getComputedStyle(n);return [s.fontFamily,s.fontSize,s.fontWeight,s.lineHeight,s.padding,s.border,s.backgroundColor,s.color,s.textDecorationLine,s.minHeight];};
+        const paragraphStyle=await button.evaluate(actionStyle);
+        assert.deepEqual(await reportSection.locator('.verification-records-return').evaluate(actionStyle),paragraphStyle,'verification original link shares the exact paragraph-action design');
+        assert.equal(paragraphStyle[8],'none','evidence actions have no underline or strike-through');
         await button.focus();await button.press('Enter');
         const appendix=page.locator('.appendix'),point=page.locator('.source-point:target');await point.waitFor({state:'visible'});
         assert.equal(await point.locator('.evidence-range-select:visible').count(),1,'one immediately usable range dropdown');
@@ -82,7 +86,21 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
         await page.keyboard.press('Escape');await point.waitFor({state:'hidden'});assert.equal(await doc.evaluate(n=>!!n.closest('[inert]')),false);
 
         const figure=page.locator('.work-overview'),stage=figure.locator('.diagram-stage'),viewport=stage.locator(':scope > .diagram-viewport');
+        assert.equal(await figure.locator('.diagram-help,.diagram-timeline,.diagram-relations,.diagram-alternative,.spatial-help').count(),0,'redundant instructions and alternate renderings are removed');
+        assert.equal(await figure.locator('.diagram-caption-claims').count(),0,'caption no longer opens a legacy claim list');
+        assert.deepEqual(await figure.locator('.diagram-caption > .evidence-actions a').evaluate(actionStyle),paragraphStyle,'diagram caption uses the same direct evidence action');
+        assert.equal(await figure.locator('svg').count(),1,'one primary drawing remains');
         await figure.scrollIntoViewIfNeeded();
+        const drawing=viewport.locator(':scope > svg'),drawingBox=await drawing.boundingBox(),clientWidth=await viewport.evaluate(n=>n.clientWidth);
+        assert.ok(Math.abs(drawingBox.width-(clientWidth-24))<2,'initial scale fits the available width, independently of height');
+        for(const role of await drawing.locator('a.diagram-element').all()){
+          const text=role.locator('text:visible').first();
+          await text.evaluate(n=>n.scrollIntoView({block:'center',inline:'center'}));await text.hover();
+          assert.ok(await role.evaluate(n=>n.matches(':hover')),'pointer reaches the actual selectable label');
+          assert.match(await text.evaluate(n=>getComputedStyle(n).textDecorationLine),/underline/,'every participant, identifier, message and condition visibly reacts to hover');
+          assert.ok(await role.locator('text:visible').evaluateAll(ns=>ns.every(n=>getComputedStyle(n).stroke==='none')),'route emphasis must never thicken labels or endpoint glyphs');
+        }
+        await page.mouse.move(0,0);await viewport.scrollIntoViewIfNeeded();
         const controls=figure.locator(candidate.navigation==='camera'?'.spatial-navigation':'.native-overview-controls');
         const a=await controls.boundingBox(),b=await viewport.boundingBox();
         assert.ok(a.x>=b.x&&a.y>=b.y&&a.x+a.width<=b.x+b.width+1&&a.y+a.height<=b.y+b.height+1,'controls are inside the drawing viewport');
@@ -104,11 +122,16 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
         const edge=edges.find(e=>covering(e).length>1)||edges[0],figureId=await figure.getAttribute('id');
         const element=figure.locator('a[id="'+figureId+'-'+edge.id+'"]');await element.focus();await element.press('Enter');
         const claim=page.locator('[id="'+(await element.getAttribute('href')).slice(1)+'"]'),link=claim.locator('a.evidence-link').first();
+        assert.equal(await claim.locator('.evidence-actions a').count(),1,'selected diagram claim has one complete-family evidence action');
+        assert.deepEqual(await link.evaluate(actionStyle),paragraphStyle,'diagram evidence shares the paragraph-action design');
+        assert.equal(await claim.locator('details.diagram-claim-context').count(),0,'material conditions are directly readable with the selected claim');
+        assert.ok(await claim.locator('.diagram-claim-context p').isVisible());
         await link.focus();await link.press('Enter');
         const selected=page.locator('[id="'+decodeURIComponent(new URL(page.url()).hash.slice(1))+'"]');
         const picker=selected.locator(':scope > .paragraph-source-picker select');
         const next=await picker.locator('option').last().getAttribute('value');await picker.selectOption(next);
         const codePoint=await citationPoint(page,next),citation=covering(edge).at(-1);
+        assert.equal(await appendix.locator('.evidence-range-select:visible').count(),1,'ancestor source context cannot duplicate the selected alias chooser');
         assert.equal(await(await openEmbeddedCode(codePoint)).textContent(),fs.readFileSync(path.join(source.repository,citation.locator)).subarray(citation.start_byte,citation.end_byte).toString());
         await returnFromEmbeddedCode(codePoint);
         const back=page.locator('[id="'+next.slice(1)+'"] > .point-bar a.return');await back.focus();await back.press('Enter');
@@ -116,6 +139,12 @@ const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('./product
         assert.equal(await figure.getAttribute('aria-modal'),'true','exact return restores the expanded diagram');
         assert.equal(await page.locator('[aria-modal="true"]').count(),1,'only one modal owns focus after handoff');
         await page.keyboard.press('Escape');assert.equal(await figure.getAttribute('aria-modal'),null);assert.equal(await page.locator('.reading-backdrop').isVisible(),false);
+        const waiting=figure.locator('svg a[id$="-still-wait"]');
+        await waiting.focus();await waiting.press('Enter');
+        const waitingClaim=page.locator('[id="'+(await waiting.getAttribute('href')).slice(1)+'"]');
+        await waitingClaim.locator('.paragraph-evidence-action').focus();await page.keyboard.press('Enter');
+        assert.equal(await appendix.locator('.evidence-range-select:visible').count(),1,'shared body/diagram evidence displays only the selected diagram family');
+        await page.keyboard.press('Escape');
 
         // Opening the overall evidence category must not dump source/record data.
         const records=doc.locator('[data-reading-group="records"]'),full=records.locator(':scope > details').nth(1);

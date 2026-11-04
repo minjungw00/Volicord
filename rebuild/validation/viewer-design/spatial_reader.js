@@ -30,12 +30,12 @@
       viewport.scrollLeft=x*scale-viewport.clientWidth/2;viewport.scrollTop=y*scale-viewport.clientHeight/2;bounded();
       const output=nav.querySelector('output');output.textContent=Math.round(scale*100)+'%'+(!overviewStart&&scale<.75?' · 위치 확인용':'');output.title=scale<.75?'전체 위치 확인용 배율':'읽기 배율';
     }
-    function fit(){zoom(Math.min(1,(viewport.clientWidth-(overviewStart?24:6))/w,(viewport.clientHeight-(overviewStart?96:6))/h));viewport.scrollTo(0,0);overview=true;}
+    function fit(){zoom(overviewStart?(viewport.clientWidth-24)/w:Math.min(1,(viewport.clientWidth-6)/w,(viewport.clientHeight-6)/h));viewport.scrollTo(0,0);overview=true;}
     function focusElement(a,move=true,pageMove=false){
       selected?.removeAttribute('data-world-selected');selected=a;current=state;a.dataset.worldSelected='true';
       overview=false;
       strip.replaceChildren();const text=document.createElement('span');text.textContent=a.getAttribute('aria-label')+' ';
-      const link=document.createElement('a');link.href=a.getAttribute('href');link.textContent='주장과 근거 읽기';link.dataset.worldOrigin=a.id;strip.append(text,link);
+      const link=document.createElement('a');link.href=a.getAttribute('href');link.textContent='주장과 근거 읽기';if(overviewStart)link.className='paragraph-evidence-action';link.dataset.worldOrigin=a.id;strip.append(text,link);
       if(move){const b=(a.querySelector('text')||a).getBBox();viewport.scrollLeft=(b.x+b.width/2)*scale-viewport.clientWidth/2;viewport.scrollTop=(b.y+b.height/2)*scale-viewport.clientHeight/2;bounded();}
       if(pageMove)viewport.scrollIntoView({block:'center'});
     }

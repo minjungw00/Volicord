@@ -3429,3 +3429,25 @@ until explicitly opened. These are isolated comparison refinements, not Product
 adoption, new authorship authority or a change to canonical facts.
 Retained-intro fragment aliases live inside their disclosure, so an original index
 link reveals the actual passage in both native and scripted reading.
+
+The subsequent local diagram refinement starts E1/CE1 at available-width fit rather
+than fitting both axes. Long content remains vertically scrollable; native diagrams
+use their existing width-dependent geometry, while the camera case retains its fixed
+world. This entry scale does not establish readable text in every viewport; explicit
+75%/100% or camera zoom/expanded reading remains available. Primary SVG bytes and
+all authored role/claim/range bindings remain unchanged.
+
+Verification-original, body, diagram-caption and selected-diagram evidence actions
+share the same quiet visual treatment. Caption evidence opens its exact complete
+range family directly. Selected claims show the original assertion/conditions,
+a single complete-family action and a restrained return link. Only the selected
+Source context exposes a range chooser; an enclosing shared body Source cannot add
+another visible chooser. Complete code remains independently folded in the pane.
+
+Visible operation-help, duplicate participant timeline, relationship-link list and
+textual diagram dump are removed from these local candidates at user request. The
+primary labeled SVG and original selected-claim content remain available natively;
+Source aliases that used to return to the duplicate timeline now return to the same
+primary semantic role. Hover and keyboard focus emphasize labels, nodes, messages,
+identifiers and conditions without painting strokes over text glyphs. These changes
+remain scoped to the comparison and grant no Product-default or authority change.

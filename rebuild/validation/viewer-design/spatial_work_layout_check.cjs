@@ -14,7 +14,12 @@ function inventory(){
     goal:doc.querySelector('blockquote.goal').textContent,
     intro:{id:intro.closest('[id]').id,text:intro.textContent},
     json:doc.querySelector('[id$="-full-verification"] pre').textContent,
-    raw:[...doc.querySelectorAll('pre:not(.code-region)')].map(n=>n.textContent).sort(),
+    raw:[...doc.querySelectorAll('pre:not(.code-region,.diagram-text)')].map(n=>n.textContent).sort(),
+    duplicateDiagramIds:[...doc.querySelectorAll('.diagram-timeline[id],.diagram-timeline [id]')].map(n=>n.id),
+    diagramRoles:[...doc.querySelector('.diagram-full-view .diagram-viewport svg').querySelectorAll('a.diagram-element')].map(n=>[n.id,n.getAttribute('href'),n.getAttribute('aria-label')]).sort(),
+    diagramClaims:[...doc.querySelectorAll('.diagram-claim')].map(n=>({id:n.id,context:n.querySelector('.diagram-claim-context').textContent.replace(/^원래 주장과 중요한 조건/,''),citations:n.querySelector('[data-citation-targets]')?JSON.parse(n.querySelector('[data-citation-targets]').dataset.citationTargets):[...n.querySelectorAll('a.evidence-link')].map(a=>a.getAttribute('href'))})),
+    diagramCaptionCitations:[...doc.querySelector('.diagram-caption').querySelectorAll('.evidence-actions a')].flatMap(n=>n.dataset.citationTargets?JSON.parse(n.dataset.citationTargets):[n.getAttribute('href')]),
+    timelineReturns:[...document.querySelectorAll('.appendix a.return[href]')].filter(n=>doc.querySelector('.diagram-timeline')?.querySelector('[id="'+n.getAttribute('href').slice(1)+'"]')).map(n=>({origin:n.closest('.source-origin-target,.source-point').id,target:n.getAttribute('href').replace(':timeline-','-')})),
     citations:[...doc.querySelectorAll('.unit > .evidence-actions')].map(n=>({unit:n.parentElement.id,links:[...n.querySelectorAll('a.evidence-link')].map(a=>({href:a.getAttribute('href'),origin:a.dataset.origin}))})),
     checks:[...doc.querySelectorAll('.verification-check')].map(n=>[...n.children].filter(n=>n.matches('h4, dl, blockquote')).map(n=>n.textContent))};
 }
@@ -46,7 +51,11 @@ function inventory(){
             assert.deepEqual(actual.checks,original.checks,'each complete original verification fact appears once');
             assert.equal(actual.goal,original.goal);assert.equal(actual.json,original.json);
             assert.deepEqual(actual.raw,original.raw,'every original record/provenance payload remains byte-exact');
-            for(const id of original.ids)assert.ok(actual.ids.includes(id),'original fragment lost: '+id);
+            assert.deepEqual(actual.diagramRoles,original.diagramRoles,'the sole drawing retains every original selectable role and exact claim target');
+            assert.deepEqual(actual.diagramClaims,original.diagramClaims,'all original claims, conditions and complete citation families survive');
+            assert.deepEqual(actual.diagramCaptionCitations,original.diagramCaptionCitations,'caption keeps its exact separately bound evidence family');
+            for(const id of original.ids)if(!original.duplicateDiagramIds.includes(id))assert.ok(actual.ids.includes(id),'original fragment lost: '+id);
+            assert.equal(await page.locator('a[href]').evaluateAll((ns,retired)=>ns.some(n=>retired.includes(n.getAttribute('href').slice(1))),original.duplicateDiagramIds),false,'no return path targets the removed duplicate timeline');
             assert.equal(new Set(actual.allIds).size,actual.allIds.length,'unique fragment identities');
             const groupState=await page.locator('.doc[data-work-layout]').evaluate(doc=>({
               groups:[...doc.querySelectorAll(':scope > [data-reading-group]')].map(n=>n.dataset.readingGroup),
@@ -68,7 +77,7 @@ function inventory(){
 
             const figure=page.locator('.work-overview'),viewport=figure.locator('.diagram-stage > .diagram-viewport').first(),svg=viewport.locator(':scope > svg');
             await figure.scrollIntoViewIfNeeded();
-            await page.waitForFunction(()=>{const v=document.querySelector('.work-overview .diagram-stage > .diagram-viewport'),b=v.querySelector('svg').getBoundingClientRect();return b.width>0&&b.height>0&&b.width<=v.clientWidth+1&&b.height<=v.clientHeight+1;});
+            await page.waitForFunction(()=>{const v=document.querySelector('.work-overview .diagram-stage > .diagram-viewport'),b=v.querySelector('svg').getBoundingClientRect();return b.height>0&&Math.abs(b.width-(v.clientWidth-24))<2;});
             assert.equal(await svg.count(),1,'one primary drawing without an overview copy');
             await page.screenshot({path:path.join(out,`${candidate.id}-${scripted}-${width}-overview.png`)});
             if(scripted&&candidate.navigation==='camera'){
@@ -91,6 +100,11 @@ function inventory(){
               assert.deepEqual(JSON.parse(await action.getAttribute('data-citation-targets')),entry.links.map(n=>n.href),'complete exact citation set');
               const target=page.locator('[id="'+entry.links[0].href.slice(1)+'"]');
               assert.deepEqual(await target.locator(':scope > .paragraph-source-picker select option').evaluateAll(ns=>ns.map(n=>n.value)),entry.links.map(n=>n.href));
+            }
+            for(const claim of original.diagramClaims)for(const href of claim.citations){
+              const point=page.locator('[id="'+href.slice(1)+'"]');
+              assert.equal(await point.locator(':scope > .paragraph-source-picker').count(),1,'one range chooser per exact diagram source alias');
+              assert.deepEqual(await point.locator(':scope > .paragraph-source-picker option').evaluateAll(ns=>ns.map(n=>n.value)),claim.citations,'the chooser retains the original complete claim family');
             }
             // Multiple code citations, a material condition, and report facts use
             // the same actual keyboard route into a single evidence pane.
@@ -145,6 +159,15 @@ function inventory(){
             assert.equal(await originalIntro.textContent(),original.intro.text,'the original intro fragment reveals the exact original passage');
             const introBox=await originalIntro.boundingBox(),introNav=await nav.boundingBox();
             assert.ok(introBox.y>=introNav.y+introNav.height&&introBox.y+introBox.height<=1000,'the original passage is in view below the persistent contents');
+            assert.ok(original.timelineReturns.length>0,'frozen source aliases supply a real former timeline return');
+            const former=original.timelineReturns[0];await page.goto(url.split('#')[0]+'#'+former.origin);
+            const formerPoint=page.locator('[id="'+former.origin+'"]');
+            const formerReturn=formerPoint.locator('a.return').filter({visible:true}).first();
+            assert.equal(await page.locator(scripted?'.appendix .evidence-range-select:visible':'.appendix .native-range-list:visible').count(),1,'only the selected source context exposes a range chooser');
+            assert.equal(await formerReturn.getAttribute('href'),former.target);
+            await formerReturn.focus();await page.keyboard.press('Enter');
+            assert.equal(new URL(page.url()).hash,former.target,'old source aliases return to the exact primary semantic role');
+            assert.ok(await page.locator('.diagram-stage svg [id="'+former.target.slice(1)+'"]').isVisible());
             assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
             rows.push({candidate:candidate.id,scripted,width,original_units:actual.texts.length,code_payloads:actual.code.length,all_citation_sets:true,overview:true,nested_record_navigation:true});
           }catch(error){await page.screenshot({path:path.join(out,`${candidate.id}-${scripted}-${width}-failure.png`)});throw error;}finally{await context.close();}

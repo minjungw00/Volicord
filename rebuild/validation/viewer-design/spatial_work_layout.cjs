@@ -82,7 +82,7 @@ function arrangeWork({work}) {
   const reportHeading=make('h2','reading-layer-heading',verification.querySelector(':scope > summary').textContent);
   verification.querySelector(':scope > summary').replaceWith(reportHeading);
   reportSection.append(...verification.childNodes);verification.replaceWith(reportSection);
-  const json=required('[id$="-full-verification"]'),recordsLink=make('a','verification-records-return','검증 원문에서 개별 기록 확인');recordsLink.href='#'+reportList.id;
+  const json=required('[id$="-full-verification"]'),recordsLink=make('a','paragraph-evidence-action verification-records-return','검증 원문에서 개별 기록 확인');recordsLink.href='#'+reportList.id;
   reportSection.append(recordsLink);
   raw.append(make('p','record-intro','Checkpoint에 기록된 보고를 명령 Source별로 묶었습니다. 항목을 열면 보고 원문, 실행 메타데이터와 캡처 근거를 확인할 수 있습니다. 보고 건수는 테스트 수나 새 실행 횟수가 아닙니다.'),reportList,json);records.append(raw);
   audit.remove();
@@ -171,17 +171,31 @@ function arrangeWork({work}) {
       if(after)after.after(picker);else target.prepend(picker);
     }
   }
+  function evidenceAction(actions,origin,links){
+    const action=make('a','evidence-link paragraph-evidence-action','근거 보기');action.href=links[0].getAttribute('href');action.dataset.origin=origin;
+    action.dataset.citationTargets=JSON.stringify(links.map(n=>n.getAttribute('href')));
+    action.setAttribute('aria-label','이 설명의 근거 '+links.length+'개 보기');actions.replaceChildren(action);
+  }
+  for(const caption of doc.querySelectorAll('.diagram-caption-claims')){
+    const actions=caption.querySelector(':scope > .evidence-actions');
+    if(!actions)throw Error('diagram caption citation missing');
+    caption.replaceWith(actions);
+  }
   for(const actions of doc.querySelectorAll('.unit > .evidence-actions')){
     const unit=actions.parentElement,text=unit.querySelector(':scope > p.unit-text');
     const links=[...actions.querySelectorAll('a.evidence-link')];
     if(!text||!links.length)continue;
     rangePicker(links,unit.id);
-    const action=make('a','evidence-link paragraph-evidence-action','근거 보기');action.href=links[0].getAttribute('href');action.dataset.origin=unit.id;
-    action.dataset.citationTargets=JSON.stringify(links.map(n=>n.getAttribute('href')));
-    action.setAttribute('aria-label','이 문단의 근거 '+links.length+'개 보기');actions.replaceChildren(action);
+    evidenceAction(actions,unit.id,links);
   }
   for(const claim of doc.querySelectorAll('.diagram-claim')){
-    const links=[...claim.querySelectorAll('a.evidence-link')];if(links.length)rangePicker(links,claim.id);
+    const links=[...claim.querySelectorAll('a.evidence-link')];
+    if(links.length){rangePicker(links,claim.id);evidenceAction(claim.querySelector('.evidence-actions'),claim.id,links);}
+    const context=claim.querySelector('.diagram-claim-context');
+    if(context){const body=make('div','diagram-claim-context');for(const child of [...context.childNodes])if(child.nodeName!=='SUMMARY')body.append(child);context.replaceWith(body);}
+    const header=make('header','diagram-claim-header'),back=claim.querySelector('.diagram-return');
+    if(back){back.className='diagram-return';back.textContent='도식으로 돌아가기';header.append(back);}
+    header.prepend(claim.querySelector(':scope > h3'));claim.prepend(header);
   }
   for(const bar of appendix.querySelectorAll('.point-bar')){
     bar.classList.add('reading-panel-header');
@@ -212,6 +226,24 @@ function arrangeWork({work}) {
   // One SVG per scene; a native radio control also works without JavaScript.
   for(const figure of main.querySelectorAll('.admitted-diagram')){
     const svg=figure.querySelector('.diagram-full-view svg');if(!svg)continue;
+    // Retire duplicate renderings and instructions. Existing source aliases return
+    // to the same semantic element in the sole primary drawing.
+    const timeline=figure.querySelector(':scope > .diagram-timeline');
+    if(timeline){
+      const redirects=new Map([[timeline.id,figure.id]]);
+      for(const a of timeline.querySelectorAll('a.diagram-element[id]')){
+        const primary=a.id.replace(':timeline-','-');
+        if(!svg.querySelector('[id="'+primary+'"]'))throw Error('primary timeline role missing: '+primary);
+        redirects.set(a.id,primary);
+      }
+      const retired=new Set([timeline,...timeline.querySelectorAll('[id]')].map(n=>n.id));
+      for(const link of document.querySelectorAll('a[href^="#"]')){
+        const id=link.getAttribute('href').slice(1);
+        if(redirects.has(id))link.href='#'+redirects.get(id);
+        else if(retired.has(id)&&!timeline.contains(link))throw Error('unmapped timeline reference: '+id);
+      }
+    }
+    for(const extra of figure.querySelectorAll(':scope > .diagram-timeline,:scope > .diagram-relations,:scope > .diagram-alternative,.spatial-help'))extra.remove();
     figure.classList.add('work-overview');
     const viewport=svg.closest('.diagram-viewport');
     viewport.style.setProperty('--overview-width',svg.getAttribute('width')+'px');
@@ -221,11 +253,10 @@ function arrangeWork({work}) {
       for(const mode of ['wide','medium','narrow'])for(const axis of ['width','height'])viewport.style.setProperty('--overview-'+mode+'-'+axis,svg.style.getPropertyValue('--map-'+mode+'-'+axis));
     }
     const scales=make('fieldset','native-overview-controls');scales.append(make('legend','','도식 보기'));
-    for(const [value,label] of [['fit','전체 보기'],['read','읽기 75%'],['full','100%']]){
+    for(const [value,label] of [['fit','가로 맞춤'],['read','읽기 75%'],['full','100%']]){
       const l=make('label'),input=make('input');input.type='radio';input.name=figure.id+'-scale';input.dataset.nativeScale=value;input.defaultChecked=value==='fit';l.append(input,document.createTextNode(label));scales.append(l);
     }
-    const help=make('p','spatial-help work-overview-help','전체 보기로 시작합니다. 작은 글은 읽기 75%나 확대 기능으로 확인하세요.');
-    viewport.before(scales,help);
+    viewport.before(scales);
     const stage=make('div','diagram-stage');viewport.before(stage);stage.append(viewport);
     stage.prepend(scales);
     const navigation=figure.querySelector('.spatial-navigation');if(navigation)stage.prepend(navigation);
@@ -234,15 +265,13 @@ function arrangeWork({work}) {
     scales.append(toggle,expand);
     const header=make('header','reading-panel-header figure-panel-header'),close=make('label','panel-close','×');close.htmlFor=toggle.id;close.dataset.panelClose='';close.setAttribute('aria-label','도식 닫기');header.append(make('strong','','도식 크게 보기'),close);figure.prepend(header);
     const reset=figure.querySelector('[data-world-action="reset"]');if(reset){reset.textContent='읽기 75%';reset.setAttribute('aria-label','읽기 75%');}
-    const fit=figure.querySelector('[data-world-action="fit"]');if(fit){fit.textContent='전체 보기';fit.setAttribute('aria-label','전체 보기');}
-    const cameraHelp=figure.querySelector('.spatial-camera-help');if(cameraHelp)cameraHelp.textContent='빈 배경 끌기·방향 버튼/키로 이동합니다. 전체 보기에서 위치를 파악하고, 읽기 75% 또는 선택 관계로 확대해 읽으세요. Tab과 Enter로 근거를 엽니다. Esc로 돌아갑니다.';
-    const helpBox=make('details','diagram-help work-disclosure');helpBox.append(make('summary','','도식 조작 안내'));for(const p of figure.querySelectorAll('.spatial-help'))helpBox.append(p);figure.querySelector('.diagram-full-view').after(helpBox);
+    const fit=figure.querySelector('[data-world-action="fit"]');if(fit){fit.textContent='가로 맞춤';fit.setAttribute('aria-label','가로 맞춤');}
     if(navigation){
       const chooser=navigation.querySelector('details');chooser.querySelector('summary').textContent='이동';
       const menu=make('div','diagram-jump-menu'),pan=make('div','diagram-pan-controls');
       for(const action of ['left','right','up','down','focus']){const button=navigation.querySelector('[data-world-action="'+action+'"]');if(button)pan.append(button);}
       menu.append(pan,chooser.querySelector('ul'));chooser.append(menu);
-      for(const [action,label] of [['fit','전체'],['reset','75%'],['expand','↗']]){const button=navigation.querySelector('[data-world-action="'+action+'"]');if(button){button.textContent=label;button.dataset.compactLabel=label;}}
+      for(const [action,label] of [['fit','가로'],['reset','75%'],['expand','↗']]){const button=navigation.querySelector('[data-world-action="'+action+'"]');if(button){button.textContent=label;button.dataset.compactLabel=label;}}
     }
     for(const detail of figure.querySelectorAll(':scope > details'))detail.classList.add('work-disclosure');
   }

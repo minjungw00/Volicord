@@ -43,8 +43,8 @@ Decision and validation owners.
 ### Bounded spatial comparison evidence
 
 The comparison started on 2026-10-30; the latest scoped refinement starts at
-`rebuild/.local/spatial-reading-20261030/candidates-33/index.html`. Manifest SHA-256:
-`498cf94247c5b229a6c2a130e53cb93fe88bb96bb6b8480baf7352e60bbdcd3b`.
+`rebuild/.local/spatial-reading-20261030/candidates-37/index.html`. Manifest SHA-256:
+`060df5ffc10a07bde20e9b90cbaffff3b83e72299c9db49a9466a396104584dd`.
 Its twelve file hashes identify three alternatives for the Volicord concept map,
 three for the historical Music Deck closure Work, current/edited fixed-layout Work
 and the proposed camera/editorial combination, plus the reserved request-state
@@ -217,6 +217,46 @@ The resulting 48 scoped conditions apply to the changed candidates. Input/toolin
 geometry/archive integrity and the open-originals return screenshots also exit 0;
 all prior evidence stays preserved. Physical/assistive/other-engine and live Runtime
 observations remain outside this local presentation delivery.
+
+Package 37 follows the next scoped diagram/verification-action feedback. Initial
+E1/CE1 scale fills the available drawing width; vertical content may extend beyond
+the normal viewport. Native diagrams use the existing width-responsive SVG branches;
+the camera case keeps the fixed world. This is orientation, not a tiny-text reading
+pass; deliberate readable zoom and expanded viewing remain available. All twelve
+primary SVG hashes still match the prior package. No world coordinates, role labels,
+conditions, claims or Source code bytes are reauthored.
+
+Verification-original, body, caption and diagram evidence actions share computed
+typography/padding/colors/borders and no text decoration. Caption evidence opens its
+original complete range family without the old intermediate claim-list disclosure.
+Selected diagram claims use a consistent white card, directly readable original
+assertion/conditions, one evidence action and a quiet return. A nested Source alias
+hides its ancestor's chooser, preserving only the active exact family. Complete cited
+code stays folded in the evidence pane. The four user-named help/duplicate sections
+are removed from E1/CE1; one primary drawing retains every original role and target.
+Historical timeline Source aliases now return to the corresponding primary role.
+The duplicate textual SVG dump is retired; all raw record/provenance payloads stay
+byte-exact. Original baseline alternatives and rejected candidates remain unchanged.
+
+Hover/focus treatment covers all 22 roles, including participants, identifiers,
+messages and conditions. Labels underline and nodes/message cards gain a restrained
+background; route strokes apply only to paths. Intermediate 34–36 and their original
+observations are preserved, including corrected caption-list scope, label-stroke and
+ancestor-picker defects. One initial layout check mistakenly included the duplicate
+SVG in its primary inventory; its replacement compares the first primary SVG against
+the frozen primary roles and separately checks removal/redirects. A visual helper
+also queried the inactive claim target after opening evidence; its logging was fixed.
+These were retained diagnostic attempts, not passing results or human acceptance.
+Package 37's focused checks exit 0: 20 original-byte/native/alias-return conditions,
+10 presentation conditions at five widths (hovering all primary roles, equal action
+styles, direct conditions, exact code and expanded return) and 18 E1/CE1 file/HTTP/
+native/scripted conditions on hash-verified copies of the delivery bytes. The active
+chooser is unique for both body and diagram aliases and retains every original range.
+All 44 inputs, four tooling hashes, twelve primary SVG hashes and the 14-member ZIP
+are verified. Dependent screenshot review inspects normal width fit, hover, selected
+claims and evidence at 1440/390. Physical touch, assistive technology, other engines
+and independent human reading remain unobserved; no Rust/aggregate/V11/provider or
+live Product lifecycle run is part of this isolated comparison.
 
 Original context/R3 and 44 input files remain ignored and unchanged; 107 original
 claim/range bindings were byte-verified. Source-first inspection independently

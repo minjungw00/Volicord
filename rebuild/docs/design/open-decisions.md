@@ -586,8 +586,8 @@ clean install
 - Geometry/navigation selection and full editorial acceptance: **pending**. The
   2026-11-03 instruction authorizes the reviewed local Work arrangement below;
   it does not select A/B/C or authorize Product-default changes/republication.
-- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-33/index.html`;
-  manifest SHA-256 `498cf94247c5b229a6c2a130e53cb93fe88bb96bb6b8480baf7352e60bbdcd3b`.
+- Concrete comparison: `rebuild/.local/spatial-reading-20261030/candidates-37/index.html`;
+  manifest SHA-256 `060df5ffc10a07bde20e9b90cbaffff3b83e72299c9db49a9466a396104584dd`.
   Its manifest gives every immutable candidate/file hash. `volicord-ko-{A,B,C}`
   compares concept-map geometry/navigation; `musicdeck-work-ko-{A,B,C}` compares
   closure geometry/navigation; `musicdeck-work-ko-{E0,E1}` compares editorial order
@@ -708,6 +708,27 @@ clean install
   reproduces first-line occlusion with other originals already open. The check retains
   that real navigation sequence, verifies the passage below the sticky contents and
   preserves the failed package/attempt. No record meaning or organization changes.
+- Further scoped feedback on 2026-11-04, verbatim: “검증 보고의 검증 원문에서 개별
+  기록 확인 버튼도 다른 근거 보기 버튼과 디자인이 동일해야 합니다. 현재는 이
+  버튼만 취소선이 존재합니다.” “도식이 처음에는 도식의 크기가 도식 창의 좌우에
+  맞도록 표시되는 것이 좋아보입니다.” “도식에서 선택 가능한 요소에 대한 hover
+  처리가 더 명확하면 좋을 것 같습니다. 현재는 화살표 같은 일부 경우만 기능합니다.”
+  “도식의 근거와 주장은 아직 이전 디자인을 사용하는 것으로 보입니다.” “도식에서
+  도식 조작 안내, 전체 참여자 타임라인 · 상세에서 가로로 이동, 메시지 · 연결을
+  선택해 양끝과 근거 읽기, 도식 의미와 요소별 설명은 없어도 되는 내용으로 보입니다.”
+  Package 37 gives verification-original/body/caption/diagram actions the same quiet
+  design with no text decoration. Initial scale fits width; long diagrams scroll
+  vertically, using existing responsive native geometry where available. All 22
+  primary roles react to hover/focus, with route strokes confined to paths. Selected
+  diagram claims keep original conditions directly readable and open one exact
+  citation-family chooser. The caption's old claim list is removed; its original
+  bindings, primary role claims and evidence index remain. The four named help/
+  duplicate sections are removed, and old timeline Source returns target the same
+  primary roles. Shared parent Source context cannot duplicate the active chooser.
+  Intermediate 34–36 and original observations remain preserved, including corrected
+  text-stroke/duplicate-picker issues. Main SVG bytes, original substantive prose,
+  record payloads and exact Source bindings survive. This is local E1/CE1 refinement;
+  geometry/default adoption and broader Product republication remain unselected.
 - User action: identify this package/hash, choose A/B/C for each primary case and
   E0/E1 for the Work, specify scope and corrections. Rejecting all candidates is
   valid. Recommendation or descriptive technical observations do not fill this field.
