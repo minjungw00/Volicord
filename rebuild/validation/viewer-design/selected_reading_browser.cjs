@@ -55,6 +55,22 @@ async function main(){
     await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();
     const v=figure.locator('.diagram-viewport');await v.focus();await v.press('ArrowDown');await v.press('ArrowRight');
     await figure.locator('[data-diagram-action=right]').click();
+    const hit=await v.evaluate(n=>{
+     const r=n.getBoundingClientRect();
+     // Narrow viewports may contain full-width message hitboxes. Find a real
+     // visible background gap rather than assuming three fractional samples.
+     for(let y=Math.max(80,r.top+8);y<Math.min(innerHeight-16,r.bottom-8);y+=12)
+      for(let x=Math.max(8,r.left+8);x<Math.min(innerWidth-8,r.right-8);x+=12){
+       const p={x,y},at=document.elementFromPoint(x,y);
+       if(at&&n.contains(at)&&!at.closest('a,text'))return p;
+      }
+     throw Error('blank world drag target unavailable');
+    });
+    const panBefore=await v.evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,selection:getSelection().toString()}));
+    await page.mouse.move(hit.x,hit.y);await page.mouse.down();await page.mouse.move(hit.x-60,hit.y-40,{steps:4});await page.mouse.up();
+    const panAfter=await v.evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,selection:getSelection().toString()}));
+    assert.ok(panAfter.left>panBefore.left||panAfter.top>panBefore.top,'actual blank-background pointer drag pans the world');
+    assert.equal(panAfter.selection,panBefore.selection,'drag does not replace text selection');
    }
    const geometry=await inspectDiagram(svg,diagram,realization.paragraphs);write(`${mode}-${width}-geometry.json`,geometry);
    assert.deepEqual(geometry.errors,[],'source-derived visible geometry');
@@ -99,6 +115,7 @@ async function main(){
     await point.locator('.citation-read').click();await page.waitForFunction(id=>document.getElementById(id)?.dataset.unavailable==='true',await point.getAttribute('id'));
     assert.equal(await page.locator(`[data-reader-publication="${publication}"] code`).count(),0,'denial purges every dependent code copy');
     assert.equal(await page.locator(`[data-reader-publication="${publication}"] svg`).count(),0,'denial purges scene/labels/alternatives');
+    assert.equal(await page.locator(`[id="${before.id}"]`).count(),1,'opaque origin survives without old meaning');
     await page.setViewportSize({width:1024,height:900});await page.goBack();await page.waitForTimeout(80);
     assert.equal(await page.locator(`[data-reader-publication="${publication}"] svg`).count(),0,'resize/history cannot revive a denied scene');
    }

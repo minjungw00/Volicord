@@ -50,6 +50,8 @@ fn node_kind(node: &DiagramNode, locale: FixedLocale, common_type: bool) -> Stri
 #[path = "diagram_graph.rs"]
 mod graph_layout;
 use graph_layout::graph;
+#[path = "diagram_world.rs"]
+mod world;
 
 fn sequence<'a>(
     d: &'a GroundedDiagram,
@@ -177,9 +179,10 @@ fn sequence<'a>(
         let context_width = (reading_width - 8).min(600);
         let context_center = 16 + context_width / 2;
         let hh = 18 * count(&heading, context_width, 12) + 12;
-        let gh = guard
-            .as_ref()
-            .map_or(0, |s| 20 * count(s, context_width, 13) + 12);
+        let guard_size = if width > 760 { 16 } else { 13 };
+        let gh = guard.as_ref().map_or(0, |s| {
+            (guard_size + 7) * count(s, context_width, guard_size) + 12
+        });
         panel(
             &mut layout.background,
             8,
@@ -210,8 +213,8 @@ fn sequence<'a>(
                 y + 16,
                 value,
                 context_width,
-                13,
-                20,
+                guard_size,
+                guard_size + 7,
             );
             out.push_str("</g>");
             layout.elements.insert(format!("guard:{}", gi + 1), out);
@@ -326,15 +329,22 @@ fn render(
     locale: FixedLocale,
 ) -> Result<String, String> {
     let marker = format!("{ns}:arrow");
+    let spatial = match &d.meaning {
+        DiagramMeaning::Sequence {
+            participants,
+            groups,
+        } => participants.len() > 3 || groups.iter().map(|g| g.messages.len()).sum::<usize>() > 4,
+        _ => d.nodes().len() > 3 || relations(d).len() > 4,
+    };
     let layout = |width| {
         if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
             sequence(d, texts, width, &marker, locale)
+        } else if spatial {
+            world::graph(d, texts, &marker, locale)
         } else {
             graph(d, texts, width, &marker, locale)
         }
     };
-    let spatial = matches!(&d.meaning, DiagramMeaning::Sequence { participants, groups }
-        if participants.len() > 3 || groups.iter().map(|g| g.messages.len()).sum::<usize>() > 4);
     // A single world is independent of the article/panel width. A camera never
     // selects different meaning or geometry. Small scenes retain inline layout.
     let world_width = if spatial {

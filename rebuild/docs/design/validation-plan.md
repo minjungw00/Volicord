@@ -4583,3 +4583,141 @@ Browser/implementer inspection is source-familiar and dependent. Physical touch,
 other browser engines, native assistive reading and independent first-reading/user
 acceptance remain unobserved. The transfer case remains `browser-request-states`
 from the original frozen plan; its first Product result must precede general fixes.
+
+### Selected spatial reading across consumers — 2026-11-05
+
+First implementation commit: `31f1f8fe4938401930e00815e6caa15fa32e7b9a`.
+Its directly coupled core/browser rechecks both exit 0. The same held-out identity,
+`browser-request-states` (historical Music Deck repository basis `74304b69`), was
+retained before generalization. The first Korean retained read had expired Source
+windows; an earlier default-English status diagnostic was corrected explicitly.
+Initial narrow/wide geometry controls passed, but dependent inspection still found
+long parallel tracing and repeated ownership. Those observations remain separate
+from the subsequent general directed-world correction. No case name/coordinate
+selects a production layout. The normal historical Work remains `acc07330`, and
+Volicord explanation remains `e6da693a`; none is a fresh repository-wide analysis.
+
+The user's separate authorization extends only the remaining Volicord ten files /
+twenty cited windows (49,038 bytes) and Music Deck thirteen files / twenty-one windows
+(47,598 bytes) in task Runtime copies. English exact ranges are contained in these
+same newly authorized observations. Original bodies/IDs/deadlines remain unchanged;
+there is no new execution, automatic capture or external transmission. All six
+bilingual examples use ordinary current prepare/compose/record, with exact-language
+status and independent Work name/summary authority. Display-only geometry itself
+requires no republication or format transition. Explanation 9 / metadata 11 persist.
+
+Preserved task evidence root: `rebuild/.local/selected-reading-d0xl1chz/`; raw data,
+publications, runtimes, screens, installation prefixes, configurations and failed
+attempts remain ignored. `evidence-summary-final.json` checks complete figure/width/mode
+membership and successful numeric wrappers, not only an exit from a helper. Inputs,
+R3 extraction, twelve candidate files, forty-four frozen inputs, four comparison
+tools and delivery ZIP were verified again unchanged (`spatial-final-immutable-inputs`).
+
+Focused technical results, all with preserved numeric exit 0:
+
+- `spatial-transfer-journey-browser` final attempt: 69 exact state-role journeys at
+  390px over real HTTP, script-disabled HTTP and file export. Complete guard,
+  endpoint, owner, identifier, original range and return are checked. The first
+  transfer result and partial/interrupted attempts are preserved separately.
+- Twelve final publication/mode jobs (`spatial-corpus-*` plus
+  `spatial-installed-native-branch-review`): six publications / sixteen diagrams,
+  90 page conditions, 240 figure conditions at 1440/1024/768/390/320, and 330
+  source/return rows including deep temporal journeys. All files are ordinary new
+  installed exports; native contexts disable scripts and never rewrite the HTML.
+  Static-only jobs start no listener and block non-file/data requests.
+- `spatial-final-selected-lifetime-browser`: all fifteen representative conditions,
+  expanded and panel-resized camera return, and denial/history/resize rejection.
+  `spatial-actual-pointer-drag` additionally uses real blank-background mouse drag;
+  keyboard, visible non-drag controls and text selection remain separate assertions.
+- `spatial-generalized-interactions` final attempt: native modifier, history/reload,
+  modality breakpoints, expanded return, late range isolation through the actual
+  dropdown, shared aliases, foreign fragments, comparison dates, bfcache revalidation,
+  late-response teardown and typed denial. The obsolete hidden native disclosure
+  selector failed first; the maintained test now uses the actual selected UI.
+- `spatial-world-stress-final-browser`: 56 glyph/path/meaning conditions, including
+  long/mixed Korean/Latin, dense identifiers, repeated names, self-calls, strict/par
+  guards, cycles, twelve components, eight participants and spacious flow branches.
+  Deliberate hidden-label/type/owner/order/path-collision controls remain negative.
+  Actual installed Volicord review first exposed a short branch label crossing its
+  diamond tip; centered branch content and the added spacious-branch control fix it.
+- `spatial-generalized-viewer-tests`: 139 pass / four explicitly ignored. The initial
+  restricted attempt failed three actual socket tests with EPERM; the complete
+  loopback-capable retry passed. The original-publication cleanup/restart test,
+  stage-profile test and admitted-renderer review were subsequently invoked explicitly;
+  the optional large-catalogue profile remains unrun. No legacy test is a gate here.
+- `spatial-final-install-branch`, `spatial-install-smoke-final`: the actual installed
+  CLI/MCP/Viewer, isolated toy-repository enable/disable, uninstall preserving Runtime,
+  reinstall and doctor succeed. `spatial-installed-normal-publications-final` composes,
+  records and exports all six later publications under Landlock with actual development
+  JS/CSS/Cargo reads denied. Only the three shipped binaries are in the prefix.
+  `spatial-installed-no-node-export` additionally denies the actual Node executable,
+  uses an empty executable PATH, grants only system libraries and task/cited paths,
+  and exports again; all thirteen representative code payloads remain byte-identical.
+- `spatial-installed-cleanup-restart`: all six original admitted publications retain
+  exact meaning/identity after real expiry cleanup, CLI restart and new export; expired
+  code is absent. `spatial-installed-deletion` uses supported Source deletion in a
+  disposable Runtime: installed CLI/MCP/new export exclude the dependent article,
+  diagrams and code while returning a truthful unavailable diagnostic. An initial
+  test incorrectly expected no diagnostic paragraph; it was corrected without
+  changing Product failure behavior. Open-page typed denial is separately covered.
+- `spatial-installed-static-boundary`: all six actual exports have closed unique
+  fragments, no active/script content, live links, external assets or request tokens.
+  Final Clippy with warnings denied, format, fixture manifest and Reader owner/modal
+  checks pass. Workspace metadata confirms nine packages under `rebuild/` and no
+  legacy Volicord dependencies. Earlier byte/role/locale/transport tests remain the
+  directly coupled support from the first implementation; no bound was relaxed.
+
+A bounded private cost plan precedes measurements; task builds/tests/browser work
+finished before sampling. These are separate axes, without a before/after speedup:
+
+| Axis | Actual bounded observations |
+| --- | --- |
+| Retained / new static output | Six exact retained bodies: 38,278–162,938 UTF-8 bytes; full exported HTML: 644,213–1,582,053 bytes. Source payload, retained interpretation, metadata and full HTML are not interchangeable sizes. |
+| Complete installed MCP | One new process per publication, uncontrolled OS caches; all pages and every distinct cited window reassemble exactly. 19–44 calls, 167,031–502,752 total transport bytes, 0.421–4.636 seconds, 20,556–51,388 KiB sampled process high-water RSS. Each response stays within the unchanged 65,536-byte envelope and every server exits 0. |
+| Projection / HTML | 36 optimized in-process samples, three per live/snapshot mode per case: projection 47.867–310.839 ms; HTML render 4.696–46.669 ms. Not OS-cache-cold, transport or file-publication time. |
+| Pure local SVG | One sample per sixteen admitted figures: 0.045–13.588 ms; 7,588–29,527 bytes, English fixed UI with actual authored languages. No authority reads or browser cost. |
+| Installed browser | 24 separate one-shot navigations over six publications, 1440/390, live HTTP / script-disabled file. Native navigation load-event end: live 138.1–586.4 ms, file 67.9–190.8 ms. DOM: live 5,175–11,405; file 5,182–11,274. Bundled live script: 64,595 bytes; file: zero. Native PaintTiming and renderer counters are retained separately. |
+
+Process exits 143 and missing wrapper records on earlier long attempts are retained
+as incomplete attempts, never successful matrix membership. Later per-publication
+jobs exit explicitly after awaited listener/browser cleanup and provide complete
+numeric results. No old artifacts were overwritten or relabelled as passes.
+
+All reading judgments here are source-familiar/dependent. Independent neutral reading,
+actual user acceptance, assistive technology, other browser engines, physical touch
+and native browser-chrome zoom remain unobserved. Component timings do not explain
+or cure the previously recorded V11 duration breach (906,840.081 ms / 900,000 ms).
+Per the current request, no repository-wide aggregate, Final, official V11,
+authoritative gate, provider qualification or external Source transmission ran.
+
+The final precision check exposed additional transient return defects before the
+second commit: a narrow expanded graph restored its outer scroll before expanding
+its world, and a pending desktop ResizeObserver centered over an otherwise exact
+pan restoration. Navigation now restores scene dimensions before the outer container;
+figures remember the handled viewport dimensions so an obsolete callback cannot
+recenter the return. The strict five-width control preserves page/figure/viewport
+position, visible wording coordinates, focus and fresh deep links. A routed-stroke
+activation also retains the actual clicked anchor rather than substituting its
+primary label. The actual 320px pointer-route/Source/return control passes. Original
+failures remain in `precise-world-browser-*` / `precise-world-route-*`; tests retain
+their strict positional/wording assertions, not a relaxed substitute.
+
+The final installed prefix is `selected-reading-d0xl1chz/install-final-04/`.
+All six later normal publications in `installed-publications-04/` were again prepared,
+composed, recorded and exported with four actual Landlock denials: the existing Node
+executable plus development JS/CSS/Cargo. The final HTTP and server-free file matrices
+are repeated against these publications, alongside the expanded/stroke regression.
+Earlier installed prefixes, publications, byte profiles and matrices remain intact.
+No semantic format, Source deadline or generation/qualification bound changed in
+these transient interaction repairs.
+
+
+Final installation/publication/matrix/measurement receipts are the `spatial-final-*`
+focused attempts for `install-final-04` / `installed-publications-04`. The full 90
+page / 240 figure / 330 Source-and-deep-return matrix passes on that final asset set;
+all 69 held-out role and 56 controlled geometry observations remain separately
+classified. The five-width expanded/route regression and the five-width actual
+pointer/panel/denial check also pass on the final installation. The final 24 browser,
+36 stage, sixteen pure-layout and six full-MCP samples above were repeated serially
+only after those support jobs finished. Earlier cost-01 measurements are preserved;
+the table uses cost-02. There is still no before/after causal or qualification claim.

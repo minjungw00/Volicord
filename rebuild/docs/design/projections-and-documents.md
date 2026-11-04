@@ -3535,3 +3535,14 @@ Duplicate primary/timeline scenes and their duplicate text/menu views are replac
 one fully labelled temporal scene; structured CLI/MCP diagram meaning stays complete.
 Pure camera/layout changes require no new semantic publication. Actual editorial
 changes still use ordinary prepare/compose/record and separate summary authority.
+
+
+Renderer 20 extends the same local world/viewport boundary to complex graphs. The
+bounded directed-layer layout derives node sizes, route corridors and cycle channels
+from admitted roles; small inline geometry remains responsive. Actual endpoint support
+and one state-owner/type key are Derived presentation of the existing exact roles.
+State-owner/condition/identifier origins and qualified captions remain selectable.
+A failed layout retains inert complete textual meaning rather than a missing alternative.
+No new stage, group, caption role or semantic-format extension is required. Pure layout
+and native/live enhancement preserve publication identity; normal new articles use
+explicit allowed evidence and current prepare/compose/record as before.

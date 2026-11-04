@@ -73,11 +73,12 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
       }
       if(f.diagram.meaning.kind==='state') {
         const node=f.diagram.meaning.nodes[0];
-        const local=page.locator('svg a[id="'+f.id+'-'+node.id+'"] text:visible').last();
+        const global=await page.locator('svg').evaluate(n=>n.classList.contains('spatial-world'));
+        const local=page.locator('svg a[id="'+f.id+'-'+(global?'state:owner':node.id)+'"] text:visible').last();
         const saved=await local.innerHTML();
         await local.evaluate(n=>n.textContent='State owner: previous figure');
         const wrongOwner=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
-        assert(wrongOwner.errors.some(e=>e.kind==='missing-visible-meaning'&&e.element===node.id),'foreign local ownership must fail');
+        assert(wrongOwner.errors.some(e=>e.kind==='missing-visible-meaning'&&e.element===(global?'state:owner':node.id)),'foreign local ownership must fail');
         await local.evaluate((n,v)=>n.innerHTML=v,saved);
         fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-owner-control.json'),JSON.stringify(wrongOwner.errors,null,2),{flag:'wx'});
       }

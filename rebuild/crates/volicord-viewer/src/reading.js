@@ -51,12 +51,12 @@
     // Return memories contain DOM references; release affected detached nodes
     // as well as the visible regions and the original-code buffers below.
     citations.forgetPublication(publication);
-    figures.forgetPublication(publication);
     for(const memory of [diagramReturns,sourceReturns]){
       for(const [token,prior] of memory){
-        if([prior.trigger,prior.figure,prior.viewport].some(node=>node?.closest?.('[data-reader-publication]')?.dataset.readerPublication===publication))memory.delete(token);
+        if(prior.camera?.publication===publication||[prior.trigger,prior.figure,prior.viewport].some(node=>node?.closest?.('[data-reader-publication]')?.dataset.readerPublication===publication))memory.delete(token);
       }
     }
+    figures.forgetPublication(publication);
     for (const region of document.querySelectorAll('[data-reader-publication]')) {
       if (region.dataset.readerPublication !== publication || !region.isConnected) continue;
       region.classList.remove('diagram-expanded');
@@ -193,8 +193,10 @@
           // event. Restore the activating Source button once more after that
           // navigation, without taking focus from another user-selected control.
           if (active !== target && active !== destination && active !== document.body) return;
-          if(sourceReturn?.figure?.isConnected){sourceReturn.figure.scrollLeft=sourceReturn.figureLeft;sourceReturn.figure.scrollTop=sourceReturn.figureTop;}
           if(sourceReturn?.viewport?.isConnected){if(!figures.restore(sourceReturn.figure,sourceReturn.camera)){sourceReturn.viewport.scrollLeft=sourceReturn.left;sourceReturn.viewport.scrollTop=sourceReturn.top;}}
+          // Expansion changes the outer scroll container. Restore it after
+          // the scene dimensions, so anchoring cannot retain the selected claim.
+          if(sourceReturn?.figure?.isConnected){sourceReturn.figure.scrollLeft=sourceReturn.figureLeft;sourceReturn.figure.scrollTop=sourceReturn.figureTop;}
           destination.focus({preventScroll:true});
           if (offset !== undefined) {window.scrollTo(0, offset);if(sourceReturn.triggerTop!==undefined)window.scrollBy(0,destination.getBoundingClientRect().top-sourceReturn.triggerTop);}
           else destination.scrollIntoView({block:'center'});
@@ -218,8 +220,8 @@
         const figure=target.closest('.admitted-diagram');
         const claim=document.getElementById(prior.claim);
         if (claim?.matches('.diagram-claim') && claim.closest('.admitted-diagram')===figure) claim.dataset.active='true';
-        figure.scrollLeft=prior.figureLeft;figure.scrollTop=prior.figureTop;
         if(!figures.restore(figure,prior.camera)){viewport.scrollLeft=prior.left;viewport.scrollTop=prior.top;}
+        figure.scrollLeft=prior.figureLeft;figure.scrollTop=prior.figureTop;
         window.scrollTo(0,prior.y);
         const trigger=prior.trigger?.isConnected?prior.trigger:target;
         window.scrollBy(0,trigger.getBoundingClientRect().top-prior.triggerTop);
@@ -269,7 +271,7 @@
         navigate(diagramLink.getAttribute('href'),next);
         const chosen=document.getElementById(diagramLink.getAttribute('href').slice(1));
         const evidence=chosen?.querySelector('a.evidence-link');
-        if(evidence)openEvidence(evidence,diagramLink.matches('.diagram-route')?element:diagramLink,diagramReturns.get(token));
+        if(evidence)openEvidence(evidence,diagramLink,diagramReturns.get(token));
       }
     }
     const diagramReturn=event.target.closest('a.diagram-return');

@@ -11,10 +11,12 @@ async function inspectDiagram(svg, diagram, prose) {
   const kinds={record:['record','기록'],context_role:['context role','맥락 역할'],reading_group:['read grouping','읽기 묶음'],component:['component','구성요소'],participant:['participant','참여자'],process:['process','처리'],branch:['branch','분기'],initial:['initial','시작'],final:['final','종료'],state:['state','상태'],references:['references','참조'],groups:['groups','묶음'],role_of:['role of','역할'],depends_on:['depends on','의존'],produces:['produces','생성'],data_flow:['data flow','데이터 흐름'],control_flow:['control flow','제어 흐름'],transition:['transition','전이'],call:['call','호출'],return:['return','반환'],await:['await','대기'],state_change:['state change','상태 변경']};
   const expected=(m.nodes||m.participants).flatMap(n=>[{id:n.id,text:label(n.label)},...(n.identifier?[{id:n.id+':identifier',text:label(n.identifier)}]:[])]);
   if(m.owner)expected.push({id:'state:owner',text:label(m.owner),prefix:true});
-  if(owner)expected.push(...m.nodes.map(n=>({id:n.id,text:owner})));
+  const globalOwner=!!owner&&await svg.evaluate(n=>n.classList.contains('spatial-world'));
+  if(owner&&!globalOwner)expected.push(...m.nodes.map(n=>({id:n.id,text:owner})));
+  if(globalOwner)expected.push(...m.nodes.map(n=>({id:n.id,text:owner,accessibility:true})));
   for(const r of m.relations||[]) {
     expected.push({id:r.id,text:label(r.label)});
-    if(owner)expected.push({id:r.id,text:owner});
+    if(owner)expected.push({id:r.id,text:owner,...(globalOwner?{accessibility:true}:{})});
     const endpoint=id=>{const n=m.nodes.find(n=>n.id===id);const name=label(n.label);return n.identifier?`${name} (${label(n.identifier)})`:name;};
     expected.push({id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`,accessibility:true});
     if(r.condition)expected.push({id:r.id+':condition',text:label(r.condition),prefix:true});
@@ -59,7 +61,7 @@ async function inspectDiagram(svg, diagram, prose) {
       for(const [items,prefix] of [[nodes,ko?'모든 노드:':'All nodes:'],[edges,ko?'모든 관계:':'All relations:']]) {
         const uniform=items.length && items.every(n=>n.kind===items[0].kind);
         const legend=uniform && visibleTexts(root).includes(prefix+' '+kindText(items[0].kind));
-        if(legend){const key=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===prefix+' '+kindText(items[0].kind));if(parseFloat(getComputedStyle(key).fontSize)!==12)errors.push({kind:'type-hierarchy',text:key.textContent,fontSize:getComputedStyle(key).fontSize});}
+        if(legend){const key=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===prefix+' '+kindText(items[0].kind));if(parseFloat(getComputedStyle(key).fontSize)!==(root.classList.contains('spatial-world')?13:12))errors.push({kind:'type-hierarchy',text:key.textContent,fontSize:getComputedStyle(key).fontSize});}
         for(const item of items) if(!legend && !visibleTexts(anchor(item.id)).some(t=>t===kindText(item.kind)||t.startsWith(kindText(item.kind)+' [')))errors.push({kind:'missing-visible-type',element:item.id});
       }
     }
@@ -70,7 +72,7 @@ async function inspectDiagram(svg, diagram, prose) {
       if(!primary || primary.textContent!==name || parseFloat(getComputedStyle(primary).fontSize)!==16)errors.push({kind:'label-hierarchy',element:node.id});
       if(node.identifier){
         const support=pick(anchor(node.id+':identifier'),'.diagram-label-support text');
-        if(!primary || !support || support.textContent!==node.identifier.text || parseFloat(getComputedStyle(support).fontSize)!==12 || bounds(support).y<=bounds(primary).y)errors.push({kind:'identifier-hierarchy',element:node.id});
+        if(!primary || !support || support.textContent!==node.identifier.text || parseFloat(getComputedStyle(support).fontSize)!==(root.classList.contains('spatial-world')&&!sequence?13:12) || bounds(support).y<=bounds(primary).y)errors.push({kind:'identifier-hierarchy',element:node.id});
       }
 
     }

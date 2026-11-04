@@ -1229,3 +1229,40 @@ composed/admitted against explicitly authorized new bounded observations; the ol
 Sources remain expired. Code precedes observation metadata. Exact paragraph/diagram
 range families have one chooser; native links retain every original range and return.
 Evidence resizing is bounded transient page state, with pointer/keyboard/default reset.
+
+
+### Transfer and supported spatial reading — 2026-11-05
+
+The predeclared Music Deck `browser-request-states` case exposed excessive narrow
+parallel tracing and repeated ownership in the first actual retained reading. Its
+initial source-familiar inspection is preserved separately from technical geometry
+passes. The general graph policy now applies the selected spacious reading principle
+to complex concept/component/flow/state graphs (more than three nodes or four edges).
+Small graphs keep their native responsive inline layout; this is not an all-diagram
+canvas or adoption of unrelated hand-positioned A/B/C reference examples.
+
+Directed component layers run horizontally with content-sized boxes and separate
+relationship/guard corridors. Strongly connected components, stable ordering, facing
+ports, obstacle routing and bounded cycle channels use admitted roles only. Every
+relationship displays its real endpoints; duplicate primary names retain their
+explicit identifiers. A homogeneous type key and state owner appear once, while
+exact selectable captions keep the qualification at each role. Conditions and actions
+are primary-size text; supporting type/identity stays secondary. No label or guard is
+shortened and no runtime-specific name/coordinate chooses layout. A native Start link
+names the first admitted item and focuses it at readable size in the live world; it
+states navigation order, never a new initial-state or causal claim.
+
+Width-fit and full-position views are orientation, including when their text is small.
+Readable scale, selected relationship, keyboard/visible directional controls, native
+scroll and expansion remain deliberate operations. Native exports contain the same
+bounded full-size world, all claims/ranges and exact return links without scripts.
+Renderer failure alone exposes a complete inert textual alternative; normal output
+has one semantic scene. A known publication denial aborts scene listeners/observers,
+clears geometry and scoped camera/return memory, and keeps only opaque native origins
+for a truthful unavailable return. A previously distributed file cannot be remotely
+revoked; a new export rechecks the current authority.
+
+Expanded return preserves both the outer figure and its inner world viewport. Scene
+size/expansion is restored before outer scroll, and an already handled viewport size
+cannot be re-centered by an obsolete resize callback. A clicked routed stroke returns
+to that same native anchor; it does not borrow a same-worded or primary-label origin.

@@ -815,6 +815,20 @@ renewal, new test execution or external transmission. New captures do not turn t
 historical reported VM results into current executions. Raw originals and earlier
 publications remain unchanged.
 
+The user subsequently authorized “나머지 두 사례의 명시적 새 관측·발행 허용”
+for the other preserved repository explanations: Volicord ten files/twenty cited
+windows (49,038 bytes), Music Deck thirteen files/twenty-one windows (47,598 bytes).
+This extends only bounded new observations/publications in task Runtime copies.
+Existing IDs/deadlines, raw repositories and reported historical results remain
+unchanged; no new execution or external transmission is authorized. Already captured
+containing windows may support another exact admitted range; captures never bridge
+an uncited gap. English equivalents use these same authorized fresh observations.
+
+An initial default-language status diagnostic inspected English, not Korean. The
+subsequent exact `--language ko` read established retained Korean publications with
+expired Source windows. The first held-out Korean reading and that correction remain
+in the preserved attempt; neither diagnosis is evidence of normal new admission.
+
 ## Retained reading and new publication admission — accepted 2026-11-05
 
 - Status: `accepted` by the user's explicit answer, “읽기·새 발행 검증 분리 허용 (권장)”,

@@ -33,6 +33,11 @@ function createReaderFigures({lifetime,modal}) {
   }
   function size(scene) {
     const v=scene.viewport;if(!v.clientWidth)return;
+    // A restore already accounts for the final viewport. A queued observer
+    // from the suspended evidence view must not center over that exact return.
+    const changed=scene.available!==v.clientWidth||scene.viewportHeight!==v.clientHeight;
+    scene.available=v.clientWidth;scene.viewportHeight=v.clientHeight;
+    if(!changed){clamp(scene);return;}
     if(!scene.spatial) {
       const variant=v.clientWidth>=760?'wide':v.clientWidth>=520?'medium':'narrow';
       if(scene.svg.dataset.variant!==variant){
@@ -63,7 +68,8 @@ function createReaderFigures({lifetime,modal}) {
     }
     s.entry=false;s.selected=anchor(s,memory.element)?.id||null;scale(s,memory.scale);
     if(memory.width===s.width&&memory.height===s.height&&memory.available===s.viewport.clientWidth){s.viewport.scrollLeft=memory.left;s.viewport.scrollTop=memory.top;}
-    else center(s,anchor(s,s.selected));clamp(s);return true;
+    else center(s,anchor(s,s.selected));clamp(s);
+    s.available=s.viewport.clientWidth;s.viewportHeight=s.viewport.clientHeight;return true;
   }
   function closeExpansion(figure) {
     if(!figure)return;
@@ -77,24 +83,26 @@ function createReaderFigures({lifetime,modal}) {
   for(const figure of document.querySelectorAll('.admitted-diagram')) {
     const svg=figure.querySelector('svg'),viewport=svg?.closest('.diagram-viewport');if(!svg||!viewport)continue;
     const spatial=svg.classList.contains('spatial-world');
-    const scene={figure,svg,viewport,spatial,scale:1,entry:spatial,selected:null,
+    const controller=new AbortController();
+    const scene={figure,svg,viewport,spatial,controller,scale:1,entry:spatial,selected:null,
       width:Number(svg.getAttribute('width')),height:Number(svg.getAttribute('height')),disconnect:null};
     scenes.set(figure,scene);figure.querySelector('.diagram-controls').hidden=false;
     scene.disconnect=lifetime.observe(viewport,()=>size(scene));size(scene);
+    const on=(type,listener,options={})=>viewport.addEventListener(type,listener,{...options,signal:controller.signal});
     let drag=null;
-    lifetime.on(viewport,'pointerdown',event=>{
+    on('pointerdown',event=>{
       if(!spatial||event.button!==0||event.pointerType!=='mouse'||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||event.target.closest('a,text'))return;
       drag={id:event.pointerId,x:event.clientX,y:event.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};
       viewport.setPointerCapture(event.pointerId);scene.entry=false;
     });
-    lifetime.on(viewport,'pointermove',event=>{
+    on('pointermove',event=>{
       if(!drag||event.pointerId!==drag.id)return;
       viewport.scrollLeft=drag.left+drag.x-event.clientX;viewport.scrollTop=drag.top+drag.y-event.clientY;
     });
-    for(const type of ['pointerup','pointercancel','lostpointercapture'])lifetime.on(viewport,type,()=>{drag=null;});
-    lifetime.on(viewport,'wheel',()=>{scene.entry=false;},{passive:true});
-    lifetime.on(viewport,'pointerdown',()=>{scene.entry=false;},{passive:true});
-    lifetime.on(viewport,'keydown',event=>{
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])on(type,()=>{drag=null;});
+    on('wheel',()=>{scene.entry=false;},{passive:true});
+    on('pointerdown',()=>{scene.entry=false;},{passive:true});
+    on('keydown',event=>{
       if(event.target!==viewport||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey)return;
       if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','PageUp','PageDown'].includes(event.key))scene.entry=false;
       if(event.key==='+'||event.key==='-'){event.preventDefault();scene.entry=false;scale(scene,scene.scale+(event.key==='+'?.25:-.25));}
@@ -103,6 +111,12 @@ function createReaderFigures({lifetime,modal}) {
     });
   }
   lifetime.on(document,'click',event=>{
+    const start=event.target.closest('a[data-diagram-start]');
+    if(start&&event.button===0&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey){
+      const scene=scenes.get(start.closest('.admitted-diagram'));if(!scene)return;
+      const node=anchor(scene,start.dataset.diagramStart);if(!node)return;event.preventDefault();scene.entry=false;
+      if(scene.scale<.75)scale(scene,.75);center(scene,node);node.focus({preventScroll:true});return;
+    }
     const control=event.target.closest('button[data-diagram-action]');if(!control)return;
     const figure=control.closest('.admitted-diagram'),scene=scenes.get(figure);if(!scene)return;
     const action=control.dataset.diagramAction;scene.entry=false;
@@ -125,7 +139,7 @@ function createReaderFigures({lifetime,modal}) {
   });
   lifetime.cleanup(()=>{
     for(const [figure,s] of scenes){
-      s.disconnect();figure.classList.remove('diagram-expanded');figure.querySelector('.diagram-controls').hidden=true;
+      s.controller.abort();s.disconnect();figure.classList.remove('diagram-expanded');figure.querySelector('.diagram-controls').hidden=true;
       s.svg.style.removeProperty('width');s.svg.style.removeProperty('height');s.svg.querySelector('.diagram-content')?.removeAttribute('transform');
       delete figure.dataset.scale;
     }scenes.clear();
@@ -135,6 +149,8 @@ function createReaderFigures({lifetime,modal}) {
     figure.classList.remove('diagram-expanded');modal.set('figure',null);
     const control=figure.querySelector('[data-diagram-action=expand]');control.setAttribute('aria-expanded','false');control.textContent=label('Expand','크게 보기');
   },forgetPublication(publication){
-    for(const [figure,s] of scenes)if(figure.dataset.readerPublication===publication){s.disconnect();scenes.delete(figure);expandedReturns.delete(figure);if(figure.classList.contains('diagram-expanded'))modal.set('figure',null);}
+    for(const [figure,s] of scenes)if(figure.dataset.readerPublication===publication){s.controller.abort();s.disconnect();
+      for(const node of s.svg.querySelectorAll('[id]')){const origin=document.createElement('span');origin.id=node.id;origin.tabIndex=-1;figure.append(origin);}
+      s.svg.replaceChildren();s.svg.removeAttribute('aria-label');s.svg.removeAttribute('title');scenes.delete(figure);expandedReturns.delete(figure);if(figure.classList.contains('diagram-expanded'))modal.set('figure',null);}
   }};
 }

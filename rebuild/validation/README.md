@@ -1390,10 +1390,11 @@ the untouched public export before disposable mutations. `capture_sources: true`
 in the diagram driver also preserves selected-detail and returned screens, with
 publication/language/locale and renderer/font/executable identities.
 
-Node tasks exercise the SVG and full text alternative with their own exact Source
-and return identity. The relationship index contains relations/messages; a declared
-node must have no entry there. This applicability check must not omit the node's
-full text/evidence journey or turn a missing alternative into a pass.
+Node, guard and owner tasks use their own exact SVG/claim/Source/return identities.
+Normal output has one complete scene. A layout failure alone exposes inert complete
+text and exact claim links; a duplicated alternative or relation index is not a
+second normal Product navigation mode. Native/no-JS users retain full-size geometry
+and the same precise role origins without live camera mechanics.
 
 Both `viewer-design/product_review.cjs` and `article_reading_browser.cjs` use
 `source_tasks` per `repository` / selected `work` destination. Declare
@@ -1545,18 +1546,16 @@ The two previously overwritten diagnostics (`metadata.stdout` and
 were not recovered; neither the historical scripts nor their outputs are edited.
 This is caller output protection, not a new evidence framework or qualification.
 
-Connected sequence reading uses the original admitted groups/messages and a native
-complete-timeline disclosure. `document_evidence_journey.cjs` now invokes
-`sequence_views.cjs` after ordinary entry, checking distinct view/element/native
-Source origins, full code, deep return, resize and disclosure after zoom. Its
-default renderer is 17; the declared `renderer` override still identifies diagnostic
-baselines. Initial overview observation rejects sideways discovery for every kind.
-Geometry/context controls read local named endpoints in the folded scene and
-participant lifelines in detail; neither substitutes names for exact identities.
-The retained-reading browser's normal polyglot seed includes both sequence views.
-Use the existing focused runner and fresh output directories. Keep normal caption
-authorship, unchanged-publication rendering, complete CLI/MCP, actual live/native
-exports and real-TTL/deletion results separate from qualitative or human acceptance.
+Connected sequence reading uses one complete admitted temporal world.
+`document_evidence_journey.cjs` invokes `sequence_views.cjs` after initial orientation,
+checking every role/claim origin, exact Source bytes, deep return and resized camera.
+The default renderer is 20; an explicit `renderer` still identifies an older diagnostic
+binary. Complex graphs share the bounded world policy; small graphs remain inline.
+Initial fit records orientation separately from readable text. Subsequent pan/zoom is
+a deliberate reading action, not a defect or permission to conceal ambiguous geometry.
+Native HTTP and file contexts disable JavaScript; controls never rewrite exported HTML.
+Use the focused runner and fresh output directories. Keep normal admission, retained
+meaning, public reassembly and real-TTL/deletion separate from human acceptance.
 
 `end-to-end/multi-repository/project_shell_browser.cjs <private-config.json>`
 exercises actual local-server project navigation, document-only contents, available
@@ -1645,3 +1644,38 @@ alias padding separately from grounding/geometry. It is a necessary-content
 control, not an automated semantic or natural-language quality verdict. Initial
 observations reject preparatory figure panning. Sequence geometry rejects extra
 identifier bands; native relationship focus identifies the exact route and claim.
+
+
+`document_evidence_journey.cjs` additionally accepts `native_only: true` with explicit
+`modes: ["offline"]`. It opens installed-generation files with JavaScript disabled,
+starts no Viewer listener, and blocks every non-file/data request. `all_elements: true`
+enumerates admitted node/participant, message/relation, condition, identifier and owner
+origins independently from ordinary public meaning. The default checks at least one
+exact Source/return per figure; sequence deep return is separately exercised.
+
+`linux-codex-integration/isolated_filesystem.py` is a Linux x86_64 validation-only
+Landlock allowlist runner. Supply explicit `--read`, `--write`, optional `--list`
+(directory descriptors only), mandatory `--deny-probe` development files, then `--`
+and an installed consumer command. It adds restrictions, probes actual EACCES, and
+returns 77 if unavailable. Source verification pins ancestor directory descriptors;
+`--list /` permits that traversal without granting file contents. Development CSS,
+JS and Cargo files must stay denied. Use a task-owned installed prefix/Runtime,
+read-only cited repositories, system libraries and stripped PATH. Normal publication
+and export must succeed inside that boundary; a help-only invocation is insufficient.
+It introduces no Product dependency, authority or platform support claim.
+
+`spatial_read_cost.cjs CONFIG` consumes the ordinary installed Viewer and exact
+publications/exports from the document-reader configuration. It measures one
+navigation at each declared width for live HTTP and script-disabled `file:` reading,
+recording native Navigation/PaintTiming, DOM/SVG counts, inline script bytes and
+renderer heap counters. Current publication/figure identities and absent external
+requests are checked; it performs no observation, authoring or qualification. Run
+it separately from builds, tests, layout/projection profiles and complete MCP reads.
+An explicit private sample plan must identify repetition, cache definition and
+scope. Small diagnostic samples establish no percentile, speedup or reader acceptance.
+
+For a bounded transfer review, a document case may declare nonempty `diagram_ids`.
+Unknown IDs fail; the full publication's figure inventory is still checked before
+the selected journeys. Preserve the initial untouched transfer result and all failed
+or interrupted attempts. A partial attempt without a numeric wrapper result is not
+a completed pass, even if some individual observations passed.

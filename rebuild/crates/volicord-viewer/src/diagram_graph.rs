@@ -17,7 +17,7 @@ fn action(out: &mut String, x: usize, y: usize, s: &str, w: usize) {
     sized_text(out, x, y, s, w, 13, 20);
 }
 
-fn ranks(n: usize, edges: &[(usize, usize)]) -> Vec<usize> {
+pub(super) fn ranks(n: usize, edges: &[(usize, usize)]) -> Vec<usize> {
     // The bounded transitive closure gives stable SCC identities even for cycles.
     let mut reach = vec![vec![false; n]; n];
     for (i, row) in reach.iter_mut().enumerate() {

@@ -692,12 +692,55 @@ fn render_diagrams(
         if !snapshot {
             visual.push_str(&controls);
         }
-        match crate::diagram::svg(d,&texts,&ns,&|id,_|format!("{ns}-{id}-claim"),r.locale.fixed()) {
-            Ok(svg)=>visual.push_str(&format!("<div id=\"{ns}-viewport\" class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용"))),
-            Err(_)=>{
-                visual.push_str(&format!("<p role=\"status\" data-render-failure>{}</p>",text(r.locale,"Diagram rendering failed. Read the admitted text alternative below.","도식 렌더링에 실패했습니다. 아래 검증된 텍스트 표현을 읽으세요.")));
-                for (id,_) in crate::diagram::elements(d) {visual.push_str(&format!("<span id=\"{ns}-{id}\" tabindex=\"-1\"></span>"));}
-            },
+        match crate::diagram::svg(
+            d,
+            &texts,
+            &ns,
+            &|id, _| format!("{ns}-{id}-claim"),
+            r.locale.fixed(),
+        ) {
+            Ok(svg) => {
+                if svg.contains("class=\"connected-overview spatial-world\"") {
+                    if let Some(node) = d.nodes().first() {
+                        let name = volicord_projections::diagram_node_identity(node, &texts)
+                            .unwrap_or_default();
+                        visual.push_str(&format!("<p class=\"diagram-start\"><a href=\"#{ns}-{}\" data-diagram-start=\"{ns}-{}\">{} {}</a></p>",escape(&node.id),escape(&node.id),text(r.locale,"Start:","시작:"),escape(&name)));
+                    }
+                }
+                visual.push_str(&format!("<div id=\"{ns}-viewport\" class=\"diagram-viewport\" tabindex=\"0\" role=\"region\" aria-label=\"{}\">{svg}</div>",text(r.locale,"Diagram · use arrow keys to scroll; browser zoom is unchanged","도식 · 방향키로 스크롤; 브라우저 확대 기능은 그대로 사용")));
+            }
+            Err(_) => {
+                visual.push_str(&format!(
+                    "<p role=\"status\" data-render-failure>{}</p>",
+                    text(
+                        r.locale,
+                        "Diagram rendering failed. Read the admitted text alternative below.",
+                        "도식 렌더링에 실패했습니다. 아래 검증된 텍스트 표현을 읽으세요."
+                    )
+                ));
+                if let Ok(value) =
+                    volicord_projections::diagram_text_localized(d, &texts, r.locale.fixed())
+                {
+                    visual.push_str(&format!(
+                        "<pre class=\"diagram-text\">{}</pre>",
+                        escape(&value)
+                    ));
+                }
+                for (id, _) in crate::diagram::elements(d) {
+                    visual.push_str(&format!(
+                        "<p><a href=\"#{ns}-{id}-claim\">{}</a></p>",
+                        escape(&crate::diagram::element_caption(
+                            d,
+                            &id,
+                            &texts,
+                            r.locale.fixed()
+                        ))
+                    ));
+                }
+                for (id, _) in crate::diagram::elements(d) {
+                    visual.push_str(&format!("<span id=\"{ns}-{id}\" tabindex=\"-1\"></span>"));
+                }
+            }
         }
         visual.push_str("</div>");
         let mut caption = String::new();

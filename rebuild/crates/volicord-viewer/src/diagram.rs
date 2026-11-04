@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/19";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/20";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -675,7 +675,18 @@ mod tests {
             let sequence=GroundedDiagram{id:"long-sequence".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Sequence{participants:nodes,groups:vec![DiagramGroup{order:DiagramOrder::Parallel,condition:Some(label.clone()),messages:messages.clone()},DiagramGroup{order:DiagramOrder::Sequential,condition:None,messages:sequential_messages}]}};
             let state=GroundedDiagram{id:"long-state".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::State{owner:label.clone(),nodes:vec![DiagramNode{ identifier: None,id:"only".into(),kind:DiagramNodeKind::State,label:label.clone()}],relations:vec![DiagramRelation{id:"self".into(),from:"only".into(),to:"only".into(),kind:DiagramRelationKind::Transition,label:label.clone(),condition:Some(label.clone())}]}};
             let flow=GroundedDiagram{id:"long-flow".into(),title:label.clone(),caption_unit:0,semantic_fingerprint:String::new(),meaning:DiagramMeaning::Flowchart{nodes:[("branch",DiagramNodeKind::Branch),("left",DiagramNodeKind::Process),("right",DiagramNodeKind::Process)].iter().map(|(id,kind)|DiagramNode{ identifier: Some(DiagramLabel{text:(*id).into(),..label.clone()}),id:(*id).into(),kind:*kind,label:label.clone()}).collect(),relations:["left","right"].iter().map(|id|DiagramRelation{id:format!("to-{id}"),from:"branch".into(),to:(*id).into(),kind:DiagramRelationKind::ControlFlow,label:label.clone(),condition:Some(label.clone())}).collect()}};
-            for (kind,d) in [("sequence",sequence),("state",state),("flow",flow)] {
+            // The same branch must fit a spacious graph too, where its diamond
+            // shape, not merely its allocated rectangle, bounds the wording.
+            let mut world_flow = flow.clone();
+            world_flow.id = "world-flow".into();
+            if let DiagramMeaning::Flowchart { nodes, relations } = &mut world_flow.meaning {
+                nodes.push(DiagramNode { id: "after".into(), kind: DiagramNodeKind::Process,
+                    identifier: None, label: label.clone() });
+                relations.push(DiagramRelation { id: "after-left".into(), from: "left".into(),
+                    to: "after".into(), kind: DiagramRelationKind::ControlFlow,
+                    label: label.clone(), condition: None });
+            }
+            for (kind,d) in [("sequence",sequence),("state",state),("flow",flow),("world-flow",world_flow)] {
                 for (ui,locale) in [("en",FixedLocale::English),("ko",FixedLocale::Korean)] {
                     let ns=format!("fixture-{kind}-{script}-{ui}");
                     let render_started=std::time::Instant::now();
@@ -921,8 +932,8 @@ mod tests {
             },
         };
         let output = svg(&d, &["state"], "geometry", &|id, _| format!("{id}-claim"))?;
-        assert_eq!(output.matches("All nodes: state").count(), 3);
-        assert_eq!(output.matches("All relations: transition").count(), 3);
+        assert_eq!(output.matches("All nodes: state").count(), 1);
+        assert_eq!(output.matches("All relations: transition").count(), 1);
         fn attribute<'a>(s: &'a str, key: &str) -> Result<&'a str, String> {
             s.split_once(&format!("{key}=\""))
                 .and_then(|(_, v)| v.split_once('"'))
@@ -943,7 +954,12 @@ mod tests {
         }
         // A side-entry line through a third state is rejected by this oracle.
         assert!(crosses((1008, 700), (370, 700), (410, 640, 220, 120)));
-        for visible_variant in ["map-wide", "map-medium", "map-narrow"] {
+        let variants = if output.contains("data-world-width") {
+            vec!["map-wide"]
+        } else {
+            vec!["map-wide", "map-medium", "map-narrow"]
+        };
+        for visible_variant in variants {
             // Isolate each complete variant, including nested label groups.
             let mut output = output.clone();
             for hidden in ["map-wide", "map-medium", "map-narrow"]

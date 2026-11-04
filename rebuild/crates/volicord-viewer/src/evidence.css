@@ -262,3 +262,8 @@ body[data-reader-enhanced=true] .unit>.evidence-actions>.other-claim-ranges {dis
 .limits-section>.guard {border:0;background:none;padding:0}
 .evidence-width-reset {font-size:14px;min-height:32px;min-width:32px;padding:4px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--muted)}
 @media(max-width:760px) {.evidence-width-reset {display:none}}
+.spatial-world .relation-wording text,.spatial-world .diagram-condition text {font-size:16px}
+.spatial-world[data-sequence-layout=graph] :is(.diagram-node-kind,.diagram-label-support) text {font-size:13px}
+.diagram-start {margin:0;padding:8px 12px;font-size:12px;line-height:1.7;background:white;border-bottom:1px solid var(--line)}
+.diagram-start a {text-decoration:none;color:var(--body)}
+.diagram-start a:is(:hover,:focus-visible) {text-decoration:underline;color:var(--accent)}

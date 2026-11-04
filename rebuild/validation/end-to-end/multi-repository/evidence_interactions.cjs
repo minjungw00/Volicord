@@ -26,6 +26,7 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  for(const w of [1200,1199,981,980,761,760,390,1440,width]){await page.setViewportSize({width:w,height:900});await settle(page);assert.equal(await point().getAttribute('id'),selected);assert.equal(await point().getAttribute('aria-modal'),w<1200?'true':null);assert.equal(await page.locator('main').evaluate(n=>n.inert),false);}
  await page.keyboard.press('Escape');await settle(page);assert.equal(await page.locator('.project-shell').evaluate(n=>n.inert),false);notes.push('modality resize');
  // Expanded reading preserves the selected figure, pan/zoom and exact origin.
+ await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();
  const expand=figure.locator('[data-diagram-action=expand]');await expand.click();assert.equal(await expand.getAttribute('aria-expanded'),'true');await figure.locator('[data-diagram-action=in]').click();assert.equal(await figure.locator('.diagram-scale').textContent(),'125%');
  await element.focus();await settle(page);const expandedBefore=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left}));await page.keyboard.press('Enter');await complete(page);await page.keyboard.press('Escape');await settle(page);
  assert.equal(await expand.getAttribute('aria-expanded'),'true');assert.equal(await element.evaluate(n=>n===document.activeElement),true);const expandedAfter=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left}));assert.ok(Math.abs(expandedBefore.top-expandedAfter.top)<3,'expanded visible return '+JSON.stringify({expandedBefore,expandedAfter}));await page.keyboard.press('Escape');await settle(page);assert.equal(await expand.getAttribute('aria-expanded'),'false');notes.push('expanded exact return');
@@ -34,10 +35,14 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  const first=page.locator(`[id="${elementId}"]`);let held=false;
  await context.route('**/citation?*',async route=>{if(!held){held=true;await pause(700);}await route.continue().catch(()=>{});});
  await first.focus();await page.keyboard.press('Enter');
- const range=point().locator('.point-others a:not([aria-current])').first();
- if(await range.count()){
-  const chooser=point().locator('.range-selector>summary');if(await chooser.count())await chooser.click();
-  const next=(await range.getAttribute('href')).slice(1);await range.click();await complete(page);await pause(850);assert.equal(await point().getAttribute('id'),next);assert.ok(await point().locator('.citation-inspection code').textContent());notes.push('late range response isolation');
+ const picker=point().locator('.evidence-choice-picker select');
+ if(await picker.count()){
+  const options=await picker.locator('option').evaluateAll(ns=>ns.map(n=>({value:n.value,selected:n.selected})));
+  const next=options.find(n=>!n.selected)?.value;assert.ok(next,'real alternate exact range');
+  const native=page.locator(`[id="${next.slice(1).split('!')[0]}"]`);
+  const expected=await native.getAttribute('data-selected-point')||await native.getAttribute('id');
+  await picker.selectOption(next);await complete(page);await pause(850);
+  assert.equal(await point().getAttribute('id'),expected);assert.ok(await point().locator('.citation-inspection code').textContent());notes.push('late range response isolation');
  }else{await complete(page);notes.push('one range; alternate range not applicable');}
  await context.unroute('**/citation?*');await page.keyboard.press('Escape');await settle(page);
  // A native shared-payload alias must activate its own original claim binding.

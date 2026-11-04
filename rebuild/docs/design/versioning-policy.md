@@ -818,3 +818,11 @@ Explanation 9, generated-document metadata 11 and all durable formats remain exa
 current. Work authoring guidance changes current preparation fingerprints only;
 existing publications keep their original hashes and authority checks. Editorial
 rewrites are separately composed/admitted publications, never same-ID conversions.
+
+
+Renderer 20 generalizes spacious geometry to complex directed graphs, with explicit
+endpoint support, global homogeneous type/state-owner keys, readable native Start and
+scoped scene teardown. This changes Derived geometry/interaction only. Explanation 9,
+document metadata 11, all durable formats, exact original publications and Source
+retention remain unchanged. Newly authored bilingual examples are ordinary distinct
+publications from explicitly permitted new observations, not a historical conversion.

@@ -16,6 +16,7 @@ async function listener(config,c,runtime,write){
  return{base,async stop(){child.kill('SIGTERM');const result=await done;write(c.key+'-listener.json',JSON.stringify({...result,stdout,stderr}));}};
 }
 async function run(config){
+ if(config.native_only)assert.ok((config.modes||[]).length&&(config.modes||[]).every(m=>m==='offline'||m==='no-js'),'server-free review uses actual files with scripts disabled');
  createOutput(config.output);const write=(n,v)=>fs.writeFileSync(path.join(config.output,n),v,{flag:'wx'});
  const result={outcome:'failed',classification:'technical real-publication reading; dependent visual comparison; independent/human/assistive acceptance unobserved',checks:[],external:[],identities:{viewer:hash(config.viewer),chromium:hash(config.chromium),driver:hash(__filename)}};
  const fonts=execFileSync('fc-list',['--format','%{file}\n',':lang=ko'],{env:{...process.env,FONTCONFIG_FILE:config.fontconfig},encoding:'utf8'}).trim().split('\n').filter(Boolean);assert.ok(fonts.length,'Korean fonts required');result.fonts=[...new Set(fonts)].map(p=>({path:p,sha256:hash(p)}));
@@ -24,14 +25,15 @@ async function run(config){
  if(config.whole_result){assert.ok(config.reading_contract,'independent reading contract required');require('./reader_hierarchy.cjs').corpusObligations(config.cases,JSON.parse(fs.readFileSync(config.reading_contract)));}
  browser=await require(config.playwright).chromium.launch({executablePath:config.chromium,args:['--no-sandbox'],env:{...process.env,FONTCONFIG_FILE:config.fontconfig}});
  for(const c of config.cases){
-  const publicAnswers=JSON.parse(fs.readFileSync(c.public)),runtime=path.join(config.output,c.key+'-runtime');fs.cpSync(c.runtime,runtime,{recursive:true,errorOnExist:true,force:false});server=await listener(config,c,runtime,write);
-  const address=server.base+`?project=${c.project}&view=${c.work?'work&work='+c.work:'repository'}&locale=${c.locale||c.language}&language=${c.language}`;
+  const publicAnswers=JSON.parse(fs.readFileSync(c.public)),runtime=path.join(config.output,c.key+'-runtime');
+  if(!config.native_only){fs.cpSync(c.runtime,runtime,{recursive:true,errorOnExist:true,force:false});server=await listener(config,c,runtime,write);}
+  const address=server?server.base+`?project=${c.project}&view=${c.work?'work&work='+c.work:'repository'}&locale=${c.locale||c.language}&language=${c.language}`:null;
   for(const width of c.widths||config.widths||[1440,1024,768,390,320])for(const mode of config.modes||['live','offline','no-js']){
    const live=['live','live-no-js','live-unenhanced'].includes(mode),scripted=mode==='live';
-   console.log(c.key,width,mode);const context=await browser.newContext({viewport:{width,height:900},javaScriptEnabled:!mode.includes('no-js')});context.setDefaultTimeout(15000);context.setDefaultNavigationTimeout(15000);
-   const page=await context.newPage();page.readerNoScript=mode.includes('no-js');activePage=page;const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+   console.log(c.key,width,mode);const context=await browser.newContext({viewport:{width,height:900},javaScriptEnabled:scripted});context.setDefaultTimeout(15000);context.setDefaultNavigationTimeout(15000);
+   const page=await context.newPage();page.readerNoScript=!scripted;activePage=page;const errors=[];page.on('pageerror',e=>errors.push(String(e)));
    if(mode==='live-unenhanced')await context.addInitScript(()=>{window.ResizeObserver=undefined;});
-   await context.route('**/*',route=>{const u=route.request().url();if(u.startsWith(server.base)||u.startsWith('file:')||u.startsWith('data:'))return route.continue();result.external.push(u);return route.abort();});
+   await context.route('**/*',route=>{const u=route.request().url();if((server&&u.startsWith(server.base))||u.startsWith('file:')||u.startsWith('data:'))return route.continue();result.external.push(u);return route.abort();});
    await installEntryObserver(page);
    if(scripted&&!c.work&&width===(config.widths||[1440])[0]){
     await page.goto(server.base+`?project=${c.project}&view=overview&locale=${c.locale||c.language}&language=${c.language}`);await settled(page);
@@ -50,7 +52,8 @@ async function run(config){
    if(live)assert.equal(await page.locator('.project-navigation a[aria-current=page]').getAttribute('data-destination'),c.work?'work':'repository');
    else assert.equal(await page.locator('.project-navigation a').count(),3);
    const figures=page.locator('.admitted-diagram');assert.equal(await figures.count(),publicAnswers.diagrams.length,'whole declared publication figures');
-   for(const d of publicAnswers.diagrams){
+   if(c.diagram_ids)assert.ok(c.diagram_ids.length&&c.diagram_ids.every(id=>publicAnswers.diagrams.some(d=>d.id===id)),'requested real diagrams exist');
+   for(const d of publicAnswers.diagrams.filter(d=>!c.diagram_ids||c.diagram_ids.includes(d.id))){
     // A tall figure's automatic "if needed" alignment centers its middle.
     // Ordinary vertical reading starts at its beginning; do not select, expand
     // or pan the canvas to manufacture a complete initial overview.
@@ -59,7 +62,8 @@ async function run(config){
     await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
-    const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/19');
+    const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/20');
+    if(scripted&&await svg.evaluate(n=>n.classList.contains('spatial-world'))){await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();}
     const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(baseKey+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
     const routeFocus=await require('./diagram_focus.cjs').inspectRelationFocus(figure,d);write(baseKey+'-route-focus.json',JSON.stringify(routeFocus,null,2));assert.deepEqual(routeFocus.errors,[],'native relationship/condition focus identifies its exact route');
     const m=d.meaning,defaultElement=(m.relations||m.groups?.flatMap(g=>g.messages)||m.nodes||m.participants)[0];
@@ -143,10 +147,10 @@ async function run(config){
    }
    assert.deepEqual(errors,[],'Product script errors');await context.close();activePage=null;
   }
-  await server.stop();server=null;
+  await server?.stop();server=null;
  }
  assert.deepEqual(result.external,[]);result.outcome='passed';
- }catch(error){result.error=String(error);if(activePage&&!activePage.isClosed()){result.url=activePage.url();result.focus=await activePage.evaluate(()=>document.activeElement?.outerHTML).catch(()=>null);await activePage.screenshot({path:path.join(config.output,'failure.png')}).catch(()=>{});}throw error;
+ }catch(error){result.error=String(error);if(activePage&&!activePage.isClosed()){result.url=activePage.url();result.focus=await activePage.evaluate(()=>document.activeElement?.outerHTML.slice(0,2000)).catch(()=>null);await activePage.screenshot({path:path.join(config.output,'failure.png')}).catch(()=>{});}throw error;
  }finally{await browser?.close();await server?.stop();write('result.json',JSON.stringify(result,null,2));}
 }
 module.exports={run};

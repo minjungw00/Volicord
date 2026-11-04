@@ -832,3 +832,19 @@ capture/restore/suspend operations to navigation. `reader_evidence.js` owns only
 range-chooser presentation and bounded panel width. `reader_citations.js` retains
 exclusive code/permission/expiry ownership, and the shared modal owner retains focus
 and inert authority. None of these modules grants Source collection or admission.
+
+
+Complex graph worlds use the same authority boundary as sequence worlds. Local layout
+owns deterministic bounded directed layers and routes; the browser owns only viewport
+state. Per-world listeners have their own abort lifetime beneath the page owner so a
+publication denial releases them immediately. Navigation clears publication-bound return
+memories before replacing its unavailable DOM. Packaging embeds these same local assets
+in the installed Viewer and script-free export; no development tree, external asset
+service, JavaScript runtime or separate static product supplies meaning at runtime.
+
+On Source return, navigation restores world geometry before the containing figure's
+scroll. The figure owner records the viewport dimensions it already handled; queued
+resize notifications from a suspended evidence view cannot overwrite a compatible
+camera return. Genuine later dimension changes still restore the selected semantic
+anchor. Routed strokes and their labels share meaning while retaining the actual
+activated native anchor for focus/position return.
