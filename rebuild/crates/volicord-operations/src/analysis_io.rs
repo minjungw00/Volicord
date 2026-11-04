@@ -1,4 +1,5 @@
 //! Current-only, structurally shared Analysis Snapshot persistence.
+mod normalized;
 use crate::Error;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -245,23 +246,17 @@ pub(crate) fn read_analysis(path: &Path) -> Result<AnalysisSnapshot, Error> {
     if let Some(snapshot) = read_cached_analysis(path, &manifest) {
         return Ok(snapshot);
     }
-    read_analysis_from_manifest(path, manifest, AnalysisReadMode::Normal)
+    read_analysis_from_manifest(path, manifest)
 }
 
 pub(crate) fn read_analysis_durable(path: &Path) -> Result<AnalysisSnapshot, Error> {
     let manifest = read_manifest(path)?;
-    read_analysis_from_manifest(path, manifest, AnalysisReadMode::Inspection)
-}
-
-enum AnalysisReadMode {
-    Normal,
-    Inspection,
+    read_analysis_from_manifest(path, manifest)
 }
 
 fn read_analysis_from_manifest(
     path: &Path,
     manifest: AnalysisManifest,
-    mode: AnalysisReadMode,
 ) -> Result<AnalysisSnapshot, Error> {
     #[cfg(test)]
     trace_analysis_memory("read_start");
@@ -299,19 +294,7 @@ fn read_analysis_from_manifest(
     let reader = DenormalizingReader::new(shape, values, manifest.scalar_count)?;
     #[cfg(test)]
     trace_analysis_memory("values_reconstructed");
-    let snapshot: AnalysisSnapshot = match mode {
-        // Work readers may already retain a full baseline graph. Avoid a second
-        // complete JSON allocation while constructing the requested graph.
-        AnalysisReadMode::Normal => {
-            decode_normalized_json_streamed(reader, manifest.logical_json_bytes)?
-        }
-        // Explicit history inspection processes snapshots individually. Keep its
-        // bulk string decoding instead of adding byte-wise parsing to every
-        // historical snapshot in health and repair.
-        AnalysisReadMode::Inspection => {
-            decode_normalized_json(reader, manifest.logical_json_bytes)?
-        }
-    };
+    let snapshot: AnalysisSnapshot = normalized::decode(reader, manifest.logical_json_bytes)?;
     #[cfg(test)]
     trace_analysis_memory("read_decoded");
     if snapshot.identity != manifest.identity
@@ -323,6 +306,9 @@ fn read_analysis_from_manifest(
     Ok(snapshot)
 }
 
+// Independent JSON reconstruction/decoding oracles for the direct normalized
+// decoder. Production has one reader and never materializes the expanded JSON.
+#[cfg(test)]
 fn decode_normalized_json_streamed<T: serde::de::DeserializeOwned>(
     reader: impl Read,
     logical_bytes: u64,
@@ -342,6 +328,7 @@ fn decode_normalized_json_streamed<T: serde::de::DeserializeOwned>(
     Ok(value)
 }
 
+#[cfg(test)]
 fn decode_normalized_json<T: serde::de::DeserializeOwned>(
     reader: impl Read,
     logical_bytes: u64,
@@ -1229,6 +1216,7 @@ impl DenormalizingReader {
     }
 }
 
+#[cfg(test)]
 impl Read for DenormalizingReader {
     fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
         let mut written = 0;

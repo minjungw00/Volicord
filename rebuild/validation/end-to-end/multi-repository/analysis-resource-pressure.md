@@ -699,3 +699,89 @@ Whole-V11 attribution of the original 6,840.081 ms excess remains unresolved.
 Future work must separately address expanded-graph traversal and bulk inspection
 memory with complete integrity/history retained, and qualify an exact clean
 candidate through the maintained authorized workflow with unchanged ceilings.
+
+## Direct normalized decoding without expanded JSON
+
+The next repair starts at `0cae4dee90ac20fa8dcaa2d89d20457ade50036b`.
+It removes the demonstrated full-JSON allocation instead of trimming the allocator,
+changing RSS accounting, resetting a process or omitting historical inspection.
+Normal cache misses and durable inspection now use one request-owned decoder over
+the existing verified punctuation, symbols and references. Plain UTF-8 strings
+are validated once per immutable symbol; escaped strings and primitive numeric
+requests retain serde_json's lexical and type checks. The existing typed domain
+deserializers still own schema and identity. Container grammar/depth, every
+reference, exact logical byte count and complete EOF are required before success.
+The symbol index borrows only the current read's bytes and cannot retain bodies
+or authority between requests.
+
+The writer, blob hashes, normalized format, Analysis version, MessagePack cache,
+Project/Source binding and immutable history are unchanged. Bulk and byte-stream
+JSON reconstruction remain only as independent test oracles. Differential tests
+cover mixed generated JSON, escapes, large numbers, numeric/boolean map keys,
+enum/struct forms, ignored fields, incorrect type requests, trailing punctuation,
+partial visitors, lengths/overflow and serde_json's depth boundary. A first Clippy
+attempt found an unused trait import; the failure is preserved and the import
+was removed before the passing check and frozen comparisons.
+
+The exploratory native sample exited 0 in 23,432.077 ms with 3,920,072,704-byte
+wait-time HWM. It is retained separately from the comparisons. The declared
+comparison alternated AB, BA, AB with frozen release binaries, Rust/Cargo 1.97.1,
+opt-level 3 and debug information disabled. A is the preceding committed reader;
+B is direct normalized decoding. No builds or other task-owned timed work ran
+during sampling. OS caches were uncontrolled; all samples are retained.
+
+The same 1,265,898,743-byte logical graph used above passed all six native
+roundtrips and corrupt-value refusals with exit 0. Every input/output manifest,
+value/metadata hash and all 4,549 shape references remained byte-identical to the
+preceding section's independent original fingerprints.
+
+| Order | Side | Native wall ms | User CPU s | System CPU s | HWM bytes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 1 | A | 27,518.121 | 25.867 | 3.745 | 4,591,333,376 |
+| 2 | B | 23,016.716 | 22.141 | 2.618 | 3,919,052,800 |
+| 3 | B | 23,262.714 | 22.237 | 2.829 | 3,918,917,632 |
+| 4 | A | 27,547.275 | 25.715 | 4.058 | 4,591,067,136 |
+| 5 | A | 27,702.897 | 26.311 | 3.549 | 4,591,198,208 |
+| 6 | B | 22,853.798 | 22.219 | 2.521 | 3,919,073,280 |
+
+Native median wall time decreased 16.45%; peak reduction is about 672 MB in these
+samples. The reduction is smaller than the eliminated 1.266 GB buffer because
+the remaining encoding phase becomes the process high-water owner. No unrelated
+process peaks are added, and full graphs are still retained where the workload
+requires them. Existing test-only memory marks are present on both native sides;
+there is no additional fine instrumentation or allocator probe in these pairs.
+
+Uninstrumented Product binaries then ran the unchanged seven-call diagnostic on
+fresh disposable runtimes at exact source revision
+`c4230e758c84ff6b0386324975baa773d4b1e392`. Normal CLI analysis setup remains
+separate from MCP lifetime. Each attempt retained three snapshots, exited 0 with
+zero sampling errors, and preserved the complete analysis contract fingerprint
+`cf8f53bf31100b7020ba7a494dbcd94aece503639db9ac4695da50cfcc515740`.
+
+| Order | Side | MCP lifetime ms | User CPU s | System CPU s | Peak RSS bytes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 1 | A | 50,273.115 | 49.18 | 3.87 | 4,539,731,968 |
+| 2 | B | 44,808.294 | 44.51 | 2.72 | 3,973,947,392 |
+| 3 | B | 46,496.774 | 45.61 | 3.07 | 3,974,238,208 |
+| 4 | A | 50,246.138 | 49.66 | 3.44 | 4,151,222,272 |
+| 5 | A | 50,428.678 | 48.89 | 3.99 | 4,509,753,344 |
+| 6 | B | 45,325.827 | 45.44 | 2.55 | 3,974,512,640 |
+
+MCP lifetime medians decreased 9.84%. The new samples' peak is about 3.974 GB;
+the retained arenas remain, and simultaneous baseline/current graph encoding
+still consumes substantial memory. These samples establish a bounded causal
+repair of the eliminated intermediate representation, not a general memory SLA
+or whole-V11 success. There is no threshold, workload or measurement-window change.
+
+The changed implementation passed release Operations library (45), analysis
+recovery (8), storage footprint (4), Work authority (75), Viewer citation reading
+(31), navigation (6), and one selected Host workflow test. Scoped Clippy with
+`-D warnings`, formatting and nested metadata passed. Post-commit direct checks
+are reported in the task conversation. All raw attempts, full streams, numeric
+exits, frozen binaries, source hashes and complete CPU/I/O/storage observations
+remain ignored under `rebuild/.local/bounded-reading-repair-20261104/`, its named
+`analysis-memory` workloads and focused validation outputs. Original gate/review
+artifacts, the shared reading context and the reserved transfer case are unchanged.
+Official gate, Final, V11 and external/provider replay were not run. Expanded graph
+publication and the complete committed candidate's qualification remain separate
+responsibilities; publication capacity is not changed by this reader repair.

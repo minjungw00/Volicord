@@ -1378,11 +1378,14 @@ logged, outside the declared MCP lifetime, inside the focused wrapper duration.
 The resource roundtrip's `VOLICORD_ANALYSIS_RESOURCE_PAIRED_READER=1` mode retains
 one complete baseline while repeatedly reading a cache-absent current publication.
 It checks the same complete graph/serialized-byte fingerprints and corrupt-blob
-rejection as the durable-inspection mode. A separate streaming-consumption control
-requires typed values before the complete JSON payload has been read; exact length,
-schema, trailing data and overflow controls apply to both decoders. Normal requests
-stream their fallback decode, while explicit health/repair retain bulk per-snapshot
-inspection. Neither mode changes the V11 collector, graph scope or resource limits.
+rejection as the durable-inspection mode. Normal cache misses and durable inspection
+now share direct normalized shape/value decoding without a complete JSON buffer.
+The direct cursor control delivers a typed prefix before consuming the complete
+logical document, then rejects partial-document admission. Independent bulk/stream
+JSON helpers remain test-only differential oracles. Exact length, schema, scalar
+references, depth, trailing data, numeric/string type requests and overflow controls
+apply to the production decoder, alongside mixed-value and real full-graph tests.
+This changes neither the V11 collector, graph scope nor resource limits.
 `VOLICORD_ANALYSIS_RESOURCE_PUBLISHED_CACHE=1` additionally publishes the current
 streamed cache into the disposable copy and measures its consumer rather than
 the cache-absent fallback. Input graph, retained original bytes, fingerprint and

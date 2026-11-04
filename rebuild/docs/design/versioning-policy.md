@@ -121,6 +121,14 @@ plain-fragment 복사는 valid current JSON/MessagePack bytes와 restored scalar
 경우를 거부하는 것은 invalid input 검증이며 version 증가나 별도 migration 경로를
 만들지 않는다.
 
+Verified normalized shape/value를 직접 typed decoder에 전달하는 reader도 같은
+current Analysis Snapshot/storage representation을 읽는다. Expanded JSON buffer와
+byte-wise JSON reconstruction을 없애며, schema/identity, exact length/EOF, scalar
+references, JSON scalar grammar와 container depth 검사를 유지한다. Plain-symbol index는
+request-owned scratch이고 durable cache나 새 body retention이 아니다. Production read
+path는 하나이며 bulk/stream JSON reconstruction은 differential test oracle에만 남는다.
+Publisher bytes, canonical/Analysis version, cache header와 history disposition은 바뀌지 않는다.
+
 ## 6. Derived Index version
 
 Derived Index version은 full-text/semantic index, graph, embedding, fingerprint cache,
