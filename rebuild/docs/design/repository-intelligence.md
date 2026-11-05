@@ -572,6 +572,11 @@ length/EOF, 모든 scalar reference, container depth, blob identity와 typed pay
 binding은 계속 검사한다. Health/repair는 historical snapshot도 하나씩 완전히 decode하며
 Derived read cache로 durable validation을 대체하지 않는다. Wire format, schema와
 complete graph는 그대로이며 historical compatibility 경로가 아니다.
+Value delta는 검증된 raw/compressed envelope에서 직접 적용한다. Decoded complete
+base와 복원 value stream은 필요하지만, 전체 decoded delta는 별도로 보유하지 않는다.
+Literal scratch는 64 KiB이며 operation/copy/literal/output bounds, envelope의 exact
+decoded length와 EOF를 검사한다. Cache miss와 durable inspection은 같은 reader를
+쓰며 bulk delta decoder는 differential test oracle에만 남는다.
 Cache의 streamed MessagePack을 낮은 압축 수준과 bounded 8 MiB 긴 거리 매칭으로
 무손실 압축하여 section 사이의 먼 반복도 재사용한다. Cache header/schema, exact
 snapshot 검증과 두 항목 retention은 바뀌지 않는다.
@@ -581,7 +586,7 @@ Snapshot publication은 normalized JSON shape 조각, value stream, typed capabi
 Project/Analysis identity를 확인한 뒤 Recall 및 V11 capability evidence에 사용한다. 동일 shape blob과 complete value base는 snapshot 사이에서
 공유하고, 이후 value stream은 complete base에 대한 bounded delta가 더 작을 때만 delta로
 게시한다. Publication은 shape chunk 압축 후 원본 shape allocation을 해제하고,
-value reconstruction은 packed input과 decoded delta scratch를 JSON/typed graph
+value reconstruction은 packed input과 complete-base scratch를 JSON/typed graph
 복원 전에 해제한다. Full graph와 durable wire bytes, content identity 및 corruption
 검사는 그대로 보존한다. Manifest는 exact Analysis Snapshot identity/history와 payload blob identity를
 보존한다. Reader는 blob content identity를 확인하고 원래 JSON token stream을 복원한 뒤

@@ -1369,7 +1369,14 @@ comparison을 유지하며 전체 decoded base를 두 typed graph/current values
 보존하지 않는다. Chunk/operation lookup은 입력 chunk 수에 비례하는 request-local
 scratch이며 요청 간 body cache가 아니다. MessagePack cache publication은 64 KiB
 buffer로 compressor 호출을 묶고, buffer drain 실패를 publication 실패로 전달한다.
-Blob decoder는 envelope의 decoded length만큼 할당하고 실제 길이와 EOF를 검증한다.
+Complete blob decoder는 envelope의 decoded length만큼 할당하고 실제 길이와 EOF를 검증한다.
+Value delta는 같은 envelope에서 직접 순회하며 literal을 64 KiB scratch로 복원
+value stream에 넣는다. Decoded delta 전체를 base/output과 함께 할당하지 않는다.
+Exact envelope length/EOF와 copy/literal/output bounds, short read 및 I/O failure를
+검사한다. Bulk delta decoder는 test-only differential oracle이며 production read는
+하나다. `streamed_delta_reads_match_bulk_bytes_across_short_reads`와
+`streamed_delta_rejects_corrupt_lengths_ranges_eof_and_io`는 raw/compressed bytes,
+empty/changed/repeated content, truncated/corrupt envelopes와 injected I/O를 검사한다.
 Symbol 목록과 lookup은 동일한 immutable bytes를 공유하며 first-seen index를 유지한다.
 Delta publication은 operation/range metadata만 모은 뒤 같은 wire bytes를 compressor에
 직접 쓴다. Raw fallback만 decoded delta를 할당하며, 두 표현의 exact bytes와
@@ -1454,6 +1461,42 @@ original manifest checks passed. Debug-process high-water observations were
 3,873,864 / 3,873,316 KiB, effectively unchanged; this is neither an official
 RSS result nor elapsed-time attribution. Ordinary cache cleanup I/O overlapped
 these supporting controls, so their durations are not an isolated comparison.
+
+### Retained delta reconstruction under Checkpoint memory pressure
+
+The next clean `54b0920c4743ff93881443de0da52c16c6f3d752` gate completed
+Final, installed rehearsal, the bounded live provider and all 55 official V11
+functional leaves. Duration was 757,573.206 ms and post-warmup storage growth
+534,887,430 bytes, both within unchanged limits. MCP peak RSS alone failed:
+4,309,311,488 bytes against 4,294,967,296. Sampling errors were zero. The first
+4 GiB crossing occurred in `mcp-015`, call 17, `checkpoint_record`; that call
+established a new process high-water mark rather than merely inheriting one.
+Its baseline/current analysis path can read an intermediate retained snapshot
+without a read cache. These observations do not establish a process leak.
+The independently verified failed archive SHA-256 is
+`082e39d784bf3bfe336a221167c351c6ee90c1cb32e775f0252f3d96a71442c0`.
+
+The retained reader previously held decoded delta, complete base and output
+value allocations together. On the same immutable last failed-gate input,
+streamed reconstruction preserved the complete 361,085,926-byte output SHA-256
+`91bb75d3f229dbd79183788d6bbb93df21e2d18ee7fce324171141129ae96310`.
+An independent byte-level helper measured 956,380 / 697,224 KiB high-water RSS;
+its bulk unpack helper differs from production allocation, so those are local
+mechanism observations, not Product or V11 RSS results.
+
+The actual release producer-reader control retained one full baseline while
+reading the same complete current snapshot three times without a read cache.
+Before/after both passed full graph fingerprints, metadata JSON equality,
+corruption rejection and unchanged original-manifest checks. Maximum RSS was
+4,162,968 / 3,889,292 KiB, a 273,676 KiB reduction. Input and produced manifest
+SHA-256 stayed
+`5c3f86fb4e6d82c1ba9e0410b30fa3490aecf2662e92816a874c0d0e5742a077`;
+value/metadata identities and all 4,584 shape chunks were unchanged too. Builds
+and other task-owned profiling/export work did not overlap these sequential
+controls; OS caches were uncontrolled. This establishes the bounded read-side
+allocation mechanism, not the entire Checkpoint peak or a new candidate's
+qualification. A new clean-candidate gate must test every original limit and
+the full workload; history/cache retention and schema/identity stay unchanged.
 
 ### Phase 8 naturalistic Dogfood qualification
 

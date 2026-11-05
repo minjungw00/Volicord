@@ -275,23 +275,21 @@ fn read_analysis_from_manifest(
     }
     #[cfg(test)]
     trace_analysis_memory("shape_unpacked");
-    // Packed input and a decoded delta are reconstruction scratch, not part
-    // of the reader. Release them before JSON and the typed graph coexist.
+    // Apply the delta directly from its verified envelope. A large literal
+    // must not coexist as another complete decoded buffer with base/output.
     let values = {
         let packed_values = read_verified_blob(
             &blobs.join(format!("{}.values", manifest.values_blob)),
             &manifest.values_blob,
         )?;
-        let encoded_values = unpack_blob(&packed_values)?;
-        drop(packed_values);
         if let Some(base_hash) = &manifest.values_base_blob {
             let packed_base =
                 read_verified_blob(&blobs.join(format!("{base_hash}.values")), base_hash)?;
             let base = unpack_blob(&packed_base)?;
             drop(packed_base);
-            apply_delta(&base, &encoded_values)?
+            apply_packed_delta(&base, &packed_values)?
         } else {
-            encoded_values
+            unpack_blob(&packed_values)?
         }
     };
     let reader = DenormalizingReader::new(shape, values, manifest.scalar_count)?;
@@ -854,6 +852,103 @@ fn encode_delta(base: &[u8], current: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(output)
 }
 
+fn read_delta_bytes(
+    input: &mut impl Read,
+    remaining: &mut usize,
+    output: &mut [u8],
+) -> Result<(), Error> {
+    if output.len() > *remaining {
+        return Err(Error::new("Analysis values delta is truncated"));
+    }
+    input
+        .read_exact(output)
+        .map_err(|error| Error::with_source("cannot read Analysis delta", error))?;
+    *remaining -= output.len();
+    Ok(())
+}
+fn read_delta_u64(input: &mut impl Read, remaining: &mut usize) -> Result<u64, Error> {
+    let mut bytes = [0; 8];
+    read_delta_bytes(input, remaining, &mut bytes)?;
+    Ok(u64::from_le_bytes(bytes))
+}
+fn apply_delta_streamed(
+    base: &[u8],
+    mut input: impl Read,
+    mut remaining: usize,
+) -> Result<Vec<u8>, Error> {
+    let mut magic = [0; VALUES_DELTA_MAGIC.len()];
+    read_delta_bytes(&mut input, &mut remaining, &mut magic)?;
+    if magic != VALUES_DELTA_MAGIC {
+        return Err(Error::new("Analysis values delta format is corrupt"));
+    }
+    let length = usize::try_from(read_delta_u64(&mut input, &mut remaining)?)
+        .map_err(|_| Error::new("Analysis values delta length is unsupported"))?;
+    let operations = read_delta_u64(&mut input, &mut remaining)?;
+    let mut output = Vec::new();
+    output
+        .try_reserve_exact(length)
+        .map_err(|error| Error::with_source("cannot allocate Analysis values", error))?;
+    let mut buffer = [0; 64 * 1024];
+    for _ in 0..operations {
+        let mut kind = [0];
+        read_delta_bytes(&mut input, &mut remaining, &mut kind)?;
+        if kind[0] == 0 {
+            let offset = usize::try_from(read_delta_u64(&mut input, &mut remaining)?)
+                .map_err(|_| Error::new("Analysis values delta offset is unsupported"))?;
+            let count = usize::try_from(read_delta_u64(&mut input, &mut remaining)?)
+                .map_err(|_| Error::new("Analysis values delta length is unsupported"))?;
+            let end = offset
+                .checked_add(count)
+                .filter(|end| *end <= base.len())
+                .ok_or_else(|| Error::new("Analysis values delta base range is corrupt"))?;
+            if count > length.saturating_sub(output.len()) {
+                return Err(Error::new("Analysis values delta output length is corrupt"));
+            }
+            output.extend_from_slice(&base[offset..end]);
+        } else if kind[0] == 1 {
+            let count = usize::try_from(read_delta_u64(&mut input, &mut remaining)?)
+                .map_err(|_| Error::new("Analysis values delta length is unsupported"))?;
+            if count > remaining || count > length.saturating_sub(output.len()) {
+                return Err(Error::new(
+                    "Analysis values delta literal length is corrupt",
+                ));
+            }
+            let mut left = count;
+            while left > 0 {
+                let count = left.min(buffer.len());
+                read_delta_bytes(&mut input, &mut remaining, &mut buffer[..count])?;
+                output.extend_from_slice(&buffer[..count]);
+                left -= count;
+            }
+        } else {
+            return Err(Error::new("Analysis values delta operation is corrupt"));
+        }
+    }
+    if remaining != 0 || output.len() != length {
+        return Err(Error::new("Analysis values delta has trailing data"));
+    }
+    if input
+        .read(&mut [0; 1])
+        .map_err(|error| Error::with_source("cannot finish Analysis delta", error))?
+        != 0
+    {
+        return Err(Error::new("Analysis packed blob length is corrupt"));
+    }
+    Ok(output)
+}
+fn apply_packed_delta(base: &[u8], packed: &[u8]) -> Result<Vec<u8>, Error> {
+    if let Some(raw) = packed.strip_prefix(BLOB_RAW_MAGIC) {
+        return apply_delta_streamed(base, raw, raw.len());
+    }
+    let mut at = expect_magic(packed, BLOB_ZSTD_MAGIC)?;
+    let expected = usize::try_from(take_u64(packed, &mut at)?)
+        .map_err(|_| Error::new("Analysis packed blob length is unsupported"))?;
+    let decoder = zstd::stream::read::Decoder::new(&packed[at..])
+        .map_err(|error| Error::with_source("cannot decompress Analysis delta", error))?;
+    apply_delta_streamed(base, decoder, expected)
+}
+
+#[cfg(test)]
 fn apply_delta(base: &[u8], delta: &[u8]) -> Result<Vec<u8>, Error> {
     let mut at = expect_magic(delta, VALUES_DELTA_MAGIC)?;
     let length = take_u64(delta, &mut at)? as usize;
@@ -2014,6 +2109,108 @@ mod tests {
             pack_delta(&base, &current)?,
             pack_blob(&encode_delta(&base, &current)?)?
         );
+        Ok(())
+    }
+
+    #[test]
+    fn streamed_delta_reads_match_bulk_bytes_across_short_reads() -> Result<(), Error> {
+        struct ShortReads<'a>(&'a [u8], usize);
+        impl Read for ShortReads<'_> {
+            fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+                let count = output.len().min(self.1);
+                self.0.read(&mut output[..count])
+            }
+        }
+        let mut state = 37_u64;
+        let noisy = (0..100_000)
+            .map(|_| {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                (state >> 56) as u8
+            })
+            .collect::<Vec<_>>();
+        let mut compressed_seen = false;
+        let mut raw_seen = false;
+        for base in [Vec::new(), noisy, vec![b'x'; 100_000]] {
+            let mut changed = base.clone();
+            changed.splice(
+                17.min(changed.len())..17.min(changed.len()),
+                "한글-change".bytes(),
+            );
+            for current in [Vec::new(), base.clone(), changed, base.repeat(2)] {
+                let delta = encode_delta(&base, &current)?;
+                assert_eq!(apply_delta(&base, &delta)?, current);
+                let packed = pack_blob(&delta)?;
+                raw_seen |= packed.starts_with(BLOB_RAW_MAGIC);
+                compressed_seen |= packed.starts_with(BLOB_ZSTD_MAGIC);
+                assert_eq!(apply_packed_delta(&base, &packed)?, current);
+                let mut raw = BLOB_RAW_MAGIC.to_vec();
+                raw.extend_from_slice(&delta);
+                assert_eq!(apply_packed_delta(&base, &raw)?, current);
+                for size in [1, 7, 63, 65_536] {
+                    assert_eq!(
+                        apply_delta_streamed(&base, ShortReads(&delta, size), delta.len())?,
+                        current
+                    );
+                }
+            }
+        }
+        assert!(raw_seen && compressed_seen);
+        Ok(())
+    }
+
+    #[test]
+    fn streamed_delta_rejects_corrupt_lengths_ranges_eof_and_io() -> Result<(), Error> {
+        let current = vec![b'z'; 150_000];
+        let delta = encode_delta(&[], &current)?;
+        let packed = pack_blob(&delta)?;
+        assert!(packed.starts_with(BLOB_ZSTD_MAGIC));
+        for length in [delta.len() - 1, delta.len() + 1] {
+            let mut invalid = packed.clone();
+            invalid[BLOB_ZSTD_MAGIC.len()..BLOB_ZSTD_MAGIC.len() + 8]
+                .copy_from_slice(&(length as u64).to_le_bytes());
+            assert!(apply_packed_delta(&[], &invalid).is_err());
+            assert!(apply_delta_streamed(&[], &delta[..], length).is_err());
+        }
+        for length in [packed.len() / 2, packed.len() - 1] {
+            assert!(apply_packed_delta(&[], &packed[..length]).is_err());
+        }
+        let mut invalid = Vec::new();
+        let mut trailing = delta.clone();
+        trailing.push(0);
+        invalid.push(trailing);
+        invalid.push(delta[..delta.len() - 1].to_vec());
+        let mut kind = delta.clone();
+        kind[VALUES_DELTA_MAGIC.len() + 16] = 2;
+        invalid.push(kind);
+        let mut literal = delta.clone();
+        literal[VALUES_DELTA_MAGIC.len() + 17..VALUES_DELTA_MAGIC.len() + 25]
+            .copy_from_slice(&u64::MAX.to_le_bytes());
+        invalid.push(literal);
+        for length in [current.len() - 1, current.len() + 1] {
+            let mut output_length = delta.clone();
+            output_length[VALUES_DELTA_MAGIC.len()..VALUES_DELTA_MAGIC.len() + 8]
+                .copy_from_slice(&(length as u64).to_le_bytes());
+            invalid.push(output_length);
+        }
+        let mut copy = VALUES_DELTA_MAGIC.to_vec();
+        for n in [1, 1] {
+            put_u64(&mut copy, n);
+        }
+        copy.push(0);
+        put_u64(&mut copy, u64::MAX);
+        put_u64(&mut copy, 1);
+        invalid.push(copy);
+        for bytes in invalid {
+            assert!(apply_packed_delta(&[], &pack_blob(&bytes)?).is_err());
+        }
+        assert!(apply_packed_delta(&[], b"wrong envelope").is_err());
+        struct FailedRead;
+        impl Read for FailedRead {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("injected delta read failure"))
+            }
+        }
+        assert!(apply_delta_streamed(&[], FailedRead, delta.len()).is_err());
         Ok(())
     }
 
