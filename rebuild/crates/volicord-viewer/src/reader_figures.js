@@ -92,6 +92,10 @@ function createReaderFigures({lifetime,modal}) {
     let drag=null;
     on('pointerdown',event=>{
       if(!spatial||event.button!==0||event.pointerType!=='mouse'||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||event.target.closest('a,text'))return;
+      // Background dragging belongs to the viewport. Native selection here can
+      // start in adjacent prose and auto-scroll against the captured pointer.
+      // Text, links and modified gestures keep their ordinary browser behavior.
+      event.preventDefault();
       drag={id:event.pointerId,x:event.clientX,y:event.clientY,left:viewport.scrollLeft,top:viewport.scrollTop};
       viewport.setPointerCapture(event.pointerId);scene.entry=false;
     });

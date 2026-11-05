@@ -47,14 +47,33 @@ async function main(){
    }
    assert.equal(await doc.locator('.verification-reading .verification-execution').count(),0,'report is distinct from execution originals');
    const records=doc.locator('.audit');assert.equal(await records.locator('.verification-execution[open]').count(),0,'command originals start closed');
+   assert.equal(await doc.locator(':scope > [data-warning=source]').count(),0,'original-record limits do not interrupt the independently admitted article');
+   const originalGap=records.locator('[id$="-verification-originals"] [data-warning=source]');
+   assert.equal(await originalGap.count(),1,'original Source limitation remains in verification originals');
+   assert.ok((await originalGap.locator('p').textContent()).includes('기록된 보고로 현재 저장소 동작을 확정하지 않습니다.'),'historical qualification survives');
    await figure.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(out,`${mode}-${width}-initial.png`)});
    const svg=figure.locator('svg');
    if(scripted){
+    const toolbar=figure.locator('.diagram-controls');
+    const placement=await toolbar.evaluate(n=>{const a=n.getBoundingClientRect(),f=n.closest('figure').getBoundingClientRect(),v=n.closest('.diagram-full-view').querySelector('.diagram-viewport').getBoundingClientRect();return {width:a.width,figure:f.width,inside:a.left>=f.left&&a.right<=f.right&&a.top>=f.top&&a.bottom<=v.top};});
+    assert.ok(placement.inside,'controls stay inside the drawing frame without obscuring its world');
+    if(width>=768)assert.ok(placement.width<placement.figure*.8,'selected compact controls replace the full-width button row');
+    assert.equal(await toolbar.locator('.diagram-movement[open]').count(),0,'movement controls start folded as in CE1');
     await figure.locator('[data-diagram-action=expand]').click();assert.equal(await figure.getAttribute('aria-modal'),'true');
     await page.keyboard.press('Escape');assert.equal(await figure.locator('[data-diagram-action=expand]').getAttribute('aria-expanded'),'false');
     await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();
     const v=figure.locator('.diagram-viewport');await v.focus();await v.press('ArrowDown');await v.press('ArrowRight');
+    await toolbar.locator('.diagram-movement > summary').click();
     await figure.locator('[data-diagram-action=right]').click();
+    await toolbar.locator('.diagram-movement > summary').click();
+    // Native keyboard scrolling can still be animating after the menu closes.
+    // Wait for its real position before choosing a blank point; a moving glyph
+    // under an old coordinate is a text-selection gesture, not a camera drag.
+    await v.evaluate(n=>new Promise((resolve,reject)=>{
+     let previous='',stable=0,frames=0;
+     function sample(){const r=n.getBoundingClientRect(),value=[n.scrollLeft,n.scrollTop,r.x,r.y,r.width,r.height].join(',');stable=value===previous?stable+1:0;previous=value;if(stable>=3)return resolve();if(++frames>120)return reject(Error('viewport did not settle'));requestAnimationFrame(sample);}sample();
+    }));
+    await figure.locator('figcaption').evaluate(n=>{const range=document.createRange();range.selectNodeContents(n);getSelection().removeAllRanges();getSelection().addRange(range);});
     const hit=await v.evaluate(n=>{
      const r=n.getBoundingClientRect();
      // Narrow viewports may contain full-width message hitboxes. Find a real
@@ -67,8 +86,11 @@ async function main(){
      throw Error('blank world drag target unavailable');
     });
     const panBefore=await v.evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,selection:getSelection().toString()}));
+    await page.evaluate(()=>{window.__pointerObservation=[];for(const type of ['pointerdown','selectstart'])document.addEventListener(type,e=>window.__pointerObservation.push({type,target:e.target.tagName,inViewport:!!e.target.closest('.diagram-viewport'),blank:!e.target.closest('a,text'),prevented:e.defaultPrevented,cancelable:e.cancelable}),{once:true});});
     await page.mouse.move(hit.x,hit.y);await page.mouse.down();await page.mouse.move(hit.x-60,hit.y-40,{steps:4});await page.mouse.up();
     const panAfter=await v.evaluate(n=>({left:n.scrollLeft,top:n.scrollTop,selection:getSelection().toString()}));
+    write(`${mode}-${width}-pan.json`,{hit,before:panBefore,after:panAfter,events:await page.evaluate(()=>window.__pointerObservation)});
+    assert.equal((await page.evaluate(()=>window.__pointerObservation))[0].blank,true,'actual pointerdown targets blank background');
     assert.ok(panAfter.left>panBefore.left||panAfter.top>panBefore.top,'actual blank-background pointer drag pans the world');
     assert.equal(panAfter.selection,panBefore.selection,'drag does not replace text selection');
    }

@@ -1266,3 +1266,21 @@ Expanded return preserves both the outer figure and its inner world viewport. Sc
 size/expansion is restored before outer scroll, and an already handled viewport size
 cannot be re-centered by an obsolete resize callback. A clicked routed stroke returns
 to that same native anchor; it does not borrow a same-worded or primary-label origin.
+
+
+### Preserve the selected control and record hierarchy
+
+The package-43 CE1 control surface is a compact control group inside the drawing
+frame. Directional buttons and selected-relationship navigation remain available
+through its native Move disclosure; zoom, orientation, readable scale and expansion
+remain direct controls. The group wraps within narrow frames without covering the
+world or becoming a full-width toolbar. Script-free consumers retain native scrolling
+and exact element links. An admitted Work article places historical record Source
+gaps with verification originals. Missing-article diagnostics, failed reports,
+rejected acceptance and the article's own range availability remain independent.
+
+A blank-background mouse drag suppresses the browser's competing selection start.
+Text, links and modified gestures retain browser selection/navigation; a camera
+movement neither changes evidence authority nor steals focus. The real pointer
+regression preserves the previously reproduced adjacent-prose selection and reverse
+scroll instead of treating earlier successful drag samples as universal coverage.

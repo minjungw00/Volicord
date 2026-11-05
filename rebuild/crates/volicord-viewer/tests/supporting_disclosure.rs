@@ -99,3 +99,82 @@ fn unrelated_pass_keeps_failure_visible_and_exact_details_disclosed(
     }
     Ok(())
 }
+
+#[test]
+fn unknown_original_source_remains_an_entry_warning_without_an_article(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_context::*;
+    let f = reading_fixture::fixture()?;
+    let mut store = Store::open(f.operations.layout().canonical_store())?;
+    let revision = store.get_project(f.project)?.revision;
+    let author = Principal {
+        kind: PrincipalKind::User,
+        identity: "source-gap-control".into(),
+    };
+    let source = store
+        .record_source(
+            OperationId::from_bytes([91; 16]),
+            f.project,
+            SourceDraft {
+                expected_project_revision: revision,
+                payload: SourcePayload::CurrentHostUserTurn {
+                    host: "test".into(),
+                    session: "original-source-gap".into(),
+                    turn: "Inspect an original record with unknown Source availability".into(),
+                },
+                actor: author.clone(),
+                observer: None,
+                availability: Availability::Unknown,
+            },
+        )?
+        .value
+        .id;
+    let work = store
+        .record_context_item(
+            OperationId::from_bytes([92; 16]),
+            f.project,
+            ContextItemDraft {
+                expected_project_revision: revision,
+                role: ContextItemRole::Goal,
+                statement: "Inspect an original record with unknown Source availability".into(),
+                provenance_role: StatementProvenanceRole::UserStatement,
+                author,
+                source_basis: vec![source],
+                applicability: ApplicabilityScope {
+                    paths: vec![],
+                    components: vec![],
+                    work_contexts: vec![],
+                },
+            },
+        )?
+        .value
+        .id;
+    drop(store);
+    let adapter = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    for (language, locale) in [("en", ViewerLocale::English), ("ko", ViewerLocale::Korean)] {
+        let request = ViewerRequest {
+            project_id: f.project,
+            locale,
+            view: ViewerView::Work { work: Some(work) },
+            requested_language: language.into(),
+            guarded_request: None,
+        };
+        let page = adapter.render_snapshot(&request, TimestampMicros::from_unix_micros(123))?;
+        let selected = page
+            .html
+            .split(&format!("id=\"work-{work}\""))
+            .nth(1)
+            .ok_or("Work")?;
+        let opening = selected.split("class=\"audit\"").next().ok_or("opening")?;
+        assert!(
+            opening.contains("data-warning=\"source\""),
+            "original Source diagnostics stay at entry when no independent article exists"
+        );
+        assert!(opening.contains(if language == "en" {
+            "Supporting sources unavailable or unknown: 1"
+        } else {
+            "지원 근거 이용 불가 또는 미확인: 1"
+        }));
+    }
+    Ok(())
+}

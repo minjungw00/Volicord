@@ -4721,3 +4721,26 @@ pointer/panel/denial check also pass on the final installation. The final 24 bro
 36 stage, sixteen pure-layout and six full-MCP samples above were repeated serially
 only after those support jobs finished. Earlier cost-01 measurements are preserved;
 the table uses cost-02. There is still no before/after causal or qualification claim.
+
+### Exact selected reading completion controls
+
+Compare actual Product output with package-43 CE1's immutable reference, not only
+with the preceding implementation. The representative browser control requires a
+compact in-frame control group, original-record Source limitations in verification
+originals, complete code before metadata, and exact camera/native return at five
+widths. A missing independent article must retain original Source warnings at entry;
+failed verification, current range denial and user rejection remain separate.
+
+Before choosing a blank pointer target, wait for actual native scrolling and viewport
+geometry to settle. Preserve pointerdown/selectstart targets and before/after selection
+and scroll. A glyph moving under an earlier blank coordinate is not a blank-background
+drag. Include an existing text selection: an empty selection alone missed the original
+browser-selection conflict. The preserved pre-guard installed binary must reject that
+control; the installed correction must preserve both selection and camera movement.
+Numeric successful wrappers still require the expected matrix/result membership.
+
+Raw originals, failed targeting/output attempts and regenerated exports remain under
+ignored task paths. Normal retained-publication reads, later installed publication,
+source-independent history, exact-candidate gate/resource results and human/assistive
+observation must retain their own identities and outcomes. These controls introduce
+no semantic format, Source lifetime, resource ceiling or external authority change.

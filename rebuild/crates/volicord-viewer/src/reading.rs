@@ -688,7 +688,20 @@ fn render_diagrams(
         html.push_str(&format!("<figure class=\"admitted-diagram\" id=\"{ns}\" tabindex=\"-1\" data-realization=\"{}\" data-semantic-fingerprint=\"{}\" lang=\"{}\"{}><figcaption>{}</figcaption>",escape(realization),escape(&d.semantic_fingerprint),escape(&content_language_tag(&answers.language)),publication_scope(answers),escape(title)));
         let mut visual = String::new();
         visual.push_str("<div class=\"diagram-full-view\">");
-        let controls = format!("<div class=\"diagram-controls\" hidden><button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{ns}-viewport\" aria-expanded=\"false\">{}</button><button type=\"button\" data-diagram-action=\"fit\">{}</button><button type=\"button\" data-diagram-action=\"reset\">75%</button><button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button><output class=\"diagram-scale\" aria-live=\"polite\">100%</output><button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button><button type=\"button\" data-diagram-action=\"focus\">{}</button><button type=\"button\" data-diagram-action=\"left\" aria-label=\"{}\">←</button><button type=\"button\" data-diagram-action=\"right\" aria-label=\"{}\">→</button><button type=\"button\" data-diagram-action=\"up\" aria-label=\"{}\">↑</button><button type=\"button\" data-diagram-action=\"down\" aria-label=\"{}\">↓</button></div>",text(r.locale,"Expand","크게 보기"),text(r.locale,"Full position","전체 위치"),text(r.locale,"Zoom out","축소"),text(r.locale,"Zoom in","확대"),text(r.locale,"Selected relationship","선택 관계"),text(r.locale,"Move left","왼쪽 이동"),text(r.locale,"Move right","오른쪽 이동"),text(r.locale,"Move up","위로 이동"),text(r.locale,"Move down","아래로 이동"));
+        let controls = format!(concat!(
+            "<div class=\"diagram-controls\" hidden><details class=\"diagram-movement\"><summary>{}</summary><div>",
+            "<button type=\"button\" data-diagram-action=\"left\" aria-label=\"{}\">←</button>",
+            "<button type=\"button\" data-diagram-action=\"right\" aria-label=\"{}\">→</button>",
+            "<button type=\"button\" data-diagram-action=\"up\" aria-label=\"{}\">↑</button>",
+            "<button type=\"button\" data-diagram-action=\"down\" aria-label=\"{}\">↓</button>",
+            "<button type=\"button\" data-diagram-action=\"focus\">{}</button></div></details>",
+            "<button type=\"button\" data-diagram-action=\"out\" aria-label=\"{}\">−</button>",
+            "<button type=\"button\" data-diagram-action=\"in\" aria-label=\"{}\">+</button>",
+            "<button type=\"button\" data-diagram-action=\"fit\">{}</button>",
+            "<button type=\"button\" data-diagram-action=\"reset\">75%</button>",
+            "<button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{}-viewport\" aria-expanded=\"false\">{}</button>",
+            "<output class=\"diagram-scale\" aria-live=\"polite\">100%</output></div>"),
+            text(r.locale,"Move","이동"),text(r.locale,"Move left","왼쪽 이동"),text(r.locale,"Move right","오른쪽 이동"),text(r.locale,"Move up","위로 이동"),text(r.locale,"Move down","아래로 이동"),text(r.locale,"Selected relationship","선택 관계"),text(r.locale,"Zoom out","축소"),text(r.locale,"Zoom in","확대"),text(r.locale,"Full position","전체 위치"),ns,text(r.locale,"Expand","크게 보기"));
         if !snapshot {
             visual.push_str(&controls);
         }
@@ -1392,6 +1405,26 @@ fn render_document_body(
             text(r.locale, "Verification originals", "검증 원문"),
             document_anchor(answers, "verification-originals")
         ));
+        if current {
+            for fact in answers
+                .facts
+                .iter()
+                .filter(|f| f.question == "SourceEvidenceGap")
+            {
+                reading_warning(
+                    html,
+                    r,
+                    "source",
+                    "note",
+                    text(
+                        r.locale,
+                        "Supporting record Source gap",
+                        "원래 기록의 Source 한계",
+                    ),
+                    &fact.text,
+                );
+            }
+        }
         render_verification(html, r, answers, &w.reading.verification_report, snapshot);
         html.push_str(&format!("<details id=\"{}\" data-verification-work=\"{}\"><summary>{}</summary><pre>{}</pre></details>",document_anchor(answers,"full-verification"),w.work_item_id,text(r.locale,"Complete verification read model (JSON)","전체 검증 읽기 모델 (JSON)"),escape(&serde_json::to_string_pretty(&w.reading.verification_report).unwrap_or_default())));
         html.push_str(&format!("<details><summary>{}</summary><pre>{}</pre></details>",text(r.locale,"Original Work basis","Work 원본 근거"),escape(&format!("Work: {}\nGoal basis: {:?}\nchanges: {:?}\nCheckpoints: {:?}\nDecisions: {:?}\nQuestions: {:?}\nresult: {:?}\nnext step: {:?}",w.work_item_id,w.reading.goal.basis,w.reading.changes,w.checkpoint_ids,w.decision_ids,w.open_question_ids,w.reading.answers.result,w.reading.next_step))));
@@ -1814,6 +1847,11 @@ fn opening_context(
                 | "ReviewBasis"
         ) || (rejected && a.question == "UserAcceptance")
     }) {
+        // A current independent article has its own range availability. Historical
+        // record gaps belong with verification originals, not its opening narrative.
+        if fact.question == "SourceEvidenceGap" && work.is_some() && answers.provenance.is_some() {
+            continue;
+        }
         // Detailed verification already carries these facts; avoid duplicate notices.
         if fact.question == "VerificationCoverage" {
             continue;
