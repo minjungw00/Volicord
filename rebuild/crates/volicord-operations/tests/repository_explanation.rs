@@ -1618,6 +1618,91 @@ fn same_named_populated_and_workless_projects_keep_their_own_repository_articles
 }
 
 #[test]
+fn rejected_repository_binding_reports_only_failed_predicates() -> Result<(), Box<dyn Error>> {
+    for field in [
+        "project_id",
+        "analysis_snapshot_id",
+        "source_id",
+        "source_revision",
+        "binding_availability",
+        "retained_until",
+        "repository_snapshot_id",
+        "repository_source_id",
+        "record_analysis_snapshot_id",
+        "binding_id",
+        "binding_revision",
+        "observed_at_positive",
+        "observed_at_before_retention",
+    ] {
+        let f = fixture()?;
+        let id = source(&observe(&f, "main.py", None)?)?;
+        let original = f
+            .ops
+            .read_repository_explanation_source(f.project, f.analysis, id)?;
+        let canonical = f.ops.canonical_basis(f.project)?;
+        let connection = rusqlite::Connection::open(f.ops.layout().privacy_store())?;
+        let (record_id, raw): (Vec<u8>, String) = connection.query_row(
+            "SELECT id,record_json FROM managed_derived WHERE json_extract(record_json,'$.kind')='source_observation'",
+            [], |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let mut record: Value = serde_json::from_str(&raw)?;
+        let mut body: Value = serde_json::from_str(record["content"].as_str().ok_or("content")?)?;
+        match field {
+            "project_id" => body[field] = serde_json::to_value(ProjectId::from_bytes([0; 16]))?,
+            "source_id" | "repository_source_id" => {
+                body[field] = serde_json::to_value(SourceId::from_bytes([0; 16]))?
+            }
+            "analysis_snapshot_id" => body[field] = serde_json::json!("0".repeat(64)),
+            "source_revision" | "binding_revision" => body[field] = serde_json::json!(0),
+            "binding_id" | "repository_snapshot_id" => {
+                body[field] = serde_json::json!("invalid binding control")
+            }
+            "retained_until" => body["retained_until_unix_micros"] = serde_json::json!(1),
+            "record_analysis_snapshot_id" => {
+                record["analysis_snapshot"] = serde_json::json!("0".repeat(64))
+            }
+            "observed_at_positive" => body["observed_at_unix_micros"] = serde_json::json!(0),
+            "observed_at_before_retention" => record["created_at"] = serde_json::json!(1),
+            "binding_availability" => {
+                let db = rusqlite::Connection::open(f.ops.layout().canonical_store())?;
+                db.execute("UPDATE local_bindings SET availability='unavailable'", [])?;
+            }
+            _ => unreachable!(),
+        }
+        record["content"] = serde_json::json!(body.to_string());
+        connection.execute(
+            "UPDATE managed_derived SET record_json=?1 WHERE id=?2",
+            rusqlite::params![record.to_string(), &record_id],
+        )?;
+        let rejected_state = f.ops.privacy_status(f.project)?;
+        let error = f
+            .ops
+            .read_repository_explanation_source(f.project, f.analysis, id)
+            .expect_err(field);
+        assert_eq!(
+            error.message(),
+            format!("repository Source identity/binding mismatch: {field}")
+        );
+        assert_eq!(rejected_state, f.ops.privacy_status(f.project)?);
+        assert_eq!(canonical, f.ops.canonical_basis(f.project)?);
+        connection.execute(
+            "UPDATE managed_derived SET record_json=?1 WHERE id=?2",
+            rusqlite::params![&raw, &record_id],
+        )?;
+        if field == "binding_availability" {
+            rusqlite::Connection::open(f.ops.layout().canonical_store())?
+                .execute("UPDATE local_bindings SET availability='available'", [])?;
+        }
+        assert_eq!(
+            original,
+            f.ops
+                .read_repository_explanation_source(f.project, f.analysis, id)?
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn repository_copy_metadata_tampering_is_rejected_before_disclosure() -> Result<(), Box<dyn Error>>
 {
     for key in [

@@ -11,6 +11,29 @@ use volicord_viewer::*;
 mod code_text;
 use code_text::code_texts;
 
+/// A failed setup must leave its exact stores available for diagnosis. Normal
+/// fixtures retain TempDir's cleanup and existing explicit keep behavior.
+struct FixtureSetup<'a> {
+    temp: &'a mut tempfile::TempDir,
+    complete: bool,
+}
+impl FixtureSetup<'_> {
+    fn complete(mut self) {
+        self.complete = true;
+    }
+}
+impl Drop for FixtureSetup<'_> {
+    fn drop(&mut self) {
+        if !self.complete {
+            self.temp.disable_cleanup(true);
+            eprintln!(
+                "citation fixture setup failed; retained at {}",
+                self.temp.path().display()
+            );
+        }
+    }
+}
+
 struct Fixture {
     temp: tempfile::TempDir,
     ops: LocalOperations,
@@ -45,11 +68,15 @@ impl Fixture {
         custom: Option<Vec<(String, String)>>,
         short_mechanism: bool,
     ) -> Result<Self, Box<dyn Error>> {
-        let temp = match parent {
+        let mut temp = match parent {
             Some(path) => tempfile::tempdir_in(path)?,
             None => tempfile::tempdir()?,
         };
-        let repo = temp.path().join("repo");
+        let setup = FixtureSetup {
+            temp: &mut temp,
+            complete: false,
+        };
+        let repo = setup.temp.path().join("repo");
         fs::create_dir(&repo)?;
         let mut originals: Vec<_> = (0..8)
             .map(|i| {
@@ -128,7 +155,7 @@ impl Fixture {
             fs::write(repo.join(name), text)?;
         }
         fs::write(repo.join("alternate.py"), &originals[8])?;
-        let ops = LocalOperations::new(RuntimeLayout::new(temp.path().join("runtime"))?);
+        let ops = LocalOperations::new(RuntimeLayout::new(setup.temp.path().join("runtime"))?);
         let project = ops
             .initialize_project("Verify a bounded mechanism", Some(&repo))?
             .project
@@ -185,6 +212,7 @@ impl Fixture {
             "en",
             realization.clone(),
         )?;
+        setup.complete();
         Ok(Self {
             temp,
             ops,
@@ -231,6 +259,34 @@ impl Fixture {
         Ok(String::from_utf8(output)?)
     }
 }
+#[test]
+fn failed_fixture_setup_preserves_files_and_successful_setup_cleans_up(
+) -> Result<(), Box<dyn Error>> {
+    let parent = tempfile::tempdir()?;
+    let mut files: Vec<_> = (0..11)
+        .map(|i| (format!("file{i}.py"), "value = 1\n".to_owned()))
+        .collect();
+    files[0] = (
+        "secret.py".into(),
+        "original excluded fixture bytes\n".into(),
+    );
+    files[10] = (".gitignore".into(), "secret.py\n".into());
+    assert!(Fixture::new_sources(Some(parent.path()), false, Some(files)).is_err());
+    let retained = fs::read_dir(parent.path())?.collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(retained.len(), 1);
+    assert_eq!(
+        fs::read_to_string(retained[0].path().join("repo/secret.py"))?,
+        "original excluded fixture bytes\n"
+    );
+    assert!(retained[0].path().join("runtime").is_dir());
+    let healthy = Fixture::new_in(Some(parent.path()))?;
+    let healthy_path = healthy.temp.path().to_owned();
+    drop(healthy);
+    assert!(!healthy_path.exists());
+    assert!(retained[0].path().exists());
+    Ok(())
+}
+
 #[test]
 fn important_late_multi_citation_survives_initial_and_offline_bounds() -> Result<(), Box<dyn Error>>
 {

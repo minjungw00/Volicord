@@ -622,22 +622,63 @@ impl LocalOperations {
             .open_canonical_read_only()?
             .get_local_binding(project)
             .map_err(|e| Error::with_source("repository binding unavailable", e))?;
-        if observation.project_id != project
-            || observation.analysis_snapshot_id != analysis_id
-            || observation.source_id != source
-            || observation.source_revision != 1
-            || binding.availability != Availability::Available
-            || record.retained_until.map(|t| t.as_unix_micros())
-                != Some(observation.retained_until_unix_micros)
-            || observation.repository_snapshot_id != analysis.repository_snapshot.to_string()
-            || observation.repository_source_id != analysis.repository_source.identity()
-            || record.analysis_snapshot != Some(analysis_id)
-            || observation.binding_id != binding.id.to_string()
-            || observation.binding_revision != binding.revision
-            || observation.observed_at_unix_micros <= 0
-            || observation.observed_at_unix_micros > stored.created_at.as_unix_micros()
-        {
-            return Err(Error::new("repository Source identity/binding mismatch"));
+        // Report only fixed predicate names. Body bytes, identities and stored
+        // values must not become error output when the binding is rejected.
+        let mismatches = [
+            ("project_id", observation.project_id != project),
+            (
+                "analysis_snapshot_id",
+                observation.analysis_snapshot_id != analysis_id,
+            ),
+            ("source_id", observation.source_id != source),
+            ("source_revision", observation.source_revision != 1),
+            (
+                "binding_availability",
+                binding.availability != Availability::Available,
+            ),
+            (
+                "retained_until",
+                record.retained_until.map(|t| t.as_unix_micros())
+                    != Some(observation.retained_until_unix_micros),
+            ),
+            (
+                "repository_snapshot_id",
+                observation.repository_snapshot_id != analysis.repository_snapshot.to_string(),
+            ),
+            (
+                "repository_source_id",
+                observation.repository_source_id != analysis.repository_source.identity(),
+            ),
+            (
+                "record_analysis_snapshot_id",
+                record.analysis_snapshot != Some(analysis_id),
+            ),
+            (
+                "binding_id",
+                observation.binding_id != binding.id.to_string(),
+            ),
+            (
+                "binding_revision",
+                observation.binding_revision != binding.revision,
+            ),
+            (
+                "observed_at_positive",
+                observation.observed_at_unix_micros <= 0,
+            ),
+            (
+                "observed_at_before_retention",
+                observation.observed_at_unix_micros > stored.created_at.as_unix_micros(),
+            ),
+        ];
+        if mismatches.iter().any(|(_, wrong)| *wrong) {
+            let fields = mismatches
+                .iter()
+                .filter_map(|(field, wrong)| wrong.then_some(*field))
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(Error::new(format!(
+                "repository Source identity/binding mismatch: {fields}"
+            )));
         }
         for id in [source, observation.repository_source_id] {
             if !canonical

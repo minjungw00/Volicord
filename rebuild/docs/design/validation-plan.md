@@ -4901,3 +4901,25 @@ continue to redact configuration and prompt bodies. The command-family regressio
 uses the actual model-bearing shape; a successful unknown-operand fallback is not
 current grammar coverage. This correction changes no archive schema or bounds and
 introduces no model-less compatibility branch or external-transmission authority.
+
+### Repository Source binding failure diagnosis
+
+An aggregate `repository Source identity/binding mismatch` does not identify which
+of its thirteen predicates rejected the observation. The Operations reader reports
+only fixed failed predicate names. The repository explanation integration control
+independently changes each association, binding, retention or chronology field in
+real stored observations, requires rejection without disclosure or mutation, then
+restores the exact original and requires the same complete public Source result.
+This diagnostic refinement changes no guard, clock, retention or format contract.
+
+Citation fixture setup retains its exact temporary repository and Runtime on an
+error or unwind and reports the path. Successful setup keeps ordinary TempDir
+cleanup and explicit seed retention. The failure-path control uses an excluded
+Source to fail after repository/analysis creation and checks preserved original
+bytes; a successful fixture must still clean up. It does not retain every failed
+test after setup or reconstruct already-deleted historical fixtures.
+
+Use focused repository explanation/citation checks for diagnosis. Nonreproduction
+in an instrumented or separate test execution cannot turn a failed Final into a
+pass or attribute its cause to a clock. Preserve each outcome and original failure;
+any later authoritative gate still belongs to its own exact clean candidate.

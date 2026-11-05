@@ -102,6 +102,11 @@ cause와 현재 workflow/required next action을 보존하며 internal storage s
 
 ### Projection failure
 
+- Retained repository Source identity/binding rejection identifies the failed fixed
+  predicate names without disclosing body bytes, identities or stored values. All
+  Project, Analysis Snapshot, Source, binding, retention and chronology predicates
+  still reject independently. A chronology predicate failure alone does not prove
+  a clock defect; recovery must inspect preserved evidence rather than relax the check.
 - Recall selection, map, document generation, preview, render 또는 export presentation이
   실패해도 input canonical record와 Repository work result는 그대로다.
 - Projection이 일부 section만 만들면 `partial`과 omission/failure scope를 보고하며
