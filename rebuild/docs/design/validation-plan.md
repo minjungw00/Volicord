@@ -4744,3 +4744,11 @@ ignored task paths. Normal retained-publication reads, later installed publicati
 source-independent history, exact-candidate gate/resource results and human/assistive
 observation must retain their own identities and outcomes. These controls introduce
 no semantic format, Source lifetime, resource ceiling or external authority change.
+
+The current authenticated Codex probe requires an explicit `--model` operand.
+Archive collection and independent verification recognize that exact current command
+shape, preserve the structural flag, redact the model under `provider_model`, and
+continue to redact configuration and prompt bodies. The command-family regression
+uses the actual model-bearing shape; a successful unknown-operand fallback is not
+current grammar coverage. This correction changes no archive schema or bounds and
+introduces no model-less compatibility branch or external-transmission authority.

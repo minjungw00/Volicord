@@ -258,6 +258,8 @@ def codex_argv(repository: Path, prompt: str) -> list[str]:
         "--config",
         'mcp_servers.volicord.tools.project_health.approval_mode="approve"',
         "exec",
+        "--model",
+        "private-exact-model",
         "--ephemeral",
         "--json",
         "--sandbox",
@@ -323,6 +325,8 @@ def assert_semantic_policy(root: Path, gate: Path) -> None:
         "--config",
     ]
     assert current_codex["argv"][5] == "<redacted:config-payload>"
+    assert current_codex["argv"][7:9] == ["--model", "<redacted:provider-model>"]
+    assert not any(role[2] == "unknown_operand" for role in current_codex["non_structural_argument_roles"])
     assert current_codex["argv"][-1] == "<redacted:private-prompt>"
 
     for command, sensitive_index in (
@@ -1001,6 +1005,7 @@ def integration_archive(root: Path) -> tuple[Path, str]:
             retained.extractfile("validation-evidence/processes.json").read()
         )
     assert PROMPT_SENTINEL.encode() not in bodies
+    assert b'private-exact-model' not in bodies
     for payload in SENSITIVE_OPERANDS:
         if len(payload) > 1:
             assert payload.encode() not in bodies
@@ -1021,7 +1026,7 @@ def integration_archive(root: Path) -> tuple[Path, str]:
     assert target_process["argv"][-1] == "<redacted:private-prompt>"
     assert processes["argv_policy"] == builder.argv_policy()
     assert target_process["non_structural_argument_roles"][-1] == [
-        14,
+        16,
         "redacted",
         "private_prompt",
     ]
@@ -1678,6 +1683,24 @@ def main() -> int:
         )
         assert run_verifier(prompt_archive).returncode == 1
 
+        model_payloads = payloads()
+        leaked_model = builder.sanitized_execution(
+            execution(codex_argv(ROOT, PROMPT_SENTINEL), ROOT), ROOT, root
+        )
+        leaked_model["argv"][8] = "private-exact-model"
+        leaked_model["non_structural_argument_roles"] = [
+            role for role in leaked_model["non_structural_argument_roles"] if role[0] != 8
+        ]
+        model_payloads["processes.json"]["processes"] = [leaked_model]
+        model_archive = root / "model-marked-structural.tar.gz"
+        write_fixture_archive(
+            model_archive, candidate_head=HEAD, payloads=model_payloads,
+            source_final_summary_sha256=None,
+        )
+        model_failure = run_verifier(model_archive)
+        assert model_failure.returncode == 1
+        assert "codex command-family grammar" in model_failure.stderr
+
         absolute_payloads = payloads()
         absolute_payloads["admission.json"]["leaked_path"] = (
             "/home/private-user/repository"
@@ -1714,6 +1737,8 @@ def main() -> int:
             "logical_official_v11_working_directory",
             "unknown_external_working_directory",
             "private_prompt_sanitization",
+            "explicit_model_sanitization",
+            "explicit_model_structural_rejection",
             "semantic_role_payload_regressions",
             "flag_shaped_content_operand",
             "shell_python_git_config_payloads",

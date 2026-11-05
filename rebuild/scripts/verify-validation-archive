@@ -491,6 +491,8 @@ def verify_current_command_grammar(
                 "--config",
                 ("redacted", "config_payload"),
                 "exec",
+                "--model",
+                ("redacted", "provider_model"),
                 "--ephemeral",
                 "--json",
                 "--sandbox",

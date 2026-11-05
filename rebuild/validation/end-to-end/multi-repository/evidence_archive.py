@@ -345,19 +345,21 @@ def semantic_argument_roles(argv: list[str]) -> list[dict[str, str]]:
             3: "never",
             4: "--config",
             6: "exec",
-            7: "--ephemeral",
-            8: "--json",
-            9: "--sandbox",
-            10: "read-only",
-            11: "--skip-git-repo-check",
-            12: "-C",
+            7: "--model",
+            9: "--ephemeral",
+            10: "--json",
+            11: "--sandbox",
+            12: "read-only",
+            13: "--skip-git-repo-check",
+            14: "-C",
         }
-        if len(argv) == 15 and all(argv[index] == value for index, value in fixed.items()):
+        if len(argv) == 17 and all(argv[index] == value for index, value in fixed.items()):
             for index in fixed:
                 structural(index, "subcommand" if argv[index] == "exec" else "structural_token")
             redact(5, "config_payload")
-            path(13)
-            redact(14, "private_prompt")
+            redact(8, "provider_model")
+            path(15)
+            redact(16, "private_prompt")
         return roles
 
     if executable == "cargo":
