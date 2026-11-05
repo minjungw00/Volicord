@@ -292,8 +292,21 @@ pub(super) fn render_verification(
     report: &WorkVerificationReport,
     snapshot: bool,
 ) {
-    html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{}</summary><p>{}</p><p class=\"source-note\">{}</p>",
-        document_anchor(answers,"verification-records"),text(r.locale,"Individual verification records", "개별 검증 기록"),
+    let displayed_entries = report.executions.len().min(32)
+        + report
+            .checks
+            .iter()
+            .take(64)
+            .filter(|check| {
+                !report
+                    .executions
+                    .iter()
+                    .take(32)
+                    .any(|execution| check.source_id.as_deref() == Some(&execution.source_id))
+            })
+            .count();
+    html.push_str(&format!("<details class=\"reading-section verification-report\" id=\"{}\" tabindex=\"-1\"><summary>{} · {}{}</summary><p>{}</p><p class=\"source-note\">{}</p>",
+        document_anchor(answers,"verification-records"),text(r.locale,"Individual verification records", "개별 검증 기록"),displayed_entries,text(r.locale," entries","개 항목"),
         text(r.locale,"Each entry is a Checkpoint verification report, not a test. Reported test counts remain attributed original text; repeated reports are not extra tests or newly observed runs. Observed executions have separate provenance. Exit status proves no assertions.", "각 항목은 테스트 개수가 아닌 Checkpoint 검증 보고입니다. 보고된 테스트 수는 원문에 귀속하며 반복 보고를 추가 테스트나 새 관측 실행으로 세지 않습니다. 실행 관측의 출처는 별도이며 종료 코드만으로 검사 조건의 충족 여부를 확정하지 않습니다."),
         if report.checks.iter().all(|c|matches!(c.scoped_run,EvidenceDetail::NotObserved)) {text(r.locale,"Comparison unresolved: no explicit comparable check/run relationship is retained. Environment, assertion detail and coverage are shown only when observed.","비교 미해결: 비교 가능한 검증·실행 관계가 명시적으로 보존되지 않았습니다. 환경·검사 조건 상세·확인 범위는 관측되었을 때만 표시합니다.")} else {text(r.locale,"Only explicit recorded relationships support comparison. Earlier failures remain original facts; environment and coverage descriptions are attributed operator reports.","명시적으로 기록된 관계만 비교를 뒷받침합니다. 이전 실패는 원래 사실로 보존하며 환경과 확인 범위 설명은 작업자 보고로 표시합니다.")}));
     let _ = snapshot; // Authored report is rendered once in the reading layer.

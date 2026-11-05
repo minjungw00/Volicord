@@ -419,7 +419,9 @@ fn cited_summary_has_its_own_exact_http_authority_and_cannot_borrow_article_iden
                 .html,
         ] {
             let selected = html
-                .split(&format!("<article class=\"doc\" data-work-id=\"{id}\""))
+                .split(&format!(
+                    "<article class=\"doc\" data-work-layout=\"grouped\" data-work-id=\"{id}\""
+                ))
                 .nth(1)
                 .ok_or("selected Work article")?;
             let (document, sources) = selected.split_once("</article>").ok_or("article end")?;

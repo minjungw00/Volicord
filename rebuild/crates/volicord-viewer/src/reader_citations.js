@@ -7,13 +7,33 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
   const ko = document.documentElement.lang === 'ko';
   const syntaxNames = {javascript:'JavaScript', typescript:'TypeScript', rust:'Rust', python:'Python', shell:'Shell', json:'JSON'};
   const tokenKinds = new Set(['keyword','comment','string','type','function','number','variable']);
+  function inspection(point) {
+    const metadata=document.getElementById(point.dataset.sourceMetadata);
+    if(metadata?.closest('.appendix')!==point.closest('.appendix')||metadata?.dataset.sourceContext!==point.id||metadata.dataset.readerPublication!==point.dataset.readerPublication||metadata.dataset.sourceId!==point.dataset.sourceId)return null;
+    const control=metadata.querySelector('.citation-inspection');
+    return control?.dataset.publicationId===point.dataset.readerPublication&&control.dataset.unit===point.dataset.unitIndex&&control.dataset.citation===point.dataset.citationIndex?control:null;
+  }
+  function codeWindow(point,create=false) {
+    const id=point.dataset.citedCode;if(!id)return null;
+    let code=document.getElementById(id);
+    if(code && (code.closest('.appendix')!==point.closest('.appendix')||code.dataset.sourceId!==point.dataset.sourceId||code.dataset.rangeSha256!==point.dataset.rangeSha256||code.dataset.readerPublication!==point.dataset.readerPublication))return null;
+    if(code?.matches('span[data-code-placeholder]')&&create){code.remove();code=null;}
+    if(code&&!code.matches('.cited-code'))return null;
+    if(!code&&create){
+      code=document.createElement('details');code.id=id;code.className='cited-code evidence-disclosure';code.open=true;
+      code.dataset.sourceId=point.dataset.sourceId;code.dataset.rangeSha256=point.dataset.rangeSha256;code.dataset.readerPublication=point.dataset.readerPublication;code.dataset.defaultPoint=point.id;
+      const summary=document.createElement('summary');summary.textContent=ko?'인용된 전체 코드':'Complete cited code';code.append(summary);
+      const appendix=point.closest('.appendix');appendix.insertBefore(code,appendix.querySelector(':scope > .source-metadata'));
+    }
+    return code;
+  }
   function paintCode(code, source, highlight) {
     // The server's bounded lexer is shared with script-free rendering. Treat
     // ranges as untrusted presentation hints: malformed hints fall back to text.
     const runs = highlight?.tokens;
     const language = Object.hasOwn(syntaxNames, highlight?.language) ? highlight.language : 'plain';
     const boundary = i => i === 0 || i === source.length ||
-      !(source.charCodeAt(i) >= 0xdc00 && source.charCodeAt(i) <= 0xdfff && source.charCodeAt(i-1) >= 0xd800 && source.charCodeAt(i-1) <= 0xdbff);
+      !(source[i-1]==='\r'&&source[i]==='\n')&&!(source.charCodeAt(i) >= 0xdc00 && source.charCodeAt(i) <= 0xdfff && source.charCodeAt(i-1) >= 0xd800 && source.charCodeAt(i-1) <= 0xdbff);
     let end = 0;
     const valid = language !== 'plain' && Array.isArray(runs) && runs.length <= 1024 && runs.every(run => {
       if (!Array.isArray(run) || run.length !== 3) return false;
@@ -43,7 +63,11 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
       if(!notice){notice=document.createElement('p');notice.className='source-note range-unavailable';point.querySelector('.source-path')?.after(notice);}
       notice.dataset.rangeState=reason;
       notice.textContent=reason==='expired'?(ko?'보존 기간이 만료되었습니다. 원래 코드를 제공할 수 없습니다.':'Retained evidence expired. The original code is unavailable.'):(ko?'이 원래 근거 범위를 이용할 수 없습니다.':'This original evidence range is unavailable.');
-      const status=point.querySelector('.citation-status');if(status)status.textContent=notice.textContent;
+      const status=inspection(point)?.querySelector('.citation-status');if(status)status.textContent=notice.textContent;
+    }
+    for(const code of document.querySelectorAll('.cited-code'))if(code.dataset.sourceId===source){
+      const position=document.createElement('span');position.id=code.id;position.dataset.codePlaceholder='true';
+      for(const key of ['sourceId','rangeSha256','readerPublication'])position.dataset[key]=code.dataset[key];code.replaceWith(position);
     }
   }
   let expiryTimer;
@@ -60,10 +84,11 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
   function updateAvailability(publication,basis){
     for(const availability of basis?.source_ranges||[]){
       const point=[...document.querySelectorAll('.source-point')].find(point=>{
-        const c=point.querySelector('.citation-inspection');return c?.dataset.publicationId===publication&&Number(c.dataset.unit)===availability.unit_index&&Number(c.dataset.citation)===availability.citation_index;
+        const c=inspection(point);return c?.dataset.publicationId===publication&&Number(c.dataset.unit)===availability.unit_index&&Number(c.dataset.citation)===availability.citation_index;
       });
       if(!point)continue;
       if(!availability.available){purgeBody(point.dataset.sourceId,availability.limitation||'unavailable');continue;}
+      if(point.dataset.rangeState!=='expired'){delete point.dataset.rangeState;point.querySelector('.range-unavailable')?.remove();}
       if(Number.isSafeInteger(availability.expires_at_unix_micros)){
         const marker=point.querySelector('.source-deadline');if(marker)marker.dataset.expiresAt=String(availability.expires_at_unix_micros);
       }
@@ -71,9 +96,9 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
     expireBodies();
   }
   async function readCitation(point, offset = 0) {
-    if (lifetime.disposed || !isSelected(point) || point.dataset.unavailable === 'true') return;
-    const control = point.querySelector('.citation-inspection');
-    if (!control) return;
+    if (lifetime.disposed || !point || !isSelected(point) || point.dataset.unavailable === 'true') return;
+    const control = inspection(point);
+    if (!control) {purgeBody(point.dataset.sourceId,'unavailable');return;}
     pendingRead?.abort();
     if(offset===0)codeBuffers.delete(point);
     const controller = new AbortController();
@@ -86,6 +111,8 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
     point.querySelectorAll('pre.code-region,.code-caption').forEach(n => n.hidden = true);
     status.textContent = ko ? '현재 허용된 인용 바이트 확인 중…' : 'Checking current permitted cited bytes…';
     try {
+      const codePane=codeWindow(point,true);if(!codePane)throw Error('code window scope');
+      codePane.dataset.open='true';codePane.querySelectorAll('pre.code-region,.code-caption').forEach(n=>n.hidden=true);
       const url = new URL(control.dataset.citationUrl, location.href);
       if (url.origin !== location.origin || url.pathname !== '/citation') throw Error('scope');
       url.searchParams.set('offset', String(offset));
@@ -95,7 +122,7 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
       const result = JSON.parse(raw);
       if (!response.ok) { const error = Error('unavailable'); error.reason = result.reason; error.publicationReadable = result.publication_readable === true; throw error; }
       const chunk = result.chunk;
-      const expectedCitation = JSON.parse(control.dataset.citationBinding);
+      const expectedCitation = JSON.parse(point.dataset.citationBinding);
       // Identity at the publication/unit level cannot stand in for the exact
       // Source revision, snapshot, range, claim and use selected on this page.
       const boundCitation = chunk?.citation &&
@@ -120,23 +147,26 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
           !Number.isSafeInteger(chunk.displayed_start_line) || chunk.displayed_start_line < 1 ||
           chunk.displayed_end_line - chunk.displayed_start_line + 1 !== chunk.text.split('\n').length - Number(chunk.text.endsWith('\n'))) throw Error('binding');
       if (controller.signal.aborted || reads.get(control) !== controller || !isSelected(point) || !point.isConnected) return;
+      if(!codePane.isConnected||codeWindow(point)!==codePane)throw Error('code window changed');
       updateComparison(control.dataset.publicationId,result.applicability);
       updateAvailability(control.dataset.publicationId,result.applicability);
+      if(!codePane.isConnected||codeWindow(point)!==codePane)throw Error('availability removed code window');
       const originalDeadline=point.querySelector('.source-deadline');
       if(point.dataset.rangeState==='expired'||(originalDeadline&&Number(originalDeadline.dataset.expiresAt)/1000<=Date.now())){
         const error=Error('body expired during read');error.reason='expired';error.publicationReadable=true;throw error;
       }
       point.querySelectorAll('pre.code-region,.code-caption,.initial-range-omission').forEach(n => n.hidden = true);
-      let region = control.querySelector('pre');
+      let region = codePane.querySelector('pre.code-region');
       if (!region) {
         region = document.createElement('pre'); region.className = 'code-region'; region.dataset.fetchedCode='true';
         region.tabIndex = 0; region.setAttribute('role','region');
         const numbers = document.createElement('span'); numbers.className = 'source-line-numbers'; numbers.setAttribute('aria-hidden','true');
         const code = document.createElement('code'); code.lang = '';
         region.append(numbers, code);
-        const caption = document.createElement('p'); caption.className = 'code-caption'; caption.dataset.fetchedCode='true';
-        control.prepend(caption, region);
+        codePane.append(region);
       }
+      let caption=codePane.querySelector('.code-caption');
+      if(!caption){caption=document.createElement('p');caption.className='code-caption';caption.dataset.fetchedCode='true';region.before(caption);}
       region.hidden = false;
       let buffer=codeBuffers.get(point);
       if(offset===0)buffer={text:'',tokens:[],startLine:chunk.displayed_start_line,language:result.highlight?.language};
@@ -146,8 +176,9 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
       for(const token of result.highlight?.tokens||[])buffer.tokens.push([token[0]+previousLength,token[1]+previousLength,token[2]]);
       codeBuffers.set(point,buffer);
       const syntaxName = paintCode(region.querySelector('code'), buffer.text, {language:buffer.language,tokens:buffer.tokens});
-      control.querySelector('.code-caption').textContent = `${syntaxName} · ${ko ? '관측된 인용 범위 · 구문 색상은 읽기 보조 표시' : 'Observed cited range · syntax colors are a reading aid'}`;
-      control.querySelector('.code-caption').hidden = false;
+      caption.textContent = `${syntaxName} · ${ko ? '관측된 인용 범위 · 구문 색상은 읽기 보조 표시' : 'Observed cited range · syntax colors are a reading aid'}`;
+      caption.hidden = false;
+      codePane.querySelectorAll('.initial-range-omission').forEach(n=>n.hidden=true);
       const numbers = region.querySelector('.source-line-numbers'); numbers.replaceChildren();
       for (let line = buffer.startLine; line <= chunk.displayed_end_line; line++) {
         const marker = document.createElement('span'); marker.dataset.line = line; numbers.append(marker);
@@ -163,13 +194,7 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
       if (controller.signal.aborted || reads.get(control) !== controller || !isSelected(point) || !point.isConnected) return;
       // Remove previously displayed bytes from this failed reading point.
       // A deleted shared Source must not leave an earlier claim's cached code.
-      document.querySelectorAll('.source-point').forEach(other => {
-        if (other.dataset.sourceId === point.dataset.sourceId) {
-          codeBuffers.delete(other);
-          other.querySelectorAll('pre.code-region,.code-caption,.source-code-reference').forEach(n => n.remove());
-          if (error.reason) other.dataset.rangeState = error.reason;
-        }
-      });
+      purgeBody(point.dataset.sourceId,error.reason||'unavailable');
       point.querySelectorAll('.initial-range-omission').forEach(n => n.hidden = true);
       const reasons = {
         expired: ko ? '보존 기간이 만료되었습니다.' : 'Retained evidence expired.',
@@ -201,6 +226,7 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
   const cancel = () => { pendingRead?.abort(); pendingRead=null; };
   lifetime.cleanup(() => {
     cancel(); clearTimeout(expiryTimer);
+    document.querySelectorAll('.source-point').forEach(point=>codeBuffers.delete(point));
     document.querySelectorAll('[data-fetched-code]').forEach(node=>node.remove());
     for(const node of document.querySelectorAll('pre.code-region,.code-caption,.initial-range-omission,.source-code-reference')){
       if(nativeVisibility.has(node))node.hidden=nativeVisibility.get(node);
@@ -208,5 +234,8 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
   });
   lifetime.on(document,'visibilitychange',()=>{if(!document.hidden)expireBodies();});
   expireBodies();
-  return {read:readCitation, cancel, forgetPublication, expire:expireBodies};
+  return {read:readCitation, cancel, forgetPublication, expire:expireBodies,pointFor(node){
+    const metadata=node.closest('.source-metadata'),point=document.getElementById(metadata?.dataset.sourceContext);
+    return point&&inspection(point)===node.closest('.citation-inspection')?point:null;
+  }};
 }

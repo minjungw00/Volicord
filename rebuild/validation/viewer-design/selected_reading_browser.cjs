@@ -1,3 +1,4 @@
+const {citationReady,citationInspection}=require('./product_review_controls.cjs');
 // Actual Product HTTP/native/export journeys. No generation, capture or semantic verdict.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn,spawnSync}=require('node:child_process');
@@ -46,7 +47,7 @@ async function main(){
     const text=await doc.locator(`[id$="-p${i+1}"] > .unit-text`).first().textContent();assert.equal(text,u.text,'admitted original wording '+i);
    }
    assert.equal(await doc.locator('.verification-reading .verification-execution').count(),0,'report is distinct from execution originals');
-   const records=doc.locator('.audit');assert.equal(await records.locator('.verification-execution[open]').count(),0,'command originals start closed');
+   const records=doc.locator('[data-reading-group=records]');assert.equal(await records.locator('.verification-execution[open]').count(),0,'command originals start closed');
    assert.equal(await doc.locator(':scope > [data-warning=source]').count(),0,'original-record limits do not interrupt the independently admitted article');
    const originalGap=records.locator('[id$="-verification-originals"] [data-warning=source]');
    assert.equal(await originalGap.count(),1,'original Source limitation remains in verification originals');
@@ -55,7 +56,7 @@ async function main(){
    const svg=figure.locator('svg');
    if(scripted){
     const toolbar=figure.locator('.diagram-controls');
-    const placement=await toolbar.evaluate(n=>{const a=n.getBoundingClientRect(),f=n.closest('figure').getBoundingClientRect(),v=n.closest('.diagram-full-view').querySelector('.diagram-viewport').getBoundingClientRect();return {width:a.width,figure:f.width,inside:a.left>=f.left&&a.right<=f.right&&a.top>=f.top&&a.bottom<=v.top};});
+    const placement=await toolbar.evaluate(n=>{const a=n.getBoundingClientRect(),f=n.closest('figure').getBoundingClientRect(),v=n.closest('.diagram-full-view').querySelector('.diagram-viewport svg').getBoundingClientRect();return {width:a.width,figure:f.width,inside:a.left>=f.left&&a.right<=f.right&&a.top>=f.top&&a.bottom<=v.top};});
     assert.ok(placement.inside,'controls stay inside the drawing frame without obscuring its world');
     if(width>=768)assert.ok(placement.width<placement.figure*.8,'selected compact controls replace the full-width button row');
     assert.equal(await toolbar.locator('.diagram-movement[open]').count(),0,'movement controls start folded as in CE1');
@@ -64,6 +65,8 @@ async function main(){
     await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();
     const v=figure.locator('.diagram-viewport');await v.focus();await v.press('ArrowDown');await v.press('ArrowRight');
     await toolbar.locator('.diagram-movement > summary').click();
+    write(`${mode}-${width}-move-menu.json`,await figure.locator('[data-diagram-action=right]').evaluate(n=>({scrollY,viewport:{width:innerWidth,height:innerHeight},ancestors:[...function*(e){for(let p=e;p;p=p.parentElement)yield p}(n)].map(p=>({tag:p.tagName,class:p.className,rect:p.getBoundingClientRect().toJSON(),overflow:getComputedStyle(p).overflow,position:getComputedStyle(p).position}))})));
+    await page.screenshot({path:path.join(out,`${mode}-${width}-move-menu.png`)});
     await figure.locator('[data-diagram-action=right]').click();
     await toolbar.locator('.diagram-movement > summary').click();
     // Native keyboard scrolling can still be animating after the menu closes.
@@ -107,7 +110,7 @@ async function main(){
    if(!scripted){await action.click();await page.waitForTimeout(60);}
    const href=await action.getAttribute('href'),point=await citationPoint(page,href);
    let code;
-   if(scripted){await point.locator('.citation-inspection code').waitFor({state:'visible'});await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-read')?.disabled===false,await point.getAttribute('id'));code=await point.locator('.citation-inspection code').textContent();}
+   if(scripted){code=await (await citationReady(point)).textContent();}
    else {code=await (await openEmbeddedCode(point)).textContent();await returnFromEmbeddedCode(point);}
    const label=diagram.meaning.groups?.flatMap(g=>g.messages).find(m=>m.id===config.element)?.label||diagram.meaning.relations?.find(m=>m.id===config.element)?.label;
    assert(label);const c=realization.paragraphs[label.unit].citations.find(c=>c.claim_start_byte<=label.start_byte&&c.claim_end_byte>=label.end_byte);
@@ -130,11 +133,10 @@ async function main(){
    await page.screenshot({path:path.join(out,`${mode}-${width}-return.png`)});
    if(scripted&&width===1024){assert.equal(await figure.locator('[data-diagram-action=expand]').getAttribute('aria-expanded'),'true','code return restores expanded view');await page.keyboard.press('Escape');}
    if(scripted&&[1440,320].includes(width)){
-    await element.press('Enter');await point.locator('.citation-inspection code').waitFor({state:'visible'});
-    await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-read')?.disabled===false,await point.getAttribute('id'));
+    await element.press('Enter');await citationReady(point);
     const publication=await point.getAttribute('data-reader-publication');
     await page.route('**/citation?*',route=>route.fulfill({status:410,contentType:'application/json',body:JSON.stringify({reason:'deleted',publication_readable:false})}));
-    await point.locator('.citation-read').click();await page.waitForFunction(id=>document.getElementById(id)?.dataset.unavailable==='true',await point.getAttribute('id'));
+    await (await citationInspection(point,true)).locator('.citation-read').click();await page.waitForFunction(id=>document.getElementById(id)?.dataset.unavailable==='true',await point.getAttribute('id'));
     assert.equal(await page.locator(`[data-reader-publication="${publication}"] code`).count(),0,'denial purges every dependent code copy');
     assert.equal(await page.locator(`[data-reader-publication="${publication}"] svg`).count(),0,'denial purges scene/labels/alternatives');
     assert.equal(await page.locator(`[id="${before.id}"]`).count(),1,'opaque origin survives without old meaning');

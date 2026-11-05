@@ -575,10 +575,10 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
                 .count(),
             2 // article plus exact evidence-index quotation behind disclosure
         );
-        assert!(page.contains(
-            "aria-label=\"Inspect The observed function returns the constant 5. · Observed file in selected snapshot · Source 1 ↗ · main.py:1–2\""
-        ));
-        assert!(page.contains("title=\"Observed file in selected snapshot · Source 1 ↗ · main.py:1–2\">Source 1 ↗</a>"));
+        assert!(
+            page.contains("aria-label=\"Choose an exact range from this explanation's evidence · ")
+        );
+        assert!(page.contains("data-citation-targets=\"[&quot;#reader-"));
         assert!(!page.contains("<small class=\"source-label\">"));
         // Exact code/path and full claim still belong to the evidence view;
         // compact article actions change neither binding nor reading payload.
@@ -593,13 +593,15 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
         let korean = ViewerAdapter::new(ops(&f)?)
             .render(&korean_request, "test-authenticity")?
             .html;
-        assert!(korean.contains("선택 스냅샷에서 관측한 파일 · 근거 1 ↗"));
+        assert!(korean.contains("이 설명의 근거에서 정확한 범위 선택 · "));
         assert!(korean.contains("선택 스냅샷에서 관측한 파일"));
         assert!(
             page.find("class=\"record-facts\"").ok_or("facts")?
                 < page.find("class=\"appendix\"").ok_or("sources")?
         );
-        assert!(page.contains("class=\"claim-quote\" tabindex=\"0\" lang=\"en\">The observed function returns the constant 5.</blockquote>"));
+        assert!(page.contains(
+            "class=\"claim-quote\" hidden>The observed function returns the constant 5.</span>"
+        ));
         assert!(page.contains("<pre class=\"code-region\" tabindex=\"0\" role=\"region\""));
         assert_eq!(
             page.contains("Read the retained before observation"),
@@ -1840,11 +1842,11 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
                 let point = matching[0];
                 assert!(point.contains(&format!("{claim}</blockquote>")));
                 assert!(point.contains(&explanation_text_hash(claim)));
-                assert!(point.contains("class=\"return\""));
+                assert!(point.contains("class=\"return panel-close\""));
                 let citation: ExplanationCitation = serde_json::from_value(
                     realization["paragraphs"][ordinal - 1]["citations"][0].clone(),
                 )?;
-                let expected = format!("citation: {citation:#?}")
+                let expected = serde_json::to_string(&citation)?
                     .replace('&', "&amp;")
                     .replace('<', "&lt;")
                     .replace('>', "&gt;")
@@ -1859,47 +1861,21 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
                 } else {
                     "def value():"
                 };
-                let payload = if let Some(reference) =
-                    point.split("class=\"source-code-reference\"").nth(1)
-                {
-                    let alias = reference
-                        .split_once("href=\"#")
-                        .ok_or("code alias")?
-                        .1
-                        .split('"')
-                        .next()
-                        .ok_or("alias target")?;
-                    let owner = points
-                        .iter()
-                        .find(|p| p.contains(&format!("id=\"{alias}\"")))
-                        .ok_or("shared payload owner")?;
-                    let target = owner
-                        .split_once(&format!("id=\"{alias}\""))
-                        .ok_or("native target")?
-                        .1
-                        .split('>')
-                        .next()
-                        .ok_or("target attributes")?;
-                    assert!(target.contains(&format!("data-source-id=\"{}\"", citation.source_id)));
-                    assert!(target
-                        .contains(&format!("data-range-sha256=\"{}\"", citation.range_sha256)));
-                    let point_id = point
-                        .split_once("id=\"")
-                        .ok_or("claim point ID")?
-                        .1
-                        .split('"')
-                        .next()
-                        .ok_or("claim point ID end")?;
-                    assert!(
-                        owner.contains(&format!(
-                            "class=\"shared-source-return\" href=\"#{point_id}\""
-                        )),
-                        "shared bytes keep this exact claim's return"
-                    );
-                    *owner
-                } else {
-                    point
-                };
+                let id = point
+                    .split("data-cited-code=\"")
+                    .nth(1)
+                    .and_then(|s| s.split('"').next())
+                    .ok_or("bound code window")?;
+                let payload = page
+                    .split(&format!(
+                        "<details class=\"cited-code evidence-disclosure\" id=\"{id}\""
+                    ))
+                    .nth(1)
+                    .and_then(|s| s.split("</details>").next())
+                    .ok_or("one physical shared payload")?;
+                let tag = payload.split('>').next().ok_or("payload tag")?;
+                assert!(tag.contains(&format!("data-source-id=\"{}\"", citation.source_id)));
+                assert!(tag.contains(&format!("data-range-sha256=\"{}\"", citation.range_sha256)));
                 assert!(
                     code_texts(payload).iter().any(|s| s == code),
                     "claim reaches its complete original range"
@@ -2241,7 +2217,7 @@ fn authored_heading_synopsis_and_reading_points_share_public_lifecycle(
             page.find("data-question=\"Purpose\"").ok_or("problem")?
                 < page.find("data-question=\"Limits\"").ok_or("limit")?
         );
-        assert!(page.contains("class=\"return\""));
+        assert!(page.contains("class=\"return panel-close\""));
         assert!(page.contains(f["goal"].as_str().ok_or("original Goal")?));
     }
     ops(&f)?.delete_work_source_observation(
@@ -2427,12 +2403,12 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
     ] {
         let document = page
             .split(&format!(
-                "<article class=\"doc\" data-work-id=\"{}\"",
+                "<article class=\"doc\" data-work-layout=\"grouped\" data-work-id=\"{}\"",
                 f["work"].as_str().ok_or("Work")?
             ))
             .nth(1)
             .ok_or("Work document")?
-            .split("</details></div></article>")
+            .split("</article>")
             .next()
             .ok_or("document end")?;
         let page = document;
@@ -2446,10 +2422,10 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
         assert_eq!(document.matches("class=\"document-nav\"").count(), 1);
         assert!(nav.contains("How the constant reaches the caller"));
         assert!(nav.contains("What this inspection establishes"));
-        assert!(nav.contains("Execution was not observed"));
+        assert!(!nav.contains("Execution was not observed"),"compact contents keeps peer section headings; subordinate topics stay in the reading layer");
         assert!(
-            nav.contains("No downstream coverage"),
-            "visible nested limit heading belongs in the full contents"
+            !nav.contains("No downstream coverage"),
+            "subordinate limit heading remains in its section rather than widening the compact contents"
         );
         let article = page
             .find("How the constant reaches the caller</h2>")

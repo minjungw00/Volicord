@@ -1,8 +1,9 @@
 // Focus/history/expansion/race controls on an actual admitted live document.
 const assert=require('node:assert/strict');
+const {citationReady,citationInspection,embeddedCode}=require('../../viewer-design/product_review_controls.cjs');
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const settle=async page=>{await page.bringToFront();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await pause(100);};
-async function complete(page){await page.waitForFunction(()=>{const p=document.querySelector('.source-point[data-selected=true]');const b=p?.querySelector('.citation-read');return b&&!b.disabled&&b.dataset.nextOffset==='0'&&p.querySelector('.citation-inspection code');});}
+async function complete(page){return citationReady(page.locator('.source-point[data-selected=true]'));}
 async function inspect(page,context,{address,figureId,elementId,claimId,sourceId,width}){
  const figure=page.locator(`[id="${figureId}"]`),element=page.locator(`[id="${elementId}"]`),point=()=>page.locator('.source-point[data-selected=true]');
  const notes=[];
@@ -15,7 +16,7 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  await tab.waitForURL(url=>url.hash==='#'+claimId,{waitUntil:'load',timeout:15000});assert.ok(tab.url().endsWith('#'+claimId));await tab.close();await settle(page);assert.deepEqual(await state(),before,'native modifier leaves original context');notes.push('native modifier');
  await open();
  if(width<1200){
-  for(let i=0;i<20;i++){await page.keyboard.press(i%2?'Shift+Tab':'Tab');assert.equal(await point().evaluate(n=>n.contains(document.activeElement)),true,'modal focus stays in evidence');}
+  for(let i=0;i<20;i++){await page.keyboard.press(i%2?'Shift+Tab':'Tab');assert.equal(await point().evaluate(n=>n.closest('.appendix').contains(document.activeElement)),true,'modal focus stays in evidence');}
   if(width>760)await page.locator('.evidence-backdrop').click({position:{x:8,y:100}});else await page.keyboard.press('Escape');
   await settle(page);assert.equal(await page.locator('.source-point[data-selected]').count(),0);await open();
  }
@@ -23,7 +24,7 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  const sourceURL=page.url();await page.keyboard.press('Escape');await settle(page);await page.goBack();await complete(page);assert.equal(page.url(),sourceURL);await page.reload();await complete(page);await page.keyboard.press('Escape');await settle(page);assert.equal(await element.evaluate(n=>n===document.activeElement),true,'reload returns to exact scoped element');notes.push('history and reload');
  // Resizing changes modality without retaining an old inert scope or stale code.
  await open();const selected=await point().getAttribute('id');
- for(const w of [1200,1199,981,980,761,760,390,1440,width]){await page.setViewportSize({width:w,height:900});await settle(page);assert.equal(await point().getAttribute('id'),selected);assert.equal(await point().getAttribute('aria-modal'),w<1200?'true':null);assert.equal(await page.locator('main').evaluate(n=>n.inert),false);}
+ for(const w of [1200,1199,981,980,761,760,390,1440,width]){await page.setViewportSize({width:w,height:900});await settle(page);assert.equal(await point().getAttribute('id'),selected);assert.equal(await point().locator('xpath=..').getAttribute('aria-modal'),w<1200?'true':null);assert.equal(await page.locator('main').evaluate(n=>n.inert),false);}
  await page.keyboard.press('Escape');await settle(page);assert.equal(await page.locator('.project-shell').evaluate(n=>n.inert),false);notes.push('modality resize');
  // Expanded reading preserves the selected figure, pan/zoom and exact origin.
  await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();
@@ -42,13 +43,13 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
   const native=page.locator(`[id="${next.slice(1).split('!')[0]}"]`);
   const expected=await native.getAttribute('data-selected-point')||await native.getAttribute('id');
   await picker.selectOption(next);await complete(page);await pause(850);
-  assert.equal(await point().getAttribute('id'),expected);assert.ok(await point().locator('.citation-inspection code').textContent());notes.push('late range response isolation');
+  assert.equal(await point().getAttribute('id'),expected);assert.ok(await (await embeddedCode(point())).textContent());notes.push('late range response isolation');
  }else{await complete(page);notes.push('one range; alternate range not applicable');}
  await context.unroute('**/citation?*');await page.keyboard.press('Escape');await settle(page);
  // A native shared-payload alias must activate its own original claim binding.
  const alias=page.locator('.shared-source-target').first();
  if(await alias.count()){
-  const id=await alias.getAttribute('id'),own=await alias.getAttribute('data-selected-point');await page.goto(address+'#'+id);await complete(page);assert.equal(await point().getAttribute('id'),own);const inspection=point().locator('.citation-inspection');const binding=JSON.parse(await inspection.getAttribute('data-citation-binding'));assert.ok(binding.claim_sha256);assert.equal(await point().getAttribute('data-origin'),'reader-'+own.split('reader-')[1].replace(/-c\d+$/,''));notes.push('shared alias own claim');
+  const id=await alias.getAttribute('id'),own=await alias.getAttribute('data-selected-point');await page.goto(address+'#'+id);await complete(page);assert.equal(await point().getAttribute('id'),own);const binding=JSON.parse(await point().getAttribute('data-citation-binding'));assert.ok(binding.claim_sha256);assert.equal(await point().getAttribute('data-origin'),'reader-'+own.split('reader-')[1].replace(/-c\d+$/,''));notes.push('shared alias own claim');
  }
  await page.goto(address+'#foreign-publication-same-name');await settle(page);assert.equal(await page.locator('.source-point[data-selected]').count(),0);assert.equal(await page.locator('.fragment-unavailable').isVisible(),true);notes.push('foreign fragment refusal');
  const native=await page.locator(`[id="${claimId}"] a.evidence-link`).first().getAttribute('href');
@@ -57,6 +58,15 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  // A new comparison cannot inherit an earlier response's clock. These are
  // response controls on a genuine publication, not new authored/history facts.
  await page.goto(address+native);await complete(page);
+ // A misplaced transport control is not this claim's permission request.
+ const control=await citationInspection(point(),true),priorUnit=await control.getAttribute('data-unit');
+ const priorCode=await (await embeddedCode(point())).textContent();let invalidRequests=0;
+ const countInvalid=request=>{if(new URL(request.url()).pathname==='/citation')invalidRequests++;};page.on('request',countInvalid);
+ await control.evaluate(n=>n.dataset.unit='999999');await control.locator('.citation-read').click();await pause(100);page.off('request',countInvalid);
+ assert.equal(invalidRequests,0,'foreign unit control cannot dispatch a citation read');
+ assert.equal(await (await embeddedCode(point())).textContent(),priorCode,'invalid control cannot replace the original exact range');
+ await control.evaluate((n,value)=>n.dataset.unit=value,priorUnit);await control.locator('.citation-read').click();await complete(page);
+ notes.push('transport control retains its exact per-claim unit');
  const publicationForTime=await point().getAttribute('data-reader-publication');
  const compared=page.locator(`.applicability[data-reader-publication="${publicationForTime}"] [data-comparison-time]`);
  for(const [value,expected] of [
@@ -68,7 +78,7 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
    body.applicability.checked_at_unix_micros=value;
    await route.fulfill({response,json:body});
   });
-  await point().locator('.citation-read').click();await complete(page);
+  await (await citationInspection(point(),true)).locator('.citation-read').click();await complete(page);
   const shown=await compared.textContent();
   if(expected){assert.ok(shown.startsWith(expected),'explicit UTC microsecond interpretation');assert.ok(shown.endsWith(`Unix µs: ${value}`),'exact valid machine time');}
   else assert.match(shown,/^(Date unavailable|날짜 확인 불가)$/,'missing/unsafe time clears prior comparison date');
@@ -80,7 +90,7 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  // aborts pending reads and releases inert/observers/listeners, even when a
  // response was already obtained before teardown.
  await page.goto(address+native+'!'+claimId);await complete(page);
- const expectedNativeCode=await point().locator('.citation-inspection code').textContent();
+ const expectedNativeCode=await (await embeddedCode(point())).textContent();
  let resumedRequests=0;const count=()=>resumedRequests++;
  page.on('request',count);
  await page.evaluate(()=>{
@@ -96,7 +106,7 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
   const response=await route.fetch();arrived();await released;
   await route.fulfill({response}).catch(()=>{});
  });
- await point().locator('.citation-read').click();await heldResponse;
+ await (await citationInspection(point(),true)).locator('.citation-read').click();await heldResponse;
  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:false})));
  release();await pause(300);
  assert.equal(await page.locator('[data-fetched-code]').count(),0,'late bytes cannot paint after teardown');
@@ -114,12 +124,12 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  await page.setViewportSize({width:390,height:900});await settle(page);
  const publication=await point().getAttribute('data-reader-publication');
  const oldPath=await point().locator('.source-path').textContent();
- assert.ok((await point().getAttribute('aria-label')).includes(oldPath));
+ assert.ok((await point().locator('xpath=..').getAttribute('aria-label')).includes(oldPath));
  await context.route('**/citation?*',route=>route.fulfill({status:410,contentType:'application/json',body:JSON.stringify({reason:'deleted',publication_readable:false})}));
- await point().locator('.citation-read').click();
+ await (await citationInspection(point(),true)).locator('.citation-read').click();
  await point().locator('.publication-unavailable').waitFor();
  assert.equal(await point().locator('.evidence-selection-context').count(),0,'publication denial removes selected action context');
- const names=await page.locator(`[data-reader-publication="${publication}"]`).evaluateAll(nodes=>nodes.map(n=>({label:n.getAttribute('aria-label')||'',title:n.getAttribute('title')||''})));
+ const names=await page.locator(`[data-reader-publication="${publication}"],.appendix`).evaluateAll(nodes=>nodes.map(n=>({label:n.getAttribute('aria-label')||'',title:n.getAttribute('title')||''})));
  assert.ok(names.every(n=>!n.label.includes(oldPath)&&!n.title.includes(oldPath)),'denied Source path cannot survive in accessible attributes');
  await context.unroute('**/citation?*');await page.setViewportSize({width,height:900});
  await settle(page);assert.equal(await page.locator(`[data-reader-publication="${publication}"] svg`).count(),0,'resize cannot rebuild denied meaning');

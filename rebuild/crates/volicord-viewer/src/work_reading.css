@@ -1,0 +1,83 @@
+/* Selected Work composition: explanation, checks, then original records. */
+.doc[data-work-layout="grouped"]{--reading-space:24px;--panel-pad:24px;--panel-head:56px}
+.doc[data-work-layout="grouped"] .doc-head{margin-bottom:32px}
+.doc[data-work-layout="grouped"] .work-reading-group + .work-reading-group{margin-top:40px;padding-top:32px;border-top:1px solid var(--line)}
+.doc[data-work-layout="grouped"] .work-reading-group > .reading-section{margin:0;padding:0;border:0}
+.doc[data-work-layout="grouped"] .work-reading-group > .reading-section + .reading-section{margin-top:32px}
+.doc[data-work-layout="grouped"] .article-section + .article-section{margin-top:32px}
+.doc[data-work-layout="grouped"] .work-section-stack{display:grid;gap:32px}
+.doc[data-work-layout="grouped"] .work-section-stack > .article-section{min-width:0;margin:0}
+.doc[data-work-layout="grouped"] .work-section-stack > .article-section + .article-section{margin:0}
+.doc[data-work-layout="grouped"] .record-strip{align-items:center;gap:8px;border-top:1px solid var(--line);border-bottom:0;margin:14px 0 0;padding:9px 0 0}
+.doc[data-work-layout="grouped"] .doc-head > .work-dates{margin-top:8px}
+.doc[data-work-layout="grouped"] .record-status-label{font-size:10px;color:var(--muted)}
+.work-state-badge{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:5px;padding:3px 8px;font-size:10px;line-height:1.6;font-weight:500;white-space:nowrap}
+.doc[data-work-layout="grouped"] .article-section > .unit:has(h2){counter-increment:none;padding-left:0}
+.doc[data-work-layout="grouped"] .article-section > .unit:has(h2)::before{content:none}
+.doc[data-work-layout="grouped"] .article-section > .unit[data-section-number]{padding-left:39px}
+.doc[data-work-layout="grouped"] .article-section > .unit[data-section-number]::before{content:attr(data-section-number)}
+.doc[data-work-layout="grouped"] .unit + .unit{margin-top:20px}
+.doc[data-work-layout="grouped"] .unit > .evidence-actions{justify-content:flex-end;gap:0;margin-top:4px}
+.doc[data-work-layout="grouped"] .paragraph-evidence-action{display:inline-flex;align-items:center;background:none;border:0;border-radius:4px;box-shadow:none;color:#7890a1;font-size:11px;font-weight:400;line-height:1.6;padding:5px 8px;min-height:28px;width:auto;text-decoration:none}
+.doc[data-work-layout="grouped"] .paragraph-evidence-action:hover{color:var(--accent);background:var(--wash)}
+.doc[data-work-layout="grouped"] .paragraph-evidence-action:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.doc[data-work-layout="grouped"] .verification-report-row h3{font-size:14px;line-height:1.7;margin:0 0 16px}
+.doc[data-work-layout="grouped"] .verification-report-row h4{font-size:12px;margin:16px 0 12px}
+.doc[data-work-layout="grouped"] .verification-report-row dl{font-size:12px}
+.doc[data-work-layout="grouped"] .verification-report-row dl > div{padding:8px 0;border:0}
+.doc[data-work-layout="grouped"] .verification-report-row blockquote{font-size:12px;margin:16px 0;padding:0 0 0 14px;border-left:2px solid var(--line);color:var(--muted)}
+/* The existing native compact TOC has one trigger and one scroll container. */
+.doc[data-work-layout="grouped"] .document-nav{min-height:56px}
+.doc[data-work-layout="grouped"] .document-nav > summary{height:56px;padding:0 2px;gap:12px}
+.doc[data-work-layout="grouped"] .document-nav .toc-cue{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:600}
+.doc[data-work-layout="grouped"] .document-nav .toc-position{white-space:nowrap;margin-left:auto;font-size:10px;line-height:1.6;color:#8299aa}
+.doc[data-work-layout="grouped"] .document-nav[open] > nav{top:calc(100% + 4px);max-height:min(55dvh,420px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;border:1px solid var(--line);border-radius:10px;padding:8px;background:white;box-shadow:0 12px 32px #214b6c19}
+.doc[data-work-layout="grouped"] .work-toc-group{padding:0;margin:0;border:0}
+.doc[data-work-layout="grouped"] .work-toc-group + .work-toc-group{margin-top:12px}
+.doc[data-work-layout="grouped"] .work-toc-group .toc-caption{display:block;border:0;padding:4px 12px;margin:0;color:#8299aa;font-size:10px;line-height:1.6}
+.doc[data-work-layout="grouped"] .document-nav ol{display:block;max-height:none;overflow:visible;padding:0;margin:0}
+.doc[data-work-layout="grouped"] .document-nav a{display:flex;align-items:baseline;gap:8px;min-height:40px;padding:10px 12px;border:0;border-radius:6px;white-space:normal;font-size:12px;line-height:1.6}
+/* Disclosure hierarchy: top-level records, categories, then quiet source detail. */
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details{border:0;border-radius:0;background:none;padding:0;margin:16px 0 0}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details > summary{display:flex;align-items:baseline;justify-content:flex-start;gap:10px;list-style:none;min-height:40px;margin:0;padding:10px 0;border:0;font-size:12px;line-height:1.7;font-weight:500;color:var(--muted);background:none;box-shadow:none;cursor:pointer}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details > summary::-webkit-details-marker{display:none}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details > summary::before{content:'›';display:inline-block;flex:none;width:12px;font-size:16px;line-height:1;transform:rotate(0deg);color:#8299aa}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details[open] > summary::before{transform:rotate(90deg)}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details > summary::after{content:none}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details > summary:hover{color:var(--accent)}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details > summary h3{font:inherit;color:inherit}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details > summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details[open] > :not(summary){margin-top:12px}
+.doc[data-work-layout="grouped"] .work-reading-group[data-reading-group="records"] > details{margin:0;border-bottom:1px solid var(--line)}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] > details > summary{min-height:56px;padding:16px 0;font-size:13px;font-weight:600;color:var(--body)}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] > details[open]{padding-bottom:20px}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details details{margin:12px 0 0;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:white}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details details > summary{min-height:48px;padding:12px 0;color:var(--body)}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details details[open]{padding-bottom:14px}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details details details:not(.record-item){border:0;border-left:1px solid var(--line);border-radius:0;background:none;padding-left:14px;padding-right:0}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .record-item > summary{align-items:baseline;flex-wrap:nowrap;column-gap:8px}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .record-item > summary > :not(:first-child){min-width:0}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .record-item > summary h3{margin:0;font:inherit}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .record-item-meta{display:block;margin-top:4px;font-size:10px;font-weight:400;line-height:1.8;color:var(--muted);overflow-wrap:anywhere}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .record-item > summary > span{min-width:0;overflow-wrap:anywhere}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .record-intro{margin:12px 0 16px;color:var(--muted);font-size:12px;line-height:1.9}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] :is(p,dl,ul){font-size:12px;line-height:1.9}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .recorded-timeline{padding:0;margin:12px 0 0;border:0}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .unit-anchor{margin:0;padding:0}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .evidence-entry > .button{display:inline-block;min-height:0;margin:8px 0 0;padding:4px 0;border:0;background:none;font-size:11px}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .evidence-actions{margin:8px 0;gap:8px}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .evidence-actions a{padding:4px 0;border:0;background:none;font-size:11px;min-height:0}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .contextual-limits{padding:0;border:0;background:none}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .contextual-limits h3{font-size:12px;margin:16px 0 8px}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .contextual-limits .gap-list{padding-left:18px;list-style:disc}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .contextual-limits .item{padding:0;border:0;background:none}
+.doc[data-work-layout="grouped"] .verification-records-return{display:flex;width:fit-content;margin:12px 0 0 auto}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] details .unit h2{font-size:15px;margin:0 0 12px}
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .unit-text{font-size:12px;line-height:1.9}
+.doc[data-work-layout="grouped"] .raw-disclosure pre{max-height:360px;overflow:auto;font-size:11px;line-height:1.7;padding:16px;border-radius:6px;background:#f5f9fd;color:var(--body)}
+.doc[data-work-layout="grouped"] [data-reading-group="checks"] > .reading-section > .reading-layer-heading{font-size:18px;line-height:1.6;font-weight:700;color:var(--ink);letter-spacing:-.3px;margin:0 0 16px;padding:0}
+
+.doc[data-work-layout="grouped"] [data-reading-group="records"] .reading-section{border:0;margin:0;padding:0}
+.doc[data-work-layout="grouped"] .record-box[open]>summary{margin-bottom:0}
+.doc[data-work-layout="grouped"] .verification-records-return .evidence-link{background:none;border:0;padding:5px 8px;font-size:11px;font-weight:400;color:#7890a1;min-height:28px}
+.work-state-badge .state-dot{margin:0}

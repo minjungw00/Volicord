@@ -34,7 +34,9 @@ async function observeOverview(figure, diagram) {
     // getScreenCTM accounts for CSS/SVG transforms, including miniature maps.
     let belowReadingSize=0;
     for(const g of glyphs){const m=g.getScreenCTM();const size=parseFloat(getComputedStyle(g).fontSize)*Math.hypot(m.a,m.b);if(size<(g.closest('.diagram-node-kind,.diagram-label-support')?11.9:g.closest('.relation-wording,.diagram-condition,.world-support,.world-identifier')?12.9:15.9))belowReadingSize++;}
-    const fitOrientation=svg?.classList.contains('spatial-world')&&visible(figure.querySelector('[data-diagram-action=reset]'))&&visible(figure.querySelector('[data-diagram-action=in]'));
+    const native=figure.querySelector('.native-diagram-controls');
+    const nativeFit=visible(native)&&native.querySelector('[data-native-scale=fit]')?.checked&&['read','full'].every(scale=>{const input=native.querySelector('[data-native-scale='+scale+']');return input&&!input.disabled&&visible(input.closest('label'));});
+    const fitOrientation=svg?.classList.contains('spatial-world')&&((visible(figure.querySelector('[data-diagram-action=reset]'))&&visible(figure.querySelector('[data-diagram-action=in]')))||nativeFit);
     if(belowReadingSize&&!fitOrientation)errors.push('essential text scaled below native reading size');
     if(!glyphs.length)errors.push('no rendered labels');
     const controls=figure.querySelector('.diagram-controls');
@@ -53,7 +55,7 @@ function entryObserver() {
     window.__overviewEntryObserverInstalled=true;
     window.__overviewEntryInteractions=[];
     document.addEventListener('click',event=>{
-      if(event.target.closest('.admitted-diagram a,.admitted-diagram button,.admitted-diagram summary'))window.__overviewEntryInteractions.push('figure selection/control');
+      if(event.target.closest('.admitted-diagram a,.admitted-diagram button,.admitted-diagram summary,.admitted-diagram .native-diagram-controls label'))window.__overviewEntryInteractions.push('figure selection/control');
     },{capture:true});
     new MutationObserver(records=>{
       for(const record of records){const n=record.target;

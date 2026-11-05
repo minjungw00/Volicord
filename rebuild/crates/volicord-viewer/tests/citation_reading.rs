@@ -1224,12 +1224,19 @@ fn quiet_heading_provenance_preserves_exact_claims_and_duplicate_bindings(
         let (primary, supporting) = article
             .split_once("class=\"reading-section evidence-index\"")
             .ok_or("supporting index")?;
-        assert_eq!(primary.matches("class=\"evidence-link\"").count(), 4,
-            "three independent ranges plus the separate same-file assertion; no heading/lead actions");
         assert_eq!(
-            supporting.matches("class=\"evidence-link\"").count(),
-            8,
-            "every admitted citation, including identical duplicates, stays inspectable"
+            primary
+                .matches("class=\"evidence-link paragraph-evidence-action\"")
+                .count(),
+            2,
+            "one complete-family action per narrative; no heading/lead actions"
+        );
+        assert_eq!(
+            supporting
+                .matches("class=\"evidence-link paragraph-evidence-action\"")
+                .count(),
+            realization.paragraphs.len(),
+            "every admitted unit exposes its complete original citation family"
         );
         assert!(!html.contains("<script>hostile</script>"));
         assert!(html.contains("Observed &lt;script&gt;hostile&lt;/script&gt; return boundary"));
@@ -1816,7 +1823,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             "native exports omit live-only shell and diagram controls"
         );
         for html in [&live, &offline] {
-            assert!(html.contains("data-renderer=\"volicord-static-svg/20\""));
+            assert!(html.contains("data-renderer=\"volicord-static-svg/21\""));
             assert!(html.contains("data-semantic-fingerprint"));
             assert!(!html.contains("class=\"diagram-alternative\""));
             assert!(html.contains("calls verification"));
@@ -1846,7 +1853,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
                     .split("</section>")
                     .next()
                     .ok_or("origin body")?
-                    .contains(&format!("class=\"return\" href=\"#{element}\"")));
+                    .contains(&format!("class=\"return panel-close\" href=\"#{element}\"")));
                 assert_eq!(html.matches(&format!(" id=\"{element}\"")).count(), 1);
             }
             // One failed citation invalidates every dependent region, including
@@ -1882,7 +1889,8 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         }
         assert!(offline.contains("class=\"diagram-claim\""));
         assert!(offline.contains("diagram-return-index"));
-        assert!(offline.contains("Inspect calls verification"));
+        assert!(offline.contains("calls verification"));
+        assert!(offline.contains("Choose an exact range for the selected element"));
         assert!(offline.contains(if sequence {
             "guard:2-claim"
         } else {
@@ -1914,7 +1922,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
         assert!(f.answers()?.diagrams.is_empty());
         assert!(!f
             .get("/?view=repository")?
-            .contains("data-renderer=\"volicord-static-svg/20\""));
+            .contains("data-renderer=\"volicord-static-svg/21\""));
     }
     Ok(())
 }
@@ -2094,7 +2102,7 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
-            assert!(text.contains("volicord-static-svg/20"));
+            assert!(text.contains("volicord-static-svg/21"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"
             } else {
@@ -2244,20 +2252,32 @@ fn first_covering_source_stays_direct_when_an_earlier_citation_covers_another_sp
         .split("</section>")
         .next()
         .ok_or("relation end")?;
-    let first_action = relation
-        .find("class=\"evidence-link\"")
-        .ok_or("direct source")?;
-    let others = relation
-        .find("class=\"other-claim-ranges\"")
-        .ok_or("other sources")?;
-    assert!(
-        first_action < others,
-        "first covering Source must be directly actionable"
+    assert_eq!(
+        relation
+            .matches("class=\"evidence-link paragraph-evidence-action\"")
+            .count(),
+        1
     );
+    let action = relation
+        .split("data-citation-targets=\"")
+        .nth(1)
+        .ok_or("complete family")?
+        .split('"')
+        .next()
+        .ok_or("family end")?;
+    assert!(action.contains("-source-c2"));
+    assert!(action.contains("-source-c3"));
+    assert!(!action.contains("-source-c1"));
+    let href = relation
+        .split("href=\"#")
+        .last()
+        .ok_or("direct range")?
+        .split('"')
+        .next()
+        .ok_or("href end")?;
     assert!(
-        relation[first_action..others].contains("-c2\""),
-        "{}",
-        &relation[first_action..others]
+        href.ends_with("-source-c2"),
+        "the first covering range is direct despite an earlier unrelated citation"
     );
     Ok(())
 }
@@ -2482,7 +2502,7 @@ fn adversarial_labels_reach_the_packaged_renderer_only_as_inert_text() -> Result
     ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
         .export_snapshot(&f.request(), &output)?;
     let html = fs::read_to_string(output)?;
-    assert!(html.contains("data-renderer=\"volicord-static-svg/20\""));
+    assert!(html.contains("data-renderer=\"volicord-static-svg/21\""));
     assert!(html.contains("&lt;image"));
     assert!(!html.contains("<image"));
     assert!(!html.contains("<script"));
@@ -2555,31 +2575,58 @@ fn repeated_code_payload_keeps_distinct_claims_and_native_returns() -> Result<()
         1,
         "one physical complete Source payload"
     );
-    assert!(html.contains("class=\"source-code-reference\""));
-    assert!(html.contains("class=\"shared-source-return\""));
-    for section in html
-        .split("<section class=\"shared-source-target\"")
+    let answers = f.answers()?;
+    let points = html
+        .split("<section class=\"source-point\"")
         .skip(1)
-    {
-        let id = section
-            .split_once("id=\"")
-            .ok_or("alias ID")?
-            .1
-            .split('"')
-            .next()
-            .ok_or("alias")?;
-        let point = id.strip_suffix("-shared-code").ok_or("native alias")?;
-        assert!(section
-            .split("</section>")
-            .next()
-            .ok_or("alias close")?
-            .contains(&format!("href=\"#{point}\"")));
-        assert_eq!(
-            html.matches(&format!(" id=\"{point}\"")).count(),
-            1,
-            "original claim identity survives sharing"
+        .collect::<Vec<_>>();
+    assert!(points.len() > 1);
+    let mut ranges = std::collections::BTreeMap::<String, usize>::new();
+    for point in points {
+        let tag = point.split('>').next().ok_or("point tag")?;
+        let range = tag
+            .split("data-cited-code=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .ok_or("shared range binding")?;
+        let source = tag
+            .split("data-source-id=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .ok_or("source")?;
+        let hash = tag
+            .split("data-range-sha256=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .ok_or("range hash")?;
+        let retained = answers
+            .source_excerpts
+            .iter()
+            .any(|e| e.citation.source_id == source && e.citation.range_sha256 == hash);
+        assert_eq!(html.matches(&format!("class=\"cited-code evidence-disclosure\" id=\"{range}\"")).count(),usize::from(retained),"one directly reachable physical payload per retained exact range; omitted windows stay absent");
+        *ranges.entry(range.into()).or_default() += 1;
+        let origin = tag
+            .split("data-origin=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .ok_or("claim origin")?;
+        assert!(
+            point
+                .split("</section>")
+                .next()
+                .ok_or("point body")?
+                .contains(&format!("href=\"#{origin}\"")),
+            "each shared range keeps its own claim return"
         );
     }
+    assert!(
+        ranges.values().any(|n| *n > 1),
+        "distinct claim contexts share an exact range"
+    );
+    assert!(
+        !html.contains("class=\"source-code-reference\""),
+        "no intermediate code destination"
+    );
     assert!(html.contains(&f.realization.paragraphs[2].text));
     assert!(!html.contains("<script"));
     Ok(())

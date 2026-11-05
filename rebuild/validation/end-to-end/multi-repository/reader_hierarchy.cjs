@@ -3,13 +3,20 @@
 const assert=require('node:assert/strict');
 const {inspectDiagram}=require('./diagram_geometry.cjs');
 async function citationHierarchy(page) {
- const actions=await page.locator('.unit .evidence-choice .evidence-link').evaluateAll(nodes=>nodes.map(n=>({
-  visible:n.textContent.trim(),purpose:n.getAttribute('aria-label'),
-  repeatedPath:!!n.parentElement.querySelector('.source-label')
- })));
+ const actions=await page.locator('.unit > .evidence-actions > .paragraph-evidence-action').evaluateAll(nodes=>nodes.map(n=>{
+  let family;try{family=JSON.parse(n.dataset.citationTargets);}catch{family=[];}
+  const unit=n.closest('.unit');
+  return {visible:n.textContent.trim(),purpose:n.getAttribute('aria-label'),
+   repeatedPath:!!n.parentElement.querySelector('.source-label'),
+   count:n.parentElement.querySelectorAll('a.evidence-link').length,
+   exact:family.length>0&&n.getAttribute('href')===family[0]&&family.every(h=>{
+    const point=document.getElementById(h.slice(1));return point?.matches('.source-point')&&point.dataset.origin===unit.id&&point.dataset.readerPublication===unit.closest('[data-reader-publication]')?.dataset.readerPublication;
+   })};
+ }));
  return actions.flatMap(a=>[
-  ...(/^(?:Source|근거) \d+ ↗$/.test(a.visible)?[]:['repeated article claim']),
-  ...(/^(?:Inspect|확인:) .+ · .+:\d+–\d+$/.test(a.purpose||'')?[]:['missing accessible claim/range']),
+  ...(['Evidence','근거 보기'].includes(a.visible)?[]:['repeated article claim']),
+  ...(/^(?:Choose an exact range from this explanation's evidence|이 설명의 근거에서 정확한 범위 선택) · [1-9]\d*$/.test(a.purpose||'')?[]:['missing accessible claim/range']),
+  ...(a.count===1&&a.exact?[]:['incomplete citation family']),
   ...(a.repeatedPath?['repeated article path']:[])
  ]);
 }
@@ -45,7 +52,7 @@ async function verify(page,expected,publication,negative=false) {
  const figure=page.locator(`.admitted-diagram[id$="-${expected.diagram}"]`),d=publication.diagrams.find(d=>d.id===expected.diagram);
  assert.deepEqual((await inspectDiagram(figure.locator(':scope > .diagram-full-view svg'),d,publication.prose)).errors,[]);
  if(!negative)return {hierarchy:true};
- const action=page.locator('.unit .evidence-choice .evidence-link').first();
+ const action=page.locator('.unit > .evidence-actions > .paragraph-evidence-action').first();
  assert.ok(await action.count(),'real article citation action required');
  const originalAction=await action.textContent();
  await action.evaluate(n=>n.textContent=n.getAttribute('aria-label'));

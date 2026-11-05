@@ -49,10 +49,10 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         const saved=await local.innerHTML();
         await local.evaluate(n=>n.textContent='par · no relative order · opt · condition: previous guard');
         const wrongContext=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
-        assert(wrongContext.errors.some(e=>e.kind==='missing-visible-meaning'&&e.element===last.id),'a previous guard/order must fail local scope');
+        assert(wrongContext.errors.some(e=>['missing-visible-meaning','missing-visible-type'].includes(e.kind)&&e.element===last.id),'a previous guard/order must fail local scope');
         await local.evaluate((n,v)=>n.innerHTML=v,saved);
         fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-context-control.json'),JSON.stringify(wrongContext.errors,null,2),{flag:'wx'});
-        const header=await page.locator('svg text:visible').filter({hasText:f.ui_locale==='ko'?'1. par · 상대 순서 없음':'1. par · no relative order'}).elementHandle();
+        const header=await page.locator('svg text:visible').filter({hasText:await page.locator('svg').evaluate(n=>n.classList.contains('spatial-world'))?(f.ui_locale==='ko'?'1. 병렬 · 상대 순서 없음':'1. Parallel · no relative order'):(f.ui_locale==='ko'?'1. par · 상대 순서 없음':'1. par · no relative order')}).elementHandle();
         assert(header,'original group header');
         const original=await header.innerHTML();
         await header.evaluate(n=>n.querySelector('tspan').textContent='1. strict · sequential');

@@ -3,7 +3,7 @@ function createReaderOutline({lifetime,navigate,closeDrawer}) {
   const ko=document.documentElement.lang==='ko',outlineScroll=new WeakMap();
   function updateCue() {
     document.querySelectorAll('.document-nav').forEach(toc => {
-      const links=[...toc.querySelectorAll('.toc-primary a')];
+      const links=[...toc.querySelectorAll('.toc-primary a,.toc-records a')];
       const clearance=toc.getBoundingClientRect().bottom+16;
       let current=links[0];
       for(const link of links){const node=document.getElementById(link.hash.slice(1));if(node&&node.getBoundingClientRect().top<=clearance)current=link;}
@@ -50,6 +50,7 @@ function createReaderOutline({lifetime,navigate,closeDrawer}) {
   const article=toc.closest('.doc'),links=[...toc.querySelectorAll('.toc-primary a')];
   let observedWidth=null;
   function fit(force=false){
+   if(article.dataset.workLayout==='grouped'){toc.dataset.overflow='true';return;}
    const width=article.getBoundingClientRect().width;
    if(width===observedWidth&&force!==true)return;observedWidth=width;
    if(width<730){toc.dataset.compact='true';return;}

@@ -1,7 +1,7 @@
 //! Actual recorded history, independent of article availability and acceptance.
 use super::*;
 pub(super) fn render(html: &mut String, r: &ViewerRequest, anchor: &str, work: &UnderstandingWork) {
-    html.push_str(&format!("<section class=\"recorded-timeline reading-section\" id=\"{}\"><h2>{}</h2><p class=\"source-note\">{}</p>",escape(anchor),text(r.locale,"Recorded timeline","기록의 흐름"),text(r.locale,"Latest records first. These are recorded reports; opening this page runs no checks.","마지막 기록부터 읽습니다. 기록된 보고이며 이 페이지에서 검사를 새로 실행하지 않습니다.")));
+    html.push_str(&format!("<section class=\"recorded-timeline reading-section\" id=\"{}\" tabindex=\"-1\" aria-label=\"{}\"><p class=\"source-note\">{}</p>",escape(anchor),text(r.locale,"Recorded timeline","기록의 흐름"),text(r.locale,"Latest records first. These are recorded reports; opening this page runs no checks.","마지막 기록부터 읽습니다. 기록된 보고이며 이 페이지에서 검사를 새로 실행하지 않습니다.")));
     if work.reading.states.is_empty() {
         html.push_str(&format!(
             "<p>{}</p>",

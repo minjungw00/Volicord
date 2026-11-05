@@ -4902,6 +4902,63 @@ uses the actual model-bearing shape; a successful unknown-operand fallback is no
 current grammar coverage. This correction changes no archive schema or bounds and
 introduces no model-less compatibility branch or external-transmission authority.
 
+### Complete package-43 CE1 fidelity correction — 2026-11-06
+
+The current user rejected the previous UI/design match claim and explicitly
+identified package 43 and its original session. Preserve that correction alongside
+the unchanged selected artifact hashes in the decision owner. The earlier e81f6c7c
+qualification and delivery remain historical; they do not establish visual fidelity
+or current-candidate qualification.
+
+`viewer-design/ce1_design_fidelity.cjs` reads the immutable CE1 file directly and
+checks actual live, JavaScript-disabled HTTP and script-free file consumers at
+1440/1200/1024/768/390/320 pixels. Compare the three Work parents, grouped compact
+contents, peer headings/record categories, typed status and effective typography,
+spacing and disclosure styles. Check the compact participant/lane/action design,
+one expanded exact code payload before folded metadata, panel dimensions and
+line-number alignment. Keep permitted admitted content/provenance distinct from
+the prototype's unadmitted-draft notice. Saved screenshots still require dependent
+visual inspection; this is not a human comprehension or assistive acceptance score.
+
+Development support preserved under ignored `ce1-fidelity-gyigfr1b/` includes the
+original session/path/hash check, first mismatches, all failed variants and the
+previous qualified e81 executable's actual rejection for missing Work composition.
+The six-width comparison passed 24 conditions, and the independent five-width
+camera/Source/return driver passed 15 live/native conditions. Viewer support passed
+141 tests with four explicit ignored tests before the subsequently discovered CRLF
+copy correction. These development results are not the clean-candidate gate.
+
+The changed Source consumer shares bytes at appendix level and resolves per-claim
+transport controls through exact metadata. Exercise every retained citation field,
+chunk continuity and Unicode/CRLF boundaries, decoration refusal, cancellation,
+shared-claim return, real deletion and native reading without its Runtime. Preserve
+the existing attempt/result identities and first-cause/teardown separation when
+updating the browser driver; exclusive output protection and package supplements
+still require their direct self-tests. One quiet action opens the original complete
+family; a numbered-link ordinal or one 4,096-byte transport page is not the new UI's
+whole-range reading contract. Transport and permission limits remain unchanged.
+
+Initial native width-fit is orientation. Capture it before using the actual 100%
+radio for glyph/path/meaning checks, as the live driver uses its readable-scale
+controls. Native radios must exist and work; an arbitrary miniature SVG is not a
+fit exception. JavaScript-enabled feature fallback must really leave JavaScript
+enabled while withholding ResizeObserver. Spacious temporal order/guards are
+checked against admitted meaning, their own visible group frames and exact selected
+captions. Hidden/foreign group meaning, misplaced messages, wrong routes, clipped
+words and overlapping glyphs remain failures.
+
+The previously authorized bounded Source scopes were observed anew in private
+Runtime copies after ordinary retention expiry: thirteen Work windows (28,482
+bytes), sixteen containing Music Deck windows (40,688 bytes, within the authorized
+thirteen-file/twenty-one-window scope), and twenty Volicord windows (49,038 bytes).
+Containing captures support only their exact admitted subranges. Six new ordinary
+article publications and independent Work summaries preserve prior authored words;
+new IDs and receipts distinguish them from old-publication expiry observations.
+Old Sources, deadlines, repositories, R3/package-43 inputs and raw attempts remain
+unchanged. Adapter-shape failures before admission are preserved, not retried as
+favorable Product measurements. No new execution, external source dispatch, semantic
+approval or user acceptance is implied.
+
 ### Repository Source binding failure diagnosis
 
 An aggregate `repository Source identity/binding mismatch` does not identify which

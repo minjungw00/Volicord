@@ -30,6 +30,11 @@
     const [id, encodedOrigin, extra] = location.hash.slice(1).split('!');
     let origin=encodedOrigin;
     let target = document.getElementById(id);
+    if(target?.matches('.cited-code,.source-metadata')){
+      const point=document.getElementById(target.dataset.defaultPoint||target.dataset.sourceContext);
+      if(!point?.matches('.source-point')||point.closest('.appendix')!==target.closest('.appendix')||point.dataset.readerPublication!==target.dataset.readerPublication||point.dataset.sourceId!==target.dataset.sourceId)return {target:null};
+      target=point;
+    }
     if(target?.matches('.shared-source-target,.source-origin-target')){
       const nativeOrigin=target.dataset.origin;
       const selectedPoint=document.getElementById(target.dataset.selectedPoint);
@@ -41,7 +46,7 @@
     if (origin !== undefined) {
       const claim = document.getElementById(origin);
       if (!target?.matches('.source-point') || !claim?.matches('.diagram-claim') ||
-          ![...claim.querySelectorAll('a.evidence-link')].some(a=>a.getAttribute('href')==='#'+id||a.getAttribute('href')+'-shared-code'==='#'+id)) return {target:null};
+          !evidence.targets(claim).some(href=>href==='#'+id||href+'-shared-code'==='#'+id)) return {target:null};
     }
     return {target, origin};
   }
@@ -57,9 +62,11 @@
       }
     }
     figures.forgetPublication(publication);
+    for(const pane of document.querySelectorAll('.appendix'))if([...pane.querySelectorAll(':scope > [data-reader-publication]')].some(region=>region.dataset.readerPublication===publication))pane.setAttribute('aria-label',ko?'근거를 사용할 수 없습니다':'Evidence unavailable');
     for (const region of document.querySelectorAll('[data-reader-publication]')) {
       if (region.dataset.readerPublication !== publication || !region.isConnected) continue;
       region.classList.remove('diagram-expanded');
+      region.removeAttribute('data-citation-binding');
       const ids=[...region.querySelectorAll('[id]')].map(n=>n.id);
       const back=region.matches('.source-point') ? region.querySelector('a.return')?.cloneNode(true) : null;
       const notice=document.createElement('p'); notice.setAttribute('role','status');
@@ -136,9 +143,13 @@
     }
     const point = target?.closest('.source-point');
     document.body.dataset.sourceOpen=point?'true':'false';
-    document.querySelectorAll('.source-point[data-selected],.appendix[data-open],.diagram-claim[data-active]').forEach(n=>{delete n.dataset.selected;delete n.dataset.open;delete n.dataset.active;});
+    document.querySelectorAll('.source-point[data-selected],.appendix[data-open],.cited-code[data-open],.source-metadata[data-open],.diagram-claim[data-active]').forEach(n=>{delete n.dataset.selected;delete n.dataset.open;delete n.dataset.active;});
     if (point) {
       point.dataset.selected='true';point.closest('.appendix').dataset.open='true';
+      for(const id of [point.dataset.citedCode,point.dataset.sourceMetadata]){
+        const region=document.getElementById(id);
+        if(region&&region.dataset.readerPublication===point.dataset.readerPublication&&region.dataset.sourceId===point.dataset.sourceId)region.dataset.open='true';
+      }
       const returnId=diagramOrigin || point.dataset.origin;
       point.querySelector('a.return').setAttribute('href','#'+returnId);
       const claim=document.getElementById(returnId);
@@ -148,7 +159,7 @@
     outline.updateCue();
     const expanded=document.querySelector('.diagram-expanded');
     modal.set('figure',!point?expanded:null,()=>figures.closeExpansion(expanded));
-    modal.set('evidence',point&&narrow.matches?point:null,()=>point?.querySelector('a.return')?.click());
+    modal.set('evidence',point&&narrow.matches?point.closest('.appendix'):null,()=>point?.querySelector('a.return')?.click());
     const backdrop=document.querySelector('.evidence-backdrop');if(backdrop)backdrop.hidden=!(point&&narrow.matches);
     document.querySelectorAll('.diagram-element[data-selected]').forEach(n=>delete n.dataset.selected);
     if(diagramOrigin){const element=document.getElementById(document.getElementById(diagramOrigin)?.dataset.element);if(element)element.dataset.selected='true';}
@@ -160,7 +171,7 @@
       selected = point;
       selectedReturnToken = state().sourceReturn || null;
       focusedHash = location.hash;
-      if (narrow.matches) point.setAttribute('aria-label',point.querySelector('.source-path')?.textContent || (ko?'근거를 사용할 수 없습니다':'Evidence unavailable'));
+      if (narrow.matches) point.closest('.appendix').setAttribute('aria-label',point.querySelector('.source-path')?.textContent || (ko?'근거를 사용할 수 없습니다':'Evidence unavailable'));
       const origin = document.getElementById(diagramOrigin || point.dataset.origin);
       const title=point.querySelector(':scope > .evidence-claim');
       const context=point.querySelector(':scope > .evidence-selection-context');
@@ -247,6 +258,9 @@
     history.replaceState({...state(),sourceBack:token},'');
     const hash=link.getAttribute('href')+(link.closest('.diagram-claim')?'!'+link.dataset.origin:'');
     const repeated=location.hash===hash;navigate(hash,next);
+    // Width reflow must not let scroll anchoring move the reading page behind
+    // its evidence window. Restore the captured page position after layout.
+    lifetime.frame(()=>{if(state().sourceReturn===token&&fragment().target?.matches('.source-point'))window.scrollTo(0,sourceReturns.get(token).y);});
     if(repeated&&selected)citations.read(selected);
   }
   lifetime.on(document,'click', event => {
@@ -280,7 +294,7 @@
       navigate(diagramReturn.getAttribute('href'));
     }
     const button = event.target.closest('button.citation-read');
-    if (button) citations.read(button.closest('.source-point'), Number(button.dataset.nextOffset || 0));
+    if (button) citations.read(citations.pointFor(button), Number(button.dataset.nextOffset || 0));
     const range=event.target.closest('.point-others a');
     if(range&&plainLink){
       event.preventDefault();range.closest('.range-selector')?.removeAttribute('open');
@@ -314,7 +328,7 @@
     document.querySelectorAll('.source-point > .evidence-original').forEach(n=>{n.hidden=false;});
     document.querySelectorAll('.source-point > .evidence-selection-context').forEach(n=>{n.hidden=true;n.textContent='';});
     delete document.body.dataset.readerEnhanced;delete document.body.dataset.sourceOpen;
-    document.querySelectorAll('.source-point[data-selected],.appendix[data-open],.diagram-claim[data-active]').forEach(node=>{delete node.dataset.selected;delete node.dataset.open;delete node.dataset.active;});
+    document.querySelectorAll('.source-point[data-selected],.appendix[data-open],.cited-code[data-open],.source-metadata[data-open],.diagram-claim[data-active]').forEach(node=>{delete node.dataset.selected;delete node.dataset.open;delete node.dataset.active;});
   });
   apply();
 })(readerLifetime, readerModal);

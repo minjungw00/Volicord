@@ -3,6 +3,7 @@
 async function inspectDiagram(svg, diagram, prose) {
   const label = l => l.text;
   const m=diagram.meaning;
+  const spaciousSequence=!!diagram.meaning.groups&&await svg.evaluate(n=>n.classList.contains('spatial-world'));
   const stages=await svg.getAttribute('data-sequence-layout')==='stages';
   const ko=await svg.evaluate(n=>n.ownerDocument.documentElement.lang==='ko');
   const owner=m.owner && `${ko?'상태 소유자:':'State owner:'} ${label(m.owner)}`;
@@ -25,14 +26,15 @@ async function inspectDiagram(svg, diagram, prose) {
     const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
     const localOrder=g.order==='sequential'?(stages?(ko?'순차':'Sequential'):'strict'):order;
     const context=localOrder+(g.condition?` · opt · ${ko?'조건:':'condition:'} ${label(g.condition)}`:'');
-    expected.push(...g.messages.map(r=>({id:r.id,text:context,prefix:true})));
+    if(spaciousSequence){expected.push(...g.messages.flatMap(r=>[{id:r.id,text:g.order==='sequential'?'strict':order,accessibility:true},...(g.condition?[{id:r.id,text:label(g.condition),accessibility:true}]:[])]));}
+    else expected.push(...g.messages.map(r=>({id:r.id,text:context,prefix:true})));
     if(g.condition)expected.push({id:'guard:'+(i+1),text:label(g.condition),prefix:true});
     expected.push(...g.messages.map(r=>({id:r.id,text:label(r.label)})));
     const endpoint=id=>{const n=m.participants.find(n=>n.id===id);const name=label(n.label);return m.participants.filter(n=>label(n.label)===name).length>1?`${name} (${label(n.identifier)})`:name;};
-    expected.push(...g.messages.flatMap(r=>stages?[{id:r.id,text:endpoint(r.from)},...(r.from===r.to?[]:[{id:r.id,text:endpoint(r.to)}])]:[{id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`}]));
+    expected.push(...g.messages.flatMap(r=>stages?[{id:r.id,text:endpoint(r.from)},...(r.from===r.to?[]:[{id:r.id,text:endpoint(r.to)}])]:[{id:r.id,text:`${endpoint(r.from)} → ${endpoint(r.to)}`,contains:spaciousSequence}]));
   }
   const edges=m.relations || (m.groups||[]).flatMap(g=>g.messages);
-  return svg.evaluate((root,{expected,edges,sequence,stages,groups,kinds,nodes})=> {
+  return svg.evaluate((root,{expected,edges,sequence,stages,groups,kinds,nodes,spaciousSequence})=> {
     const errors=[];const texts=[];const paths=[];
     const box=b=>({x:b.x,y:b.y,width:b.width,height:b.height});
     const intersects=(a,b)=>a.x<b.x+b.width-1 && a.x+a.width>b.x+1 && a.y<b.y+b.height-1 && a.y+a.height>b.y+1;
@@ -72,7 +74,7 @@ async function inspectDiagram(svg, diagram, prose) {
       if(!primary || primary.textContent!==name || parseFloat(getComputedStyle(primary).fontSize)!==16)errors.push({kind:'label-hierarchy',element:node.id});
       if(node.identifier){
         const support=pick(anchor(node.id+':identifier'),'.diagram-label-support text');
-        if(!primary || !support || support.textContent!==node.identifier.text || parseFloat(getComputedStyle(support).fontSize)!==(root.classList.contains('spatial-world')&&!sequence?13:12) || bounds(support).y<=bounds(primary).y)errors.push({kind:'identifier-hierarchy',element:node.id});
+        if(!primary || !support || support.textContent!==node.identifier.text || parseFloat(getComputedStyle(support).fontSize)!==(root.classList.contains('spatial-world')?13:12) || bounds(support).y<=bounds(primary).y)errors.push({kind:'identifier-hierarchy',element:node.id});
       }
 
     }
@@ -102,7 +104,7 @@ async function inspectDiagram(svg, diagram, prose) {
       let previousGroupBottom=-Infinity;
       for(const [gi,g] of groups.entries()) {
         const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
-        const heading=stages&&g.order==='sequential'?(ko?'순차':'Sequential')+(root.clientWidth>=760?(ko?' · 왼쪽부터 읽고 다음 줄로':' · left to right, then next row'):''):order;
+        const heading=spaciousSequence?(g.order==='sequential'?(ko?'순차':'Sequential'):(ko?'병렬 · 상대 순서 없음':'Parallel · no relative order')):stages&&g.order==='sequential'?(ko?'순차':'Sequential')+(root.clientWidth>=760?(ko?' · 왼쪽부터 읽고 다음 줄로':' · left to right, then next row'):''):order;
         const header=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===`${gi+1}. ${heading}`);
         if(!header)errors.push({kind:'wrong-group-order',group:gi+1,expected:order});
         // Inline scenes keep local context in the reading column. Spacious worlds
@@ -112,10 +114,16 @@ async function inspectDiagram(svg, diagram, prose) {
         if(!root.classList.contains('spatial-world') && header && bounds(header).x+bounds(header).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1});
         if(g.condition){const guard=pick(anchor('guard:'+(gi+1)),'text');if(!root.classList.contains('spatial-world') && guard && bounds(guard).x+bounds(guard).width>viewport.clientWidth+1)errors.push({kind:'offscreen-group-context',group:gi+1,role:'condition'});}
         for(const message of g.messages) {
-          if(!visibleTexts(anchor(message.id)).some(t=>t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
+          if(!visibleTexts(anchor(message.id)).some(t=>spaciousSequence?t.endsWith(' · '+kindText(message.kind)):t.includes(' · '+kindText(message.kind)+' · ')))errors.push({kind:'missing-visible-type',element:message.id});
           // The primary action, concise endpoints and local scope are the whole
           // scene text. An extra identifier/type band cannot silently return.
-          if(visibleTexts(anchor(message.id)).length!==(stages&&message.from!==message.to?4:3))errors.push({kind:'repeated-message-identity',element:message.id});
+          if(visibleTexts(anchor(message.id)).length!==(spaciousSequence?2:stages&&message.from!==message.to?4:3))errors.push({kind:'repeated-message-identity',element:message.id});
+        }
+        if(spaciousSequence){
+          const group=root.querySelector('.sequence-group[data-group-index="'+(gi+1)+'"]');
+          const frame=group?.querySelector('.sequence-frame'),frameBox=frame&&bounds(frame);
+          if(!frameBox||!group.contains(header))errors.push({kind:'missing-group-frame',group:gi+1});
+          for(const message of g.messages){const a=anchor(message.id),b=a&&bounds(a);if(!b||!frameBox||b.x<frameBox.x||b.y<frameBox.y||b.x+b.width>frameBox.x+frameBox.width+1||b.y+b.height>frameBox.y+frameBox.height+1)errors.push({kind:'message-outside-own-group',group:gi+1,element:message.id});}
         }
         let last=previousGroupBottom,lastX=-Infinity;
         const positions=g.messages.flatMap(m=>{const p=edgePath(m.id);return p?[{id:m.id,box:bounds(stages?pick(anchor(m.id),'.sequence-message-hitbox'):p)}]:[];});
@@ -130,7 +138,7 @@ async function inspectDiagram(svg, diagram, prose) {
     for(const e of expected) {
       const a=[...root.querySelectorAll('a.diagram-element')].find(a=>a.id===(root.dataset.originNamespace||root.closest('figure').id)+'-'+e.id);
       if(e.accessibility){if(!a?.getAttribute('aria-label')?.includes(e.text))errors.push({kind:'missing-endpoint-binding',element:e.id,expected:e.text});continue;}
-      const displayed=a && [...a.querySelectorAll('text')].find(t=>rendered(t)&&(e.prefix?t.textContent.endsWith(e.text):t.textContent===e.text));
+      const displayed=a && [...a.querySelectorAll('text')].find(t=>rendered(t)&&(e.prefix?t.textContent.endsWith(e.text):e.contains?t.textContent.includes(e.text):t.textContent===e.text));
       let visible=Boolean(displayed);
       if(displayed) {
         const b=bounds(displayed);visible=b.width>0 && b.height>0;
@@ -176,6 +184,6 @@ async function inspectDiagram(svg, diagram, prose) {
     for(const [pair,samples] of merges)if(samples>10)errors.push({kind:'route-merge',pair,samples});
     const v=root.closest('.diagram-viewport');
     return {canvas:{width:view.width,height:view.height},viewport:{width:v.clientWidth,height:v.clientHeight,left:v.scrollLeft,top:v.scrollTop,horizontalTravel:v.scrollWidth-v.clientWidth,verticalTravel:v.scrollHeight-v.clientHeight},expected,tasks,labels:texts,paths,errors};
-  },{expected,edges,stages,sequence:m.kind==='sequence',groups:m.groups||[],kinds,nodes:m.nodes||m.participants});
+  },{expected,edges,stages,spaciousSequence,sequence:m.kind==='sequence',groups:m.groups||[],kinds,nodes:m.nodes||m.participants});
 }
 module.exports={inspectDiagram};

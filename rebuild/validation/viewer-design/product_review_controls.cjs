@@ -181,7 +181,7 @@ async function openEmbeddedCode(point) {
 }
 async function returnFromEmbeddedCode(point) {
  const inline=await inlineCodeDisclosure(point);
- if(inline){if(await inline.evaluate(n=>n.open)){const summary=inline.locator(':scope > summary');await summary.focus();await summary.press('Enter');}return;}
+ if(inline)return; // Inline code already shares the exact claim fragment and return.
  const ref=await embeddedReference(point);
  if(await ref.count()) {
   const href=await ref.getAttribute('href');
@@ -196,13 +196,31 @@ async function inlineCodeDisclosure(point){
   return (target?.closest('.source-point')===n&&target.dataset.citedCode)||n.dataset.citedCode||null;
  });
  if(!id)return null;
- const disclosure=point.page().locator('details.cited-code[id="'+id+'"]');assert.equal(await disclosure.count(),1,'one physical inline cited range');
- assert.equal(await disclosure.getAttribute('data-source-id'),await point.getAttribute('data-source-id'),'inline Source identity');
+ const disclosure=point.page().locator('details.cited-code[id="'+id+'"]');if(!await disclosure.count())return null;assert.equal(await disclosure.count(),1,'one physical inline cited range');
+ for(const key of ['data-source-id','data-range-sha256','data-reader-publication'])assert.equal(await disclosure.getAttribute(key),await point.getAttribute(key),'inline identity '+key);
  return disclosure;
 }
 module.exports.embeddedCode=embeddedCode;
 module.exports.openEmbeddedCode=openEmbeddedCode;
 module.exports.returnFromEmbeddedCode=returnFromEmbeddedCode;
+
+// Resolve controls through the exact per-claim metadata binding; shared bytes
+// live once at appendix level and are independently Source/range/publication bound.
+async function citationInspection(point,open=false){
+ const id=await point.getAttribute('data-source-metadata');assert(id,'bound observation metadata');
+ const metadata=point.page().locator('[id="'+id+'"]');assert.equal(await metadata.count(),1);
+ assert.equal(await metadata.getAttribute('data-source-context'),await point.getAttribute('id'));
+ for(const key of ['data-source-id','data-reader-publication'])assert.equal(await metadata.getAttribute(key),await point.getAttribute(key),'same observation '+key);
+ if(open&&!await metadata.evaluate(n=>n.open))await metadata.locator(':scope > summary').click();
+ return metadata.locator('.citation-inspection');
+}
+async function citationReady(point){
+ const inspection=await citationInspection(point);
+ await point.page().waitForFunction(n=>n?.isConnected&&!n.disabled,await inspection.locator('.citation-read').elementHandle());
+ const code=await embeddedCode(point);await code.waitFor({state:'visible'});return code;
+}
+module.exports.citationInspection=citationInspection;
+module.exports.citationReady=citationReady;
 
 async function criticalBytes(page,point,task,offline,pending) {
  const hash=bytes=>require('node:crypto').createHash('sha256').update(bytes).digest('hex');
@@ -214,7 +232,7 @@ async function criticalBytes(page,point,task,offline,pending) {
   assert.equal('sha256:'+hash(Buffer.from(text)),task.citation.range_sha256,'offline exact critical bytes');
   await returnFromEmbeddedCode(point);
  }else{
-   const inspection=point.locator('.citation-inspection');
+   const inspection=await citationInspection(point);
    assert.equal(await inspection.getAttribute('data-realization'),task.realization_fingerprint);
    const chunks=[];let offset=0;const target=await point.getAttribute('id');const stream=pending;
    while(true){
@@ -225,13 +243,13 @@ async function criticalBytes(page,point,task,offline,pending) {
     assert.ok(Buffer.byteLength(chunk.text)>0&&Buffer.byteLength(chunk.text)<=4096);
     assert.equal(chunk.displayed_end_byte,chunk.displayed_start_byte+Buffer.byteLength(chunk.text));
     chunks.push(chunk.text);pages++;bytes+=Buffer.byteLength(chunk.text);
-    await page.waitForFunction(({id,text})=>document.getElementById(id)?.querySelector('.citation-inspection code')?.textContent.startsWith(text),{id:target,text:chunks.join('')});
+    await page.waitForFunction(({id,text})=>{const p=document.getElementById(id);return document.getElementById(p?.dataset.citedCode)?.querySelector('code')?.textContent.startsWith(text);},{id:target,text:chunks.join('')});
     if(chunk.next_offset===null)break;
     assert.equal(chunk.next_offset,offset+Buffer.byteLength(chunk.text));offset=chunk.next_offset;
     pending=stream.waitForOffset(offset);
    }
    stream.dispose?.();
-   assert.equal(await inspection.locator('code').textContent(),chunks.join(''),'complete visible original range');
+   assert.equal(await (await embeddedCode(point)).textContent(),chunks.join(''),'complete visible original range');
    assert.equal(bytes,task.citation.end_byte-task.citation.start_byte,'complete critical cited range');
    assert.equal('sha256:'+hash(Buffer.from(chunks.join(''))),task.citation.range_sha256,'complete critical Source hash');
 

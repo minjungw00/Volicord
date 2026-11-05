@@ -199,18 +199,29 @@ fn tokens(source: &str, language: Option<Language>) -> Vec<Token> {
             i += 1;
         }
         if let Some(kind) = kind {
+            // A CR belongs with its LF/plain line ending, not the preceding
+            // colored comment. Splitting CRLF across DOM spans changes native
+            // selection/copy behavior even when textContent remains exact.
+            let color_end = if i > start && b[i - 1] == b'\r' {
+                i - 1
+            } else {
+                i
+            };
+            if color_end == start {
+                continue;
+            }
             if let Some(last) = result
                 .last_mut()
                 .filter(|t| t.end == start && t.kind == kind)
             {
-                last.end = i;
+                last.end = color_end;
             } else {
                 if result.len() == MAX_TOKENS {
                     return Vec::new();
                 }
                 result.push(Token {
                     start,
-                    end: i,
+                    end: color_end,
                     kind,
                 });
             }
@@ -335,6 +346,35 @@ pub(crate) fn decoration(source: &str, language: Option<Language>) -> serde_json
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn comment_decoration_keeps_crlf_together_for_native_copying() {
+        for (language, prefix) in [
+            (Language::Python, "#"),
+            (Language::Shell, "#"),
+            (Language::Rust, "//"),
+            (Language::JavaScript, "//"),
+            (Language::TypeScript, "//"),
+        ] {
+            let source = format!("{prefix} 한국어 🦀\r\n{prefix} final\r");
+            let rendered = html(&source, Some(language));
+            assert!(rendered.contains("</span>&#13;\n"));
+            assert!(!rendered.contains("&#13;</span>"));
+            let metadata = decoration(&source, Some(language));
+            let units = source.encode_utf16().collect::<Vec<_>>();
+            for token in metadata["tokens"].as_array().into_iter().flatten() {
+                for coordinate in [0, 1] {
+                    let offset = token[coordinate].as_u64().unwrap() as usize;
+                    assert!(
+                        offset == 0
+                            || offset == units.len()
+                            || units[offset - 1] != 13
+                            || units[offset] != 10
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn bounded_chunk_rendering_cost_and_growth() {

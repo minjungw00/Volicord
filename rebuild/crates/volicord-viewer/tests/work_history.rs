@@ -330,11 +330,8 @@ fn current_state_historical_risk_and_exact_audit_are_separate(
                     );
                 }
                 assert!(!card.contains("<details"));
-                assert!(card.contains(if row {
-                    "class=\"work-badge\""
-                } else {
-                    "class=\"work-status\""
-                }));
+                assert!(card.contains("class=\"work-badge work-state-badge\""));
+                assert!(card.contains("class=\"state-dot\""));
                 assert!(
                     card.contains(&format!("#work-{work}"))
                         || card.contains(&format!("work={work}"))

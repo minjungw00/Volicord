@@ -3,7 +3,7 @@ use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/20";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/21";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -317,7 +317,11 @@ mod tests {
         let output = svg(&diagram, &[text], "readable-lanes", &|id, _| {
             format!("{id}-claim")
         })?;
-        assert!(output.contains("data-world-width=\"1632\""));
+        assert!(
+            !output.contains("class=\"message-label\""),
+            "temporal actions sit beside their own route rather than in full-width cards"
+        );
+        assert!(output.contains("class=\"sequence-message-hitbox\""));
         assert!(output.contains("data-sequence-layout=\"timeline\""));
         assert_eq!(output.matches("class=\"lifeline\"").count(), 5);
         assert!(output.contains("data-from=\"a\" data-to=\"e\""));

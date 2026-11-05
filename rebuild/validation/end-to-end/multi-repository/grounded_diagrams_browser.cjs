@@ -18,7 +18,7 @@ const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),ch
 if(config.fontconfig) executionIdentities.fontconfig=hash(config.fontconfig);
 for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs','diagram_context.cjs','publication_coverage.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
 const sleep = ms => new Promise(r => setTimeout(r,ms));
-const {openEmbeddedCode,returnFromEmbeddedCode,citationResponse,criticalBytes}=require('../../viewer-design/product_review_controls.cjs');
+const {openEmbeddedCode,returnFromEmbeddedCode,citationResponse,criticalBytes,embeddedCode,citationInspection,citationReady}=require('../../viewer-design/product_review_controls.cjs');
 executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/product_review_controls.cjs'));
 const failureReasons=['expired','deleted','changed','withheld','comparison_unavailable','unavailable','missing','corrupt','unsupported'];
 async function nativeLinkNavigation(page, link, receipt) {
@@ -110,7 +110,7 @@ async function nativeLinkNavigation(page, link, receipt) {
             assert(await figure.evaluate(n=>n===document.activeElement),'outline exact figure focus');
           }
           const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.count(),1);
-          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/20'));
+          assert.equal(await svg.getAttribute('data-renderer'),(config.renderer || 'volicord-static-svg/21'));
           assert.equal(await page.locator('script').count()>0,mode==='live','live scripting versus script-free static export');
           if(mode==='live') await page.waitForFunction(id=>{
             const viewport=document.getElementById(id)?.querySelector('.diagram-viewport');
@@ -140,7 +140,7 @@ async function nativeLinkNavigation(page, link, receipt) {
           }
           const svg_bytes=await svg.evaluate(n=>new TextEncoder().encode(n.outerHTML).length);
           if(config.orientation_only) {
-            results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/20'),evidence_journey:'not_exercised'});
+            results.push({entry,visual_geometry,case:c.key,width,mode,realization:pub.provenance.realization_fingerprint,publication:pub.provenance.publication_id,semantic_fingerprint:d.semantic_fingerprint,svg_bytes,load_ms,renderer:(config.renderer||'volicord-static-svg/21'),evidence_journey:'not_exercised'});
             await context.close();continue;
           }
           if(config.context_reading) {
@@ -206,15 +206,17 @@ async function nativeLinkNavigation(page, link, receipt) {
           const boundPoint=page.locator('.source-point[data-reader-publication="'+pub.provenance.publication_id+'"][id$="-p'+(c.unit+1)+'-c'+(c.citation+1)+'"]');
           assert.equal(await boundPoint.count(),1,'exact independently selected citation origin');
           const boundPointId=await boundPoint.getAttribute('id');
-          const action=claim.locator('a.evidence-link[href$="-source-c'+(c.citation+1)+'"]');
-          assert.equal(await action.count(),1,'critical purpose has exact code action');
-          const nativeId=(await action.getAttribute('href')).slice(1);
+          const action=claim.locator('a.evidence-link');assert.equal(await action.count(),1,'one quiet complete-family action');
+          const family=JSON.parse(await action.getAttribute('data-citation-targets'));
+          const nativeId=family.map(h=>h.slice(1)).find(id=>id.endsWith('-source-c'+(c.citation+1)));
+          assert(nativeId,'critical purpose is in the complete native family');
           assert.equal(await page.locator('[id="'+nativeId+'"]').getAttribute('data-selected-point'),boundPointId,'native origin keeps independently selected citation');
           const selectedStarted=Date.now();
           // Live SVG activation already opens exact evidence. A second click
           // would target the inert claim behind the narrow modal. Native
           // reading deliberately follows the visible claim's Source action.
-          if(mode!=='live')await action.click();
+          if(mode==='live'){const picker=boundPoint.locator('.evidence-choice-picker select');if(await picker.count()&&await picker.inputValue()!=='#'+nativeId+'!'+claimId)await picker.selectOption('#'+nativeId+'!'+claimId);}
+          else {await action.click();if((await action.getAttribute('href')).slice(1)!==nativeId){const initial=page.locator(':target');await initial.locator('.native-range-selector>summary').click();await initial.locator('a[href="#'+nativeId+'"]').click();}}
           const pointId=boundPointId;
           const point=page.locator('[id="'+pointId+'"]');
           if(mode==='live') {
@@ -223,7 +225,7 @@ async function nativeLinkNavigation(page, link, receipt) {
             // response stream with the shared exact-binding/range control.
             try {await criticalBytes(page,point,task,false,pending);}
             finally {pending.dispose();}
-            assert.equal(await point.locator('.citation-inspection code').textContent(),expected,'all critical implementing bytes across bounded pages');
+            assert.equal(await (await embeddedCode(point)).textContent(),expected,'all critical implementing bytes across bounded pages');
           } else {
             const code=await (await openEmbeddedCode(point)).allTextContents();
             assert(code.includes(expected),'offline/no-JS complete exact implementing bytes');
@@ -250,7 +252,7 @@ async function nativeLinkNavigation(page, link, receipt) {
             assert.equal(await figure.locator('.diagram-alternative,.diagram-relations,.diagram-timeline').count(),0,'one normal semantic scene');
             await element.focus();await page.keyboard.press('Enter');
             const deep=page.url();await page.reload({waitUntil:'load'});
-            await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-inspection code')?.textContent.length>0,pointId);
+            await citationReady(point);
             assert.equal(page.url(),deep,'same exact publication/claim deep link');
             await page.keyboard.press('Escape');
             await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
@@ -260,14 +262,14 @@ async function nativeLinkNavigation(page, link, receipt) {
             }
             if(config.faults && c.faults!==false) for(const reason of failureReasons) {
               await page.goto(base+query,{waitUntil:'load'});
-              const failedPublication=await point.locator('.citation-inspection').getAttribute('data-publication-id');
+              const failedPublication=await (await citationInspection(point)).getAttribute('data-publication-id');
               const independent=await page.locator('[data-reader-publication]').evaluateAll((ns,id)=>ns.filter(n=>n.dataset.readerPublication!==id).map(n=>({id:n.id,publication:n.dataset.readerPublication,html:n.outerHTML})),failedPublication);
-              assert(await page.locator('.source-point pre.code-region').count()>1,'multiple original cached Source payloads challenge publication-wide withholding');
+              assert(await page.locator('.appendix > .cited-code pre.code-region').count()>1,'multiple original cached Source payloads challenge publication-wide withholding');
               await page.route(/\/citation\?/,route=>route.fulfill({status:410,contentType:'application/json',body:JSON.stringify({reason,publication_readable:false})}));
               await element.focus();await page.keyboard.press('Enter');
               await page.waitForFunction(id=>document.getElementById(id)?.dataset.unavailable==='true',await figure.getAttribute('id'));
               assert.equal(await figure.locator('svg,.diagram-alternative,.diagram-claim').count(),0,'known failure removes all cached diagram meanings');
-              assert.equal(await point.locator('pre.code-region').count(),0);
+              assert.equal(await page.locator('.appendix > .cited-code[data-reader-publication="'+failedPublication+'"] pre.code-region').count(),0);
               assert.equal(await page.locator('[data-reader-publication]').evaluateAll((ns,id)=>ns.filter(n=>n.dataset.readerPublication===id).reduce((count,n)=>count+n.querySelectorAll('pre.code-region,.claim-quote,.unit-text,svg,.diagram-text,a.evidence-link').length,0),failedPublication),0,'no hidden code, prose, caption or evidence alias survives known publication loss');
               assert.deepEqual(await page.locator('[data-reader-publication]').evaluateAll((ns,id)=>ns.filter(n=>n.dataset.readerPublication!==id).map(n=>({id:n.id,publication:n.dataset.readerPublication,html:n.outerHTML})),failedPublication),independent,'independently published name/summary content is unchanged');
               await page.keyboard.press('Escape');
@@ -284,7 +286,7 @@ async function nativeLinkNavigation(page, link, receipt) {
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;
           assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-          results.push({entry,visual_geometry,native_navigation,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/20')});
+          results.push({entry,visual_geometry,native_navigation,case:c.key,width,mode,language:c.language,ui_locale:c.ui_locale||c.language,publication:pub.provenance.publication_id,realization:pub.provenance.realization_fingerprint,semantic_fingerprint:d.semantic_fingerprint,element:elementId,unit:c.unit,citation:c.citation,exact_source_bytes:Buffer.byteLength(expected),svg_bytes,load_ms,selected_evidence_ms,return_ms,html_bytes:fs.statSync(c.offline).size,controlled_failure_reasons:mode==='live'&&config.faults&&c.faults!==false?failureReasons:[],external_requests:external,renderer:(config.renderer || 'volicord-static-svg/21')});
           await context.close();
         }
       } catch(error) {

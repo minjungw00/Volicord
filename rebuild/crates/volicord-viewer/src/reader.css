@@ -413,7 +413,7 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
 /* One complete payload, with a distinct native alias/return for each citation. */
 .shared-source-target { display:none; }
 .shared-source-target:target { display:block; }
-.source-point:has(> .shared-source-target:target) > :is(.point-bar,.point-title,.claim-quote,.diagram-return-index,.point-others,details:not(.source-context)) { display:none; }
+.source-point:has(> .shared-source-target:target) > :is(.point-bar,.point-title,.evidence-claim,.evidence-selection-context,.range-selector) { display:none; }
 .source-code-reference { overflow-wrap:anywhere; }
 
 .diagram-viewport .message-label { fill: var(--surface, #fff); stroke: none; }

@@ -1201,6 +1201,28 @@ rebuild/validation/viewer-design/package_product_review_self_test.py` for direct
 entry-point preservation and packaging controls without an installed browser.
 These are technical observations, not human comprehension or semantic approval.
 
+The current citation driver selects each original unit/citation through the quiet
+complete-family action and its same-pane chooser. It checks complete reassembly
+across bounded responses, independent byte/copy oracles (including CRLF), twenty
+binding/continuity refusal controls, delayed-response isolation, real deletion and
+script-free evidence with the disposable Runtime temporarily unavailable. Shared
+code and per-claim observation controls are resolved separately; code need not be
+a descendant of the selected Source point. Four-KiB transport pages remain bounded
+without becoming separate manual reading steps. Publication loss removes serialized
+bindings and dependent cached meaning as well as displayed code.
+
+`node rebuild/validation/viewer-design/ce1_design_fidelity.cjs CONFIG` compares actual
+Work consumers directly with the immutable package-43 CE1 file (SHA-256 pinned by
+the driver). Config supplies `reference`, `viewer`, `runtime`, `project`, `work`,
+`offline`, `playwright`, `chromium`, `fontconfig` and a new ignored `output`.
+The default six widths and live/no-JS/native modes compare real composition,
+effective styles, disclosure families, code/panel order and representative temporal
+drawing organization. It preserves every mismatch and screenshot. A diagnostic
+subset must retain its declared `widths`/`modes`; it cannot be reported as the full
+comparison. The earlier e81 executable fails the same selected-composition check.
+Use separate source-derived geometry, authority and return journeys; reference
+fidelity is not independent first reading or user/assistive acceptance.
+
 Reader collection applicability is documented in
 [the per-task evidence disposition](dogfood/reader-evidence-applicability.md).
 Existing `dogfood-campaign prepare-explanations` and `inspect-explanations` expose
@@ -1549,7 +1571,7 @@ This is caller output protection, not a new evidence framework or qualification.
 Connected sequence reading uses one complete admitted temporal world.
 `document_evidence_journey.cjs` invokes `sequence_views.cjs` after initial orientation,
 checking every role/claim origin, exact Source bytes, deep return and resized camera.
-The default renderer is 20; an explicit `renderer` still identifies an older diagnostic
+The default renderer is 21; an explicit `renderer` still identifies an older diagnostic
 binary. Complex graphs share the bounded world policy; small graphs remain inline.
 Initial fit records orientation separately from readable text. Subsequent pan/zoom is
 a deliberate reading action, not a defect or permission to conceal ambiguous geometry.

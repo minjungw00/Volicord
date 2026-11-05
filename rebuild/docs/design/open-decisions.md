@@ -829,6 +829,34 @@ subsequent exact `--language ko` read established retained Korean publications w
 expired Source windows. The first held-out Korean reading and that correction remain
 in the preserved attempt; neither diagnosis is evidence of normal new admission.
 
+## Complete CE1 presentation correction — 2026-11-06
+
+The user explicitly rejected the delivered reading result as inconsistent with
+package 43 and identified `rebuild/.local/spatial-reading-20261030/candidates-43`
+and the original Codex session
+`rollout-2026-10-30T09-38-37-01a18a3e-8e9a-7da2-8b67-7ccd9b112628.jsonl`.
+The directory is the selected package. Its unchanged manifest hash is recorded
+above; `musicdeck-work-ko-CE1.html` has SHA-256
+`295961bcee3df01f9a7c7bfab126b33ce2ad00cc6b9fcdebc34b088e8d794046`.
+The original session contains the package-43 delivery and the genuine current-state
+confirmation. The manifest's historical `selection: null` is not rewritten.
+
+Apply the complete reviewed UI/design composition, including the three Work
+groups, compact grouped TOC, typed status, spacing, quiet complete-family actions,
+record/disclosure hierarchy, shared panel chrome, expanded code before observation
+metadata, and spacious temporal drawing. Camera mechanics alone do not satisfy
+this choice. The earlier e81f6c7c technical qualification remains evidence for that
+candidate, not visual fidelity or user acceptance of its delivered design.
+
+The prototype's unadmitted-draft notice and replaced draft wording cannot become
+Product facts. An already admitted title/lead retains its actual publication and
+original in-context target; supporting categories link to that target rather than
+creating a second purported original. Computed layout may adapt to admitted label
+lengths and topology; it must preserve the selected visual organization without
+fixture-specific coordinates. Pure presentation correction changes no canonical
+history, article wording, Source lifetime, authority or semantic format. Implemented
+human/assistive acceptance remains unobserved until actually supplied.
+
 ## Retained reading and new publication admission — accepted 2026-11-05
 
 - Status: `accepted` by the user's explicit answer, “읽기·새 발행 검증 분리 허용 (권장)”,

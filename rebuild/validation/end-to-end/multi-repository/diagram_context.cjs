@@ -64,7 +64,7 @@ async function inspectRouteAlias(page, figure, element, claim, action, point) {
   });
   const before=await element.evaluate(n=>({top:n.getBoundingClientRect().top,pageY:scrollY,left:n.closest('.diagram-viewport').scrollLeft,panY:n.closest('.diagram-viewport').scrollTop}));
   await page.mouse.click(hit.x,hit.y);
-  await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-inspection pre.code-region code')?.textContent.length>0,await point.getAttribute('id'));
+  await require('../../viewer-design/product_review_controls.cjs').citationReady(point);
   await page.keyboard.press('Escape');
   await page.waitForFunction(id=>document.activeElement?.matches('a.diagram-route')&&document.activeElement.dataset.element===id,id);
   const after=await element.evaluate(n=>({top:n.getBoundingClientRect().top,pageY:scrollY,left:n.closest('.diagram-viewport').scrollLeft,panY:n.closest('.diagram-viewport').scrollTop}));

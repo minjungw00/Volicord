@@ -2,7 +2,7 @@
 function createReaderEvidence({lifetime,navigate,state}) {
   const ko=document.documentElement.lang==='ko',handles=[];
   let width=null;
-  function bounds(){return [280,Math.max(280,innerWidth-(innerWidth>=1200?512:32))];}
+  function bounds(){const min=innerWidth>=1200?360:320;return [min,Math.max(min,Math.min(960,innerWidth-(innerWidth>=1200?600:48)))];}
   function resize(next){
     const [min,max]=bounds();width=next===null?null:Math.max(min,Math.min(max,next));
     if(width===null)document.body.style.removeProperty('--evidence-width');else document.body.style.setProperty('--evidence-width',width+'px');
@@ -17,30 +17,42 @@ function createReaderEvidence({lifetime,navigate,state}) {
     lifetime.on(handle,'dblclick',()=>resize(null));
     lifetime.on(handle,'keydown',event=>{
       if(event.ctrlKey||event.metaKey||event.altKey)return;
-      if(!['ArrowLeft','ArrowRight','Home'].includes(event.key))return;event.preventDefault();
-      resize(event.key==='Home'?null:(width??appendix.clientWidth)+(event.key==='ArrowLeft'?24:-24));
+      if(!['ArrowLeft','ArrowRight','Home','Enter'].includes(event.key))return;event.preventDefault();
+      resize(['Home','Enter'].includes(event.key)?null:(width??appendix.clientWidth)+(event.key==='ArrowLeft'?24:-24));
     });
   }
   lifetime.on(window,'resize',()=>resize(width));resize(null);
+  function targets(claim) {
+    const action=claim?.querySelector(':scope > .evidence-actions > a[data-citation-targets]');
+    let values;try{values=JSON.parse(action?.dataset.citationTargets||'[]');}catch{return [];}
+    if(!Array.isArray(values)||values.length>256||values.some(value=>typeof value!=='string'||!value.startsWith('#')))return [];
+    const publication=claim.closest('.admitted-diagram')?.dataset.readerPublication;
+    return [...new Set(values)].filter(value=>{
+      const origin=document.getElementById(value.slice(1)),point=document.getElementById(origin?.dataset.selectedPoint);
+      return origin?.matches('.source-origin-target')&&origin.dataset.origin===claim.id&&point?.matches('.source-point')&&point.dataset.readerPublication===publication&&origin.closest('.source-point')===point;
+    });
+  }
   function show(point,origin) {
-    const claim=origin&&document.getElementById(origin);
-    const source=claim?.matches('.diagram-claim')?claim:point;
-    const links=[...source.querySelectorAll(claim?'a.evidence-link':':scope > .range-selector .point-others a')];
+    const claim=origin&&document.getElementById(origin),diagram=claim?.matches('.diagram-claim');
+    const values=diagram?targets(claim):[...point.querySelectorAll(':scope > .range-selector .point-others a')].map(link=>link.getAttribute('href'));
     point.querySelector(':scope > .evidence-choice-picker')?.remove();
     if(!point.querySelector(':scope > .point-bar .evidence-width-reset')){
       const reset=document.createElement('button');reset.type='button';reset.className='evidence-width-reset';reset.textContent='↔';reset.title=ko?'근거 창 기본 너비':'Default evidence width';reset.setAttribute('aria-label',reset.title);point.querySelector(':scope > .point-bar').append(reset);
     }
-    if(links.length<2)return;
-    const label=document.createElement('label');label.className='evidence-choice-picker';label.append(document.createTextNode(ko?'근거 선택':'Choose evidence'));
-    const select=document.createElement('select');label.append(select);
-    for(const link of links){
-      const option=document.createElement('option');option.value=link.getAttribute('href')+(claim?'!'+origin:'');
-      option.textContent=link.getAttribute('aria-label')||link.textContent;option.selected=option.value===location.hash;select.append(option);
+    const code=document.getElementById(point.dataset.citedCode);if(code?.matches('.cited-code')&&code.dataset.sourceId===point.dataset.sourceId&&code.dataset.readerPublication===point.dataset.readerPublication)code.open=true;
+    if(!values.length)return;
+    const label=document.createElement('label');label.className='evidence-choice-picker';label.append(document.createTextNode(ko?'근거 선택 · '+values.length+'개 범위':'Choose evidence · '+values.length+' ranges'));
+    const select=document.createElement('select');select.setAttribute('aria-label',ko?'이 설명의 근거 선택':'Choose evidence for this explanation');label.append(select);
+    for(const [i,value] of values.entries()){
+      const target=document.getElementById(value.slice(1)),selectedPoint=target?.matches('.source-point')?target:target?.closest('.source-point');
+      if(!selectedPoint||selectedPoint.dataset.readerPublication!==point.dataset.readerPublication)continue;
+      const option=document.createElement('option');option.value=value+(diagram?'!'+origin:'');
+      option.textContent=(i+1)+'. '+selectedPoint.querySelector(':scope > .source-path').textContent;option.selected=selectedPoint===point;select.append(option);
     }
-    point.querySelector(':scope > .source-path').after(label);
+    point.querySelector(':scope > .source-path').before(label);
   }
   lifetime.on(document,'click',event=>{if(event.target.closest('.evidence-width-reset'))resize(null);});
   lifetime.on(document,'change',event=>{if(event.target.matches('.evidence-choice-picker select'))navigate(event.target.value,state());});
   lifetime.cleanup(()=>{for(const h of handles)h.remove();document.body.style.removeProperty('--evidence-width');document.querySelectorAll('.evidence-choice-picker,.evidence-width-reset').forEach(n=>n.remove());});
-  return {show};
+  return {show,targets};
 }

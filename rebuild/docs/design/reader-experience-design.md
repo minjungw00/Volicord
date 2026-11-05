@@ -1270,6 +1270,38 @@ to that same native anchor; it does not borrow a same-worded or primary-label or
 
 ### Preserve the selected control and record hierarchy
 
+The user's 2026-11-06 correction requires the complete package-43 CE1 composition,
+not only its camera. Compare the immutable reference directly with actual initial,
+record, selected-code and returned Product states. The Work reading has three real
+parents: explanation/basic facts/next step; peer Verification and Limits; then peer
+Original instructions, Full evidence, Recorded history and Verification originals.
+The compact TOC uses one trigger and grouped links. Subordinate report/limit topics
+stay readable in their section without becoming another wide contents row.
+
+Full evidence separates editorial support, independent summary support, evidence
+index, included-code scope, repository comparison, publication provenance and
+record-state/support limits. Original data remains individually folded. State
+observations belong with history; command-labelled records have one home in
+verification originals. An admitted article keeps material verification/limit prose
+expanded, with quiet links to the exact original records. Missing-article diagnostics
+and unresolved adverse facts remain at entry. A routine successful comparison may
+move into supporting provenance; changed/unavailable comparison must remain visible.
+
+One quiet paragraph/caption/selected-element action opens an actual range directly.
+Its same-pane chooser retains every originally covering citation and the exact
+claim/return binding. The common evidence header, selected explanation, range family,
+path, short correspondence note, expanded complete code and folded observation
+information retain that order. One physical code payload is shared only by its exact
+Source/range; per-claim metadata and connected-body context remain distinct. Line
+numbers must stay aligned throughout the full code, and opening evidence must not
+let width reflow unexpectedly scroll the page behind it.
+
+Code decoration must preserve both the original character sequence and ordinary
+plain-text copying. CRLF cannot be split between a colored comment span and its
+following plain text. Static character references retain CR; live decoration
+rejects hints that split a CRLF pair, just as it rejects split Unicode scalars.
+This is a presentation boundary, not line-ending normalization or Source mutation.
+
 The package-43 CE1 control surface is a compact control group inside the drawing
 frame. Directional buttons and selected-relationship navigation remain available
 through its native Move disclosure; zoom, orientation, readable scale and expansion

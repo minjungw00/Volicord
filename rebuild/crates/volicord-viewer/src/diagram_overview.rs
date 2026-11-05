@@ -4,6 +4,8 @@ use super::{elements, esc, open, RENDERER_ID};
 use std::collections::BTreeMap;
 #[path = "diagram_route.rs"]
 mod routing;
+#[path = "diagram_sequence.rs"]
+mod temporal;
 use volicord_projections::*;
 
 #[derive(Default)]
@@ -338,7 +340,11 @@ fn render(
     };
     let layout = |width| {
         if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
-            sequence(d, texts, width, &marker, locale)
+            if spatial {
+                temporal::sequence(d, texts, &marker, locale)
+            } else {
+                sequence(d, texts, width, &marker, locale)
+            }
         } else if spatial {
             world::graph(d, texts, &marker, locale)
         } else {

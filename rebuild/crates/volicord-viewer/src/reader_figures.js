@@ -25,17 +25,22 @@ function createReaderFigures({lifetime,modal}) {
     scene.svg.style.width=scene.width*scene.scale+'px';scene.svg.style.height=scene.height*scene.scale+'px';
     scene.svg.querySelector('.diagram-content')?.setAttribute('transform',`scale(${scene.scale})`);
     v.scrollLeft=x*scene.scale-v.clientWidth/2;v.scrollTop=y*scene.scale-v.clientHeight/2;clamp(scene);
-    scene.figure.querySelector('.diagram-scale').textContent=Math.round(scene.scale*100)+'%'+(scene.scale<.75?label(' · position',' · 위치'):'');
+    scene.figure.querySelector('.diagram-scale').textContent=Math.round(scene.scale*100)+'%';
   }
   function fit(scene,all=false) {
-    scale(scene,Math.min(1,(scene.viewport.clientWidth-4)/scene.width,all?(scene.viewport.clientHeight-4)/scene.height:1));
+    scale(scene,Math.min(1,(scene.viewport.clientWidth-24)/scene.width,all?(scene.viewport.clientHeight-88)/scene.height:1));
     scene.viewport.scrollTo(0,0);scene.entry=!all;
+  }
+  function inset(scene) {
+    const controls=scene.figure.querySelector('.diagram-controls');
+    const top=Math.max(76,(controls?.offsetHeight||0)+24)+'px';
+    const changed=scene.svg.style.marginTop!==top;scene.svg.style.marginTop=top;return changed;
   }
   function size(scene) {
     const v=scene.viewport;if(!v.clientWidth)return;
     // A restore already accounts for the final viewport. A queued observer
     // from the suspended evidence view must not center over that exact return.
-    const changed=scene.available!==v.clientWidth||scene.viewportHeight!==v.clientHeight;
+    const changed=inset(scene)||scene.available!==v.clientWidth||scene.viewportHeight!==v.clientHeight;
     scene.available=v.clientWidth;scene.viewportHeight=v.clientHeight;
     if(!changed){clamp(scene);return;}
     if(!scene.spatial) {
@@ -63,10 +68,10 @@ function createReaderFigures({lifetime,modal}) {
     if(!s||!memory||!figure.isConnected||figure.dataset.unavailable==='true'||memory.publication!==figure.dataset.readerPublication||memory.figure!==figure.id||memory.view!==s.svg.dataset.originNamespace)return false;
     if(memory.expanded&&!figure.classList.contains('diagram-expanded')){
       figure.classList.add('diagram-expanded');
-      const control=figure.querySelector('[data-diagram-action=expand]');control.setAttribute('aria-expanded','true');control.textContent=label('Close (Esc)','닫기 (Esc)');
+      const control=figure.querySelector('.diagram-controls [data-diagram-action=expand]');control.setAttribute('aria-expanded','true');control.textContent='↙';control.setAttribute('aria-label',label('Restore figure','도식 접기'));
       modal.set('figure',figure,()=>closeExpansion(figure));
     }
-    s.entry=false;s.selected=anchor(s,memory.element)?.id||null;scale(s,memory.scale);
+    inset(s);s.entry=false;s.selected=anchor(s,memory.element)?.id||null;scale(s,memory.scale);
     if(memory.width===s.width&&memory.height===s.height&&memory.available===s.viewport.clientWidth){s.viewport.scrollLeft=memory.left;s.viewport.scrollTop=memory.top;}
     else center(s,anchor(s,s.selected));clamp(s);
     s.available=s.viewport.clientWidth;s.viewportHeight=s.viewport.clientHeight;return true;
@@ -75,8 +80,8 @@ function createReaderFigures({lifetime,modal}) {
     if(!figure)return;
     const s=scenes.get(figure),prior=expandedReturns.get(figure);
     figure.classList.remove('diagram-expanded');modal.set('figure',null);
-    const control=figure.querySelector('[data-diagram-action=expand]');
-    control?.setAttribute('aria-expanded','false');if(control)control.textContent=label('Expand','크게 보기');
+    const control=figure.querySelector('.diagram-controls [data-diagram-action=expand]');
+    if(control){control.setAttribute('aria-expanded','false');control.textContent='↗';control.setAttribute('aria-label',label('Expand figure','도식 크게 보기'));}
     if(s)size(s);
     if(prior){restore(figure,prior.memory);control?.focus({preventScroll:true});window.scrollTo(0,prior.y);expandedReturns.delete(figure);}
   }
@@ -87,7 +92,12 @@ function createReaderFigures({lifetime,modal}) {
     const scene={figure,svg,viewport,spatial,controller,scale:1,entry:spatial,selected:null,
       width:Number(svg.getAttribute('width')),height:Number(svg.getAttribute('height')),disconnect:null};
     scenes.set(figure,scene);figure.querySelector('.diagram-controls').hidden=false;
-    scene.disconnect=lifetime.observe(viewport,()=>size(scene));size(scene);
+    figure.dataset.cameraReady='true';
+    const first=svg.querySelector('a.diagram-element[id]');
+    if(first){const start=document.createElement('a');start.href='#'+first.id;start.dataset.diagramStart=first.id;start.textContent=label('Start','시작');figure.querySelector('.diagram-movement>div').append(start);}
+    const viewportObserver=lifetime.observe(viewport,()=>size(scene));
+    const controlsObserver=lifetime.observe(figure.querySelector('.diagram-controls'),()=>size(scene));
+    scene.disconnect=()=>{viewportObserver();controlsObserver();};size(scene);
     const on=(type,listener,options={})=>viewport.addEventListener(type,listener,{...options,signal:controller.signal});
     let drag=null;
     on('pointerdown',event=>{
@@ -115,6 +125,7 @@ function createReaderFigures({lifetime,modal}) {
     });
   }
   lifetime.on(document,'click',event=>{
+    const close=event.target.closest('[data-figure-close]');if(close){closeExpansion(close.closest('.admitted-diagram'));return;}
     const start=event.target.closest('a[data-diagram-start]');
     if(start&&event.button===0&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey){
       const scene=scenes.get(start.closest('.admitted-diagram'));if(!scene)return;
@@ -128,10 +139,10 @@ function createReaderFigures({lifetime,modal}) {
       if(figure.classList.contains('diagram-expanded'))closeExpansion(figure);
       else {
         expandedReturns.set(figure,{memory:capture(figure),y:scrollY});figure.classList.add('diagram-expanded');
-        control.setAttribute('aria-expanded','true');control.textContent=label('Close (Esc)','닫기 (Esc)');
+        control.setAttribute('aria-expanded','true');control.textContent='↙';control.setAttribute('aria-label',label('Restore figure','도식 접기'));
         modal.set('figure',figure,()=>closeExpansion(figure));size(scene);
       }
-    }else if(action==='fit')fit(scene,true);
+    }else if(action==='fit')fit(scene);
     else if(action==='reset'){scale(scene,.75);scene.viewport.scrollTo(0,0);}
     else if(action==='in'||action==='out')scale(scene,scene.scale+(action==='in'?.25:-.25));
     else if(action==='focus'){if(scene.scale<.75)scale(scene,.75);center(scene,anchor(scene,scene.selected));}
@@ -144,14 +155,14 @@ function createReaderFigures({lifetime,modal}) {
   lifetime.cleanup(()=>{
     for(const [figure,s] of scenes){
       s.controller.abort();s.disconnect();figure.classList.remove('diagram-expanded');figure.querySelector('.diagram-controls').hidden=true;
-      s.svg.style.removeProperty('width');s.svg.style.removeProperty('height');s.svg.querySelector('.diagram-content')?.removeAttribute('transform');
-      delete figure.dataset.scale;
+      s.svg.style.removeProperty('margin-top');s.svg.style.removeProperty('width');s.svg.style.removeProperty('height');s.svg.querySelector('.diagram-content')?.removeAttribute('transform');
+      delete figure.dataset.scale;delete figure.dataset.cameraReady;figure.querySelector('.diagram-movement a[data-diagram-start]')?.remove();
     }scenes.clear();
   });
   return {capture,restore,closeExpansion,suspend(figure){
     if(!figure?.classList.contains('diagram-expanded'))return;
     figure.classList.remove('diagram-expanded');modal.set('figure',null);
-    const control=figure.querySelector('[data-diagram-action=expand]');control.setAttribute('aria-expanded','false');control.textContent=label('Expand','크게 보기');
+    const control=figure.querySelector('.diagram-controls [data-diagram-action=expand]');control.setAttribute('aria-expanded','false');control.textContent='↗';control.setAttribute('aria-label',label('Expand figure','도식 크게 보기'));
   },forgetPublication(publication){
     for(const [figure,s] of scenes)if(figure.dataset.readerPublication===publication){s.controller.abort();s.disconnect();
       for(const node of s.svg.querySelectorAll('[id]')){const origin=document.createElement('span');origin.id=node.id;origin.tabIndex=-1;figure.append(origin);}

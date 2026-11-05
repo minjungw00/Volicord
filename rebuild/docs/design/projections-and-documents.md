@@ -3546,3 +3546,21 @@ A failed layout retains inert complete textual meaning rather than a missing alt
 No new stage, group, caption role or semantic-format extension is required. Pure layout
 and native/live enhancement preserve publication identity; normal new articles use
 explicit allowed evidence and current prepare/compose/record as before.
+
+The 2026-11-06 fidelity correction implements the selected Work component hierarchy
+in the shared production renderer. Renderer 21 gives complex sequences compact,
+content-sized participant cards, spacious lanes, left-aligned actions beside their
+directed arrows, pale bounded order groups and subordinate endpoint/type support.
+Every group order, guard, participant identifier, exact role/claim and Source family
+survives. Coordinates derive from topology and complete labels; no case identity
+selects a hand-positioned scene. Small inline scenes retain their responsive policy.
+
+Evidence contexts, exact shared code payloads and per-context observation disclosures
+are siblings in one pane, in code-before-metadata DOM order. Selection validates
+publication, exact Source/range and original claim association before exposing a
+shared payload or transport control. Live reassembly updates that single payload;
+expiry/failure removes all cached bodies for the Source. Publication denial also
+removes serialized citation bindings and accessible location names, scoped scene
+state and dependent meaning. No transient selector/resize/camera state acquires
+publication or Source authority. Native fragment/disclosure/radio controls consume
+the same retained scene and code without scripts or another-window code navigation.

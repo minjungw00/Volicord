@@ -2,7 +2,7 @@
 // Frozen comparison scenes are historical evidence, never extra Product trees.
 const assert=require('node:assert/strict');
 const {inspectDiagram}=require('./diagram_geometry.cjs');
-const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode}=require('../../viewer-design/product_review_controls.cjs');
+const {citationPoint,openEmbeddedCode,returnFromEmbeddedCode,citationReady}=require('../../viewer-design/product_review_controls.cjs');
 async function inspect(page,figure,diagram,answers,{scripted,write,screenshot,settled}) {
  assert.equal(await figure.locator('svg').count(),1,'one complete temporal scene');
  assert.equal(await figure.locator('.diagram-timeline,.diagram-relations,.diagram-alternative').count(),0);
@@ -23,7 +23,7 @@ async function inspect(page,figure,diagram,answers,{scripted,write,screenshot,se
  const before=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left,pan:n.closest('.diagram-viewport').scrollLeft}));
  await screenshot('timeline-before');await element.press('Enter');await settled();if(!scripted){await action.click();await settled();}
  let bytes;
- if(scripted){await point.locator('.citation-inspection code').waitFor({state:'visible'});await page.waitForFunction(id=>document.getElementById(id)?.querySelector('.citation-read')?.disabled===false,await point.getAttribute('id'));bytes=await point.locator('.citation-inspection code').textContent();}
+ if(scripted){bytes=await (await citationReady(point)).textContent();}
  else {bytes=await(await openEmbeddedCode(point)).textContent();await returnFromEmbeddedCode(point);}
  assert.equal('sha256:'+require('node:crypto').createHash('sha256').update(bytes).digest('hex'),citation.range_sha256,'complete exact original code');
  await screenshot('timeline-code');const deep=page.url();
@@ -32,7 +32,7 @@ async function inspect(page,figure,diagram,answers,{scripted,write,screenshot,se
  const after=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left,pan:n.closest('.diagram-viewport').scrollLeft}));
  if(scripted)for(const key of ['top','left','pan'])assert(Math.abs(before[key]-after[key])<3,'visible temporal context return: '+key);
  await screenshot('timeline-returned');await page.goto(deep);await settled();
- if(scripted){await point.locator('.citation-inspection code').waitFor({state:'visible'});await page.keyboard.press('Escape');await settled();assert(await element.evaluate(n=>n===document.activeElement),'fresh deep evidence returns to exact origin');}
+ if(scripted){await citationReady(point);await page.keyboard.press('Escape');await settled();assert(await element.evaluate(n=>n===document.activeElement),'fresh deep evidence returns to exact origin');}
  else {await point.locator('a.return:visible').click();await settled();assert.equal(new URL(page.url()).hash,'#'+ns+'-'+message.id);}
  const duplicates=await page.evaluate(()=>{const ids=[...document.querySelectorAll('[id]')].map(n=>n.id);return ids.filter((id,i)=>ids.indexOf(id)!==i);});assert.deepEqual(duplicates,[]);
  return {origin:ns+'-'+message.id,citation:citationIndex,source:citation.source_id,codeBytes:Buffer.byteLength(bytes),before,after};

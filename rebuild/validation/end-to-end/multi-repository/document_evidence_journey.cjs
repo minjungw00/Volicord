@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {spawn,execFileSync}=require('node:child_process'),{pathToFileURL}=require('node:url');
 const crypto=require('node:crypto');
-const {createOutput,openEmbeddedCode,returnFromEmbeddedCode,citationPoint}=require('../../viewer-design/product_review_controls.cjs');
+const {createOutput,openEmbeddedCode,returnFromEmbeddedCode,citationPoint,citationReady}=require('../../viewer-design/product_review_controls.cjs');
 const {inspectDiagram}=require('./diagram_geometry.cjs');
 const {observeOverview,installEntryObserver}=require('./overview_entry.cjs');
 const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
@@ -30,7 +30,7 @@ async function run(config){
   const address=server?server.base+`?project=${c.project}&view=${c.work?'work&work='+c.work:'repository'}&locale=${c.locale||c.language}&language=${c.language}`:null;
   for(const width of c.widths||config.widths||[1440,1024,768,390,320])for(const mode of config.modes||['live','offline','no-js']){
    const live=['live','live-no-js','live-unenhanced'].includes(mode),scripted=mode==='live';
-   console.log(c.key,width,mode);const context=await browser.newContext({viewport:{width,height:900},javaScriptEnabled:scripted});context.setDefaultTimeout(15000);context.setDefaultNavigationTimeout(15000);
+   console.log(c.key,width,mode);const context=await browser.newContext({viewport:{width,height:900},javaScriptEnabled:scripted||mode==='live-unenhanced'});context.setDefaultTimeout(15000);context.setDefaultNavigationTimeout(15000);
    const page=await context.newPage();page.readerNoScript=!scripted;activePage=page;const errors=[];page.on('pageerror',e=>errors.push(String(e)));
    if(mode==='live-unenhanced')await context.addInitScript(()=>{window.ResizeObserver=undefined;});
    await context.route('**/*',route=>{const u=route.request().url();if((server&&u.startsWith(server.base))||u.startsWith('file:')||u.startsWith('data:'))return route.continue();result.external.push(u);return route.abort();});
@@ -62,8 +62,9 @@ async function run(config){
     await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
-    const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/20');
+    const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/21');
     if(scripted&&await svg.evaluate(n=>n.classList.contains('spatial-world'))){await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();}
+    if(!scripted&&await svg.evaluate(n=>n.classList.contains('spatial-world'))){await figure.locator('.native-diagram-controls label').filter({has:page.locator('[data-native-scale=full]')}).click();assert.equal(await figure.locator('[data-native-scale=full]').isChecked(),true,'native full-scale reading precedes glyph checks');await settled(page);}
     const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(baseKey+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
     const routeFocus=await require('./diagram_focus.cjs').inspectRelationFocus(figure,d);write(baseKey+'-route-focus.json',JSON.stringify(routeFocus,null,2));assert.deepEqual(routeFocus.errors,[],'native relationship/condition focus identifies its exact route');
     const m=d.meaning,defaultElement=(m.relations||m.groups?.flatMap(g=>g.messages)||m.nodes||m.participants)[0];
@@ -90,9 +91,8 @@ async function run(config){
      assert.equal(await point.locator(':scope > .evidence-claim').textContent(),label.text,'selected heading is exact admitted action wording, without a generated prefix');
      assert.ok((await point.locator(':scope > .evidence-selection-context').innerText()).length,'qualified actor/order/guard context remains adjacent');
      if(publicAnswers.prose.some(u=>u.question==='Heading'))assert.equal(await point.locator(':scope > .point-title span').textContent(),publicAnswers.prose.find(u=>u.question==='Heading').text,'live question keeps this publication heading');
-     await page.waitForFunction(id=>{const p=document.getElementById(id);const b=p?.querySelector('.citation-read');return b&&!b.disabled&&b.dataset.nextOffset==='0'&&p.querySelector('.citation-status')?.textContent.includes(document.documentElement.lang==='ko'?'표시 범위':'Displayed');},pointId);
-     assert.equal(await point.locator('.citation-inspection code').textContent(),expected,'complete exact cited bytes');
-     assert.equal(await point.getAttribute('aria-modal'),width<1200?'true':null,'actual evidence modality');
+     assert.equal(await (await citationReady(point)).textContent(),expected,'complete exact cited bytes');
+     assert.equal(await point.locator('xpath=..').getAttribute('aria-modal'),width<1200?'true':null,'whole evidence pane owns modality');
      assert.equal(await point.locator('.evidence-original').getAttribute('open'),null,'original wording deliberately disclosed');
      assert.equal(await page.locator('main').evaluate(n=>n.inert),false,'Source remains operable inside main');
      if(width>=1200){assert.equal(await page.locator('.doc').first().evaluate(n=>n.inert),false);}
