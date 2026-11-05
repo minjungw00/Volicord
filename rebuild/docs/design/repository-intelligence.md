@@ -627,8 +627,18 @@ canonical context는 blob 생존에 의존하지 않으며 orphan Derived blob�
 대한 delta는 complete representation보다 작으면 선택한다. 추가 절반 절감 조건으로 더
 큰 complete base를 게시하지 않으며 모든 retained history의 content root를 보존한다.
 Delta 계산용 decoded base는 competing complete 표현의 압축 전에 해제한다.
-Scalar 참조는 little-endian byte allocation을 최종 value stream으로 재사용하고
-symbol prefix를 앞에 채운다. 복원 JSON/scalar 순서와 모든 identity는 그대로 유지한다.
+정규화 중 scalar 참조는 요청 소유의 압축된 메모리 scratch에 기록하고, writer buffer는
+64 KiB로 제한한다. Shape를 먼저 같은 chunk/blob으로 압축하고 raw shape를 해제한 뒤
+symbol prefix와 전체 little-endian 참조를 최종 value stream으로 복원한다. 최종 크기는
+prefix를 쓰기 전에 정확히 예약하여 prefix 재할당 사본도 만들지 않는다. 이 scratch는
+새 파일, durable sidecar, cache 또는 history 정책이 아니다. 복원 JSON/scalar 순서,
+publisher bytes와 모든 identity는 그대로 유지한다.
+
+Semantic Analysis identity의 immutable JSON basis는 첫 순회에서 byte 길이를 세고,
+두 번째 순회에서 64 KiB buffer로 같은 length-framed digest에 전달한다. 전체 JSON
+복사본을 보유하지 않으며 domain prefix, field 순서, length framing과 identity는
+기존 전체 byte 직렬화와 동일하다. 두 순회의 길이가 다르거나 직렬화가 실패하면
+identity를 게시하지 않는다. 순회 사이에 변하는 serializer는 이 내부 basis가 될 수 없다.
 
 Snapshot digest identity는 32-byte value를 같은 lowercase 64-digit hexadecimal
 string으로 직렬화한다. Bounded stack buffer와 borrowed string decoding으로 반복

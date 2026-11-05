@@ -121,6 +121,12 @@ plain-fragment 복사는 valid current JSON/MessagePack bytes와 restored scalar
 경우를 거부하는 것은 invalid input 검증이며 version 증가나 별도 migration 경로를
 만들지 않는다.
 
+Semantic Analysis identity의 JSON basis를 길이 계산과 buffered hash의 두 순회로
+처리해도 기존 JSON bytes, domain prefix와 length framing은 동일하다. 정규화의
+압축된 reference scratch와 shape-first 게시 준비도 최종 shape/value bytes를 바꾸지
+않는다. 이 요청 소유 메모리 최적화는 identity/schema/cache version 변경이나
+호환 경로가 아니다.
+
 Verified normalized shape/value를 직접 typed decoder에 전달하는 reader도 같은
 current Analysis Snapshot/storage representation을 읽는다. Expanded JSON buffer와
 byte-wise JSON reconstruction을 없애며, schema/identity, exact length/EOF, scalar

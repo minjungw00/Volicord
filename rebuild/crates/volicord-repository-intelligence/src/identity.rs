@@ -75,6 +75,65 @@ macro_rules! digest_identity {
 digest_identity!(RepositorySnapshotId);
 digest_identity!(AnalysisSnapshotId);
 
+/// Hash the same length-framed JSON bytes without retaining the serialized body.
+/// The caller must supply an immutable, deterministic serialization basis.
+pub(crate) fn analysis_identity_from_json(
+    parts: &[&[u8]],
+    basis: &impl Serialize,
+) -> Result<AnalysisSnapshotId, serde_json::Error> {
+    struct Counter(u64);
+    impl std::io::Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.checked_add(bytes.len() as u64).ok_or_else(|| {
+                std::io::Error::other("Analysis identity serialization length overflow")
+            })?;
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    struct HashWriter<'a> {
+        hasher: &'a mut Sha256,
+        counter: Counter,
+    }
+    impl std::io::Write for HashWriter<'_> {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            let count = std::io::Write::write(&mut self.counter, bytes)?;
+            self.hasher.update(bytes);
+            Ok(count)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut length = Counter(0);
+    serde_json::to_writer(&mut length, basis)?;
+    let mut hasher = Sha256::new();
+    for part in parts {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part);
+    }
+    hasher.update(length.0.to_be_bytes());
+    let mut output = std::io::BufWriter::with_capacity(
+        64 * 1024,
+        HashWriter {
+            hasher: &mut hasher,
+            counter: Counter(0),
+        },
+    );
+    serde_json::to_writer(&mut output, basis)?;
+    std::io::Write::flush(&mut output).map_err(serde_json::Error::io)?;
+    let written = output.get_ref().counter.0;
+    drop(output);
+    if written != length.0 {
+        return Err(serde_json::Error::io(std::io::Error::other(
+            "Analysis identity serialization changed length between passes",
+        )));
+    }
+    Ok(AnalysisSnapshotId(hasher.finalize().into()))
+}
+
 pub(crate) fn decode_hex<const N: usize>(value: &str) -> Result<[u8; N], String> {
     if value.len() != N * 2 {
         return Err(format!(
@@ -117,7 +176,51 @@ pub(crate) fn write_hex(bytes: &[u8; 32], formatter: &mut fmt::Formatter<'_>) ->
 
 #[cfg(test)]
 mod tests {
-    use super::{AnalysisSnapshotId, RepositorySnapshotId};
+    use super::{analysis_identity_from_json, AnalysisSnapshotId, RepositorySnapshotId};
+
+    #[test]
+    fn streamed_json_identity_matches_the_complete_framed_byte_oracle(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let repeated = "한글 \\\"\n🦀".repeat(8192);
+        for basis in [
+            serde_json::json!(null),
+            serde_json::json!([]),
+            serde_json::json!({"relations": [], "coverage": {"unknown": null}}),
+            serde_json::json!({"negative": -23, "bytes": [0, 255], "text": repeated}),
+        ] {
+            let bytes = serde_json::to_vec(&basis)?;
+            for parts in [vec![b"ab".as_slice(), b"c"], vec![b"a".as_slice(), b"bc"]] {
+                let mut framed = parts.clone();
+                framed.push(&bytes);
+                assert_eq!(
+                    analysis_identity_from_json(&parts, &basis)?,
+                    AnalysisSnapshotId::digest(&framed),
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn streamed_json_identity_rejects_serializer_failure_and_length_change() {
+        struct Reject;
+        impl serde::Serialize for Reject {
+            fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+                Err(serde::ser::Error::custom(
+                    "intentional identity serializer failure",
+                ))
+            }
+        }
+        struct Changing(std::cell::Cell<bool>);
+        impl serde::Serialize for Changing {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let changed = self.0.replace(true);
+                serializer.serialize_str(if changed { "longer" } else { "x" })
+            }
+        }
+        assert!(analysis_identity_from_json(&[b"domain"], &Reject).is_err());
+        assert!(analysis_identity_from_json(&[b"domain"], &Changing(false.into())).is_err());
+    }
 
     #[test]
     fn digest_identity_is_stable_and_domain_separated_by_parts() {

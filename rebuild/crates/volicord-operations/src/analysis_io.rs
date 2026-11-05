@@ -101,9 +101,9 @@ pub(crate) fn encode_analysis(
         .map_err(|error| Error::with_source("cannot normalize Analysis Snapshot", error))?;
     #[cfg(test)]
     trace_analysis_memory("normalized_writer");
-    let normalized = encoder.finish()?;
+    let normalized = encoder.finish_parts()?;
     #[cfg(test)]
-    trace_analysis_memory("normalized_finished");
+    trace_analysis_memory("normalized_parts_finished");
     let shapes = content_defined_chunks(&normalized.shape)
         .into_iter()
         .map(|chunk| {
@@ -116,8 +116,11 @@ pub(crate) fn encode_analysis(
     drop(normalized.shape);
     #[cfg(test)]
     trace_analysis_memory("shapes_packed");
-    let (values, values_base_blob) = pack_analysis_values(&normalized.values, base_values)?;
-    drop(normalized.values);
+    let uncompressed_values = normalized.values.finish()?;
+    #[cfg(test)]
+    trace_analysis_memory("values_expanded_after_shape_release");
+    let (values, values_base_blob) = pack_analysis_values(&uncompressed_values, base_values)?;
+    drop(uncompressed_values);
     let values_hash = digest(&values);
     let metadata = pack_blob_at_level(
         &serde_json::to_vec(&AnalysisMetadata::from(analysis))
@@ -1068,7 +1071,8 @@ struct NormalizingWriter {
     shape: Vec<u8>,
     symbols: Vec<Rc<[u8]>>,
     symbol_index: HashMap<Rc<[u8]>, u32>,
-    references: Vec<u8>,
+    references: Option<BufWriter<zstd::stream::write::Encoder<'static, Vec<u8>>>>,
+    scalar_count: u64,
     token: Vec<u8>,
     in_string: bool,
     escaped: bool,
@@ -1177,11 +1181,23 @@ impl NormalizingWriter {
         // symbols own independent bytes and retain the same first-seen indices.
         self.token.clear();
         self.shape.push(b'$');
-        self.references.extend_from_slice(&index.to_le_bytes());
+        if self.references.is_none() {
+            self.references = Some(BufWriter::with_capacity(
+                64 * 1024,
+                zstd::stream::write::Encoder::new(Vec::new(), 1)?,
+            ));
+        }
+        if let Some(references) = &mut self.references {
+            references.write_all(&index.to_le_bytes())?;
+        }
+        self.scalar_count = self
+            .scalar_count
+            .checked_add(1)
+            .ok_or_else(|| std::io::Error::other("Analysis scalar count overflow"))?;
         Ok(())
     }
 
-    fn finish(mut self) -> Result<Normalized, Error> {
+    fn finish_parts(mut self) -> Result<NormalizedParts, Error> {
         if self.in_string {
             return Err(Error::new("Analysis JSON ended inside a string"));
         }
@@ -1189,11 +1205,23 @@ impl NormalizingWriter {
             self.finish_scalar()
                 .map_err(|error| Error::with_source("cannot finish Analysis scalar", error))?;
         }
-        // Finish in the existing shape allocation and reserve the exact value
-        // stream length. Holding copied shapes or a geometrically grown values
-        // buffer alongside baseline/current graphs raises long-lived MCP peaks.
+        // References remain compressed while symbols are interned. Serialize and
+        // release the symbol table before expanding references into the final
+        // unchanged value stream; both graphs remain available throughout.
         drop(self.symbol_index);
-        let scalar_count = (self.references.len() / 4) as u64;
+        let scalar_count = self.scalar_count;
+        let packed_references = self
+            .references
+            .map(|references| {
+                references
+                    .into_inner()
+                    .map_err(|error| {
+                        Error::with_source("cannot flush Analysis references", error.into_error())
+                    })?
+                    .finish()
+                    .map_err(|error| Error::with_source("cannot finish Analysis references", error))
+            })
+            .transpose()?;
         let shape_length = self.shape.len();
         let header_length = SHAPE_MAGIC.len() + 8;
         let mut shape = self.shape;
@@ -1205,6 +1233,46 @@ impl NormalizingWriter {
         shape[..SHAPE_MAGIC.len()].copy_from_slice(SHAPE_MAGIC);
         shape[SHAPE_MAGIC.len()..header_length]
             .copy_from_slice(&(shape_length as u64).to_le_bytes());
+        Ok(NormalizedParts {
+            shape,
+            values: PendingValues {
+                symbols: self.symbols,
+                packed_references,
+                scalar_count,
+            },
+            logical_bytes: self.logical_bytes,
+            scalar_count,
+        })
+    }
+
+    #[cfg(test)]
+    fn finish(self) -> Result<Normalized, Error> {
+        let parts = self.finish_parts()?;
+        Ok(Normalized {
+            shape: parts.shape,
+            values: parts.values.finish()?,
+            logical_bytes: parts.logical_bytes,
+            scalar_count: parts.scalar_count,
+        })
+    }
+}
+
+struct NormalizedParts {
+    shape: Vec<u8>,
+    values: PendingValues,
+    logical_bytes: u64,
+    scalar_count: u64,
+}
+
+struct PendingValues {
+    symbols: Vec<Rc<[u8]>>,
+    packed_references: Option<Vec<u8>>,
+    scalar_count: u64,
+}
+
+impl PendingValues {
+    fn finish(self) -> Result<Vec<u8>, Error> {
+        let scalar_count = self.scalar_count;
         let prefix_length = self
             .symbols
             .iter()
@@ -1212,36 +1280,50 @@ impl NormalizingWriter {
                 length.checked_add(8)?.checked_add(symbol.len())
             })
             .ok_or_else(|| Error::new("Analysis value stream length is unsupported"))?;
-        let reference_length = self.references.len();
+        let reference_length = usize::try_from(scalar_count)
+            .ok()
+            .and_then(|count| count.checked_mul(4))
+            .ok_or_else(|| Error::new("Analysis reference length is unsupported"))?;
         let value_length = prefix_length
             .checked_add(reference_length)
             .ok_or_else(|| Error::new("Analysis value stream length is unsupported"))?;
-        let mut values = self.references;
+        let mut values = Vec::new();
         values
-            .try_reserve_exact(prefix_length)
+            .try_reserve_exact(value_length)
             .map_err(|error| Error::with_source("cannot allocate Analysis value stream", error))?;
-        values.resize(value_length, 0);
-        values.copy_within(..reference_length, prefix_length);
         (|| -> std::io::Result<()> {
-            let mut prefix = &mut values[..prefix_length];
-            prefix.write_all(VALUES_MAGIC)?;
-            prefix.write_all(&(self.symbols.len() as u64).to_le_bytes())?;
+            values.write_all(VALUES_MAGIC)?;
+            values.write_all(&(self.symbols.len() as u64).to_le_bytes())?;
             for symbol in self.symbols {
-                prefix.write_all(&(symbol.len() as u64).to_le_bytes())?;
-                prefix.write_all(&symbol)?;
+                values.write_all(&(symbol.len() as u64).to_le_bytes())?;
+                values.write_all(&symbol)?;
             }
-            prefix.write_all(&scalar_count.to_le_bytes())
+            values.write_all(&scalar_count.to_le_bytes())
         })()
         .map_err(|error| Error::with_source("cannot write Analysis value prefix", error))?;
-        Ok(Normalized {
-            shape,
-            values,
-            logical_bytes: self.logical_bytes,
-            scalar_count,
-        })
+        if values.len() != prefix_length {
+            return Err(Error::new("Analysis value prefix length differs"));
+        }
+        if let Some(packed) = self.packed_references {
+            let decoder = zstd::stream::read::Decoder::new(packed.as_slice())
+                .map_err(|error| Error::with_source("cannot open Analysis references", error))?;
+            let limit = (reference_length as u64)
+                .checked_add(1)
+                .ok_or_else(|| Error::new("Analysis reference length is unsupported"))?;
+            let copied = std::io::copy(&mut decoder.take(limit), &mut values)
+                .map_err(|error| Error::with_source("cannot restore Analysis references", error))?;
+            if copied != reference_length as u64 {
+                return Err(Error::new("Analysis reference length differs"));
+            }
+        }
+        if values.len() != value_length {
+            return Err(Error::new("Analysis value stream length differs"));
+        }
+        Ok(values)
     }
 }
 
+#[cfg(test)]
 struct Normalized {
     shape: Vec<u8>,
     values: Vec<u8>,
@@ -1387,7 +1469,7 @@ mod tests {
     use std::{cell::Cell, rc::Rc};
 
     #[test]
-    fn normalization_reuses_reference_storage_without_changing_wire_bytes() -> Result<(), Error> {
+    fn compressed_reference_scratch_preserves_wire_bytes() -> Result<(), Error> {
         for (input, symbols, references) in [
             (b"[]".as_slice(), Vec::new(), Vec::new()),
             (
@@ -1400,10 +1482,7 @@ mod tests {
             writer
                 .write_all(input)
                 .map_err(|error| Error::with_source("cannot normalize fixture", error))?;
-            writer.references.reserve(1024);
-            let allocation = writer.references.as_ptr();
             let normalized = writer.finish()?;
-            assert_eq!(normalized.values.as_ptr(), allocation);
             let mut expected = VALUES_MAGIC.to_vec();
             put_u64(&mut expected, symbols.len() as u64);
             for symbol in symbols {
@@ -1415,6 +1494,64 @@ mod tests {
                 expected.extend_from_slice(&reference.to_le_bytes());
             }
             assert_eq!(normalized.values, expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn compressed_references_cross_buffer_boundaries_with_exact_seeded_indices(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let count = 65_537usize;
+        let tokens = ["\"한글\\n🦀\"".as_bytes(), b"42", b"null"];
+        let mut input = vec![b'['];
+        for index in 0..count {
+            if index != 0 {
+                input.push(b',');
+            }
+            input.extend_from_slice(tokens[index % 3]);
+        }
+        input.push(b']');
+        let mut seed = NormalizingWriter::default();
+        seed.write_all(br#"["base-only",42]"#)?;
+        let base = seed.finish()?.values;
+        for seeded in [false, true] {
+            let (symbols, indices) = if seeded {
+                (
+                    vec![br#""base-only""#.as_slice(), b"42", tokens[0], b"null"],
+                    [2u32, 1, 3],
+                )
+            } else {
+                (tokens.to_vec(), [0u32, 1, 2])
+            };
+            let mut expected = VALUES_MAGIC.to_vec();
+            put_u64(&mut expected, symbols.len() as u64);
+            for symbol in symbols {
+                put_u64(&mut expected, symbol.len() as u64);
+                expected.extend_from_slice(symbol);
+            }
+            put_u64(&mut expected, count as u64);
+            for index in 0..count {
+                expected.extend_from_slice(&indices[index % 3].to_le_bytes());
+            }
+            for chunk_size in [1, 7, 65_536] {
+                let mut writer = if seeded {
+                    NormalizingWriter::with_base_symbols(&base)?
+                } else {
+                    NormalizingWriter::default()
+                };
+                for chunk in input.chunks(chunk_size) {
+                    writer.write_all(chunk)?;
+                }
+                let normalized = writer.finish()?;
+                assert_eq!(normalized.values, expected);
+                assert_eq!(normalized.scalar_count, count as u64);
+                assert_eq!(normalized.logical_bytes, input.len() as u64);
+                let actual: serde_json::Value = decode_normalized_json_streamed(
+                    DenormalizingReader::new(normalized.shape, normalized.values, count as u64)?,
+                    input.len() as u64,
+                )?;
+                assert_eq!(actual, serde_json::from_slice::<serde_json::Value>(&input)?);
+            }
         }
         Ok(())
     }

@@ -1057,7 +1057,7 @@ fn semantic_snapshot_identity(
             )
         })
         .collect();
-    let bytes = serde_json::to_vec(&Basis {
+    let basis = Basis {
         format_version: ANALYSIS_SNAPSHOT_FORMAT_VERSION,
         repository_snapshot: analysis.repository_snapshot,
         repository_worktree: &analysis.repository_worktree,
@@ -1067,17 +1067,34 @@ fn semantic_snapshot_identity(
         semantic_bases: &analysis.semantic_bases,
         semantic_results: &analysis.semantic_results,
         links,
-    })
+    };
+    let identity = crate::identity::analysis_identity_from_json(
+        &[
+            b"volicord.semantic_analysis_snapshot.v5",
+            analysis.repository_snapshot.as_bytes(),
+        ],
+        &basis,
+    )
     .map_err(|error| {
         SemanticAnalysisError::new(format!(
             "semantic analysis basis serialization failed: {error}"
         ))
     })?;
-    Ok(AnalysisSnapshotId::digest(&[
-        b"volicord.semantic_analysis_snapshot.v5",
-        analysis.repository_snapshot.as_bytes(),
-        &bytes,
-    ]))
+    #[cfg(test)]
+    {
+        let bytes = serde_json::to_vec(&basis).map_err(|error| {
+            SemanticAnalysisError::new(format!("identity oracle serialization failed: {error}"))
+        })?;
+        assert_eq!(
+            identity,
+            AnalysisSnapshotId::digest(&[
+                b"volicord.semantic_analysis_snapshot.v5",
+                analysis.repository_snapshot.as_bytes(),
+                &bytes,
+            ]),
+        );
+    }
+    Ok(identity)
 }
 
 fn rebind_analysis_snapshot(analysis: &mut AnalysisSnapshot, identity: AnalysisSnapshotId) {

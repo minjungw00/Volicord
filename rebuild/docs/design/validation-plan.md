@@ -1412,8 +1412,9 @@ streamed cache into the disposable copy and measures its consumer rather than
 the cache-absent fallback. Input graph, retained original bytes, fingerprint and
 corruption checks remain the same. Test-only allocation-stage receipts distinguish
 normalization, shape packing, expanded base and encoded publication peaks.
-Reference allocation reuse preserves exact value-stream bytes; decoded delta
-scratch ends before competing complete compression. Profitable large deltas are
+Compressed reference scratch and shape-first finalization preserve exact
+value-stream bytes; decoded delta scratch ends before competing complete
+compression. Profitable large deltas are
 chosen even when their saving is below one half; an incompressible 12 MiB control
 checks retained-base selection, exact reconstruction and independent complete
 fallback. The cache keeps an 8 MiB long-distance window and both retained cache
@@ -1497,6 +1498,68 @@ controls; OS caches were uncontrolled. This establishes the bounded read-side
 allocation mechanism, not the entire Checkpoint peak or a new candidate's
 qualification. A new clean-candidate gate must test every original limit and
 the full workload; history/cache retention and schema/identity stay unchanged.
+
+### Producer scratch after the streamed-delta gate
+
+The clean `feb93f71fc5bf2c0656c416496b57bc3c697da63` gate again passed Final,
+installed rehearsal, the bounded provider and all 55 V11 functional leaves.
+Time was 772,140.601 ms and growth 534,658,349 bytes, within unchanged limits.
+RSS alone failed at 4,311,257,088 bytes. The same `mcp-015` checkpoint call 17
+established the first 4 GiB crossing. Its independently verified failure archive
+SHA-256 is `3ca3e23f13e15a383980b440f2676350750a2e4bf268369b61539b396c0f4320`.
+The earlier cache-absent delta-reader improvement did not qualify this normal
+producer path; no candidate passes may be combined.
+
+A full copied post-gate Runtime diagnostic executed Checkpoint analysis and
+Analysis Snapshot publication three times, retaining the final work-authority rejection because
+the post-gate source state no longer satisfied that old closure. It is not the
+original successful MCP session or qualification. Stage observations identified
+a 602,443,903-byte semantic identity JSON allocation and a second peak where
+raw normalized shape, interned symbols and the final value stream overlapped.
+The copied cache was prepared separately using the actual current codec;
+later cache misses remained normal durable reads. Original inputs were unchanged,
+other task-owned builds/profiles/exports did not overlap, and OS caches were
+uncontrolled. Partial setup errors and all intermediate controls remain evidence.
+
+The producer now counts the immutable semantic JSON basis and hashes its exact
+length-framed bytes through a 64 KiB buffer on a second pass. Normalization keeps
+all scalar references in compressed request-owned scratch, packs/releases the
+raw shape before expanding values, and reserves the exact final value capacity
+before writing its prefix. No scratch files, sidecars, graph omissions, versions,
+history/cache retention changes, measurement-window changes or ceiling increases
+are introduced. Independent old framed-byte identity oracles, serializer failures,
+changed-length rejection and 65,537 seeded/unseeded references across 1/7/65,536-byte
+input splits cover the byte and error boundaries. Full retained-input controls
+must additionally preserve all graph/metadata/manifest/blob identities.
+
+The full immutable retained-input control passed again: manifest SHA-256
+`5c3f86fb4e6d82c1ba9e0410b30fa3490aecf2662e92816a874c0d0e5742a077`,
+value and restored metadata identities, all 4,584 shape chunks and complete
+graph fingerprints stayed identical. Producer-stage high water fell from
+3,789,744 to 3,659,792 KiB. Whole-control high water was 3,889,292 / 3,890,404
+KiB, effectively unchanged because later retained-baseline reads dominate;
+the producer-stage reduction must not be relabelled as whole-control savings.
+
+A separate installed public-operation control ran the maintained B/C Work path
+against complete copies of the same post-gate history and the same isolated
+repository. Both performed 19 MCP calls with no errors, recorded both Checkpoints,
+and rejected cross-Work Decision misuse without mutation. The actual current
+same-A-Work Decision was selected from canonical inspection; the post-gate
+superseded Decision was not revived. Binding/current-Decision setup preceded
+sampling. Before/after MCP peak RSS was 4,247,920,640 / 4,166,172,672 bytes;
+elapsed observations were 258,862.484 / 190,124.198 ms with uncontrolled OS
+caches. Builds, other profiles and exports did not overlap. This differs from
+original `mcp-015` history and is not V11 qualification or causal attribution of
+the whole elapsed difference. A new MCP process starts the control and CLI/MCP
+readback follows recording; there is no post-record MCP restart. The raw local
+label `restart-read` is retained with that explicit scope correction.
+
+Supporting Checkpoint/public-operation measurements cannot qualify the candidate
+or explain the whole historical `c4230e75` elapsed overrun. The final committed
+producer still requires one fresh clean-candidate gate with the full unchanged
+workload, every original limit and current bounded transmission authorization.
+Neither technical execution nor a reference comparison establishes independent
+first-reading, human/assistive acceptance or naturalistic campaign approval.
 
 ### Phase 8 naturalistic Dogfood qualification
 
