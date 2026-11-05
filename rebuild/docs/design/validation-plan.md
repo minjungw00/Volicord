@@ -1412,6 +1412,49 @@ checks retained-base selection, exact reconstruction and independent complete
 fallback. The cache keeps an 8 MiB long-distance window and both retained cache
 identities. None of these changes raises a V11 or publication budget.
 
+### Metadata accumulation diagnosis after selected-reading integration
+
+The clean `b5d8c020459fbd6433e0225af178364055bdc83b` official gate completed
+Final and all 55 V11 functional leaves, but failed storage growth:
+570,699,530 bytes against 536,870,912. Duration was 785,236.113 ms,
+MCP peak RSS 4,230,680,576 bytes and sampling errors zero; those ceilings
+passed independently. Fifteen Volicord manifests retained 672,438,890 logical
+bytes, including 481,526,223 value bytes, 69,544,404 metadata bytes and
+107,350,714 bytes in the unchanged bounded two-item read cache. The independently
+verified failure archive has SHA-256
+`87b2cbb02888104a8f53881c82cc44f29ef23ab79210a2b7f328f6af97a0d837`.
+This is a failed candidate, not technical readiness or human acceptance.
+
+Read-only diagnosis reproduced exact existing delta bytes for an unchanged and
+a changed retained input. Smaller chunks, higher delta compression levels and
+8/32 MiB long-distance windows did not provide useful savings. Reclaiming stale
+symbol slots helped unchanged input but increased changed-input delta cost;
+none of these diagnostic alternatives is promoted. No workload, collector,
+threshold, graph, source range, history root or cache retention changes.
+
+On the exact retained 9,845,511-byte typed metadata JSON, current level 9 produced
+4,636,321 bytes; level 15 produced 4,626,751; level 19 produced 2,074,040.
+All restored bytes were equal. Local encode/decode observations were 212,
+1,814 and 3,067 ms respectively; these utility measurements exclude Product
+work and are not V11 timings or RSS qualification. Only metadata uses level 19,
+after normalization scratch is released; the full graph/value codec remains
+unchanged. The producer/reader resource regression additionally compares the
+entire restored metadata JSON to the actual typed metadata. Preserved-large
+roundtrips, downstream storage/health tests and a fresh exact-candidate gate
+must establish its integrated cost; arithmetic savings on retained inputs do
+not qualify a candidate or explain the historical `c4230e75` elapsed overrun.
+
+Sequential before/after producer-reader controls also passed on the same complete
+last retained failed-gate snapshot (manifest SHA-256
+`1c00c2baa571afa0d09c25c6bfdeb55d9afda0ac7a310f6f5d27c010a145194d`).
+The value blob stayed byte-identical, all 4,584 shape chunks reconstructed the
+same complete graph, and restored metadata JSON was exactly equal. Metadata was
+2,073,808 bytes for 9,847,772 source bytes. Corruption rejection and unchanged
+original manifest checks passed. Debug-process high-water observations were
+3,873,864 / 3,873,316 KiB, effectively unchanged; this is neither an official
+RSS result nor elapsed-time attribution. Ordinary cache cleanup I/O overlapped
+these supporting controls, so their durations are not an isolated comparison.
+
 ### Phase 8 naturalistic Dogfood qualification
 
 Phase 8 is a fresh real-session campaign for one exact clean Product candidate.

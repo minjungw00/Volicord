@@ -122,7 +122,10 @@ pub(crate) fn encode_analysis(
     let metadata = pack_blob_at_level(
         &serde_json::to_vec(&AnalysisMetadata::from(analysis))
             .map_err(|error| Error::with_source("cannot encode Analysis metadata", error))?,
-        9,
+        // Repeated capability coverage benefits from stronger compression.
+        // Run it after releasing graph-normalization scratch; the full value
+        // stream keeps its low-cost codec and exact delta plan.
+        19,
     )?;
     let metadata_hash = digest(&metadata);
     let manifest = AnalysisManifest {
@@ -1459,6 +1462,17 @@ mod tests {
         let base = reusable_base_values(input.parent().ok_or("input directory")?)?;
         let encoded = encode_analysis(&current, base)?;
         memory("encoded_with_baseline_retained");
+        // Metadata is consumed separately from the full graph. Check its entire
+        // restored JSON, including coverage/provenance, as well as the graph
+        // roundtrips below; a smaller but incomplete side payload is invalid.
+        let metadata_json = serde_json::to_vec(&AnalysisMetadata::from(&current))?;
+        assert_eq!(unpack_blob(&encoded.metadata)?, metadata_json);
+        eprintln!(
+            "analysis_resource metadata_json={} metadata_packed={}",
+            metadata_json.len(),
+            encoded.metadata.len()
+        );
+        drop(metadata_json);
         // Fingerprint every produced byte, so before/after runs on the same exact
         // retained input compare complete output, not merely counts or identity.
         eprintln!(

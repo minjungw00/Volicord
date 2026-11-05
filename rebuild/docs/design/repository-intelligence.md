@@ -587,6 +587,10 @@ value reconstruction은 packed input과 decoded delta scratch를 JSON/typed grap
 보존한다. Reader는 blob content identity를 확인하고 원래 JSON token stream을 복원한 뒤
 exact current Analysis Snapshot schema를 검사한다. 이는 별도 old/new decoder가 아니다.
 Pretty-printing과 physical blob partition은 durable domain meaning의 일부가 아니다.
+Metadata는 full graph/value보다 작은 별도 payload이며, normalization scratch를 해제한
+뒤 압축 수준 19로 전체 inventory/capability coverage의 반복을 재사용한다. Shape/value의
+낮은 압축 수준과 delta 계산은 그대로 유지한다. Metadata의 필드, 복원 bytes, blob envelope,
+content 검증과 historical root는 줄이거나 바꾸지 않는다.
 
 Graph collection의 직렬화 순서는 새 observation의 hashed identity로 전체 graph를
 재배열하지 않는다. Structural facts는 area/language와 source 위치, kind, 이름을,
