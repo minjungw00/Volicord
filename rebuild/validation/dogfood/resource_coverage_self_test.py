@@ -1,7 +1,9 @@
 """Independent schema-3 tick/instance controls; authored verifier support only."""
 import unittest
 import tempfile
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import resource_observer as o
 
@@ -199,6 +201,69 @@ class PurposeCliTests(unittest.TestCase):
                     o.main()
             self.assertFalse(output.exists())
 
+
+
+class ExecutableVerificationTests(unittest.TestCase):
+    def test_same_file_aliases_share_one_full_read_only_within_an_observation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'candidate'
+            path.write_bytes(b'complete candidate bytes' * 10000)
+            alias = path.with_name('alias')
+            os.link(path, alias)
+            expected = o.digest(path)
+            sha256 = o.hashlib.sha256
+            with patch.object(o.hashlib, 'sha256', wraps=sha256) as hashes:
+                cache = {}
+                for entry in [path, alias, path]:
+                    self.assertEqual(o.verified_digest(entry, cache), expected)
+                self.assertEqual(hashes.call_count, 1)
+                self.assertEqual(len(cache), 1)
+                self.assertEqual(o.verified_digest(path, {}), expected)
+                self.assertEqual(hashes.call_count, 2)
+
+    def test_same_size_write_restored_mtime_replacement_and_removal_invalidate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'candidate'
+            path.write_bytes(b'original')
+            cache = {}
+            original = o.verified_digest(path, cache)
+            before = path.stat()
+            path.write_bytes(b'changed!')
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+            self.assertNotEqual(path.stat().st_ctime_ns, before.st_ctime_ns)
+            self.assertNotEqual(o.verified_digest(path, cache), original)
+            self.assertEqual(o.verified_digest(path, cache), o.digest(path))
+            replacement = path.with_name('replacement')
+            replacement.write_bytes(b'replaced')
+            os.utime(replacement, ns=(before.st_atime_ns, before.st_mtime_ns))
+            replacement.replace(path)
+            self.assertEqual(o.verified_digest(path, cache), o.digest(path))
+            self.assertNotEqual(o.verified_digest(path, cache), original)
+            path.unlink()
+            with self.assertRaises(FileNotFoundError):
+                o.verified_digest(path, cache)
+
+    def test_mutation_or_path_replacement_during_hash_cannot_publish_cached_identity(self):
+        sha256 = o.hashlib.sha256
+        for action in ['write', 'replace']:
+            with self.subTest(action=action), tempfile.TemporaryDirectory() as temporary:
+                path = Path(temporary) / 'candidate'
+                path.write_bytes(b'original')
+                before = path.stat()
+                def changed_hash():
+                    if action == 'write':
+                        path.write_bytes(b'changed!')
+                        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+                    else:
+                        other = path.with_name('replacement')
+                        other.write_bytes(b'changed!')
+                        other.replace(path)
+                    return sha256()
+                cache = {}
+                with patch.object(o.hashlib, 'sha256', side_effect=changed_hash):
+                    with self.assertRaisesRegex(o.ObservationError, 'artifact_changed'):
+                        o.verified_digest(path, cache)
+                self.assertEqual(cache, {})
 
 
 if __name__ == '__main__': unittest.main()

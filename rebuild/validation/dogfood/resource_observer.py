@@ -44,6 +44,34 @@ def digest(path):
     return h.hexdigest()
 
 
+def file_signature(st):
+    return st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns
+
+
+def verified_digest(path, cache):
+    """One observation-local content check, shared by aliases of the same file.
+
+    Open every time, and bind both descriptor stats and the current path. Only
+    unchanged device/inode/size/mtime/ctime may reuse a complete SHA-256 read.
+    One entry bounds memory and cannot authenticate a later observation.
+    """
+    with path.open('rb') as source:
+        signature = file_signature(os.fstat(source.fileno()))
+        previous = cache.get('executable')
+        if previous is not None and previous[0] == signature:
+            value = previous[1]
+        else:
+            h = hashlib.sha256()
+            for chunk in iter(lambda: source.read(65536), b''):
+                h.update(chunk)
+            value = h.hexdigest()
+        if (file_signature(os.fstat(source.fileno())) != signature
+                or file_signature(path.stat()) != signature):
+            raise ObservationError('artifact_changed')
+    cache['executable'] = signature, value
+    return value
+
+
 def path_binding(path):
     return hashlib.sha256(os.fsencode(path.resolve())).hexdigest()
 
@@ -121,17 +149,15 @@ def sample(reg, expected_hash, cache):
         raise ObservationError('process_gone')
     executable = Path(f"/proc/{reg['pid']}/exe")
     st = executable.stat()
-    signature = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    signature = file_signature(st)
     if os.readlink(executable) != reg['executable_path']:
         raise ObservationError('executable_mismatch')
-    if cache.get(reg['instance_id']) != signature:
-        if digest(executable) != expected_hash:
-            raise ObservationError('executable_mismatch')
-        cache[reg['instance_id']] = signature
+    if verified_digest(executable, cache) != expected_hash:
+        raise ObservationError('executable_mismatch')
     value = rss(reg['pid'])
     after, state = start_identity(reg['pid'])
     post = executable.stat()
-    if after != identity or state == 'Z' or (post.st_dev,post.st_ino,post.st_size,post.st_mtime_ns,post.st_ctime_ns) != signature:
+    if after != identity or state == 'Z' or file_signature(post) != signature:
         raise ObservationError('pid_reused')
     return value
 
@@ -319,7 +345,7 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
         if not Path('/proc/self/status').is_file():
             environment_status = 'unsupported'
             raise ObservationError('unsupported_proc')
-        if digest(executable) != result['candidate_mcp_sha256']:
+        if verified_digest(executable, cache) != result['candidate_mcp_sha256']:
             raise ObservationError('artifact_changed')
         while time.monotonic_ns() < deadline:
             elapsed = time.monotonic_ns() - start
@@ -406,7 +432,7 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
             if stop is not None and stop():
                 terminate = 'stop_requested'; break
             time.sleep(min(interval_ms / 1000, max(0, (deadline - time.monotonic_ns()) / 1e9)))
-        if digest(executable) != result['candidate_mcp_sha256']:
+        if verified_digest(executable, cache) != result['candidate_mcp_sha256']:
             raise ObservationError('artifact_changed')
     except KeyboardInterrupt:
         terminate = 'interrupted'

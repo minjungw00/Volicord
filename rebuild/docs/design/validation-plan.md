@@ -238,6 +238,11 @@ ticks/samples/finite error를 보존하고 failure에는 status/count/code를 �
 `dogfood_rehearsal`을 기록하고 frozen campaign purpose 변경을 거부한다.
 Parent는 child exit, candidate/Runtime/repository/path/purpose/cadence를 확인한
 뒤에만 관찰을 사용한다. Observer CPU/RSS와 coordinator/launch 비용은 구분한다.
+동일 관찰 안에서 전체 SHA를 검증한 executable은 device/inode/size/mtime/ctime가
+같은 configured path와 `/proc` alias 사이에서 한 항목만 공유한다. 매 사용의 open
+descriptor 전후 stat과 현재 path 신원이 일치해야 하고 변경은 재해시, 경합은 거부한다.
+관찰 간 hash를 재사용하지 않는다. 매 sample의 PID/start/boot/path와 RSS 전후 검사는
+유지한다. Window 시작·끝, sleep/tick scheduling, gap 한도와 partial 거부는 바꾸지 않는다.
 Repository identity inventory는 기존 제외 디렉터리 진입을 prune한다. 허용 파일과
 symlink-file 집합, 언어·문서 counts를 줄이거나 V11 workload/한도를 바꾸지 않는다.
 

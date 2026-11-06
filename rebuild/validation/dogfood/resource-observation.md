@@ -59,6 +59,17 @@ The parent preserves child resource bytes even on failure, then checks candidate
 Runtime/repository, executable path, purpose and cadence before using samples.
 Partial observations still block the rehearsal and subsequent provider/V11.
 
+The observer fully hashes the candidate inside the unchanged observation window.
+That observation alone can reuse the hash for the configured path and `/proc`
+executable aliases when device, inode, size, mtime and ctime all match. Every use
+opens the file and verifies descriptor metadata before/after plus current path
+identity; changes require a new full read, and races fail closed. The cache has
+one entry and is discarded at detachment. PID/start, boot, executable path,
+registration and before/after RSS checks still run for every instance/sample.
+This removes duplicate reads of already verified bytes, without changing the
+window, tick scheduling, gap threshold or completeness verdict. Actual scheduling
+gaps remain partial and block rehearsal; this is no guarantee against host load.
+
 On Linux the production stdio executable publishes a private bounded JSON entry
 under `Runtime/observations/mcp/INSTANCE.json`, outside all canonical stores. It
 contains a random instance identity, boot ID, PID, process start ticks, executable
