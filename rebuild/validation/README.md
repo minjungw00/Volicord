@@ -1701,3 +1701,13 @@ Unknown IDs fail; the full publication's figure inventory is still checked befor
 the selected journeys. Preserve the initial untouched transfer result and all failed
 or interrupted attempts. A partial attempt without a numeric wrapper result is not
 a completed pass, even if some individual observations passed.
+
+The V11 resource observer freshly scans the entire analysis tree at each existing
+observation boundary. Reuse file metadata only within that observation when checking
+repeated manifest references; every referenced blob must be a directly observed,
+regular, nonempty file with its canonical content-addressed name. A symlinked blob
+directory does not establish completed warmup outside the accounted tree. Unrelated
+or incomplete files still contribute their full logical and allocated bytes.
+Resource clocks, RSS sampling, call/observation counts, warmup rules, metric formulas
+and ceilings remain unchanged. `harness.py self-check` includes repeated-reference,
+freshness, missing/empty/symlink and post-warmup growth counterexamples.

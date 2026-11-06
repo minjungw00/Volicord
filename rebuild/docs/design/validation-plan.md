@@ -4980,3 +4980,39 @@ Use focused repository explanation/citation checks for diagnosis. Nonreproductio
 in an instrumented or separate test execution cannot turn a failed Final into a
 pass or attribute its cause to a clock. Preserve each outcome and original failure;
 any later authoritative gate still belongs to its own exact clean candidate.
+
+### Resource observation cost after the CE1 correction — 2026-11-06
+
+Candidate `4c87480297816a690877b7e0d7a179ef270c9f43` passed the complete
+package-43 comparison, installed 330-journey corpus, Final (789 passed, zero
+failed, five ignored), rehearsal and bounded provider qualification. Official
+V11 completed 55/55 functional checks and 505 MCP calls but failed elapsed time:
+969,558.136 ms against 900,000 ms. Peak MCP RSS was 4,193,951,744 bytes and
+post-warmup growth 535,933,611 bytes; both stayed within their unchanged limits.
+The failed capsule/archive and independent verification remain preserved.
+
+The initial CLI analysis took 103.215 seconds versus the preceding e81 run's
+30.737 seconds. Two private instrumented current-source analyses took about 31
+seconds, so they do not reproduce or resolve that delay. A lower metadata
+compression level was also rejected: actual blobs grew by more than 237 KB each
+while the failed run had only 937,301 bytes of growth headroom. Neither these
+diagnostic results nor the preceding candidate's pass qualifies this candidate.
+
+The measurement path also repeated file metadata work. A read-only replay of the
+exact failed final Runtime made 251,224 stat calls for fifteen manifests. Within
+each observation, scan every Project's entire analysis tree once and use the
+fresh regular, nonempty, canonically named direct blob entries for all manifest
+references. Account every file's logical and allocated bytes, including unrelated
+and incomplete artifacts. Never reuse file metadata across observations. Missing,
+empty, symlinked or malformed references cannot establish completed warmup;
+a symlinked blob directory cannot hide referenced bodies outside the accounted tree.
+Product blob integrity validation remains the Production reader's responsibility.
+
+The fixed original/prototype/prototype/original replay took 1.047/0.111/0.099/0.925
+seconds with every resource field equal. Existing negative controls passed in
+both implementations; additional controls exercise repeated references, creation,
+truncation, deletion, symlink substitution and subsequent complete-tree growth.
+These are supporting observations, not official elapsed-time results or a claim
+about the historical c423 failure. Preserve the full workload, every observation,
+RSS sampling interval, clocks, measurement start/end boundaries, metric definitions
+and ceilings. A new exact clean candidate still requires its own complete gate.

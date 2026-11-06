@@ -129,13 +129,8 @@ class Collector:
         return process
 
     @staticmethod
-    def completed_graph_items(path, value):
-        """Recognize current published manifests, without loading graph bodies.
-
-        Production publishes referenced blobs before its atomic manifest. This
-        check observes that publication boundary; product integrity validation
-        continues to own blob decoding/content verification.
-        """
+    def completed_graph_items(path, value, valid_blobs):
+        """Validate the same complete manifest against this observation's files."""
         if not isinstance(value, dict):
             return None
         project = {"identity": path.parent.name}
@@ -153,17 +148,43 @@ class Collector:
         if not isinstance(shapes, list) or not shapes or "values_base_blob" not in value:
             return None
         references = [(item, "shape") for item in shapes] + [(value.get("values_blob"), "values"),
-                                                               (value.get("metadata_blob"), "metadata")]
-        if value["values_base_blob"] is not None:
+                      (value.get("metadata_blob"), "metadata")]
+        if value.get("values_base_blob") is not None:
             references.append((value["values_base_blob"], "values"))
         for digest, extension in references:
-            if (not isinstance(digest, str) or len(digest) != 64
-                    or any(char not in "0123456789abcdef" for char in digest)):
-                return None
-            blob = path.parent / "blobs" / f"{digest}.{extension}"
-            if blob.is_symlink() or not blob.is_file() or blob.stat().st_size == 0:
+            if not isinstance(digest, str) or (digest, extension) not in valid_blobs:
                 return None
         return sum(value[key] for key in count_keys)
+
+    @staticmethod
+    def project_files(project):
+        """Fresh complete tree accounting; no metadata survives this call."""
+        logical = physical = 0
+        valid_blobs = set()
+        blobs = project / "blobs"
+        stack = [project]
+        while stack:
+            directory = stack.pop()
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    if entry.is_dir(follow_symlinks=False):
+                        stack.append(Path(entry.path))
+                        continue
+                    # is_file and stat share DirEntry's metadata cache. As in
+                    # pathlib.is_file/stat, accounting follows file symlinks,
+                    # but a referenced blob must itself be a regular file.
+                    if not entry.is_file():
+                        continue
+                    info = entry.stat()
+                    logical += info.st_size
+                    physical += getattr(info, "st_blocks", 0) * 512
+                    if directory == blobs and not entry.is_symlink() and info.st_size > 0:
+                        digest, separator, extension = entry.name.rpartition(".")
+                        if (separator and extension in {"shape", "values", "metadata"}
+                                and len(digest) == 64
+                                and all(char in "0123456789abcdef" for char in digest)):
+                            valid_blobs.add((digest, extension))
+        return logical, physical, valid_blobs
 
     def snapshots(self, env):
         if not self.enabled:
@@ -175,34 +196,27 @@ class Collector:
                 project_totals = {}
                 project_graph_items = {}
                 valid_manifest_count = 0
-                for path in analysis_root.glob("*/*.json"):
-                    stat = path.stat()
-                    self.max_snapshot_bytes = max(self.max_snapshot_bytes, stat.st_size)
-                    try:
-                        value = json.loads(path.read_text())
-                    except (ValueError, UnicodeError):
-                        # Controlled corruption/incomplete publication still costs
-                        # storage, but cannot establish a completed warmup baseline.
-                        continue
-                    items = self.completed_graph_items(path, value)
-                    if items is None:
-                        continue
-                    valid_manifest_count += 1
-                    project = str(path.parent)
-                    project_graph_items[project] = project_graph_items.get(project, 0) + items
                 logical = physical = 0
                 for project in analysis_root.glob("*"):
                     if not project.is_dir():
                         continue
-                    project_bytes = 0
-                    for path in project.rglob("*"):
-                        if not path.is_file():
-                            continue
-                        stat = path.stat()
-                        logical += stat.st_size
-                        physical += getattr(stat, "st_blocks", 0) * 512
-                        project_bytes += stat.st_size
+                    project_bytes, project_physical, valid_blobs = self.project_files(project)
+                    logical += project_bytes
+                    physical += project_physical
                     project_totals[str(project)] = project_bytes
+                    for path in project.glob("*.json"):
+                        info = path.stat()
+                        self.max_snapshot_bytes = max(self.max_snapshot_bytes, info.st_size)
+                        try:
+                            value = json.loads(path.read_text())
+                        except (ValueError, UnicodeError):
+                            continue
+                        items = self.completed_graph_items(path, value, valid_blobs)
+                        if items is None:
+                            continue
+                        valid_manifest_count += 1
+                        key = str(project)
+                        project_graph_items[key] = project_graph_items.get(key, 0) + items
                 self.analysis_storage_logical_bytes = max(self.analysis_storage_logical_bytes, logical)
                 self.analysis_storage_physical_bytes = max(self.analysis_storage_physical_bytes, physical)
                 self.analysis_snapshot_count = max(self.analysis_snapshot_count, valid_manifest_count)
@@ -451,6 +465,60 @@ def storage_self_check():
         assert storage.analysis_snapshot_count == 2 and storage.snapshot_errors == 0
         assert storage.project_warmup_bytes[str(project)] == baseline
         assert storage.post_warmup_analysis_growth_bytes == storage.analysis_storage_logical_bytes - baseline
+
+    # Shared references still require complete, current files. A fresh scan per
+    # observation must see creation, truncation, deletion and symlink replacement;
+    # the first valid observation establishes the same complete-tree baseline.
+    with tempfile.TemporaryDirectory() as temporary:
+        runtime = Path(temporary)
+        project = runtime / "derived/analysis/repeated"
+        value = manifest(project, "first")
+        value["shape_blobs"] *= 4096
+        path = project / "first.json"
+        path.write_text(json.dumps(value))
+        env = {"VOLICORD_RUNTIME_DIR": str(runtime)}
+        original = project / "blobs" / ("c" * 64 + ".metadata")
+        content = original.read_bytes()
+        for state in ("empty", "missing", "symlink", "directory"):
+            original.unlink(missing_ok=True)
+            target = project / "target"
+            target.write_bytes(content)
+            if state == "empty":
+                original.write_bytes(b"")
+            elif state == "symlink":
+                original.symlink_to(target)
+            elif state == "directory":
+                original.mkdir()
+            storage = Collector()
+            storage.enabled = True
+            storage.snapshots(env)
+            assert storage.project_warmup_bytes == {} and storage.analysis_snapshot_count == 0
+            if state == "directory":
+                original.rmdir()
+            else:
+                original.unlink(missing_ok=True)
+            original.write_bytes(content)
+            storage.snapshots(env)
+            expected = sum(p.stat().st_size for p in project.rglob("*") if p.is_file())
+            assert storage.analysis_snapshot_count == 1
+            assert storage.project_warmup_bytes == {str(project): expected}
+            original.write_bytes(content + b"new bytes")
+            (project / "nested").mkdir(exist_ok=True)
+            (project / "nested/extra.bin").write_bytes(b"extra allocated content")
+            storage.snapshots(env)
+            expected_now = sum(p.stat().st_size for p in project.rglob("*") if p.is_file())
+            assert storage.analysis_storage_logical_bytes == expected_now
+            assert storage.post_warmup_analysis_growth_bytes == expected_now - expected
+            original.write_bytes(content)
+        # A directory symlink cannot put referenced bodies outside the tree
+        # whose complete logical/physical storage is being accounted.
+        external = runtime / "external-blobs"
+        (project / "blobs").rename(external)
+        (project / "blobs").symlink_to(external, target_is_directory=True)
+        storage = Collector()
+        storage.enabled = True
+        storage.snapshots(env)
+        assert storage.project_warmup_bytes == {} and storage.analysis_snapshot_count == 0
 
     with tempfile.TemporaryDirectory() as temporary:
         runtime = Path(temporary)
