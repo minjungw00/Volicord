@@ -1603,7 +1603,7 @@ This is caller output protection, not a new evidence framework or qualification.
 Connected sequence reading uses one complete admitted temporal world.
 `document_evidence_journey.cjs` invokes `sequence_views.cjs` after initial orientation,
 checking every role/claim origin, exact Source bytes, deep return and resized camera.
-The default renderer is 22; an explicit `renderer` still identifies an older diagnostic
+The default renderer is 23; an explicit `renderer` still identifies an older diagnostic
 binary. Complex graphs share the bounded world policy; small graphs remain inline.
 Initial fit records orientation separately from readable text. Subsequent pan/zoom is
 a deliberate reading action, not a defect or permission to conceal ambiguous geometry.
@@ -1753,3 +1753,16 @@ their namespace. The explicit renderer-review test accepts `VOLICORD_LAYOUT_LOCA
 (`en`/`ko`) and optionally writes new SVGs exclusively under
 `VOLICORD_LAYOUT_REVIEW_ROOT`. Preserve every earlier attempt; a collision check or
 fit-width screenshot alone does not prove traceability.
+
+The sequence oracle now checks visible message-local strict/par/optional scope and
+parallel operand separators, not accessible captions alone. Group-order negative
+controls derive their expected order from the original group, including a sequential
+first group. Actual evidence interaction controls check Home=min, End=max, Enter=
+default, both locale labels, unchanged exact code and semantic return after a layout
+key change. A genuine one-range chooser remains a valid case; no alternate is invented.
+
+`document_reader` additionally accepts `reading_controls: true` for the directly
+changed separator keys and geometry-version return on actual permitted evidence.
+`interactions: true` retains the separate full history/resize/race/denial suite.
+Its completed-response teardown control has a finite response deadline, and BFCache
+restoration counts actual citation requests rather than unrelated HTTP traffic.

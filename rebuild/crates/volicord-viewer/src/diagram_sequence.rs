@@ -144,18 +144,21 @@ pub(super) fn sequence(
     for (gi, group) in groups.iter().enumerate() {
         let start = y;
         let mut context = String::new();
-        let heading = format!(
-            "{}. {}",
-            gi + 1,
-            match group.order {
-                DiagramOrder::Sequential => diagram_ui(locale, "Sequential", "순차"),
-                DiagramOrder::Parallel => diagram_ui(
-                    locale,
-                    "Parallel · no relative order",
-                    "병렬 · 상대 순서 없음"
-                ),
+        let order = match group.order {
+            DiagramOrder::Sequential => diagram_ui(locale, "strict · sequential", "strict · 순차"),
+            DiagramOrder::Parallel => {
+                diagram_ui(locale, "par · no relative order", "par · 상대 순서 없음")
             }
-        );
+        };
+        let heading = format!("{}. {order}", gi + 1);
+        let scope = match &group.condition {
+            Some(guard) => format!(
+                "{heading} · opt · {} {}",
+                diagram_ui(locale, "condition:", "조건:"),
+                label(guard)?
+            ),
+            None => heading.clone(),
+        };
         let heading_width = (width - 80).min(320);
         context.push_str("<g class=\"diagram-node-kind\">");
         left_text(&mut context, 45, y + 24, &heading, heading_width, 13, 20);
@@ -189,7 +192,10 @@ pub(super) fn sequence(
             };
         }
         y += context_height + 15;
-        for message in &group.messages {
+        for (mi, message) in group.messages.iter().enumerate() {
+            if mi > 0 && group.order == DiagramOrder::Parallel {
+                layout.background.push_str(&format!("<path class=\"relation-line parallel-operand\" d=\"M25 {}H{}\" stroke-dasharray=\"3 5\"/>",y-20,width-25));
+            }
             ordinal += 1;
             let from = index(nodes, &message.from)?;
             let to = index(nodes, &message.to)?;
@@ -212,7 +218,7 @@ pub(super) fn sequence(
             };
             let name = label(&message.label)?;
             let support = format!(
-                "{ordinal} · {} → {} · {}",
+                "{ordinal} · {} → {} · {scope} · {}",
                 endpoint(from)?,
                 endpoint(to)?,
                 message.kind.localized_text(locale)

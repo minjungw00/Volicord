@@ -26,7 +26,7 @@ async function inspectDiagram(svg, diagram, prose) {
     const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
     const localOrder=g.order==='sequential'?(stages?(ko?'순차':'Sequential'):'strict'):order;
     const context=localOrder+(g.condition?` · opt · ${ko?'조건:':'condition:'} ${label(g.condition)}`:'');
-    if(spaciousSequence){expected.push(...g.messages.flatMap(r=>[{id:r.id,text:g.order==='sequential'?'strict':order,accessibility:true},...(g.condition?[{id:r.id,text:label(g.condition),accessibility:true}]:[])]));}
+    if(spaciousSequence){expected.push(...g.messages.flatMap(r=>[{id:r.id,text:order,contains:true},...(g.condition?[{id:r.id,text:label(g.condition),contains:true}]:[])]));}
     else expected.push(...g.messages.map(r=>({id:r.id,text:context,prefix:true})));
     if(g.condition)expected.push({id:'guard:'+(i+1),text:label(g.condition),prefix:true});
     expected.push(...g.messages.map(r=>({id:r.id,text:label(r.label)})));
@@ -109,10 +109,13 @@ async function inspectDiagram(svg, diagram, prose) {
     }
     if(sequence) {
       const ko=root.ownerDocument.documentElement.lang==='ko';
+      const operands=[...root.querySelectorAll('.parallel-operand')].filter(rendered).length;
+      const expectedOperands=groups.reduce((n,g)=>n+(g.order==='parallel'?g.messages.length-1:0),0);
+      if(operands!==expectedOperands)errors.push({kind:'parallel-separation',expected:expectedOperands,actual:operands});
       let previousGroupBottom=-Infinity;
       for(const [gi,g] of groups.entries()) {
         const order=g.order==='parallel'?(ko?'par · 상대 순서 없음':'par · no relative order'):(ko?'strict · 순차':'strict · sequential');
-        const heading=spaciousSequence?(g.order==='sequential'?(ko?'순차':'Sequential'):(ko?'병렬 · 상대 순서 없음':'Parallel · no relative order')):stages&&g.order==='sequential'?(ko?'순차':'Sequential')+(root.clientWidth>=760?(ko?' · 왼쪽부터 읽고 다음 줄로':' · left to right, then next row'):''):order;
+        const heading=stages&&g.order==='sequential'?(ko?'순차':'Sequential')+(root.clientWidth>=760?(ko?' · 왼쪽부터 읽고 다음 줄로':' · left to right, then next row'):''):order;
         const header=[...root.querySelectorAll('text')].find(t=>rendered(t)&&t.textContent===`${gi+1}. ${heading}`);
         if(!header)errors.push({kind:'wrong-group-order',group:gi+1,expected:order});
         // Inline scenes keep local context in the reading column. Spacious worlds

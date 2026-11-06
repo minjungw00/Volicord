@@ -4,10 +4,40 @@ const {citationReady,citationInspection,embeddedCode}=require('../../viewer-desi
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const settle=async page=>{await page.bringToFront();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await pause(100);};
 async function complete(page){return citationReady(page.locator('.source-point[data-selected=true]'));}
+async function readingControls(page,{figureId,elementId,width}){
+ const figure=page.locator(`[id="${figureId}"]`),element=page.locator(`[id="${elementId}"]`),point=()=>page.locator('.source-point[data-selected=true]');
+ const notes=[];
+ async function open(){await element.focus();await page.keyboard.press('Enter');await complete(page);await settle(page);}
+ if(width>760){
+  await open();const pane=point().locator('xpath=..'),handle=pane.locator(':scope > .evidence-resizer');
+  const help=await handle.getAttribute('aria-label');
+  assert.match(help,/Home (minimum|최소)/);assert.match(help,/End (maximum|최대)/);assert.match(help,/Enter (default width|기본 너비)/);
+  const original=await point().getAttribute('id'),code=await(await complete(page)).textContent();
+  await handle.focus();await handle.press('Home');await settle(page);
+  assert.equal(await handle.getAttribute('aria-valuenow'),await handle.getAttribute('aria-valuemin'));
+  assert.ok(Math.abs((await pane.boundingBox()).width-Number(await handle.getAttribute('aria-valuenow')))<2);
+  await handle.press('End');await settle(page);
+  assert.equal(await handle.getAttribute('aria-valuenow'),await handle.getAttribute('aria-valuemax'));
+  assert.ok(Math.abs((await pane.boundingBox()).width-Number(await handle.getAttribute('aria-valuenow')))<2);
+  await handle.press('Enter');await settle(page);
+  assert.equal(await page.evaluate(()=>document.body.style.getPropertyValue('--evidence-width')),'');
+  assert.equal(await point().getAttribute('id'),original);assert.equal(await(await complete(page)).textContent(),code);
+  await page.keyboard.press('Escape');await settle(page);notes.push('Home minimum, End maximum, Enter default with exact evidence');
+ }
+ // A version change with unchanged dimensions must not reuse stale coordinates.
+ await open();const svg=figure.locator('svg'),layout=await svg.getAttribute('data-layout-key');
+ await svg.evaluate(n=>n.dataset.layoutKey='controlled-geometry-revision');
+ await page.keyboard.press('Escape');await settle(page);
+ assert.equal(await element.evaluate(n=>n===document.activeElement),true);
+ assert.ok(await element.evaluate(n=>{const a=n.getBoundingClientRect(),v=n.closest('.diagram-viewport').getBoundingClientRect();return a.right>v.left&&a.left<v.right&&a.bottom>v.top&&a.top<v.bottom;}),'changed geometry retains the visible semantic origin');
+ await svg.evaluate((n,key)=>n.dataset.layoutKey=key,layout);notes.push('geometry revision restores exact semantic origin');
+ return notes;
+}
 async function inspect(page,context,{address,figureId,elementId,claimId,sourceId,width}){
  const figure=page.locator(`[id="${figureId}"]`),element=page.locator(`[id="${elementId}"]`),point=()=>page.locator('.source-point[data-selected=true]');
  const notes=[];
  async function open(){await element.focus();await page.keyboard.press('Enter');await complete(page);await settle(page);}
+ notes.push(...await readingControls(page,{figureId,elementId,width}));
  // Native modified activation keeps the current tab's selection, URL and scroll.
  await element.focus();await settle(page);
  const state=()=>page.evaluate(()=>({url:location.href,y:scrollY,focus:document.activeElement?.id,selected:[...document.querySelectorAll('.source-point[data-selected]')].map(n=>n.id),open:[...document.querySelectorAll('details')].map(n=>n.open)}));
@@ -39,11 +69,13 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  const picker=point().locator('.evidence-choice-picker select');
  if(await picker.count()){
   const options=await picker.locator('option').evaluateAll(ns=>ns.map(n=>({value:n.value,selected:n.selected})));
-  const next=options.find(n=>!n.selected)?.value;assert.ok(next,'real alternate exact range');
+  const next=options.find(n=>!n.selected)?.value;
+  if(next){
   const native=page.locator(`[id="${next.slice(1).split('!')[0]}"]`);
   const expected=await native.getAttribute('data-selected-point')||await native.getAttribute('id');
   await picker.selectOption(next);await complete(page);await pause(850);
   assert.equal(await point().getAttribute('id'),expected);assert.ok(await (await embeddedCode(point())).textContent());notes.push('late range response isolation');
+  }else{assert.equal(options.length,1,'single-range context keeps its exact sole selection');await complete(page);notes.push('one exact range; alternate range not applicable');}
  }else{await complete(page);notes.push('one range; alternate range not applicable');}
  await context.unroute('**/citation?*');await page.keyboard.press('Escape');await settle(page);
  // A native shared-payload alias must activate its own original claim binding.
@@ -91,7 +123,7 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  // response was already obtained before teardown.
  await page.goto(address+native+'!'+claimId);await complete(page);
  const expectedNativeCode=await (await embeddedCode(point())).textContent();
- let resumedRequests=0;const count=()=>resumedRequests++;
+ let resumedRequests=0;const count=request=>{if(new URL(request.url()).pathname==='/citation')resumedRequests++;};
  page.on('request',count);
  await page.evaluate(()=>{
   window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
@@ -100,13 +132,17 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  await complete(page);page.off('request',count);
  assert.ok(resumedRequests>0,'restored selected evidence must request current permission');
  notes.push('restoration revalidates authority');
- let release,arrived;
- const heldResponse=new Promise(r=>arrived=r),released=new Promise(r=>release=r);
+ let release,arrived,failed;
+ const heldResponse=new Promise((resolve,reject)=>{arrived=resolve;failed=reject;}),released=new Promise(r=>release=r);
  await context.route('**/citation?*',async route=>{
-  const response=await route.fetch();arrived();await released;
-  await route.fulfill({response}).catch(()=>{});
+  try{const response=await route.fetch({timeout:15000});arrived();await released;
+   await route.fulfill({response}).catch(()=>{});
+  }catch(error){failed(error);await route.abort().catch(()=>{});}
  });
- await (await citationInspection(point(),true)).locator('.citation-read').click();await heldResponse;
+ await (await citationInspection(point(),true)).locator('.citation-read').click();
+ let deadline;
+ try{await Promise.race([heldResponse,new Promise((_,reject)=>{deadline=setTimeout(()=>reject(Error('teardown control received no actual citation response within 15 seconds')),15000);})]);}
+ finally{clearTimeout(deadline);}
  await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:false})));
  release();await pause(300);
  assert.equal(await page.locator('[data-fetched-code]').count(),0,'late bytes cannot paint after teardown');
@@ -137,4 +173,4 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  await page.goto(address);await settle(page);
  return {width,sourceId,checks:notes};
 }
-module.exports={inspect};
+module.exports={inspect,readingControls};

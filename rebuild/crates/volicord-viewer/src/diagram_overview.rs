@@ -363,7 +363,7 @@ fn render(
     let narrow = narrow.as_ref().unwrap_or(&wide);
     let title = diagram_label(&d.title, texts)?;
     let layout_engine = if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
-        "volicord-temporal/1;metrics/1"
+        "volicord-temporal/2;metrics/1"
     } else {
         engine::ENGINE_ID
     };

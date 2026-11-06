@@ -3618,3 +3618,10 @@ are consumed and garbage-collected, and a failed execution discards the runtime.
 No geometry cache can supply denied meaning. Live, newly published native snapshots
 and CLI-invoked exports all call this same server-side renderer. Browser enhancement
 continues to own only the camera and existing reading interactions.
+
+Renderer 23 advances only temporal presentation and its Derived identity to
+`volicord-temporal/2;metrics/1`. Existing admitted group order/guard roles appear
+locally with each message, and parallel operands stay visibly distinct. Node/edge
+identity, Source/claim traversal and format 9 do not change. There is no new phase
+field, label inferred from narrative, automatic reauthoring or sequence-to-graph
+conversion. Both live and native consumers use the same temporal drawing.

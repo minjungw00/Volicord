@@ -5174,3 +5174,31 @@ A debug cold engine observation took roughly 0.94s and a later state layout 0.19
 these are individual diagnostic samples, not installed medians or whole-journey
 speedups. User comprehension, independent assistive acceptance and broader Work-kind
 coverage are not inferred from collision checks or successful code recovery.
+
+The separate temporal correction preserves original participants, guard/message
+roles, strict/par meaning and order. Browser controls require visible local scope,
+parallel operand separation, unchanged exact code and semantic camera return, rather
+than accepting only accessible captions. Original Korean figures passed five-width
+controls and English counterparts passed independent locale controls. A fresh real
+historical Work publication keeps original words/conditions in each language with
+new bounded file observations; it does not claim a newly executed test or Work result.
+
+The interaction harness originally assumed every existing chooser had two ranges;
+a real single-range Work context exposed that error. Its first failure is preserved.
+The corrected harness requires the exact sole selection or exercises a real alternate;
+it never fabricates a second Source. Home/End/Enter wording and actual displayed
+widths, layout-version return, late responses and independent claim bindings remain
+separate controls. Original CE1 source bytes/hash remain unchanged, and source-familiar
+technical reading is not independent human/assistive acceptance.
+
+The scoped temporal/keyboard reader matrix completed 60 exact-evidence conditions:
+two original Work languages × five widths × live, live-no-JS and native file, with
+both ordinary and last-message camera return. The full fault control also completed
+on the real single-range Work case after its chooser assumption was corrected.
+A separate attempt during filesystem exhaustion produced incomplete runner metadata
+and later lost its selected panel; it was preserved and task-owned processes were
+terminated. An unbounded held-response wait was found during diagnosis and given a
+finite deadline, but it is not established as that attempt's causal failure. Fresh
+bounded execution passed; non-reproduction is not an engine or environment repair.
+Only this task's regenerable compiler incremental caches were removed for space;
+originals, source, binaries, logs, raw attempts and earlier gate artifacts remain.

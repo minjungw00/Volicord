@@ -38,6 +38,13 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
       }
       if(f.diagram.meaning.kind==='sequence') {
         const m=f.diagram.meaning;
+        const operand=page.locator('svg .parallel-operand:visible').first();
+        if(await operand.count()){
+          await operand.evaluate(n=>n.style.visibility='hidden');
+          const lost=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
+          assert(lost.errors.some(e=>e.kind==='parallel-separation'),'parallel operands remain visibly distinct');
+          await operand.evaluate(n=>n.style.removeProperty('visibility'));
+        }
         const first=page.locator('svg a[id="'+ns+'-'+m.groups[0].messages[0].id+'"]');
         await first.evaluate(n=>{const t=document.createElementNS('http://www.w3.org/2000/svg','text');t.id='extra-identifier-band';t.textContent='Unnecessary full participant identifier';n.append(t);});
         const repeated=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
@@ -53,10 +60,11 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
         assert(wrongContext.errors.some(e=>['missing-visible-meaning','missing-visible-type'].includes(e.kind)&&e.element===last.id),'a previous guard/order must fail local scope');
         await local.evaluate((n,v)=>n.innerHTML=v,saved);
         fs.writeFileSync(path.join(config.output,f.id+'-'+width+'-context-control.json'),JSON.stringify(wrongContext.errors,null,2),{flag:'wx'});
-        const header=await page.locator('svg text:visible').filter({hasText:await page.locator('svg').evaluate(n=>n.classList.contains('spatial-world'))?(f.ui_locale==='ko'?'1. 병렬 · 상대 순서 없음':'1. Parallel · no relative order'):(f.ui_locale==='ko'?'1. par · 상대 순서 없음':'1. par · no relative order')}).elementHandle();
+        const firstOrder=m.groups[0].order==='parallel'?(f.ui_locale==='ko'?'par · 상대 순서 없음':'par · no relative order'):(f.ui_locale==='ko'?'strict · 순차':'strict · sequential');
+        const header=await page.locator('svg text:visible').filter({hasText:new RegExp('^1[.] '+firstOrder+'$')}).elementHandle();
         assert(header,'original group header');
         const original=await header.innerHTML();
-        await header.evaluate(n=>n.querySelector('tspan').textContent='1. strict · sequential');
+        await header.evaluate((n,parallel)=>n.querySelector('tspan').textContent=parallel?'1. strict · sequential':'1. par · no relative order',m.groups[0].order==='parallel');
         const wrongGroup=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
         assert(wrongGroup.errors.some(e=>e.kind==='wrong-group-order'),'wrong par/strict meaning must fail');
         await header.evaluate((n,original)=>n.innerHTML=original,original);
@@ -100,7 +108,7 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
             await b.evaluate((n,d)=>n.setAttribute('d',d),saved);
           }
           const label=page.locator(`svg a[id="${ns}-${edges[0].id}"]`);
-          if(await page.locator('svg').getAttribute('data-layout-engine')?.then(v=>v?.startsWith('elkjs/'))){
+          if((await page.locator('svg').getAttribute('data-layout-engine')||'').startsWith('elkjs/')){
             await label.evaluate(n=>n.setAttribute('transform','translate(0,10000)'));
             const detached=await inspectDiagram(page.locator('svg'),f.diagram,f.prose);
             assert(detached.errors.some(e=>e.kind==='detached-route-label'),'an unrelated label location cannot pass association');

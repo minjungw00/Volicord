@@ -856,3 +856,9 @@ available width. A changed key restores the semantic anchor, not stale coordinat
 There is no persisted geometry cache or retained-format conversion. Canonical,
 explanation v9, preparation, Source and document metadata versions/lifetimes remain
 unchanged; old exports retain their original bytes and rendering basis.
+
+SVG renderer 23 / temporal policy 2 adds visible message-local group/order/guard
+context and parallel operand separators over existing v9 roles. Graph engine and
+its configuration are unchanged. The renderer/layout key invalidates prior physical
+camera positions; the same semantic origin survives. No retained-format, canonical,
+Source, document-metadata or evidence-lifetime revision is introduced.

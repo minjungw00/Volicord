@@ -1382,3 +1382,22 @@ admitted roles, renderer, engine/config/metrics and UI locale. Camera memory reu
 physical positions only for the same geometry and viewport; otherwise the exact
 semantic origin is restored. No geometry is retained as canonical content, and no
 layout-only change reauthors an explanation or renews its evidence.
+
+### Temporal scope and truthful keyboard help — 2026-11-07
+
+Renderer 23 keeps the separate sequence policy and all original participant lanes,
+message order, self-calls, returns and guard origins. Group headings explicitly use
+`strict` / `par`; each message's existing supporting endpoint/type line also carries
+its own group and complete optional guard. Scrolling past a header cannot make a
+parallel or guarded message look unconditional/sequential. Dashed operand separators
+state the admitted parallel grouping without asserting relative execution order.
+Existing source-grounded captions, message labels and guards retain their phase
+meaning; geometry does not infer an authored phase title or invent a new event.
+The CE1 frame, compact controls, width-fit entry and evidence composition remain.
+
+The evidence separator now truthfully announces Home minimum, End maximum and Enter
+default width in both UI locales. Pointer behavior and actual key assignments are
+unchanged. Actual reader controls verify the accessible wording, displayed minimum
+and maximum widths, reset, unchanged code/Source identity and semantic return after a
+controlled layout-key revision with unchanged world dimensions. Single-range evidence
+contexts are legitimate: a visible chooser alone is not proof of an alternate range.

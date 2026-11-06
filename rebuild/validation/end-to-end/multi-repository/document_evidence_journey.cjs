@@ -62,7 +62,7 @@ async function run(config){
     await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
-    const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/22');
+    const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/23');
     if(scripted&&await svg.evaluate(n=>n.classList.contains('spatial-world'))){await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();}
     if(!scripted&&await svg.evaluate(n=>n.classList.contains('spatial-world'))){await figure.locator('.native-diagram-controls label').filter({has:page.locator('[data-native-scale=full]')}).click();assert.equal(await figure.locator('[data-native-scale=full]').isChecked(),true,'native full-scale reading precedes glyph checks');await settled(page);}
     const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(baseKey+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
@@ -132,6 +132,9 @@ async function run(config){
      assert.equal(await page.locator('.project-shell').evaluate(n=>n.inert),false,'no stale modal inert state');
     }
     await page.screenshot({path:path.join(config.output,key+'-returned.png')});
+    if(config.reading_controls&&scripted&&d===publicAnswers.diagrams[0]){
+      const controls=await require('./evidence_interactions.cjs').readingControls(page,{figureId,elementId:figureId+'-'+semantic.id,width});write(key+'-reading-controls.json',JSON.stringify(controls));
+    }
     if(config.interactions&&scripted&&d===publicAnswers.diagrams[0]){
       const interaction=await require('./evidence_interactions.cjs').inspect(page,context,{address,figureId,elementId:figureId+'-'+semantic.id,claimId,sourceId:pointId,width});write(key+'-interactions.json',JSON.stringify(interaction,null,2));
     }
