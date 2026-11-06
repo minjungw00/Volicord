@@ -28,6 +28,7 @@ const ANALYSIS_CACHE_EXTENSION: &str = "snapshot";
 const CHUNK_MIN_BYTES: usize = 8 * 1024;
 const CHUNK_MAX_BYTES: usize = 32 * 1024;
 const CHUNK_WINDOW_BYTES: usize = 63;
+const SHAPE_COMPRESSION_LEVEL: i32 = 9;
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct AnalysisHeader {
@@ -107,7 +108,9 @@ pub(crate) fn encode_analysis(
     let shapes = content_defined_chunks(&normalized.shape)
         .into_iter()
         .map(|chunk| {
-            let packed = pack_blob(chunk)?;
+            // Stronger matching is cheap for bounded 32 KiB shape chunks.
+            // Keep the hundreds-of-megabytes value/delta streams at level 1.
+            let packed = pack_blob_at_level(chunk, SHAPE_COMPRESSION_LEVEL)?;
             Ok((digest(&packed), packed))
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -1790,27 +1793,31 @@ mod tests {
 
     #[test]
     fn packed_blobs_preserve_both_formats_and_reject_corrupt_lengths() -> Result<(), Error> {
-        for input in [b"".as_slice(), b"x"] {
-            let packed = pack_blob(input)?;
-            let mut expected = BLOB_RAW_MAGIC.to_vec();
-            expected.extend_from_slice(input);
-            assert_eq!(packed, expected);
+        // All production blob writers share the same envelope/decoder. Exercise
+        // shape and metadata settings as well as the large value-stream codec.
+        for level in [1, SHAPE_COMPRESSION_LEVEL, 19] {
+            for input in [b"".as_slice(), b"x"] {
+                let packed = pack_blob_at_level(input, level)?;
+                let mut expected = BLOB_RAW_MAGIC.to_vec();
+                expected.extend_from_slice(input);
+                assert_eq!(packed, expected);
+                assert_eq!(unpack_blob(&packed)?, input);
+            }
+            let input = vec![b'x'; 64 * 1024];
+            let packed = pack_blob_at_level(&input, level)?;
+            assert!(packed.starts_with(BLOB_ZSTD_MAGIC));
             assert_eq!(unpack_blob(&packed)?, input);
+            assert_eq!(pack_blob_at_level(&input, level)?, packed);
+            let mut wrong_length = packed.clone();
+            wrong_length[BLOB_ZSTD_MAGIC.len()..BLOB_ZSTD_MAGIC.len() + 8]
+                .copy_from_slice(&(input.len() as u64 + 1).to_le_bytes());
+            assert!(unpack_blob(&wrong_length).is_err());
+            let mut short_length = packed.clone();
+            short_length[BLOB_ZSTD_MAGIC.len()..BLOB_ZSTD_MAGIC.len() + 8]
+                .copy_from_slice(&(input.len() as u64 - 1).to_le_bytes());
+            assert!(unpack_blob(&short_length).is_err());
+            assert!(unpack_blob(&packed[..packed.len() - 1]).is_err());
         }
-        let input = vec![b'x'; 64 * 1024];
-        let packed = pack_blob(&input)?;
-        assert!(packed.starts_with(BLOB_ZSTD_MAGIC));
-        assert_eq!(unpack_blob(&packed)?, input);
-        assert_eq!(pack_blob(&input)?, packed);
-        let mut wrong_length = packed.clone();
-        wrong_length[BLOB_ZSTD_MAGIC.len()..BLOB_ZSTD_MAGIC.len() + 8]
-            .copy_from_slice(&(input.len() as u64 + 1).to_le_bytes());
-        assert!(unpack_blob(&wrong_length).is_err());
-        let mut short_length = packed.clone();
-        short_length[BLOB_ZSTD_MAGIC.len()..BLOB_ZSTD_MAGIC.len() + 8]
-            .copy_from_slice(&(input.len() as u64 - 1).to_le_bytes());
-        assert!(unpack_blob(&short_length).is_err());
-        assert!(unpack_blob(&packed[..packed.len() - 1]).is_err());
         Ok(())
     }
 

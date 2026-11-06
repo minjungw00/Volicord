@@ -115,6 +115,10 @@ value delta는 이 current representation 내부 storage strategy이지 서로 �
 legacy input 또는 parallel production decoder가 아니다. 이전 full-JSON Runtime Home을
 감지·decode·migrate하는 호환 경로는 제공하지 않는다.
 
+Bounded shape 조각의 압축 수준 변경은 새 게시 blob의 physical hash를 바꿀 수 있지만
+복원 token stream, Analysis identity와 schema를 바꾸지 않는다. 기존 manifest/blob을
+다시 쓰거나 historical root를 지우지 않으며 같은 envelope와 decoder로 검증한다.
+
 Digest identity의 bounded-buffer formatting, borrowed-string decoding 및 normalizer의
 plain-fragment 복사는 valid current JSON/MessagePack bytes와 restored scalar 순서를
 바꾸지 않는 구현 최적화다. Hexadecimal reader가 부호나 공백을 잘못 digit으로 받던

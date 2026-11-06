@@ -4,6 +4,33 @@ This is supporting local evidence, not V11 resource qualification. Budgets,
 workload identity, graph coverage and historical receipts are unchanged. No gate,
 Final, official V11 or provider transmission is part of these commands.
 
+## Bounded shape compression
+
+The retained `63850c94` gate passed all 55 functional V11 checks, but retained
+post-warmup growth was 537,441,140 bytes against 536,870,912. Its failed result
+remains a failure. Recompressing identical retained value/delta bytes at stronger
+ordinary levels or with long-distance matching did not establish a saving and
+was not adopted. Exploratory system-codec results are separate from Product
+codec evidence.
+
+Using the exact Product zstd dependency, the same 22,136 retained shape blobs
+occupied 9,442,636 bytes at level 1, 8,413,220 at level 3, 7,281,841 at level 6,
+and 6,659,494 at level 9. The fixed 1/3/6/9/1 scan checked every decoded byte;
+the final level-1 size exactly matched the original. Whole-scan wall times were
+0.524/0.650/1.798/5.845/0.463 seconds and include reads, compression and verified
+decompression under concurrent archive preservation. They are diagnostic costs,
+not official V11 latency or an estimate of post-warmup savings.
+
+Apply level 9 only to the already bounded 32 KiB shape chunks. Complete values,
+delta generation, metadata, manifest history, graph coverage, read caches and
+every resource ceiling remain unchanged. `packed_blobs_preserve_both_formats_and_reject_corrupt_lengths`
+checks raw fallback, deterministic compression, exact decoded lengths, truncated
+frames and both wrong-length directions at all three Production blob settings.
+`resource_pressure_roundtrip` checks real polyglot publication and uncached full
+graph/metadata equality, corruption refusal and immutable original input. The
+same test accepts an exact retained large manifest as described below. Only a
+new clean-candidate complete gate can establish the integrated resource result.
+
 ## Retained failure and restoration
 
 The historical candidate is `792f791fcbd141891e856cd9e262d313fd9899cf`. Its V11 result
