@@ -1425,6 +1425,21 @@ fit establish transport, not independent semantic or human acceptance. Larger-bu
 or scoped-publication conditions that were not run remain not_observed. See the
 [focused observations](../../validation/end-to-end/multi-repository/repository-explanation-breadth.md).
 
+For ordinary new authorship, freeze original facts, material qualifiers and
+independent reader questions before drafting, including a reserved real repository
+with different structure/language. Assess purpose-to-use/resume causality,
+investigation findings before mechanisms, logical paragraph grouping and
+cross-language conditions separately from schema/hash validity. Preserve the first
+draft and every refusal; a corrected familiar publication alone proves no transfer.
+Actual Work kinds must come from original records, with missing detail and
+report/case/execution units distinct. A synthetic failure/paused control does not
+supply an unavailable real Work. Current code explanations require explicit
+investigation and normal new recording; original historical publications keep
+their original identity, basis and time. Compare complete CLI/MCP/live/native/export
+meaning, exact code and return. Dependent author review and unavailable isolated
+first reading, human/assistive observation and host token instrumentation remain
+explicit limits, not passed acceptance.
+
 ### Adopted project-reader journey controls
 
 Scenario N uses the adopted shared project sidebar and document-only top contents,

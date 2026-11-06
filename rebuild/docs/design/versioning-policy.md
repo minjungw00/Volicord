@@ -815,6 +815,14 @@ budget/instruction change alone makes a supported retained publication unreadabl
 It does not supersede canonical correction, authority withdrawal, forgetting,
 explicit deletion, corrupted content, replacement selection or exact-current format.
 
+Reader-question authoring revises current article instructions, not retained v9
+meaning, roles, admission limits or document metadata 11. Fresh article preparations
+bind those actual instructions; independent name/summary plans remain unchanged.
+The final-byte preparation check and equivalent concise guidance keep the unchanged
+131,072-byte ceiling without dropping evidence. Existing admitted publications
+retain original preparation provenance under this separation; no new decoder,
+rebinding, read-time authorship or history conversion is introduced.
+
 No history conversion, new version, automatic rebinding, old-policy numeric branch
 or parallel decoder is introduced. Reads preserve original IDs, timestamps, generator
 status, diagrams, prose and fingerprint. Re-recording remains explicit admission;

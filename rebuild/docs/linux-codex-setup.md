@@ -260,3 +260,14 @@ authority remains a blocker. Prepare, read and GET do not generate or transmit;
 there is no automatic generation or server-side model dispatch. Background
 transmission still requires separate exact authorization. SessionStart guidance
 must remain strictly below 4,096 UTF-8 bytes after excluding the CLI route line.
+
+For new Repository or Work articles, follow the preparation's reader questions
+and investigate permitted originals before drafting. Connect repository purpose
+to actual use and resume flows; for Work, explain the actual activity and finding
+before supporting mechanisms. An investigation, failed attempt or no-change Work
+must not acquire an invented implementation or execution. Organize paragraphs by
+reasoning unit, explain terms at first use, and use grounded captions to explain
+what a figure helps answer. Keep material conditions near claims and capture
+details in supporting provenance. Independently compose names and summaries from
+their own Goal/progress plans. A new preparation policy does not refresh an old
+publication: current explanation requires explicit investigation and new recording.

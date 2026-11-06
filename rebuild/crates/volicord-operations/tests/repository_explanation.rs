@@ -238,14 +238,16 @@ fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_ac
         .as_str()
         .ok_or("instructions")?;
     for obligation in [
-        "independently identify",
+        "reader questions",
         "two materially distinct",
-        "failure/exit",
-        "unknown/omitted",
+        "failure paths",
+        "unknowns",
         "canonical Project Purpose",
-        "core domain record relationships before storage",
-        "required callees/callbacks",
-        "earlier language is never the expected answer",
+        "actual use or resume flows",
+        "implementing callees/callbacks",
+        "every language/revision independently",
+        "reasoning unit",
+        "Caption explains figure purpose/scope/phase",
         "effect_review.py",
     ] {
         assert!(
@@ -254,6 +256,7 @@ fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_ac
         );
     }
     assert!(!instructions.contains("one complete representative operation"));
+    assert!(!instructions.contains("core domain record relationships before storage"));
     // Repository guidance must not route investigation through Work correction.
     assert!(!instructions.contains("Corrections need evidenced symptom"));
     assert!(!prepared.to_string().contains("안녕"));

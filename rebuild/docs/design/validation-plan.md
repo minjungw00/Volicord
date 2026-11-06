@@ -5054,3 +5054,68 @@ These are supporting observations, not official elapsed-time results or a claim
 about the historical c423 failure. Preserve the full workload, every observation,
 RSS sampling interval, clocks, measurement start/end boundaries, metric definitions
 and ceilings. A new exact clean candidate still requires its own complete gate.
+
+### Reader-question production support — 2026-11-07
+
+At `7d27a0d4` plus the scoped authoring change, inspection of reviewed originals
+reproduced purpose/resume disconnection, repeated relations, mechanism-first investigation
+and overloaded logical units. The confirmed preparation barrier was the generic
+Repository instruction to put domain-record relationships before actual operations.
+Work instructions also needed explicit investigation/findings and count-unit
+distinctions. Existing v9 grounded captions/roles, independent short publications,
+retained reading and current correspondence were sufficient; no new semantic
+format, renderer, automatic refresh or second retained decoder was justified.
+
+Ignored `rebuild/.local/reader-questions-y_2ijuvo/` preserves original hashes,
+questions/facts frozen before drafting, every initial draft/refusal, exact Source
+reads, normal prepare/compose/record receipts and complete public consumption.
+Six new English/Korean articles cover the actual active repository, a reserved
+Python webhook/agent/calculator repository at `5dd07d8`, and the original historical
+investigation/no-change/paused Work. The Python article distinguishes
+receipt from delivery, conversation state from callback deduplication, calculation
+from submission, and mocked tests from executed results. These were new host words
+from originals, not postprocessed exports or supplied expected prose. The Work
+article is record-grounded report reading; missing original command-body association
+does not establish a new execution or its cause. No distinct real implementation
+or failed Work with established original provenance was supplied by this matrix.
+
+Normal CLI and complete MCP reassembly preserve all six admitted articles and
+permitted original code. Whole-article live/native reading passed 60 conditions;
+body/caption evidence navigation passed 120 conditions over the two Repository
+subjects at 1440/1024/768/390/320, including complete code, range choice, sizing and
+exact return. These are source-familiar technical/visual observations, not isolated
+first reading, human comprehension or assistive acceptance. The selected immutable
+package-43 file matches the maintained CE1 SHA-256; the renderer was not changed.
+
+All six original historical publications retain their exact IDs, words, figures,
+preparation/realization hashes and recording times with expired cited ranges.
+Four Goal-only name/progress-summary preparations are byte-identical between the
+baseline and candidate binaries. Disposable copies of real records additionally
+verify independent short reading after article deletion, same-text republication
+with a distinct ID and unchanged realization hash, rejection of the old citation
+identity, successful new exact citation reading and explicit Source deletion denial.
+An availability notice is valid residual prose after deletion; the first control
+incorrectly demanded an empty vector and is preserved as an assessment error.
+A subsequent actual owner-document edit changed included-inventory correspondence
+to `changed` in both languages while preserving the new publication and all its
+meaning. Reading performed no new recording or silent current-basis rebinding.
+
+Initial additive guidance exceeded the unchanged preparation bound; compaction
+preserved evidence and the final-byte positive/refusal controls. Initial missing
+diagram-title, obsolete instruction-order assertion, executable-copy contention,
+missing Playwright and sandbox-browser failures remain separately preserved.
+Focused budget, repository, Work publication, MCP Work, Viewer grounding and retained
+read controls passed; three manifest-dependent/measurement tests remained ignored.
+No authoritative aggregate, official V11 or legacy workspace validation was run.
+
+Measured compact response/retained/export bytes are separate in
+`production-metrics.json`. One uncontended cold-process complete Korean current
+publication read took 25.236 seconds over 33 MCP calls: 133,172 content bytes and
+43,875 evidence bytes produced 379,527 transport bytes; process peak was 67,576 KiB.
+This is one complete-consumption sample, not an ordinary-read percentile or speedup.
+Earlier current samples had overlapping readers and remain labeled accordingly.
+Host authorship token/latency instrumentation, independently isolated semantic
+assessment and actual human/assistive acceptance are unavailable. The task establishes
+bounded real transfer through supported production, not universal author sufficiency
+or complete coverage of actual Work kinds. Current/historical selection showed no
+reproduced defect requiring a separate implementation commit.

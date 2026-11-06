@@ -2372,6 +2372,25 @@ and a missing Checkpoint cannot manufacture attempts, verification or Decision.
 
 ### Flexible article production
 
+Current preparation begins with Source-derived reader questions and material
+qualifiers. Repository explanations connect purpose to actual use/resume flows,
+cooperating responsibilities and supported reasons; a generic record-relationship
+ordering must not override the subject's questions. Work explains its actual
+activity and supported finding before supporting mechanism. Investigation,
+failed/paused/no-change and sparse records do not require an invented patch or
+result. Cases, reports, executions and acceptance remain separate units.
+
+Paragraphs follow reasoning units, with terms explained at first relevant use.
+Languages preserve facts, conditions and useful grouping without literal parity.
+Existing grounded caption/narrative and display roles express a figure's purpose,
+scope and relevant phase meaning; prose explains consequences instead of repeating
+its relation inventory. No new role/model or renderer-generated phase name is
+needed for these obligations. All authored words retain ordinary claim identity,
+Source admission, traversal, fingerprint and budgets. New editorial guidance
+changes current article preparation hashes only; supported retained publications
+keep the accepted retained-read separation. Independent Goal names/progress
+summaries retain their own instructions, evidence and preparation identities.
+
 Preparation now gives the authorized host a source-first editorial pass: identify
 missing explanatory steps, organize actual topics, author useful section headings
 and read each causal bridge against original evidence. Short single-topic answers
