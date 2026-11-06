@@ -446,6 +446,7 @@ def observe(artifacts, runtimes, *, duration_seconds=60, interval_ms=250, stop=N
 
 
 def main():
+    import evidence_purpose
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('command', choices=['start','attach','expect','stop'])
     p.add_argument('--output', type=Path, required=True)
@@ -454,6 +455,8 @@ def main():
     p.add_argument('--runtime', type=Path, action='append', default=[])
     p.add_argument('--duration-seconds', type=float, default=60)
     p.add_argument('--interval-ms', type=int, default=250)
+    p.add_argument('--evidence-purpose', choices=sorted(evidence_purpose.PURPOSES),
+        help='Standalone observation purpose; a campaign always retains its frozen purpose')
     p.add_argument('--waiting-runtime', type=Path, action='append', default=[], help='Operator declares not-yet-started Runtime; never inferred from absence')
     p.add_argument('--state', choices=['waiting','active','unknown'])
     args = p.parse_args()
@@ -482,12 +485,16 @@ def main():
         artifacts = value['candidate_artifacts']
         runtimes = [Path(j['runtime_home']) for j in value['journeys'].values()]
         candidate_head = value['candidate_head']
+        observation_purpose = evidence_purpose.validate(value['evidence_purpose'])
+        if args.evidence_purpose is not None and args.evidence_purpose != observation_purpose:
+            raise ObservationError('campaign observation purpose mismatch')
     else:
         if args.binary is None or not args.runtime:
             raise ObservationError('campaign root or explicit binary and runtime required')
         artifacts = {'volicord-mcp': {'path':str(args.binary.resolve()), 'sha256':digest(args.binary)}}
         runtimes = [r.resolve() for r in args.runtime]
         candidate_head = None
+        observation_purpose = args.evidence_purpose or evidence_purpose.NATURALISTIC
     args.output.mkdir(mode=0o700, parents=True, exist_ok=False)
     campaign.write_json(args.output / 'control.json', {'kind':'mcp_resource_observer_control',
         'candidate_head':candidate_head, 'candidate_mcp_sha256':artifacts['volicord-mcp']['sha256'], 'runtime_bindings':[path_binding(r) for r in runtimes]})
@@ -503,7 +510,7 @@ def main():
         return current
     result = observe(artifacts, runtimes, expectations=waiting, expectation_reader=read_expectations,
         duration_seconds=args.duration_seconds, interval_ms=args.interval_ms,
-        stop=lambda: (args.output / 'stop.request').exists())
+        stop=lambda: (args.output / 'stop.request').exists(), purpose=observation_purpose)
     campaign.write_json(args.output / 'resource.json', result)
     print(json.dumps({'status':result['status'], 'samples':result['measurement']['sample_count'],
         'termination':result['termination']}))

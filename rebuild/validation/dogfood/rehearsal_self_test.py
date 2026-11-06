@@ -17,13 +17,35 @@ class ObservationFailureTests(unittest.TestCase):
         import tempfile
         from unittest.mock import Mock, patch
         from resource_coverage_self_test import observation
-        for kind in ('gap', 'not_observed', 'measured'):
+        cases = {'gap': 'incomplete: partial', 'not_observed': 'incomplete: not_observed',
+            'measured': 'past observation admission', 'child_failed': 'authored child failed',
+            'missing': 'no resource evidence', 'wrong_candidate': 'invalid resource evidence',
+            'wrong_runtime': 'observed Runtime/repository binding mismatch',
+            'wrong_executable': 'executable path mismatch',
+            'wrong_purpose': 'purpose or cadence mismatch', 'wrong_cadence': 'purpose or cadence mismatch'}
+        for kind, error_text in cases.items():
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 runtime = root / 'runtime'; runtime.mkdir()
                 (root / 'task.txt').write_text('Authored observation boundary control.')
                 value = observation(0 if kind == 'not_observed' else 1,
-                    purpose=purpose.REHEARSAL)
+                    candidate=('d' if kind == 'wrong_candidate' else 'a') * 64,
+                    purpose=purpose.NATURALISTIC if kind == 'wrong_purpose' else purpose.REHEARSAL)
+                runtime_binding = ('e' * 64 if kind == 'wrong_runtime'
+                    else rehearsal.resource_observer.path_binding(runtime))
+                value['runtimes'][0]['runtime_binding'] = runtime_binding
+                for tick in value['ticks']:
+                    tick['runtimes'][0]['runtime_binding'] = runtime_binding
+                for instance in value['instances']:
+                    instance['identity'].update(runtime_binding=runtime_binding,
+                        cwd_binding=rehearsal.resource_observer.path_binding(root),
+                        executable_path='/wrong/executable' if kind == 'wrong_executable'
+                            else str(root / 'volicord-mcp'))
+                if kind != 'wrong_cadence':
+                    value['interval_ns'] *= 5; value['duration_ns'] *= 5
+                    for tick in value['ticks']: tick['elapsed_ns'] *= 5
+                    for instance in value['instances']:
+                        for sample in instance['samples']: sample['elapsed_ns'] *= 5
                 if kind == 'gap':
                     value['ticks'][1]['errors'] = ['gap']
                     value['measurement']['measurement_errors'] = ['gap']
@@ -32,26 +54,39 @@ class ObservationFailureTests(unittest.TestCase):
                     value['status'] = 'not_observed'
                     value['measurement']['measurement_errors'] = ['unknown_coverage']
                 rehearsal.resource_observer.validate(value)
-                prepared = {'candidate_artifacts': {'volicord-mcp': {'sha256': 'a' * 64}},
+                artifacts = {'volicord-mcp': {'sha256': 'a' * 64, 'path': str(root / 'volicord-mcp')}}
+                prepared = {'candidate_artifacts': artifacts,
                     'works': {rehearsal.c.work_key('volicord', 'A'): {
                         'repository_path': str(root), 'runtime_home': str(runtime),
                         'operator_task_artifacts': {'start': {'path': 'task.txt'}}}}}
-                logs = Mock()
-                logs.run.return_value = b'{"hookSpecificOutput":{"additionalContext":"authored fixture"}}'
-                client = Mock()
-                client.tool.side_effect = RuntimeError('past observation admission')
+                def execute(argv, **kwargs):
+                    if argv[0] != rehearsal.sys.executable:
+                        return b'{"hookSpecificOutput":{"additionalContext":"authored fixture"}}'
+                    if kind != 'missing':
+                        output = root / 'candidate-resource-observation'; output.mkdir()
+                        rehearsal.c.write_json(output / 'resource.json', value)
+                    if kind == 'child_failed': raise ValueError('authored child failed')
+                    return b'authored observer support'
+                logs = Mock(); logs.run.side_effect = execute
+                client = Mock(); client.tool.side_effect = RuntimeError('past observation admission')
                 expected = RuntimeError if kind == 'measured' else ValueError
                 with patch.object(rehearsal.c, 'load_campaign', return_value=prepared), \
                         patch.object(rehearsal.c.harness, 'current_session_slots', return_value=[('volicord', 'A', 'start')]), \
                         patch.object(rehearsal, 'Product', return_value=client), \
-                        patch.object(rehearsal.resource_observer, 'observe', return_value=value) as observe, \
                         patch.object(rehearsal.c, 'record_resources') as record:
-                    with self.assertRaises(expected):
+                    with self.assertRaises(expected) as caught:
                         rehearsal.run_sessions(root, root, root / 'volicord', logs)
-                    observe.assert_called_once_with(prepared['candidate_artifacts'], [runtime],
-                        duration_seconds=1, interval_ms=250, purpose=purpose.REHEARSAL)
+                    self.assertIn(error_text, str(caught.exception))
                     record.assert_not_called()
-                self.assertEqual(json.loads((root / 'actual-resource.json').read_text()), value)
+                self.assertEqual(logs.run.call_args_list[1].args[0], [
+                    rehearsal.sys.executable, '-B', Path(rehearsal.resource_observer.__file__).resolve(),
+                    'attach', '--binary', artifacts['volicord-mcp']['path'], '--runtime', runtime,
+                    '--output', root / 'candidate-resource-observation', '--duration-seconds', '1',
+                    '--interval-ms', '250', '--evidence-purpose', purpose.REHEARSAL])
+                if kind == 'missing':
+                    self.assertFalse((root / 'actual-resource.json').exists())
+                else:
+                    self.assertEqual(json.loads((root / 'actual-resource.json').read_text()), value)
                 client.close.assert_called_once_with()
                 if kind == 'measured':
                     client.tool.assert_called_once_with('project_resolve', {'repository': str(root)})

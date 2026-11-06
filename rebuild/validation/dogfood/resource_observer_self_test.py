@@ -79,7 +79,8 @@ def main():
             first, startup = launch(); second, _ = launch()
             output = root/'observed'
             cmd = [sys.executable, str(Path(observer.__file__).resolve()), 'attach', '--binary', str(binary),
-                '--runtime', str(runtime), '--output',str(output),'--duration-seconds','5','--interval-ms','250']
+                '--runtime', str(runtime), '--evidence-purpose', 'dogfood_rehearsal',
+                '--output',str(output),'--duration-seconds','5','--interval-ms','250']
             watch_started = time.monotonic_ns()
             watched = subprocess.Popen(cmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE, text=True)
             watched.proof_started = watch_started
@@ -97,6 +98,7 @@ def main():
             save_process(watched, 'observer-duration', stdout, stderr, 'duration_expired', time.monotonic_ns()-watch_started)
             assert watched.returncode == 0, stderr
             result = json.loads((output/'resource.json').read_text()); observer.validate(result, artifacts['volicord-mcp']['sha256'])
+            assert result['evidence_purpose'] == 'dogfood_rehearsal'
             assert result['status'] in {'measured','partial'}, result['measurement']
             assert len(result['instances']) == 3 and all(i['samples'] for i in result['instances']), result
             assert len({(i['identity']['pid'],i['identity']['start_ticks'],i['identity']['instance_id']) for i in result['instances']}) == 3

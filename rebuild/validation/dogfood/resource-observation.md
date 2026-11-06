@@ -43,6 +43,22 @@ one create-only `resources/observation.json` before collection. Missing observat
 remains `not_observed`; it cannot become zero memory. Historical campaign/resource
 schemas are retained as history and never interpreted through a second decoder.
 
+Standalone support observations may explicitly select
+`--evidence-purpose dogfood_rehearsal`. Without that option the existing
+Naturalistic purpose remains the default. A campaign derives purpose from its
+frozen preparation and refuses a conflicting option before creating output.
+The purpose is supplied to the producer, never relabeled after observation;
+neither purpose nor a measured status establishes human or host authorship.
+
+The formal rehearsal attaches through an independent observer process after its
+coordinator prepares repositories and initializes the candidate MCP. It retains
+the same one-second window, 250 ms interval, complete executable hashes, identity
+checks and strict measured/nonzero condition. Observer CPU/RSS describe that
+process; coordinator work and launch/exit remain in the separate process logs.
+The parent preserves child resource bytes even on failure, then checks candidate,
+Runtime/repository, executable path, purpose and cadence before using samples.
+Partial observations still block the rehearsal and subsequent provider/V11.
+
 On Linux the production stdio executable publishes a private bounded JSON entry
 under `Runtime/observations/mcp/INSTANCE.json`, outside all canonical stores. It
 contains a random instance identity, boot ID, PID, process start ticks, executable

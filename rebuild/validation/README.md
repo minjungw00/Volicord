@@ -1000,6 +1000,15 @@ its measured/nonzero admission condition. Rejected partial or missing observatio
 retain their complete samples, ticks and finite error codes through teardown;
 `failure.txt` reports status, sample count and those codes. Diagnostic success does
 not repair a failed gate or identify the cause of an unretained earlier observation.
+The maintained observer runs as an independent child with the original one-second
+window and 250 ms cadence, explicitly producing `dogfood_rehearsal` evidence.
+The parent checks its candidate and Runtime/repository bindings, executable path,
+purpose and cadence; a nonzero child cannot be admitted by a passing-looking file.
+Child streams and resource bytes survive failure. Repository identity inventory
+prunes its existing excluded directory names before descent while retaining the
+same allowed file/symlink membership, polyglot classification and document counts.
+`repository_inventory_self_test.py` proves these boundaries and runs through the
+existing Dogfood harness support owner.
 Collection uses existing explanation/document preparation and recording,
 `collect-batch`, `evaluate`, `collect-cli-observations`, review prepare/record,
 `qualify`, and publish/verify result-lineage owners. Rehearsal evidence cannot supply

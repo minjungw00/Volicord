@@ -470,6 +470,39 @@ def tasks(root):
     return path
 
 
+def observe_initial_process(root, artifacts, runtime, repository, logs):
+    # Observe from an independent process, using the maintained attachment
+    # interface. Coordinator preparation/peak memory is not observer work.
+    output = root / "candidate-resource-observation"
+    artifact = output / "resource.json"
+    retained = root / "actual-resource.json"
+    try:
+        logs.run([sys.executable, '-B', Path(resource_observer.__file__).resolve(),
+            'attach', '--binary', artifacts['volicord-mcp']['path'], '--runtime', runtime,
+            '--output', output, '--duration-seconds', '1', '--interval-ms', '250',
+            '--evidence-purpose', purpose.REHEARSAL])
+    finally:
+        # Preserve raw evidence even when the child rejects it or exits nonzero.
+        if artifact.is_file():
+            with artifact.open('rb') as source, retained.open('xb') as destination:
+                shutil.copyfileobj(source, destination)
+    require(retained.is_file(), 'candidate observer produced no resource evidence')
+    resource = c.read_json(retained)
+    resource_observer.validate(resource, artifacts['volicord-mcp']['sha256'])
+    resource_observer.validate_bindings(resource, {'initial': {
+        'runtime_home': str(runtime), 'repository_path': str(repository)}})
+    require(resource['evidence_purpose'] == purpose.REHEARSAL
+        and resource['interval_ns'] == 250_000_000,
+        'candidate observer purpose or cadence mismatch')
+    require(all(i['identity']['executable_path'] == str(Path(artifacts['volicord-mcp']['path']).resolve())
+        for i in resource['instances']), 'candidate observer executable path mismatch')
+    require(resource['status'] == 'measured' and resource['measurement']['sample_count'] > 0,
+        'actual candidate process observation incomplete: '
+        + resource['status'] + '; samples=' + str(resource['measurement']['sample_count'])
+        + '; errors=' + ','.join(resource['measurement']['measurement_errors']))
+    return resource
+
+
 def run_sessions(root, campaign_root, binary, logs):
     prepared = c.load_campaign(campaign_root)
     paths, resource = [], None
@@ -495,15 +528,8 @@ def run_sessions(root, campaign_root, binary, logs):
             return value
         try:
             if kind == "volicord" and label == "A" and role == "start":
-                resource = resource_observer.observe(prepared["candidate_artifacts"], [runtime],
-                    duration_seconds=1, interval_ms=250, purpose=purpose.REHEARSAL)
-                # A rejected attempt still owns evidence. Preserve it before the
-                # admission check so partial samples and finite errors survive.
-                c.write_json(root / "actual-resource.json", resource)
-                require(resource["status"] == "measured" and resource["measurement"]["sample_count"] > 0,
-                    "actual candidate process observation incomplete: "
-                    + resource["status"] + "; samples=" + str(resource["measurement"]["sample_count"])
-                    + "; errors=" + ",".join(resource["measurement"]["measurement_errors"]))
+                resource = observe_initial_process(root, prepared['candidate_artifacts'],
+                    runtime, repository, logs)
             if role == "start" and label == "A":
                 resolved = call("project_resolve", {"repository": str(repository)})
                 require(resolved["status"] == "not_found", "support Project unexpectedly preexists")

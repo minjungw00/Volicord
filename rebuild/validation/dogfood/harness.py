@@ -1155,11 +1155,17 @@ def load_definition() -> dict[str, Any]:
 
 
 def repository_files(path: Path) -> list[Path]:
-    return [
-        item
-        for item in path.rglob("*")
-        if item.is_file() and not any(part in IGNORED_PARTS for part in item.relative_to(path).parts)
-    ]
+    files = []
+    for directory, directories, names in os.walk(path, followlinks=False):
+        # Filter before descent: ignored caches and preserved attempts can be
+        # much larger than the repository that this inventory describes.
+        directories[:] = [name for name in directories if name not in IGNORED_PARTS]
+        for name in names:
+            if name not in IGNORED_PARTS:
+                item = Path(directory) / name
+                if item.is_file():
+                    files.append(item)
+    return files
 
 
 def repository_identity(kind: str, spec: dict[str, Any], definition: dict[str, Any]) -> dict[str, Any]:
@@ -13449,6 +13455,8 @@ def assert_local_historical_rollout_interpretation() -> str:
 
 
 def self_test() -> int:
+    from repository_inventory_self_test import run_contract_tests as inventory_tests
+    inventory_tests()
     from decision_transport_self_test import check_decision_transport_regressions
     check_decision_transport_regressions()
     from frontier_self_test import check_frontier_regressions

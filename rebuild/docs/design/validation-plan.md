@@ -232,6 +232,15 @@ ticks/samples/finite error를 보존하고 failure에는 status/count/code를 �
 거부 뒤 Product teardown과 후속 provider/V11 중단은 유지한다. 별도 진단의
 성공은 과거에 보존하지 않은 관찰의 원인을 확정하거나 failed gate를 복구하지 않는다.
 
+초기 자원 관찰은 준비 coordinator와 분리된 기존 observer attachment process로
+실행하며 원래 1초 window/250ms 간격, 전체 executable SHA, PID/start/Runtime
+신원 검사와 measured/nonzero 조건을 유지한다. Producer는 명시적으로
+`dogfood_rehearsal`을 기록하고 frozen campaign purpose 변경을 거부한다.
+Parent는 child exit, candidate/Runtime/repository/path/purpose/cadence를 확인한
+뒤에만 관찰을 사용한다. Observer CPU/RSS와 coordinator/launch 비용은 구분한다.
+Repository identity inventory는 기존 제외 디렉터리 진입을 prune한다. 허용 파일과
+symlink-file 집합, 언어·문서 counts를 줄이거나 V11 workload/한도를 바꾸지 않는다.
+
 Exact final의 command vector, ordering, invocation count와 orchestration owner는 이 단일
 gate/runner에만 남는다. Final clippy command의 intended acceptance는 exit success에
 더해 preserved stdout/stderr에 compiler/clippy warning이 없는 warning-clean result다.

@@ -156,5 +156,49 @@ class ConsumerTests(unittest.TestCase):
                 c.load_campaign(root)
 
 
+class PurposeCliTests(unittest.TestCase):
+    def test_standalone_cli_retains_default_or_explicit_purpose_without_inventing_samples(self):
+        import contextlib
+        import hashlib
+        import io
+        import json
+        import sys
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); binary = root / 'candidate'; binary.write_bytes(b'purpose fixture')
+            runtime = root / 'runtime'; runtime.mkdir()
+            for expected, arguments in [('naturalistic', []),
+                    ('dogfood_rehearsal', ['--evidence-purpose', 'dogfood_rehearsal'])]:
+                output = root / expected
+                argv = ['resource_observer.py', 'attach', '--binary', str(binary),
+                    '--runtime', str(runtime), '--output', str(output), '--duration-seconds', '0', *arguments]
+                with patch.object(sys, 'argv', argv), contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(o.main(), 0)
+                value = json.loads((output / 'resource.json').read_text())
+                o.validate(value, hashlib.sha256(b'purpose fixture').hexdigest())
+                self.assertEqual(value['evidence_purpose'], expected)
+                self.assertEqual(value['status'], 'not_observed')
+                self.assertIsNone(value['measurement']['peak_rss_bytes'])
+                self.assertEqual(value['process_ownership'], 'codex_host_external_to_campaign_harness'
+                    if expected == 'naturalistic' else 'test_support_owned_candidate_process')
+
+    def test_cli_cannot_relabel_a_frozen_campaign(self):
+        import campaign
+        import sys
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); output = root / 'observation'
+            campaign_value = {'evidence_purpose': 'naturalistic', 'candidate_head': 'a' * 40,
+                'candidate_artifacts': {}, 'journeys': {}}
+            argv = ['resource_observer.py', 'start', '--campaign-root', str(root),
+                '--output', str(output), '--evidence-purpose', 'dogfood_rehearsal']
+            with patch.object(sys, 'argv', argv), \
+                    patch.object(campaign, 'load_campaign_for_mutation', return_value=campaign_value), \
+                    patch.object(campaign, 'verify_candidate_artifacts'):
+                with self.assertRaisesRegex(o.ObservationError, 'campaign observation purpose mismatch'):
+                    o.main()
+            self.assertFalse(output.exists())
+
+
 
 if __name__ == '__main__': unittest.main()
