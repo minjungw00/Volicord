@@ -3564,3 +3564,11 @@ removes serialized citation bindings and accessible location names, scoped scene
 state and dependent meaning. No transient selector/resize/camera state acquires
 publication or Source authority. Native fragment/disclosure/radio controls consume
 the same retained scene and code without scripts or another-window code navigation.
+
+Repository explanation now shares the grouped document/contents/supporting-card
+presentation with Work detail, while Work-only status, instructions and chronology
+remain absent. Supporting editorial quotations retain the article's publication
+scope, including denial propagation. Diagram location menus and selection labels
+are ephemeral projections of the same admitted SVG roles; they neither add meaning
+nor read authority. Live interactive delivery and script-free native output are
+distinct consumers and must be identified as such in review materials.

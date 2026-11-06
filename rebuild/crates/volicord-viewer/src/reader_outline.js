@@ -4,11 +4,12 @@ function createReaderOutline({lifetime,navigate,closeDrawer}) {
   function updateCue() {
     document.querySelectorAll('.document-nav').forEach(toc => {
       const links=[...toc.querySelectorAll('.toc-primary a,.toc-records a')];
-      const clearance=toc.getBoundingClientRect().bottom+16;
+      if(!toc.getClientRects().length)return;
+      const clearance=toc.getBoundingClientRect().bottom+32;
       let current=links[0];
-      for(const link of links){const node=document.getElementById(link.hash.slice(1));if(node&&node.getBoundingClientRect().top<=clearance)current=link;}
-      const article=toc.closest('.doc');
-      if(article&&article.getBoundingClientRect().bottom<=innerHeight+2)current=links.at(-1);
+      // Closed disclosures have a zero rectangle, not a position at page top.
+      // They must not replace the section the reader is actually passing.
+      for(const link of links){const node=document.getElementById(link.hash.slice(1));if(node?.getClientRects().length&&node.getBoundingClientRect().top<=clearance)current=link;}
       for(const link of links){if(link===current)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');}
       const cue=toc.querySelector('.toc-cue');
       if(cue)cue.textContent=current?.querySelector('span:last-child')?.textContent||(ko?'이 문서의 내용':'On this page');
@@ -16,6 +17,7 @@ function createReaderOutline({lifetime,navigate,closeDrawer}) {
     });
   }
   lifetime.on(document,'click',event=>{
+    document.querySelectorAll('.document-nav[open]').forEach(toc=>{if(!toc.contains(event.target))toc.open=false;});
     const plainLink=event.button===0&&!event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey;
     const outlineTrigger = event.target.closest('.document-nav > summary');
     if (outlineTrigger) {
@@ -50,7 +52,7 @@ function createReaderOutline({lifetime,navigate,closeDrawer}) {
   const article=toc.closest('.doc'),links=[...toc.querySelectorAll('.toc-primary a')];
   let observedWidth=null;
   function fit(force=false){
-   if(article.dataset.workLayout==='grouped'){toc.dataset.overflow='true';return;}
+   if(article.dataset.readingLayout==='grouped'){toc.dataset.overflow='true';return;}
    const width=article.getBoundingClientRect().width;
    if(width===observedWidth&&force!==true)return;observedWidth=width;
    if(width<730){toc.dataset.compact='true';return;}
@@ -62,5 +64,7 @@ function createReaderOutline({lifetime,navigate,closeDrawer}) {
   lifetime.on(toc,'toggle',()=>{if(toc.open)closeDrawer();});
 
  }
+ lifetime.on(document,'toggle',()=>lifetime.frame(updateCue),{capture:true});
+ lifetime.on(window,'resize',()=>lifetime.frame(updateCue));
   return {updateCue,close(){document.querySelectorAll('.document-nav[open]').forEach(n=>n.open=false);}};
 }

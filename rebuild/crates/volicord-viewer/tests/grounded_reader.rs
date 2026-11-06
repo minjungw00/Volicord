@@ -2403,7 +2403,7 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
     ] {
         let document = page
             .split(&format!(
-                "<article class=\"doc\" data-work-layout=\"grouped\" data-work-id=\"{}\"",
+                "<article class=\"doc\" data-reading-layout=\"grouped\" data-work-layout=\"grouped\" data-work-id=\"{}\"",
                 f["work"].as_str().ok_or("Work")?
             ))
             .nth(1)

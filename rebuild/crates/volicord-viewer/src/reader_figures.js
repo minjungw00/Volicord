@@ -6,6 +6,16 @@ function createReaderFigures({lifetime,modal}) {
     const node=id&&document.getElementById(id);
     return node?.closest('svg')===scene.svg?node:null;
   }
+  function select(scene,node) {
+    if(!node)return;
+    scene.selected=node.id;
+    scene.svg.querySelectorAll('[data-selected=true]').forEach(n=>n.removeAttribute('data-selected'));
+    node.dataset.selected='true';
+    const text=document.createElement('span'),link=document.createElement('a');
+    text.textContent=node.getAttribute('aria-label');link.href=node.getAttribute('href');
+    link.className='diagram-text-link paragraph-evidence-action';link.dataset.element=node.id;link.textContent=label('Read claim and evidence','주장과 근거 읽기');
+    scene.selection.replaceChildren(text,link);scene.selection.hidden=false;
+  }
   function clamp(scene) {
     const v=scene.viewport;
     v.scrollLeft=Math.max(0,Math.min(v.scrollLeft,v.scrollWidth-v.clientWidth));
@@ -93,12 +103,28 @@ function createReaderFigures({lifetime,modal}) {
       width:Number(svg.getAttribute('width')),height:Number(svg.getAttribute('height')),disconnect:null};
     scenes.set(figure,scene);figure.querySelector('.diagram-controls').hidden=false;
     figure.dataset.cameraReady='true';
-    const first=svg.querySelector('a.diagram-element[id]');
-    if(first){const start=document.createElement('a');start.href='#'+first.id;start.dataset.diagramStart=first.id;start.textContent=label('Start','시작');figure.querySelector('.diagram-movement>div').append(start);}
+    scene.selection=document.createElement('div');scene.selection.className='diagram-selection';scene.selection.hidden=true;figure.querySelector('.diagram-full-view').after(scene.selection);
+    const menu=figure.querySelector('.diagram-movement>div');
+    const pan=document.createElement('div');pan.className='diagram-pan-controls';pan.append(...menu.children);menu.append(pan);
+    const list=document.createElement('ul');list.className='diagram-jump-list';
+    const seen=new Set();
+    const locations=[...svg.querySelectorAll('a.diagram-element[id][aria-label]')];
+    if(svg.dataset.sequenceLayout==='timeline')locations.sort((a,b)=>{
+      const primary=n=>!!n.querySelector('.sequence-message,.diagram-condition');
+      return Number(primary(b))-Number(primary(a))||(primary(a)?a.getBBox().y-b.getBBox().y:0);
+    });
+    for(const element of locations){
+      if(seen.has(element.id))continue;seen.add(element.id);
+      const item=document.createElement('li'),link=document.createElement('a');
+      link.href='#'+element.id;link.dataset.diagramTarget=element.id;link.textContent=element.getAttribute('aria-label');item.append(link);list.append(item);
+    }
+    menu.append(list);
     const viewportObserver=lifetime.observe(viewport,()=>size(scene));
     const controlsObserver=lifetime.observe(figure.querySelector('.diagram-controls'),()=>size(scene));
     scene.disconnect=()=>{viewportObserver();controlsObserver();};size(scene);
     const on=(type,listener,options={})=>viewport.addEventListener(type,listener,{...options,signal:controller.signal});
+    on('pointerdown',event=>{scene.modified=event.button!==0||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey;},{capture:true});
+    for(const type of ['click','auxclick','pointercancel'])on(type,()=>lifetime.frame(()=>{scene.modified=false;}));
     let drag=null;
     on('pointerdown',event=>{
       if(!spatial||event.button!==0||event.pointerType!=='mouse'||event.ctrlKey||event.metaKey||event.altKey||event.shiftKey||event.target.closest('a,text'))return;
@@ -126,10 +152,11 @@ function createReaderFigures({lifetime,modal}) {
   }
   lifetime.on(document,'click',event=>{
     const close=event.target.closest('[data-figure-close]');if(close){closeExpansion(close.closest('.admitted-diagram'));return;}
-    const start=event.target.closest('a[data-diagram-start]');
+    const start=event.target.closest('a[data-diagram-target]');
     if(start&&event.button===0&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey){
       const scene=scenes.get(start.closest('.admitted-diagram'));if(!scene)return;
-      const node=anchor(scene,start.dataset.diagramStart);if(!node)return;event.preventDefault();scene.entry=false;
+      const node=anchor(scene,start.dataset.diagramTarget);if(!node)return;event.preventDefault();scene.entry=false;
+      start.closest('details').open=false;select(scene,node);
       if(scene.scale<.75)scale(scene,.75);center(scene,node);node.focus({preventScroll:true});return;
     }
     const control=event.target.closest('button[data-diagram-action]');if(!control)return;
@@ -150,13 +177,15 @@ function createReaderFigures({lifetime,modal}) {
   });
   lifetime.on(document,'focusin',event=>{
     const element=event.target.closest?.('a.diagram-element'),scene=scenes.get(element?.closest('.admitted-diagram'));
-    if(scene)scene.selected=element.id;
+    if(scene&&!scene.modified)select(scene,element);
   });
   lifetime.cleanup(()=>{
     for(const [figure,s] of scenes){
       s.controller.abort();s.disconnect();figure.classList.remove('diagram-expanded');figure.querySelector('.diagram-controls').hidden=true;
       s.svg.style.removeProperty('margin-top');s.svg.style.removeProperty('width');s.svg.style.removeProperty('height');s.svg.querySelector('.diagram-content')?.removeAttribute('transform');
-      delete figure.dataset.scale;delete figure.dataset.cameraReady;figure.querySelector('.diagram-movement a[data-diagram-start]')?.remove();
+      const menu=figure.querySelector('.diagram-movement>div'),pan=menu.querySelector('.diagram-pan-controls');if(pan){menu.append(...pan.children);pan.remove();}menu.querySelector('.diagram-jump-list')?.remove();
+      s.selection.remove();
+      delete figure.dataset.scale;delete figure.dataset.cameraReady;
     }scenes.clear();
   });
   return {capture,restore,closeExpansion,suspend(figure){

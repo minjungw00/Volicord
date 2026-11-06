@@ -296,7 +296,14 @@ fn repository_scope_precedes_explanation_with_exact_boundaries_in_supporting_rec
         assert!(doc.contains("data-question=\"RepositoryScopeSummary\""));
         // A heading-free article does not receive invented supporting entries.
         assert!(doc.matches("class=\"document-nav\"").count() <= 1);
-        let body = doc.split("class=\"audit\"").next().ok_or("reading body")?;
+        assert!(doc.contains("data-reading-layout=\"grouped\""));
+        for group in ["work", "checks", "records"] {
+            assert!(doc.contains(&format!("data-reading-group=\"{group}\"")));
+        }
+        let body = doc
+            .split("data-reading-group=\"records\"")
+            .next()
+            .ok_or("reading body")?;
         assert!(!body.contains("data-question=\"RepositoryScope\""));
         assert!(!body.contains("data-question=\"RepositoryCoverage\""));
         assert!(doc.contains(fact("RepositoryScope")?));

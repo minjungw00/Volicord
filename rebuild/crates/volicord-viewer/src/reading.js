@@ -275,9 +275,9 @@
         event.preventDefault();
         const figure=viewport.closest('.admitted-diagram');
         const claim=[...figure.querySelectorAll('.diagram-claim')].find(n=>n.getClientRects().length);
-        const token=remember(diagramReturns,{camera:figures.capture(figure,id),element:id,trigger:diagramLink,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop,
+        const token=remember(diagramReturns,{camera:figures.capture(figure,id),element:id,trigger:element,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop,
           claim:claim?.id || null,figureLeft:figure.scrollLeft,figureTop:figure.scrollTop,
-          triggerTop:diagramLink.getBoundingClientRect().top});
+          triggerTop:element.getBoundingClientRect().top});
         const next={...state(),diagramReturn:token};
         // Both the native Back destination and the new selected claim retain
         // this activation, even if a later activation uses the same element.
@@ -285,7 +285,7 @@
         navigate(diagramLink.getAttribute('href'),next);
         const chosen=document.getElementById(diagramLink.getAttribute('href').slice(1));
         const evidence=chosen?.querySelector('a.evidence-link');
-        if(evidence)openEvidence(evidence,diagramLink,diagramReturns.get(token));
+        if(evidence)openEvidence(evidence,element,diagramReturns.get(token));
       }
     }
     const diagramReturn=event.target.closest('a.diagram-return');

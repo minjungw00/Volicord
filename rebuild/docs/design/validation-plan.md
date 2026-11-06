@@ -4904,6 +4904,24 @@ introduces no model-less compatibility branch or external-transmission authority
 
 ### Complete package-43 CE1 fidelity correction — 2026-11-06
 
+The subsequent user rejection identifies missing scroll tracking, diagram controls,
+pane resizing, range choice and supporting-record composition, and explicitly
+extends the same design to Repository explanation. The earlier `dd9fd3ec` gate
+and static-only delivery do not establish the requested interactive fidelity.
+Preserve those observations; do not reinterpret the rejection as user acceptance.
+
+`viewer-design/ce1_interaction_fidelity.cjs` directly exercises the immutable
+reference and actual repository/Work consumers. Check passive scrolling past real
+headings with closed supporting records, consistent category/index cards, complete
+Move-menu locations and selected context, one complete-family range chooser and
+keyboard continuity, full-height separator hit testing, actual pointer width change,
+Home/End/reset and exact return. Compare effective category/item/chooser styles
+with the original, at five widths in both UI languages; native output has its own
+script-free reading path. Pin the actual executable and original bytes and preserve
+each failed attempt. Existing geometry, byte-binding, expiry/deletion and modifier
+controls remain independent requirements. Deliver a runnable installed live review,
+not only links to native exports. These checks grant no human/assistive acceptance.
+
 The current user rejected the previous UI/design match claim and explicitly
 identified package 43 and its original session. Preserve that correction alongside
 the unchanged selected artifact hashes in the decision owner. The earlier e81f6c7c

@@ -1316,3 +1316,25 @@ Text, links and modified gestures retain browser selection/navigation; a camera
 movement neither changes evidence authority nor steals focus. The real pointer
 regression preserves the previously reproduced adjacent-prose selection and reverse
 scroll instead of treating earlier successful drag samples as universal coverage.
+
+The subsequent user correction also applies this document hierarchy to Repository
+explanation. Its actual article, verification/limits and supporting records share
+the Work reading components; it does not acquire a Goal, Work status or invented
+history. The evidence index uses the same category surface and subordinate cards
+as the other supporting records. Original data remains individually folded.
+
+Passive contents tracking ignores targets inside closed disclosures. Reaching the
+bottom of an article is not evidence that its hidden final record is being read.
+The evidence separator spans the full pane boundary, with bounded drag, arrow
+keys, Home/End for limits and Enter/double-click/reset for the default width.
+The range chooser preserves its keyboard focus and exact original range family.
+The diagram Move menu exposes its real relationships, conditions and participants;
+selection retains their exact labels and a contextual evidence action. Native
+readable scale must leave its controls clear of the first diagram content.
+
+A script-free export cannot demonstrate passive scroll tracking, pointer resizing
+or camera controls. Delivery must provide the installed live Viewer as the primary
+interactive review, with an explicit local launch path and separately named native
+documents. A static-only index must not be described as the complete interactive
+selected experience. Neither screenshots nor reference-style checks establish
+actual user acceptance of the corrected implementation.

@@ -1047,8 +1047,8 @@ fn render_card_publication(
         reader_unit(html, r, answers, index);
     }
     html.push_str(&format!(
-        "<details class=\"publication-evidence\"><summary>{}</summary>",
-        text(r.locale, "Summary provenance", "요약의 근거")
+        "<details class=\"publication-evidence raw-disclosure\"><summary>{}</summary>",
+        text(r.locale, "Original record data", "원문 데이터")
     ));
     for index in 0..answers.prose.len() {
         reader_citations(html, r, answers, index);
@@ -1107,6 +1107,7 @@ fn render_document_body(
     related: &str,
     snapshot: bool,
 ) {
+    let grouped = decision.is_none();
     let has_verification = work.is_some()
         || answers
             .sections
@@ -1137,13 +1138,27 @@ fn render_document_body(
         )
     };
     let article_start = html.len();
+    let article_attributes = format!(
+        "{}{}",
+        if grouped {
+            " data-reading-layout=\"grouped\""
+        } else {
+            ""
+        },
+        work.map(|w| format!(
+            " data-work-layout=\"grouped\" data-work-id=\"{}\" data-work-state=\"{}\"",
+            w.work_item_id,
+            understanding_work_state_key(w.state)
+        ))
+        .unwrap_or_default()
+    );
     html.push_str(&format!("<article class=\"doc\"{}><p class=\"breadcrumb\"><a href=\"{}\">{}</a></p>{}<header class=\"doc-head\">{}",
-        work.map(|w|format!(" data-work-layout=\"grouped\" data-work-id=\"{}\" data-work-state=\"{}\"",w.work_item_id,understanding_work_state_key(w.state))).unwrap_or_default(),
+        article_attributes,
         if snapshot { format!("#{back_id}") } else {
             let mut target=url(r,&back_view);
             if let ViewerView::WorkContext {work,..}=&r.view { if !target.contains("work=") { target.push_str(&format!("#row-{work}")); } }
             escape(&target)
-        }, back_label, if work.is_some() {"<section class=\"work-reading-group\" data-reading-group=\"work\">"} else {""}, if decision.is_some() {format!("<p class=\"eyebrow\">{kind} · {}</p>",text(r.locale,"interpretation and observations","해석과 관측"))} else {String::new()}));
+        }, back_label, if grouped {"<section class=\"work-reading-group\" data-reading-group=\"work\">"} else {""}, if decision.is_some() {format!("<p class=\"eyebrow\">{kind} · {}</p>",text(r.locale,"interpretation and observations","해석과 관측"))} else {String::new()}));
     if current {
         if let Some(name) = answers
             .card_name()
@@ -1211,7 +1226,7 @@ fn render_document_body(
         ));
         work_event_times(html, r, w);
     }
-    let supporting_comparison = work.is_some()
+    let supporting_comparison = grouped
         && current
         && answers.applicability.repository_comparison
             == volicord_projections::RepositoryComparisonState::VerifiedAtRead;
@@ -1267,7 +1282,7 @@ fn render_document_body(
         html.push_str(related);
         html.push_str("</section>");
     }
-    if work.is_some() {
+    if grouped {
         html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"checks\" aria-label=\"{}\">",text(r.locale,"Verification and limits","검증과 설명 한계")));
     }
     if let Some(d) = decision {
@@ -1318,7 +1333,7 @@ fn render_document_body(
         }
         html.push_str("</div></section>");
     }
-    if work.is_some() {
+    if grouped {
         html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"records\" aria-label=\"{}\">",text(r.locale,"Original records and evidence","원문과 근거")));
     } else {
         html.push_str("<div class=\"audit\">");
@@ -1331,8 +1346,19 @@ fn render_document_body(
         text(r.locale, "Full evidence", "전체 근거"),
         document_anchor(answers, "audit")
     ));
-    if current && work.is_some() {
-        html.push_str(&format!("<details class=\"record-category\" id=\"{}\"><summary>{}</summary><p class=\"record-intro\">{}</p>",document_anchor(answers,"editorial-basis"),text(r.locale,"Editorial basis","편집 근거"),text(r.locale,"Host-authored interpretation of the retained original records and cited Source ranges. Its bindings do not independently establish semantic accuracy.","보존된 원래 기록과 인용 Source 범위를 호스트가 해석한 설명입니다. 근거 연결만으로 의미 정확성이 독립적으로 확립되지는 않습니다.")));
+    if current && grouped {
+        html.push_str(&format!("<details class=\"record-category\" id=\"{}\"{}><summary>{}</summary><p class=\"record-intro\">{}</p>",document_anchor(answers,"editorial-basis"),publication_scope(answers),text(r.locale,"Editorial basis","편집 근거"),text(r.locale,"Host-authored interpretation of the retained original records and cited Source ranges. Its bindings do not independently establish semantic accuracy.","보존된 원래 기록과 인용 Source 범위를 호스트가 해석한 설명입니다. 근거 연결만으로 의미 정확성이 독립적으로 확립되지는 않습니다.")));
+        if let Some(w) = work {
+            html.push_str(&format!("<details class=\"editorial-original\"><summary>{}</summary><blockquote lang=\"\">{}</blockquote></details>",text(r.locale,"Original instructions","원래 지시"),escape(w.reading.goal.original_text.as_deref().unwrap_or(&w.title))));
+        }
+        html.push_str(&format!(
+            "<details class=\"editorial-original\"><summary>{}</summary>",
+            text(
+                r.locale,
+                "Admitted title and introduction",
+                "발행된 제목과 도입문"
+            )
+        ));
         for (index, unit) in answers
             .prose
             .iter()
@@ -1340,7 +1366,9 @@ fn render_document_body(
             .filter(|(_, u)| matches!(u.question.as_str(), "Heading" | "Synopsis"))
         {
             html.push_str(&format!(
-                "<p><a href=\"#{}\">{}</a></p>",
+                "<p class=\"editorial-quote\" lang=\"{}\">{}</p><p><a href=\"#{}\">{}</a></p>",
+                escape(&content_language_tag(&answers.language)),
+                escape(&unit.text),
                 reader_claim_anchor(answers, index),
                 if unit.question == "Heading" {
                     text(
@@ -1357,7 +1385,7 @@ fn render_document_body(
                 }
             ));
         }
-        html.push_str("</details>");
+        html.push_str("</details></details>");
     }
     if current {
         if let Some(summary) = &answers.work_summary {
@@ -1486,12 +1514,12 @@ fn render_document_body(
 
         html.push_str("</div></details>");
     }
-    html.push_str(if work.is_some() {
+    html.push_str(if grouped {
         "</section></article>"
     } else {
         "</div></article>"
     });
-    insert_contents(html, article_start, r, answers, work.is_some());
+    insert_contents(html, article_start, r, answers, grouped, work.is_some());
     // Every Source pane is a sibling of the reading article. On narrow
     // screens the article becomes inert while its selected pane is open.
     // This includes independently admitted summaries in the header or audit.
@@ -1508,6 +1536,7 @@ fn insert_contents(
     start: usize,
     r: &ViewerRequest,
     answers: &ReaderAnswers<'_>,
+    grouped: bool,
     work: bool,
 ) {
     let mut article = html[start..].to_owned();
@@ -1516,7 +1545,7 @@ fn insert_contents(
     while let Some(relative) = article[cursor..].find("<h") {
         let at = cursor + relative;
         let level = article.as_bytes().get(at + 2).copied().unwrap_or(b'0');
-        if !matches!(level, b'2' | b'3') || work && level != b'2' {
+        if !matches!(level, b'2' | b'3') || grouped && level != b'2' {
             cursor = at + 2;
             continue;
         }
@@ -1547,7 +1576,7 @@ fn insert_contents(
             document_anchor(answers, "contents"),
             entries.len() + 1
         );
-        let checks = work && prefix.contains("data-reading-group=\"checks\"");
+        let checks = grouped && prefix.contains("data-reading-group=\"checks\"");
         let attributes = format!(" id=\"{id}\" tabindex=\"-1\"");
         article.insert_str(at + 3, &attributes);
         cursor = end + close.len() + attributes.len();
@@ -1556,10 +1585,17 @@ fn insert_contents(
     if entries.is_empty() {
         return;
     }
-    let mut contents = format!("<details class=\"document-nav\"{}{}><summary><span class=\"toc-label\">{}</span><span class=\"toc-cue\">{}</span><span class=\"toc-position\"></span><span aria-hidden=\"true\">⌄</span></summary><nav aria-label=\"{}\">",publication_scope(answers),if work {" data-overflow=\"true\""} else {""},text(r.locale,"Contents","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Current document contents","현재 문서 목차"));
-    for (checks, label) in if work {
+    let mut contents = format!("<details class=\"document-nav\"{}{}><summary><span class=\"toc-label\">{}</span><span class=\"toc-cue\">{}</span><span class=\"toc-position\"></span><span aria-hidden=\"true\">⌄</span></summary><nav aria-label=\"{}\">",publication_scope(answers),if grouped {" data-overflow=\"true\""} else {""},text(r.locale,"Contents","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Current document contents","현재 문서 목차"));
+    for (checks, label) in if grouped {
         vec![
-            (false, text(r.locale, "Work explanation", "작업 설명")),
+            (
+                false,
+                if work {
+                    text(r.locale, "Work explanation", "작업 설명")
+                } else {
+                    text(r.locale, "Repository explanation", "저장소 설명")
+                },
+            ),
             (
                 true,
                 text(r.locale, "Verification and limits", "검증과 한계"),
@@ -1570,7 +1606,7 @@ fn insert_contents(
     } {
         contents.push_str(&format!(
             "{}<span class=\"toc-caption\">{label}</span><ol class=\"toc-primary\">",
-            if work {
+            if grouped {
                 "<div class=\"work-toc-group\">"
             } else {
                 ""
@@ -1578,7 +1614,7 @@ fn insert_contents(
         ));
         for (number, (id, title, level, _)) in entries.iter().filter(|e| e.3 == checks).enumerate()
         {
-            let number = if !work || !checks {
+            let number = if !grouped || !checks {
                 format!("<span class=\"toc-number\">{:02}</span>", number + 1)
             } else {
                 String::new()
@@ -1588,9 +1624,9 @@ fn insert_contents(
                 char::from(*level)
             ));
         }
-        contents.push_str(if work { "</ol></div>" } else { "</ol>" });
+        contents.push_str(if grouped { "</ol></div>" } else { "</ol>" });
     }
-    if work {
+    if grouped {
         contents.push_str(&format!("<div class=\"work-toc-group\"><span class=\"toc-caption\">{}</span><ol class=\"toc-records\">",text(r.locale,"Original records and evidence","원문과 근거")));
         for (section, label) in [
             (
@@ -1607,6 +1643,9 @@ fn insert_contents(
                 text(r.locale, "Verification originals", "검증 원문"),
             ),
         ] {
+            if !work && section != "audit" {
+                continue;
+            }
             contents.push_str(&format!(
                 "<li><a href=\"#{}\"><span>{label}</span></a></li>",
                 document_anchor(answers, section)
@@ -1650,7 +1689,7 @@ fn render_evidence_index(html: &mut String, r: &ViewerRequest, answers: &ReaderA
                 }
                 _ => text(r.locale, "Article statement", "설명 문장"),
             });
-        html.push_str(&format!("<details class=\"record-box evidence-entry\"><summary><span><small>{}</small><span>{}{}</span></span></summary><a class=\"button\" href=\"#{}\">{}</a>",
+        html.push_str(&format!("<details class=\"record-box evidence-entry record-item\"><summary><span><small>{}</small><span>{}{}</span></span></summary><a class=\"button\" href=\"#{}\">{}</a>",
             escape(section_name),escape(&preview),if preview.len()<unit.text.len(){"…"}else{""},
             reader_claim_anchor(answers,entry.unit_index),text(r.locale,"Read this statement in context", "문맥에서 이 문장 읽기")));
         if !entry.citations.is_empty() {

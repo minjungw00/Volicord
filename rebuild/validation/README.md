@@ -1223,6 +1223,15 @@ comparison. The earlier e81 executable fails the same selected-composition check
 Use separate source-derived geometry, authority and return journeys; reference
 fidelity is not independent first reading or user/assistive acceptance.
 
+`node rebuild/validation/viewer-design/ce1_interaction_fidelity.cjs CONFIG` adds
+actual scroll, Move-menu selection, pane drag/keyboard sizing, range-chooser focus,
+record-category/index design and exact-return checks against that immutable file.
+Supply the same browser/reference/executable fields, `referenceWork`, and `cases`
+with `key`, `runtime`, `project`, `language`, `locale`, `offline` and optional `work`.
+Default five widths cover live and genuinely script-free file consumers for every
+case. Output directories are exclusive. Preserve failed observations and use the
+installed Viewer for final review; static exports do not provide scripted controls.
+
 Reader collection applicability is documented in
 [the per-task evidence disposition](dogfood/reader-evidence-applicability.md).
 Existing `dogfood-campaign prepare-explanations` and `inspect-explanations` expose
