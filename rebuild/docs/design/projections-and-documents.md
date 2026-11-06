@@ -3591,3 +3591,30 @@ scope, including denial propagation. Diagram location menus and selection labels
 are ephemeral projections of the same admitted SVG roles; they neither add meaning
 nor read authority. Live interactive delivery and script-free native output are
 distinct consumers and must be identified as such in review materials.
+
+### Local topology-aware graph adapter — 2026-11-07
+
+General graph renderer 22 uses unchanged upstream `elkjs` 0.11.1 bytes embedded in
+the native Viewer through `rquickjs` 0.11.0 (declared Rust 1.85 support). The fixed
+Layered/polyline configuration, seed 1, conservative role-size text metrics and
+stable graph sorting own Derived geometry. Input includes only bounded identities
+and measured rectangles, with a nonempty inert placeholder for each label: ELK
+ignores empty-string labels. Authored labels, guards and claims are rendered only
+from their admitted roles by Rust, never evaluated or interpreted as engine options.
+
+A request has at most the existing 12 nodes/20 relations and bounded labels. The
+local engine has a 64 MiB heap, 1 MiB stack, three-second initialization/execution
+budgets, 1,024 pending-job bound, 64 KiB input and 256 KiB geometry output bounds.
+Output must have exactly the admitted nodes/edges/ports/labels, original direction,
+finite bounded coordinates, matching sizes and complete port-bound routes. Invalid,
+missing, interrupted or oversized results fail explicitly through the existing
+complete inert textual alternative; that alternative is not accepted visual design.
+The 256 KiB SVG bound and semantic format 9 are unchanged.
+
+The engine exposes no network, filesystem, process, module loader or browser Worker
+host. Its local asynchronous shim only queues trusted callbacks as microtasks.
+Thread-local reuse retains engine code, not geometry or Source authority; results
+are consumed and garbage-collected, and a failed execution discards the runtime.
+No geometry cache can supply denied meaning. Live, newly published native snapshots
+and CLI-invoked exports all call this same server-side renderer. Browser enhancement
+continues to own only the camera and existing reading interactions.

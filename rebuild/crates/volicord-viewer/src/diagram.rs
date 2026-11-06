@@ -1,9 +1,9 @@
-//! Bounded, dependency-free local SVG. No generated markup, fonts, assets or I/O.
+//! Bounded local SVG from admitted meaning and validated local Derived geometry.
 use volicord_projections::*;
 #[path = "diagram_overview.rs"]
 mod overview;
 
-pub(crate) const RENDERER_ID: &str = "volicord-static-svg/21";
+pub(crate) const RENDERER_ID: &str = "volicord-static-svg/22";
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -223,13 +223,20 @@ fn bounded_input(d: &GroundedDiagram, texts: &[&str], ns: &str) -> Result<(), St
         }
     };
     token(&d.id)?;
+    let mut identities = std::collections::BTreeSet::new();
     for n in d.nodes() {
         token(&n.id)?;
+        if !identities.insert(n.id.as_str()) {
+            return Err("duplicate local SVG element identity".into());
+        }
     }
     match &d.meaning {
         DiagramMeaning::Sequence { groups, .. } => {
             for m in groups.iter().flat_map(|g| &g.messages) {
                 token(&m.id)?;
+                if !identities.insert(m.id.as_str()) {
+                    return Err("duplicate local SVG element identity".into());
+                }
                 token(&m.from)?;
                 token(&m.to)?;
             }
@@ -240,6 +247,9 @@ fn bounded_input(d: &GroundedDiagram, texts: &[&str], ns: &str) -> Result<(), St
         | DiagramMeaning::State { relations, .. } => {
             for edge in relations {
                 token(&edge.id)?;
+                if !identities.insert(edge.id.as_str()) {
+                    return Err("duplicate local SVG element identity".into());
+                }
                 token(&edge.from)?;
                 token(&edge.to)?;
             }
@@ -448,15 +458,32 @@ mod tests {
                 .parse::<usize>()
                 .map_err(|e| e.to_string())
         };
-        // Column equality belonged to the replaced annotation-box policy.
-        // Every actual source/route keeps its own origin and visible predicate;
-        // browser controls independently check endpoints and glyph intersections.
+        // Cycles must not force all SCC members into one column. Canvas width
+        // is Derived, not the old 760px article constraint.
+        let canvas_width = output
+            .split_once("width=\"")
+            .ok_or("canvas width")?
+            .1
+            .split_once('"')
+            .ok_or("canvas width close")?
+            .0
+            .parse::<usize>()
+            .map_err(|e| e.to_string())?;
+        assert!(
+            ids.iter()
+                .map(|id| column(id))
+                .collect::<Result<std::collections::BTreeSet<_>, _>>()?
+                .len()
+                > 1
+        );
         for id in ids {
-            assert!(column(id)? < 760);
+            assert!(column(id)? < canvas_width);
         }
         for (i, _) in endpoints.iter().enumerate() {
-            assert!(column(&format!("edge-{i}"))? < 760);
-            assert!(output.contains(&esc(values[i + 4])));
+            assert!(column(&format!("edge-{i}"))? < canvas_width);
+            assert!(output.contains(&esc(words(values[i + 4], 296)
+                .first()
+                .ok_or("label line")?)));
         }
         assert_eq!(
             output
@@ -859,6 +886,11 @@ mod tests {
             .iter()
             .map(|p| p["text"].as_str().ok_or("public text"))
             .collect::<Result<Vec<_>, _>>()?;
+        let locale = match std::env::var("VOLICORD_LAYOUT_LOCALE").as_deref() {
+            Ok("ko") => FixedLocale::Korean,
+            Ok("en") | Err(_) => FixedLocale::English,
+            _ => return Err("unsupported layout review locale".into()),
+        };
         for raw in value["diagrams"].as_array().ok_or("public diagrams")? {
             let d: GroundedDiagram =
                 serde_json::from_value(raw.clone()).map_err(|e| e.to_string())?;
@@ -868,10 +900,20 @@ mod tests {
                 &texts,
                 "review-publication",
                 &|id, _| format!("{id}-claim"),
-                FixedLocale::English,
+                locale,
             )
             .map_err(|e| format!("{}: {e}", d.id))?;
             let scene_elapsed_ns = started.elapsed().as_nanos();
+            if let Some(root) = std::env::var_os("VOLICORD_LAYOUT_REVIEW_ROOT") {
+                use std::io::Write;
+                let path = std::path::Path::new(&root).join(format!("{}.svg", d.id));
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(path)
+                    .and_then(|mut f| f.write_all(output.as_bytes()))
+                    .map_err(|e| e.to_string())?;
+            }
             assert!(output.contains("connected-overview"));
             println!(
                 "{}",
@@ -949,12 +991,29 @@ mod tests {
             Ok((value("x")?, value("y")?, value("width")?, value("height")?))
         }
         fn crosses(a: (i64, i64), b: (i64, i64), r: (i64, i64, i64, i64)) -> bool {
-            let (x, y, w, h) = r;
-            if a.0 == b.0 {
-                a.0 > x && a.0 < x + w && a.1.min(b.1) < y + h && a.1.max(b.1) > y
-            } else {
-                a.1 > y && a.1 < y + h && a.0.min(b.0) < x + w && a.0.max(b.0) > x
+            // Independent segment/rectangle slab intersection, including diagonal routes.
+            let mut enter = 0.0_f64;
+            let mut leave = 1.0_f64;
+            for (start, end, low, high) in [
+                (a.0, b.0, r.0 + 1, r.0 + r.2 - 1),
+                (a.1, b.1, r.1 + 1, r.1 + r.3 - 1),
+            ] {
+                let delta = (end - start) as f64;
+                if delta == 0.0 {
+                    if start < low || start > high {
+                        return false;
+                    }
+                    continue;
+                }
+                let t1 = (low - start) as f64 / delta;
+                let t2 = (high - start) as f64 / delta;
+                enter = enter.max(t1.min(t2));
+                leave = leave.min(t1.max(t2));
+                if enter > leave {
+                    return false;
+                }
             }
+            enter <= leave
         }
         // A side-entry line through a third state is rejected by this oracle.
         assert!(crosses((1008, 700), (370, 700), (410, 640, 220, 120)));
@@ -1037,6 +1096,7 @@ mod tests {
                 let path = attribute(group.split_once("<path ").ok_or("path")?.1, "d")?;
                 let tokens = path
                     .replace('M', " M ")
+                    .replace('L', " L ")
                     .replace('H', " H ")
                     .replace('V', " V ");
                 let mut iter = tokens.split_whitespace();
@@ -1050,7 +1110,7 @@ mod tests {
                             .map_err(|e| e.to_string())
                     };
                     let next = match command {
-                        "M" => (number()?, number()?),
+                        "M" | "L" => (number()?, number()?),
                         "H" => (number()?, point.1),
                         "V" => (point.0, number()?),
                         _ => return Err("unsupported path command".into()),

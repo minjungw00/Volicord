@@ -1351,3 +1351,34 @@ interactive review, with an explicit local launch path and separately named nati
 documents. A static-only index must not be described as the complete interactive
 selected experience. Neither screenshots nor reference-style checks establish
 actual user acceptance of the corrected implementation.
+
+### Topology-aware graph geometry — 2026-11-07
+
+Renderer 22 replaces the SCC-column, fixed label-corridor and sequential obstacle
+router for all four general graph kinds with pinned local ELK Layered 0.11.1.
+Node sizes, distinct per-relation endpoint ports, complete action/guard label boxes
+and routes are laid out together. Unordered node/edge inputs are sorted by stable
+identity before the engine; the engine's internal cycle breaking never changes the
+admitted source/target or claim. Sequences retain their separate temporal policy.
+This supersedes the dependency-free general graph choice above, not CE1's reading
+shell, camera, evidence hierarchy or exact-return contract.
+
+The selected routing mode is polyline. The identical-meaning comparison rejected
+ELK's initial orthogonal policy: it passed collision checks but left long parallel
+runs and a low source node in the representative cyclic graph. Polyline gives a
+centered fan with shorter direct connections; incident-port space is included in
+node height. Graphviz 14.1.1 via Viz 3.24.0 is a credible spline comparator, with
+particularly clear results on that example and smaller worlds on some transfers.
+It is not a redundant installed engine. ELK's directly executable local JS package
+can be embedded in the native Viewer with bounded QuickJS; Graphviz's WASM comparator
+would need another native WASM integration or a packaged executable. Graphviz's
+orthogonal port/edge-label limitation also rules out an assumed equivalent ortho
+configuration. These are scoped integration and tracing observations, not universal
+ELK superiority or human comprehension acceptance.
+
+CE1 still enters at available-width fit. Fit can make text small; native scale and
+deliberate camera reading are separate observations. Geometry identity includes
+admitted roles, renderer, engine/config/metrics and UI locale. Camera memory reuses
+physical positions only for the same geometry and viewport; otherwise the exact
+semantic origin is restored. No geometry is retained as canonical content, and no
+layout-only change reauthors an explanation or renews its evidence.

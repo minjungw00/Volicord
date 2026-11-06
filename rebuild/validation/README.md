@@ -1603,7 +1603,7 @@ This is caller output protection, not a new evidence framework or qualification.
 Connected sequence reading uses one complete admitted temporal world.
 `document_evidence_journey.cjs` invokes `sequence_views.cjs` after initial orientation,
 checking every role/claim origin, exact Source bytes, deep return and resized camera.
-The default renderer is 21; an explicit `renderer` still identifies an older diagnostic
+The default renderer is 22; an explicit `renderer` still identifies an older diagnostic
 binary. Complex graphs share the bounded world policy; small graphs remain inline.
 Initial fit records orientation separately from readable text. Subsequent pan/zoom is
 a deliberate reading action, not a defect or permission to conceal ambiguous geometry.
@@ -1743,3 +1743,13 @@ or incomplete files still contribute their full logical and allocated bytes.
 Resource clocks, RSS sampling, call/observation counts, warmup rules, metric formulas
 and ceilings remain unchanged. `harness.py self-check` includes repeated-reference,
 freshness, missing/empty/symlink and post-warmup growth counterexamples.
+
+
+Topology-aware graph controls also reject reversed paths, lost/foreign geometry,
+unordered-input instability, detached labels and long common trunks even when
+endpoints match. `diagram_geometry_browser.cjs` uses the SVG's actual origin namespace
+for negative controls; actual admitted publications need not use the fixture name as
+their namespace. The explicit renderer-review test accepts `VOLICORD_LAYOUT_LOCALE`
+(`en`/`ko`) and optionally writes new SVGs exclusively under
+`VOLICORD_LAYOUT_REVIEW_ROOT`. Preserve every earlier attempt; a collision check or
+fit-width screenshot alone does not prove traceability.

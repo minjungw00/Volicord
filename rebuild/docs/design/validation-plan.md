@@ -5119,3 +5119,58 @@ assessment and actual human/assistive acceptance are unavailable. The task estab
 bounded real transfer through supported production, not universal author sufficiency
 or complete coverage of actual Work kinds. Current/historical selection showed no
 reproduced defect requiring a separate implementation commit.
+
+### Topology-aware layout comparison and integration — 2026-11-07
+
+This task is focused validation, not Final, official V11 or aggregate qualification.
+The original six public answers and claims were frozen at execution HEAD 17436560;
+no editorial text was changed for geometry comparisons. The representative is the
+actual four-node/nine-relation execution-location graph. State, concept, dependency
+and flow inputs were reserved as structurally different real transfers before
+inspection. A separate Tiny City source snapshot at
+6f58ababaa45d8cb4c74098a40830a65e802220a reserves independent worker/fallback reading
+questions before its first layout; it is a new repository article, not invented Work
+history. Earlier inputs, failures, code windows and CE1 references stay unchanged.
+
+Compared actual elkjs 0.11.1 (EPL-2.0) and Graphviz 14.1.1 through Viz 3.24.0,
+including identical measured text/label rectangles. Official versioned source and
+runtime option discovery establish feasibility; installed `dot` was absent, not
+rejected for absence. ELK runs inside native rquickjs 0.11.0 without Node. The initial
+orthogonal integration's collision pass missed its long tracing detours, and it was
+rejected after whole-scene inspection. Polyline was compared with the same labels,
+ports and original semantics, not a relabelled/edge-reduced fixture. Stable sorting
+and incident-port space are general policies; no repository or reviewed filename
+selects geometry. Graphviz spline remains a credible alternative, not an installed
+second engine. Its documented ortho edge-label/port limitation is material:
+<https://www.graphviz.org/docs/attrs/splines/>. Selected ELK source:
+<https://github.com/kieler/elkjs/tree/0.11.1>; bounded runtime APIs:
+<https://docs.rs/rquickjs/0.11.0/rquickjs/struct.Runtime.html>.
+
+In the source-familiar representative native comparison, summed directed path length
+was 15,298px baseline, 6,465px ELK polyline and 4,886px Graphviz spline. Maximum paths
+were 2,480/898/799px, with worlds 1072×1312/966×1276/1428×995. This is one topology,
+not universal engine ranking or human tracing success. All five original Korean
+graph topologies kept complete meaning and passed glyph/path checks under the new
+policy. Fit and native reading states were preserved separately. Some wide transfer
+worlds still require deliberate zoom/panning; fit-width is not readable-scale proof.
+
+Direct controls cover cycles, parallel/bidirectional/self edges, isolates, repeated
+names, long bilingual guards, branches, input permutations, duplicated IDs, missing
+or reversed geometry, detached labels and long overlapping common-endpoint trunks.
+The runtime refuses over-budget work and has actual memory/interrupt/no-external-host
+controls. A direct consumer regression found missing inline state-owner repetition;
+it was corrected at the shared graph boundary rather than deleting the expectation.
+An actual prepare/observe/compose/record publication preserves original words and
+roles with distinct new Source/publication IDs; live and native evidence checks use
+original file bytes and exact origins. Retained historical publications are not
+relabelled as new authorship.
+
+Raw comparisons, measurements, failed setup attempts and public journeys live only
+under ignored `rebuild/.local/topology-layout-20261107/` and focused-runner receipts.
+Initial locale/namespace, unsupported private-runner paths and CLI draft enum errors
+remain preserved as harness/setup failures. Engine layout time, initialization,
+process memory, output size, dependency bytes and public reading are separate costs.
+A debug cold engine observation took roughly 0.94s and a later state layout 0.19s;
+these are individual diagnostic samples, not installed medians or whole-journey
+speedups. User comprehension, independent assistive acceptance and broader Work-kind
+coverage are not inferred from collision checks or successful code recovery.

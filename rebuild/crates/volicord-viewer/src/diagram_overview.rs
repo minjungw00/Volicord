@@ -2,8 +2,10 @@
 //! All coordinates are computed from admitted topology and exact label lengths.
 use super::{elements, esc, open, RENDERER_ID};
 use std::collections::BTreeMap;
-#[path = "diagram_route.rs"]
-mod routing;
+#[path = "diagram_engine.rs"]
+mod engine;
+#[path = "diagram_geometry.rs"]
+mod geometry;
 #[path = "diagram_sequence.rs"]
 mod temporal;
 use volicord_projections::*;
@@ -52,8 +54,6 @@ fn node_kind(node: &DiagramNode, locale: FixedLocale, common_type: bool) -> Stri
 #[path = "diagram_graph.rs"]
 mod graph_layout;
 use graph_layout::graph;
-#[path = "diagram_world.rs"]
-mod world;
 
 fn sequence<'a>(
     d: &'a GroundedDiagram,
@@ -345,10 +345,8 @@ fn render(
             } else {
                 sequence(d, texts, width, &marker, locale)
             }
-        } else if spatial {
-            world::graph(d, texts, &marker, locale)
         } else {
-            graph(d, texts, width, &marker, locale)
+            graph(d, texts, width, &marker, locale, spatial)
         }
     };
     // A single world is independent of the article/panel width. A camera never
@@ -364,6 +362,28 @@ fn render(
     let medium = medium.as_ref().unwrap_or(&wide);
     let narrow = narrow.as_ref().unwrap_or(&wide);
     let title = diagram_label(&d.title, texts)?;
+    let layout_engine = if matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
+        "volicord-temporal/1;metrics/1"
+    } else {
+        engine::ENGINE_ID
+    };
+    // Geometry is never canonical. Its identity includes complete admitted roles,
+    // metrics/config/engine and locale, independently of a publication's seal.
+    let mut meaning = serde_json::to_value(d).map_err(|e| e.to_string())?;
+    if !matches!(d.meaning, DiagramMeaning::Sequence { .. }) {
+        for field in ["nodes", "relations"] {
+            if let Some(items) = meaning["meaning"][field].as_array_mut() {
+                items.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+            }
+        }
+    }
+    use sha2::{Digest, Sha256};
+    let layout_key = format!(
+        "{:x}",
+        Sha256::digest(format!(
+            "{RENDERER_ID}:{layout_engine}:{locale:?}:{meaning}"
+        ))
+    );
     // No viewBox: each variant keeps native 16px text. CSS selects geometry,
     // never scales an overview to a miniature. The semantic anchors exist once.
     let mut out=format!("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{}\" height=\"{}\" style=\"--map-wide-width:{}px;--map-wide-height:{}px;--map-medium-width:{}px;--map-medium-height:{}px;--map-narrow-width:{}px;--map-narrow-height:{}px\" class=\"connected-overview\" role=\"group\" aria-label=\"{}\" data-renderer=\"{RENDERER_ID}\"><defs><marker id=\"{marker}\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M0 0L10 5L0 10Z\"/></marker></defs><g class=\"diagram-content\"><g class=\"map-wide\">{}</g><g class=\"map-medium\">{}</g><g class=\"map-narrow\">{}</g>",wide.width,wide.height,wide.width,wide.height,medium.width,medium.height,narrow.width,narrow.height,esc(title),wide.background,if spatial { "" } else { &medium.background },if spatial { "" } else { &narrow.background });
@@ -393,6 +413,14 @@ fn render(
             1,
         );
     }
+    out = out.replacen(
+        "<svg ",
+        &format!(
+            "<svg data-layout-engine=\"{}\" data-layout-key=\"{layout_key}\" ",
+            esc(layout_engine)
+        ),
+        1,
+    );
     let mut relationship: Option<&str> = None;
     for id in &wide.order {
         if relationship.is_some_and(|r| id != &format!("{r}:condition")) {

@@ -71,7 +71,7 @@ function createReaderFigures({lifetime,modal}) {
     if(element&&anchor(s,element))s.selected=element;
     return {publication:figure.dataset.readerPublication,figure:figure.id,view:s.svg.dataset.originNamespace,
       element:s.selected,expanded:figure.classList.contains('diagram-expanded'),scale:s.scale,left:s.viewport.scrollLeft,top:s.viewport.scrollTop,
-      width:s.width,height:s.height,available:s.viewport.clientWidth};
+      layout:s.svg.dataset.layoutKey,width:s.width,height:s.height,available:s.viewport.clientWidth};
   }
   function restore(figure,memory) {
     const s=scenes.get(figure);
@@ -82,7 +82,7 @@ function createReaderFigures({lifetime,modal}) {
       modal.set('figure',figure,()=>closeExpansion(figure));
     }
     inset(s);s.entry=false;s.selected=anchor(s,memory.element)?.id||null;scale(s,memory.scale);
-    if(memory.width===s.width&&memory.height===s.height&&memory.available===s.viewport.clientWidth){s.viewport.scrollLeft=memory.left;s.viewport.scrollTop=memory.top;}
+    if(memory.layout===s.svg.dataset.layoutKey&&memory.width===s.width&&memory.height===s.height&&memory.available===s.viewport.clientWidth){s.viewport.scrollLeft=memory.left;s.viewport.scrollTop=memory.top;}
     else center(s,anchor(s,s.selected));clamp(s);
     s.available=s.viewport.clientWidth;s.viewportHeight=s.viewport.clientHeight;return true;
   }

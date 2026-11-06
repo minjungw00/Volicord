@@ -62,7 +62,7 @@ async function run(config){
     await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
     assert.equal(await figure.getAttribute('data-reader-publication'),c.publication,'exact managed publication');
-    const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/21');
+    const svg=figure.locator(':scope > .diagram-full-view svg');assert.equal(await svg.getAttribute('data-renderer'),config.renderer||'volicord-static-svg/22');
     if(scripted&&await svg.evaluate(n=>n.classList.contains('spatial-world'))){await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();}
     if(!scripted&&await svg.evaluate(n=>n.classList.contains('spatial-world'))){await figure.locator('.native-diagram-controls label').filter({has:page.locator('[data-native-scale=full]')}).click();assert.equal(await figure.locator('[data-native-scale=full]').isChecked(),true,'native full-scale reading precedes glyph checks');await settled(page);}
     const geometry=await inspectDiagram(svg,d,publicAnswers.prose);write(baseKey+'-geometry.json',JSON.stringify(geometry,null,2));assert.ok(geometry.errors.length===0,'independent glyph/path/meaning checks: '+geometry.errors.slice(0,3).map(e=>e.kind).join(', '));
@@ -84,7 +84,8 @@ async function run(config){
     const figureId=await figure.getAttribute('id'),element=figure.locator(`a.diagram-element[id="${figureId}-${semantic.id}"]`),claimId=(await element.getAttribute('href')).slice(1),claim=page.locator(`[id="${claimId}"]`);
     await element.focus();await settled(page);const before=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left,y:scrollY}));
     await page.keyboard.press('Enter');await settled(page);
-    const href=await claim.locator(`a.evidence-link[href$="-c${citationIndex+1}"]`).getAttribute('href').catch(()=>null)||await claim.locator('a.evidence-link').first().getAttribute('href');
+    const exactLink=claim.locator(`a.evidence-link[href$="-c${citationIndex+1}"]`);
+    const href=await exactLink.count()?await exactLink.getAttribute('href'):await claim.locator('a.evidence-link').first().getAttribute('href');
     const point=await citationPoint(page,href),pointId=await point.getAttribute('id');let returnPoint=point;
     if(scripted){
      await point.waitFor({state:'visible'});assert.equal(await point.getAttribute('data-reader-publication'),c.publication);

@@ -844,3 +844,15 @@ scoped scene teardown. This changes Derived geometry/interaction only. Explanati
 document metadata 11, all durable formats, exact original publications and Source
 retention remain unchanged. Newly authored bilingual examples are ordinary distinct
 publications from explicitly permitted new observations, not a historical conversion.
+
+### Topology-aware Derived rendering — 2026-11-07
+
+SVG renderer 22 replaces general graph geometry with locally embedded ELK 0.11.1 /
+rquickjs 0.11.0, fixed Layered/polyline settings and metrics revision 1. A layout key
+binds the complete admitted diagram, locale, renderer and engine/config/metrics.
+Unordered graphs normalize node/relation enumeration; temporal enumeration is never
+normalized. Physical camera return requires equal layout key, world dimensions and
+available width. A changed key restores the semantic anchor, not stale coordinates.
+There is no persisted geometry cache or retained-format conversion. Canonical,
+explanation v9, preparation, Source and document metadata versions/lifetimes remain
+unchanged; old exports retain their original bytes and rendering basis.

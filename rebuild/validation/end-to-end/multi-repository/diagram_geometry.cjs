@@ -93,6 +93,14 @@ async function inspectDiagram(svg, diagram, prose) {
         if(Math.abs(start.x-(from.x+from.width/2))>2 || Math.abs(end.x-(to.x+to.width/2))>2)errors.push({kind:'wrong-lifeline-direction',edge:e.id,start,end});
       }else if(!touches(start,from)||!touches(end,to))errors.push({kind:'wrong-edge-direction',edge:e.id,start,end});
       const semantic=bounds(pick(anchor(e.id),'text'));
+      const labelBox=pick(anchor(e.id),'.edge-key');
+      if(labelBox&&root.dataset.layoutEngine?.startsWith('elkjs/')) {
+        const b=bounds(labelBox);let separation=Infinity;
+        for(let at=0;at<=length;at+=1.5){const q=point(p,p.getPointAtLength(at));
+          const dx=Math.max(b.x-q.x,0,q.x-b.x-b.width),dy=Math.max(b.y-q.y,0,q.y-b.y-b.height);
+          separation=Math.min(separation,Math.hypot(dx,dy));}
+        if(separation>24)errors.push({kind:'detached-route-label',edge:e.id,separation});
+      }
       const x=Math.min(from.x,to.x,semantic.x),y=Math.min(from.y,to.y,semantic.y);
       const width=Math.max(from.x+from.width,to.x+to.width,semantic.x+semantic.width)-x;
       const height=Math.max(from.y+from.height,to.y+to.height,semantic.y+semantic.height)-y;
@@ -170,14 +178,14 @@ async function inspectDiagram(svg, diagram, prose) {
       for(const i of hits)errors.push({kind:'path-through-text',path:element||d,text:texts[i]});
       paths.push({element,d,length});
     }
-    // Crossings alone are legal. A long shared run between unrelated
-    // directed connections is an ambiguous merged route, even with good labels.
+    // Crossings and short endpoint contacts are legal. A long shared run is
+    // ambiguous even when the two connections share a source or target.
     const runs=new Map();const merges=new Map();
     for(const edge of edges){const p=edgePath(edge.id);if(!p)continue;
       const seen=new Set();
       for(let at=0;at<=p.getTotalLength();at+=1.5){const q=point(p,p.getPointAtLength(at));seen.add(Math.round(q.x/2)+','+Math.round(q.y/2));}
       for(const cell of seen){const previous=runs.get(cell)||[];
-        for(const other of previous)if(other.from!==edge.from&&other.to!==edge.to){const key=[other.id,edge.id].sort().join(':');merges.set(key,(merges.get(key)||0)+1);}
+        for(const other of previous){const key=[other.id,edge.id].sort().join(':');merges.set(key,(merges.get(key)||0)+1);}
         previous.push(edge);runs.set(cell,previous);
       }
     }
