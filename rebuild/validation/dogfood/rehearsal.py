@@ -497,9 +497,13 @@ def run_sessions(root, campaign_root, binary, logs):
             if kind == "volicord" and label == "A" and role == "start":
                 resource = resource_observer.observe(prepared["candidate_artifacts"], [runtime],
                     duration_seconds=1, interval_ms=250, purpose=purpose.REHEARSAL)
-                require(resource["status"] == "measured" and resource["measurement"]["sample_count"] > 0,
-                    "actual candidate process observation missing")
+                # A rejected attempt still owns evidence. Preserve it before the
+                # admission check so partial samples and finite errors survive.
                 c.write_json(root / "actual-resource.json", resource)
+                require(resource["status"] == "measured" and resource["measurement"]["sample_count"] > 0,
+                    "actual candidate process observation incomplete: "
+                    + resource["status"] + "; samples=" + str(resource["measurement"]["sample_count"])
+                    + "; errors=" + ",".join(resource["measurement"]["measurement_errors"]))
             if role == "start" and label == "A":
                 resolved = call("project_resolve", {"repository": str(repository)})
                 require(resolved["status"] == "not_found", "support Project unexpectedly preexists")

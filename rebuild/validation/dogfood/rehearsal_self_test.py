@@ -12,6 +12,53 @@ import rehearsal  # Import the actual runner and its bounded workflow builders.
 from rehearsal_test_support import passed_result
 
 
+class ObservationFailureTests(unittest.TestCase):
+    def test_rejected_observation_is_retained_before_teardown_and_stops_the_session(self):
+        import tempfile
+        from unittest.mock import Mock, patch
+        from resource_coverage_self_test import observation
+        for kind in ('gap', 'not_observed', 'measured'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                runtime = root / 'runtime'; runtime.mkdir()
+                (root / 'task.txt').write_text('Authored observation boundary control.')
+                value = observation(0 if kind == 'not_observed' else 1,
+                    purpose=purpose.REHEARSAL)
+                if kind == 'gap':
+                    value['ticks'][1]['errors'] = ['gap']
+                    value['measurement']['measurement_errors'] = ['gap']
+                    value['status'] = 'partial'
+                elif kind == 'not_observed':
+                    value['status'] = 'not_observed'
+                    value['measurement']['measurement_errors'] = ['unknown_coverage']
+                rehearsal.resource_observer.validate(value)
+                prepared = {'candidate_artifacts': {'volicord-mcp': {'sha256': 'a' * 64}},
+                    'works': {rehearsal.c.work_key('volicord', 'A'): {
+                        'repository_path': str(root), 'runtime_home': str(runtime),
+                        'operator_task_artifacts': {'start': {'path': 'task.txt'}}}}}
+                logs = Mock()
+                logs.run.return_value = b'{"hookSpecificOutput":{"additionalContext":"authored fixture"}}'
+                client = Mock()
+                client.tool.side_effect = RuntimeError('past observation admission')
+                expected = RuntimeError if kind == 'measured' else ValueError
+                with patch.object(rehearsal.c, 'load_campaign', return_value=prepared), \
+                        patch.object(rehearsal.c.harness, 'current_session_slots', return_value=[('volicord', 'A', 'start')]), \
+                        patch.object(rehearsal, 'Product', return_value=client), \
+                        patch.object(rehearsal.resource_observer, 'observe', return_value=value) as observe, \
+                        patch.object(rehearsal.c, 'record_resources') as record:
+                    with self.assertRaises(expected):
+                        rehearsal.run_sessions(root, root, root / 'volicord', logs)
+                    observe.assert_called_once_with(prepared['candidate_artifacts'], [runtime],
+                        duration_seconds=1, interval_ms=250, purpose=purpose.REHEARSAL)
+                    record.assert_not_called()
+                self.assertEqual(json.loads((root / 'actual-resource.json').read_text()), value)
+                client.close.assert_called_once_with()
+                if kind == 'measured':
+                    client.tool.assert_called_once_with('project_resolve', {'repository': str(root)})
+                else:
+                    client.tool.assert_not_called()
+
+
 class ByteOversizeTests(unittest.TestCase):
     def test_byte_control_exceeds_current_capacity_without_exceeding_characters(self):
         import retention_support

@@ -226,6 +226,12 @@ provider/V11이나 final retry를 만들지 않고, provider failure는 V11이�
 만들지 않으며, V11 failure도 final/provider retry를 만들지 않는다. Direct
 `rebuild/scripts/validate final` invocation은 이 lifecycle을 우회할 수 없도록 거부한다.
 
+Rehearsal은 첫 candidate 자원 관찰을 `actual-resource.json`에 보존한 뒤
+measured/nonzero 조건을 검사한다. Partial, zero-sample, failed 관찰도 원래
+ticks/samples/finite error를 보존하고 failure에는 status/count/code를 남긴다.
+거부 뒤 Product teardown과 후속 provider/V11 중단은 유지한다. 별도 진단의
+성공은 과거에 보존하지 않은 관찰의 원인을 확정하거나 failed gate를 복구하지 않는다.
+
 Exact final의 command vector, ordering, invocation count와 orchestration owner는 이 단일
 gate/runner에만 남는다. Final clippy command의 intended acceptance는 exit success에
 더해 preserved stdout/stderr에 compiler/clippy warning이 없는 warning-clean result다.

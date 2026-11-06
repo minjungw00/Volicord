@@ -995,6 +995,11 @@ provider/chat. Authored transport metadata and realization/review inputs remain 
 support. Product receipts, actual observer samples and artifacts remain distinct.
 Complete raw process evidence is retained privately under the output; only bounded
 hashes/identities/inner verdicts/controls may enter technical handoff evidence.
+The initial candidate observation writes `actual-resource.json` before testing
+its measured/nonzero admission condition. Rejected partial or missing observations
+retain their complete samples, ticks and finite error codes through teardown;
+`failure.txt` reports status, sample count and those codes. Diagnostic success does
+not repair a failed gate or identify the cause of an unretained earlier observation.
 Collection uses existing explanation/document preparation and recording,
 `collect-batch`, `evaluate`, `collect-cli-observations`, review prepare/record,
 `qualify`, and publish/verify result-lineage owners. Rehearsal evidence cannot supply
