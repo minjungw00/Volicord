@@ -391,3 +391,12 @@ body:has(.diagram-expanded) .doc,body:has(.native-figure-toggle:checked) .doc{co
 
 .diagram-controls button{min-width:28px}
 .diagram-controls [data-diagram-action=expand]{flex-basis:auto}
+
+/* Code and observation records are siblings of the selected claim. Its short
+   box cannot contain a sticky header for the full evidence scroll. Keep the
+   existing exact-context controls in the viewport and reserve their space. */
+.appendix .source-point{padding-top:76px}
+body .appendix .source-point .point-bar{position:fixed;top:0;right:24px;width:calc(var(--evidence-width,464px) - 48px);margin:0;padding:10px 0;z-index:3}
+@media(min-width:761px) and (max-width:1199px){body .appendix .source-point .point-bar{width:calc(var(--evidence-width,540px) - 48px)}}
+@media(max-width:760px){body .appendix .source-point .point-bar{right:18px;width:calc(100vw - 36px)}}
+@media print{.appendix .source-point{padding-top:0}body .appendix .source-point .point-bar{position:static;width:auto;margin-bottom:20px}}

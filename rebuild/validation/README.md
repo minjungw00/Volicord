@@ -1232,6 +1232,15 @@ Default five widths cover live and genuinely script-free file consumers for ever
 case. Output directories are exclusive. Preserve failed observations and use the
 installed Viewer for final review; static exports do not provide scripted controls.
 
+`node rebuild/validation/viewer-design/evidence_navigation_browser.cjs CONFIG`
+checks a long real evidence pane at entry, mid-scroll and the end of code/metadata.
+It verifies the selected header and close hit target remain in the pane, then range
+switching, width changes and exact close/keyboard return. Configuration uses the
+same browser/executable fields and `cases` as the interaction driver, with optional
+`widths`, `modes` (`live`, `no-js`, `offline`) and `fail_fast`. Native body and diagram
+origins retain their own header/return. This focused UI check is separate from an
+exact-candidate gate and does not turn an earlier candidate's pass into a new one.
+
 Reader collection applicability is documented in
 [the per-task evidence disposition](dogfood/reader-evidence-applicability.md).
 Existing `dogfood-campaign prepare-explanations` and `inspect-explanations` expose

@@ -1328,6 +1328,12 @@ bottom of an article is not evidence that its hidden final record is being read.
 The evidence separator spans the full pane boundary, with bounded drag, arrow
 keys, Home/End for limits and Enter/double-click/reset for the default width.
 The range chooser preserves its keyboard focus and exact original range family.
+The evidence navigation remains at the viewport top while scrolling past the
+selected explanation into its complete code and observation records. Its close,
+range counter and width reset retain their original context and remain reachable
+at desktop, sheet and full-screen widths, including native exports. The navigation
+must not obscure the first content or drift outside a resized pane; printing uses
+ordinary document flow.
 The diagram Move menu exposes its real relationships, conditions and participants;
 selection retains their exact labels and a contextual evidence action. Native
 readable scale must leave its controls clear of the first diagram content.
