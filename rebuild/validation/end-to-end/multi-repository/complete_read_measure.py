@@ -18,6 +18,7 @@ import statistics
 import subprocess
 import threading
 import time
+from citation_originals import citation_bytes
 
 
 def write(path, value):
@@ -143,9 +144,7 @@ def original(case):
             assert digest(unit["text"].encode()[c["claim_start_byte"]:c["claim_end_byte"]]) == c["claim_sha256"]
             key = (c["source_id"], c["field"], c["start_byte"], c["end_byte"], c["use_kind"])
             if key not in windows:
-                assert c["field"] == "body", "This corpus reader expects original file Sources"
-                data = (Path(case["repository"]) / c["locator"]).read_bytes()[c["start_byte"]:c["end_byte"]]
-                assert digest(data) == c["range_sha256"]
+                data = citation_bytes(case, c)
                 windows[key] = (i, j, c, data)
     return realization, public, list(windows.values())
 
@@ -166,8 +165,10 @@ def journey(server, case, expected, output):
         chunk = page["chunk"].encode()
         assert len(chunk) <= 8192
         assert page["offset"] == sum(map(len, chunks))
-        assert page["applicability"]["limitation"] is None, page["applicability"]
-        if windows:
+        assert page["applicability"]["limitation"] == case.get("expected_limitation"), page["applicability"]
+        if case.get("expected_repository_comparison") is not None:
+            assert page["applicability"]["repository_comparison"] == case["expected_repository_comparison"]
+        if any(c["use_kind"] == "current_code" for unit in realization["paragraphs"] for c in unit["citations"]):
             assert check_start <= page["applicability"]["checked_at_unix_micros"] <= check_end
         chunks.append(chunk)
         if page["next_offset"] is None:
@@ -185,8 +186,8 @@ def journey(server, case, expected, output):
         k: v for k, v in c.items() if k != "binding"
     }) for c in u["citations"]]) for u in doc["units"]]
     assert units == realization["paragraphs"]
-    # The independently preserved recording is the semantic oracle, including
-    # equal-worded endpoints, guarded groups and parallel message vector order.
+    # The recording is an admitted-meaning/transport oracle, including vector
+    # order. It establishes neither source entailment nor reading quality.
     assert doc["diagrams"] == realization["diagrams"]
     expected_provenance = {k: v for k, v in public["provenance"].items() if k != "citations"}
     if "publication_id" not in expected_provenance:
@@ -283,6 +284,7 @@ def main():
     write(args.output / "invocation.json", dict(binary=str(args.binary.resolve()),
           binary_sha256=digest(args.binary.read_bytes()), cases_sha256=digest(args.cases.read_bytes()),
           driver_sha256=digest(Path(__file__).read_bytes()),
+          originals_helper_sha256=digest(Path(__file__).with_name("citation_originals.py").read_bytes()),
           head=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
           mode=args.mode, repetitions=args.repetitions,
           cold_definition="new process; OS caches uncontrolled", percentile_policy="no p95 at these small sample sizes"))
@@ -293,8 +295,11 @@ def main():
     for case in cases:
         assert case["label"] and all(c.isascii() and (c.isalnum() or c in "-_") for c in case["label"])
         write(args.output / (case["label"] + "-inputs.json"), {
-            key: dict(path=case[key], sha256=digest(Path(case[key]).read_bytes()))
+            **{key: dict(path=case[key], sha256=digest(Path(case[key]).read_bytes()))
             for key in ("realization", "recording_receipt", "public", "publication_receipt") if case.get(key)
+            },
+            "source_observations": {source: dict(path=path, sha256=digest(Path(path).read_bytes()))
+                                    for source, path in case.get("source_observations", {}).items()},
         })
         expected = original(case)
         measure(args.binary.resolve(), case, expected, args.output / case["label"], args.mode, args.repetitions)

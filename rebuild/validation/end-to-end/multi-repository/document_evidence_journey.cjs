@@ -7,6 +7,7 @@ const crypto=require('node:crypto');
 const {createOutput,openEmbeddedCode,returnFromEmbeddedCode,citationPoint,citationReady}=require('../../viewer-design/product_review_controls.cjs');
 const {inspectDiagram}=require('./diagram_geometry.cjs');
 const {observeOverview,installEntryObserver}=require('./overview_entry.cjs');
+const {citationBytes}=require('./citation_originals.cjs');
 const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function settled(page){await page.bringToFront();if(page.readerNoScript){await delay(100);return;}await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await delay(80);}
@@ -19,7 +20,7 @@ async function listener(config,c,runtime,write){
 async function run(config){
  if(config.native_only)assert.ok((config.modes||[]).length&&(config.modes||[]).every(m=>m==='offline'||m==='no-js'),'server-free review uses actual files with scripts disabled');
  createOutput(config.output);const write=(n,v)=>fs.writeFileSync(path.join(config.output,n),v,{flag:'wx'});
- const result={outcome:'failed',classification:'technical real-publication reading; dependent visual comparison; independent/human/assistive acceptance unobserved',checks:[],external:[],identities:{viewer:hash(config.viewer),chromium:hash(config.chromium),driver:hash(__filename)}};
+ const result={outcome:'failed',classification:'technical real-publication reading; dependent visual comparison; independent/human/assistive acceptance unobserved',checks:[],external:[],identities:{viewer:hash(config.viewer),chromium:hash(config.chromium),driver:hash(__filename),originalsHelper:hash(require.resolve('./citation_originals.cjs')),config:crypto.createHash('sha256').update(JSON.stringify(config)).digest('hex'),sourceObservations:config.cases.map(c=>({key:c.key,receipts:Object.fromEntries(Object.entries(c.source_observations||{}).map(([id,p])=>[id,hash(p)]))}))}};
  const fonts=execFileSync('fc-list',['--format','%{file}\n',':lang=ko'],{env:{...process.env,FONTCONFIG_FILE:config.fontconfig},encoding:'utf8'}).trim().split('\n').filter(Boolean);assert.ok(fonts.length,'Korean fonts required');result.fonts=[...new Set(fonts)].map(p=>({path:p,sha256:hash(p)}));
  let browser,server,activePage;
  try{
@@ -81,7 +82,7 @@ async function run(config){
     const semantic=inventory.find(e=>e.id===elementId);assert.ok(semantic,'declared exact element exists');
     const key=baseKey+(taskIndex?'-'+elementId:'');
     const label=semantic.label,unit=publicAnswers.prose[label.unit];const citationIndex=unit.citations.findIndex(q=>q.claim_start_byte<=label.start_byte&&q.claim_end_byte>=label.end_byte);assert.ok(citationIndex>=0,'covering admitted Source');
-    const citation=unit.citations[citationIndex],expected=fs.readFileSync(path.join(c.repository,citation.locator)).subarray(citation.start_byte,citation.end_byte).toString('utf8');assert.equal('sha256:'+crypto.createHash('sha256').update(expected).digest('hex'),citation.range_sha256);
+    const citation=unit.citations[citationIndex],expected=citationBytes(c,citation).toString('utf8');
     const figureId=await figure.getAttribute('id'),element=figure.locator(`a.diagram-element[id="${figureId}-${semantic.id}"]`),claimId=(await element.getAttribute('href')).slice(1),claim=page.locator(`[id="${claimId}"]`);
     await element.focus();await settled(page);const before=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left,y:scrollY}));
     await page.keyboard.press('Enter');await settled(page);
@@ -116,7 +117,7 @@ async function run(config){
       const nextHref=await next.getAttribute('href');await next.click();await settled(page);
       const nextPoint=await citationPoint(page,nextHref),n=Number(nextHref.match(/-c(\d+)$/)[1])-1,q=unit.citations[n];
       assert.equal(await nextPoint.getAttribute('data-source-id'),q.source_id,'native alternate exact Source');
-      const alternate=fs.readFileSync(path.join(c.repository,q.locator)).subarray(q.start_byte,q.end_byte).toString('utf8');
+      const alternate=citationBytes(c,q).toString('utf8');
       assert.equal('sha256:'+crypto.createHash('sha256').update(alternate).digest('hex'),q.range_sha256);
       assert.equal(await (await openEmbeddedCode(nextPoint)).textContent(),alternate,'native alternate complete bytes');
       await returnFromEmbeddedCode(nextPoint);returnPoint=nextPoint;
@@ -149,6 +150,29 @@ async function run(config){
     }
     // Restore ordinary entry before observing the next declared figure.
     await page.goto(live?address:pathToFileURL(c.offline).href+'#'+(c.work?'work-'+c.work:'repository-explanation'));await page.reload();await settled(page);
+   }
+   // A mixed Work has ordinary paragraph command evidence as well as diagrams.
+   // Select each actual execution range through its article action and return.
+   for(const [unitIndex,unit] of publicAnswers.prose.entries())for(const [citationIndex,q] of unit.citations.entries())if(q.use_kind==='observed_execution'){
+    const point=page.locator(`.source-point[data-reader-publication="${c.publication}"][data-unit-index="${unitIndex}"][data-citation-index="${citationIndex}"]`);
+    assert.equal(await point.count(),1);const pointId=await point.getAttribute('id'),origin=await point.getAttribute('data-origin');
+    const action=page.locator(`.doc a.paragraph-evidence-action[data-origin="${origin}"]`).first();
+    // Header synopsis evidence can live in its explicit original-wording disclosure.
+    for(const disclosure of await action.locator('xpath=ancestor::details').all())if(!await disclosure.evaluate(n=>n.open))await disclosure.locator(':scope > summary').click();
+    await action.click();await settled(page);
+    if(scripted){
+     const picker=page.locator('.source-point[data-selected] .evidence-choice-picker select');
+     await picker.selectOption('#'+pointId);await settled(page);
+     assert.equal(await (await citationReady(point)).textContent(),citationBytes(c,q).toString('utf8'));
+     await page.keyboard.press('Escape');await settled(page);
+     assert.equal(await action.evaluate(n=>n===document.activeElement),true,'execution evidence returns to its exact paragraph action');
+    }else{
+     await page.goto((live?address:pathToFileURL(c.offline).href)+'#'+pointId);await settled(page);
+     assert.equal(await (await openEmbeddedCode(point)).textContent(),citationBytes(c,q).toString('utf8'));
+     const back=point.locator(':scope > .point-bar a.return');assert.equal(await back.getAttribute('href'),'#'+origin);await back.focus();await back.press('Enter');
+     assert.equal(await page.evaluate(id=>document.activeElement?.id===id,origin),true,'native execution evidence returns to its exact paragraph');
+    }
+    result.checks.push({case:c.key,width,mode,unit:unitIndex,citation:citationIndex,field:q.field,source:q.source_id,code_bytes:Buffer.byteLength(citationBytes(c,q))});
    }
    assert.deepEqual(errors,[],'Product script errors');await context.close();activePage=null;
   }

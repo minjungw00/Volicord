@@ -5368,7 +5368,15 @@ negative controls in the existing document evidence journey. Its executable entr
 is `grounded_diagrams_browser.cjs` with `document_reader:true`;
 `document_evidence_journey.cjs` is its module, not a standalone executable.
 Installed CLI preparation/composition/record/export, actual HTTP and complete MCP
-reassembly remain independent downstream controls. Real forgetting on a disposable
+reassembly remain independent downstream controls.
+Mixed Work controls also visit paragraph `observed_execution` ranges. Their
+original oracle is an independently preserved version-4 Work Source read, bound
+to Project, Work, Source revision, snapshots, command label and observation
+fingerprint; a repository file cannot stand in for stdout/stderr. Python and Node
+controls reject altered receipts, wrong identities and invalid UTF-8 bounds.
+Retained historical reads assert their explicit comparison/limitation rather than
+claiming current correspondence. These are transport and authority checks, not
+semantic or human acceptance. Real forgetting on a disposable
 Runtime must remove shared origin contexts and code from new live/native output;
 previously distributed exports remain immutable.
 

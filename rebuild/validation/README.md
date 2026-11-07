@@ -1489,7 +1489,7 @@ page bounds have separate assertions; the latter stays 4,096 bytes.
 ## Complete publication read measurements
 
 `end-to-end/multi-repository/complete_read_measure.py` consumes every publication
-page and every distinct cited file window through the actual stdio MCP server.
+page and every distinct cited file or observed-execution window through the actual stdio MCP server.
 It expands compact bindings against independently preserved authoring realizations
 and recording receipts, checks original claim and file-range hashes, and compares
 the original public provenance. It performs no collection, recording, generation,
@@ -1505,8 +1505,20 @@ an optional `publication_receipt` from an independent original complete read to
 pin the admitted managed publication identity as well as its provenance. It does
 not replace the original recording realization as the unit/citation oracle.
 The corpus reader accepts
-file citations with original repository bytes; it rejects command citations rather
-than inventing an original command oracle. Keep all inputs, exact before/after
+file citations with original repository bytes. For observed execution, supply
+`source_observations: {source_id: "/absolute/original-source-read.json"}` from the
+independently preserved version-4 Work Source read. The shared Python/Node original
+byte oracle checks Project/Work/Source/revision/snapshot identity, the canonical
+observation fingerprint, command label, stream and exact UTF-8 byte range. It
+rejects missing receipts, changed receipts and file-path fallbacks for commands.
+Run `citation_originals_self_test.py` for the cross-language positive and negative
+controls. Browser consumers use the same receipt mapping and exercise command
+paragraph selection/return even in publications containing diagrams.
+
+A retained historical case may declare an exact `expected_limitation` and
+`expected_repository_comparison` (for example `changed`); the default remains a
+current, unlimited read. These fields assert the observed applicability and do not
+waive original-byte, identity, permission or range checks. Keep all inputs, exact before/after
 executables and failed attempts private and unchanged. Set comparison/resource
 criteria before selecting a candidate; run old/new measurements without concurrent
 builds or tests. Current scope is local Rust implementation and polyglot Source
