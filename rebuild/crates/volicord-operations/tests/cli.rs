@@ -139,6 +139,123 @@ fn bound_repository_journey_needs_no_project_id_and_defaults_to_human_output(
 }
 
 #[test]
+fn record_commands_preserve_records_without_materializing_or_certifying_code_graphs(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_operations::{LocalOperations, RuntimeLayout};
+    let temporary = tempfile::tempdir()?;
+    let runtime = temporary.path().join("runtime");
+    let repository = temporary.path().join("repository");
+    fs::create_dir(&repository)?;
+    for (path, body) in [
+        ("main.py", "def answer():\n    return 42\n"),
+        ("lib.rs", "pub fn answer() -> u32 { 42 }\n"),
+        (
+            "main.ts",
+            "export function answer(): number { return 42; }\n",
+        ),
+    ] {
+        fs::write(repository.join(path), body)?;
+    }
+    let operations = LocalOperations::new(RuntimeLayout::new(&runtime)?);
+    let project = operations
+        .initialize_project("Record inspection", Some(&repository))?
+        .project
+        .id;
+    let analysis = operations
+        .analyze(project, Vec::new())?
+        .value
+        .ok_or("analysis")?;
+    let canonical = operations.canonical_basis(project)?;
+    let full = operations.project_projection(project)?;
+    let read = |args: Vec<&str>| -> Result<Value, Box<dyn std::error::Error>> {
+        let result = Command::new(env!("CARGO_BIN_EXE_volicord"))
+            .current_dir(&repository)
+            .arg("--runtime")
+            .arg(&runtime)
+            .args(args)
+            .output()?;
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        Ok(serde_json::from_slice(&result.stdout)?)
+    };
+    let records = read(vec!["--json", "advanced", "records", "list"])?;
+    let candidates = read(vec!["--json", "advanced", "candidates"])?;
+    assert_eq!(records["code_graph"], "not_requested");
+    assert_eq!(candidates["code_graph"], "not_requested");
+    let expected = full
+        .canonical_inspection
+        .iter()
+        .map(|item| {
+            json!({
+                "kind":format!("{:?}",item.kind).to_lowercase(),
+                "identity":item.identity,"revision":item.revision,
+                "lifecycle_state":item.lifecycle_state,"statement_role":item.statement_role,
+                "summary":item.summary,
+                "source_basis":item.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>()
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(records["records"], json!(expected));
+    // Independently account for the complete canonical identity set in this input.
+    let identities = records["records"]
+        .as_array()
+        .ok_or("records")?
+        .iter()
+        .filter_map(|r| r["identity"].as_str())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(identities.len(), 1 + canonical.sources.len());
+    assert!(identities.contains(project.to_string().as_str()));
+    for source in &canonical.sources {
+        assert!(identities.contains(source.source.id.to_string().as_str()));
+    }
+
+    let manifest: Value = serde_json::from_slice(&fs::read(&analysis.stored_at)?)?;
+    let blobs = analysis
+        .stored_at
+        .parent()
+        .ok_or("analysis directory")?
+        .join("blobs");
+    let graph = blobs.join(format!(
+        "{}.values",
+        manifest["values_blob"].as_str().ok_or("values")?
+    ));
+    let original = fs::read(&graph)?;
+    fs::write(&graph, b"corrupt graph")?;
+    // Neither metadata nor record reads may restore the cache's denied graph.
+    assert_eq!(
+        records,
+        read(vec!["--json", "advanced", "records", "list"])?
+    );
+    assert_eq!(candidates, read(vec!["--json", "advanced", "candidates"])?);
+    assert!(operations.health(Some(project)).issues.iter().any(|i| {
+        i.kind == volicord_operations::HealthIssueKind::Corrupt
+            && i.scope.starts_with("derived_analysis:")
+    }));
+    assert_eq!(fs::read(&graph)?, b"corrupt graph");
+    fs::write(&graph, original)?;
+
+    let metadata = blobs.join(format!(
+        "{}.metadata",
+        manifest["metadata_blob"].as_str().ok_or("metadata")?
+    ));
+    fs::write(&metadata, b"corrupt metadata")?;
+    let unavailable = read(vec!["--json", "advanced", "records", "list"])?;
+    assert_eq!(unavailable["records"], records["records"]);
+    assert_eq!(unavailable["code_graph"], "not_requested");
+    assert!(unavailable["issues"]
+        .as_array()
+        .ok_or("issues")?
+        .iter()
+        .any(|i| i["scope"] == "derived_analysis"));
+    assert_eq!(canonical, operations.canonical_basis(project)?);
+    assert_eq!(fs::read(&metadata)?, b"corrupt metadata");
+    Ok(())
+}
+
+#[test]
 fn task_groups_keep_portable_privacy_doctor_document_viewer_and_guarded_paths_reachable(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let temporary = tempfile::tempdir()?;

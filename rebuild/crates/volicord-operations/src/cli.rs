@@ -2767,9 +2767,9 @@ fn canonical(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value,
     match cursor.next("canonical command")?.as_str() {
         "inspect" => {
             let project = project_id(&cursor.next("Project ID")?)?;
-            let projection = operations.project_projection(project)?;
+            let projection = record_inspection_projection(operations, project)?;
             Ok(
-                json!({"operation":"canonical_inspect","project_id":project.to_string(),"health":debug_name(projection.health),"records":projection.canonical_inspection.into_iter().map(|item| json!({"kind":debug_name(item.kind),"identity":item.identity,"revision":item.revision,"lifecycle_state":item.lifecycle_state,"statement_role":item.statement_role,"summary":item.summary,"source_basis":item.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"issues":projection.issues.into_iter().map(|issue| json!({"kind":debug_name(issue.kind),"scope":issue.affected_scope,"reason":issue.reason})).collect::<Vec<_>>() }),
+                json!({"operation":"canonical_inspect","project_id":project.to_string(),"health":debug_name(projection.health),"code_graph":"not_requested","records":projection.canonical_inspection.into_iter().map(|item| json!({"kind":debug_name(item.kind),"identity":item.identity,"revision":item.revision,"lifecycle_state":item.lifecycle_state,"statement_role":item.statement_role,"summary":item.summary,"source_basis":item.source_basis.into_iter().map(|id| id.to_string()).collect::<Vec<_>>()})).collect::<Vec<_>>(),"issues":projection.issues.into_iter().map(|issue| json!({"kind":debug_name(issue.kind),"scope":issue.affected_scope,"reason":issue.reason})).collect::<Vec<_>>() }),
             )
         }
         "user-source" => {
@@ -2863,10 +2863,30 @@ fn canonical(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value,
 
 fn candidates(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {
     let project = project_id(&cursor.next("Project ID")?)?;
-    let projection = operations.project_projection(project)?;
+    let projection = record_inspection_projection(operations, project)?;
     Ok(
-        json!({"operation":"candidate_inspection","project_id":project.to_string(),"health":debug_name(projection.health),"candidates":projection.candidate_inspection.into_iter().map(|candidate| json!({"identity":candidate.candidate_id.to_string(),"exists":candidate.exists,"health":debug_name(candidate.health),"revision":candidate.revision,"kind":candidate.kind.map(debug_name),"summary":candidate.bounded_summary,"content_cleaned":candidate.content_cleaned,"promotion_disposition":candidate.promotion_disposition.map(debug_name)})).collect::<Vec<_>>() }),
+        json!({"operation":"candidate_inspection","project_id":project.to_string(),"health":debug_name(projection.health),"code_graph":"not_requested","candidates":projection.candidate_inspection.into_iter().map(|candidate| json!({"identity":candidate.candidate_id.to_string(),"exists":candidate.exists,"health":debug_name(candidate.health),"revision":candidate.revision,"kind":candidate.kind.map(debug_name),"summary":candidate.bounded_summary,"content_cleaned":candidate.content_cleaned,"promotion_disposition":candidate.promotion_disposition.map(debug_name)})).collect::<Vec<_>>() }),
     )
+}
+
+fn record_inspection_projection(
+    operations: &LocalOperations,
+    project: ProjectId,
+) -> Result<volicord_projections::ProjectProjection, Error> {
+    // These commands consume records, not code-map geometry. Keep the same
+    // canonical selection, Candidate admission and analysis metadata/freshness;
+    // graph integrity remains an explicit doctor/code-consumer responsibility.
+    operations
+        .project_projection_read_profiled(
+            project,
+            volicord_projections::WorkSelector::LatestWork,
+            volicord_projections::ProjectionDetail::default(),
+            volicord_projections::ProjectionReadRequirements {
+                code: false,
+                inspection: true,
+            },
+        )
+        .map(|(projection, _)| projection)
 }
 
 fn privacy(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, Error> {

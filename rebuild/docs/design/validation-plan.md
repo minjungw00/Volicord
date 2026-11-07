@@ -5401,3 +5401,15 @@ locale, transport/reassembly, historical reading, mixed Source expiry/overlap,
 installer and real deletion controls directly coupled to this policy change.
 Measure additional original-code bytes, serialized markup, DOM, memory and wire
 pages separately; a larger raw inclusion bound does not predict their costs.
+
+### Record reads without code-map materialization — 2026-11-07
+
+The [record-read cost observation](../../validation/end-to-end/multi-repository/runtime-read-costs.md)
+binds the complete same-input CLI comparison to the actual unnecessary graph
+read/map construction. The CLI integration test
+`record_commands_preserve_records_without_materializing_or_certifying_code_graphs`
+checks complete canonical output, distinct Python/Rust/TypeScript inputs, damaged
+graph versus metadata scope and nonmutation. Existing Candidate dependency controls
+remain required. Code-map integrity stays with doctor/code consumers; a record
+result explicitly reports `code_graph: not_requested`. The historical passed gate
+and missing original phase telemetry remain distinct from this new measurement.

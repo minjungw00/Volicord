@@ -1426,6 +1426,15 @@ or a bulk Code/diagnostic catalog. Per-Work presentation never reopens analysis.
 These requirements add no persisted format, cache, analyzer invocation, provider
 call, canonical mutation or weakened correction/forgetting invalidation.
 
+CLI `advanced records list` and `advanced candidates` likewise request inspection
+and AnalysisMetadata, not a code graph. Their existing canonical/Candidate values,
+selection, admission and bounds remain unchanged. `code_graph: not_requested`
+explicitly scopes the result: metadata/freshness and record issues remain, while
+omissions from a code map that is not returned are not reported. Neither command
+certifies graph integrity. `doctor check`, code consumers and full document reads
+retain their full graph checks. A damaged graph cannot block otherwise permitted
+records, and damaged metadata still reports its own unavailable scope.
+
 Exact entity detail also focuses `ProjectUnderstanding.architecture` and its
 relationship evidence on `selected_entity`, actual bounded neighbors and incident
 relations. This read-side presentation selection precedes parent map bounds and
