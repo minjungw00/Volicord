@@ -26,7 +26,7 @@ def controls(parent):
     shutil.copy2(ROOT / 'rebuild/install.sh', candidate / 'rebuild/install.sh')
     (parent / 'bin/cargo').unlink()  # These controls use the real installed toolchain.
     workspace = candidate / 'rebuild'
-    (workspace / 'Cargo.toml').write_text('[workspace]\nmembers=["crates/control"]\nexclude=["crates/dependency"]\nresolver="2"\n')
+    (workspace / 'Cargo.toml').write_text('[workspace]\nmembers=["crates/control"]\nexclude=["crates/dependency","crates/volicord-viewer"]\nresolver="2"\n')
     (workspace / 'Cargo.lock').unlink()
     crate = workspace / 'crates/control'
     (crate / 'src').mkdir(parents=True)
@@ -46,6 +46,20 @@ path="src/mcp.rs"
 name="volicord-viewer"
 path="src/viewer.rs"
 ''')
+    # The production installer verifies its pinned layout distribution even in
+    # this synthetic compiler/output-isolation candidate. Copy those real inputs;
+    # resolve the actual package family, without bypassing installer validation.
+    layout_source = ROOT / 'rebuild/crates/volicord-viewer'
+    layout = workspace / 'crates/volicord-viewer'
+    shutil.copytree(layout_source / 'vendor', layout / 'vendor')
+    for name in ('Cargo.toml', 'src/diagram_engine.rs', 'src/diagram.rs'):
+        target = layout / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(layout_source / name, target)
+    version = json.loads((layout / 'vendor/runtime/provenance.json').read_text())['rquickjs']
+    manifest = crate / 'Cargo.toml'
+    family = ''.join(f'{name}="={version}"\n' for name in ('rquickjs', 'rquickjs-core', 'rquickjs-sys'))
+    manifest.write_text(manifest.read_text().replace('[dependencies]\n', '[dependencies]\n' + family))
     dependency = workspace/'crates/dependency'
     (dependency/'src').mkdir(parents=True)
     (dependency/'Cargo.toml').write_text('[package]\nname="control-dependency"\nversion="0.1.0"\nedition="2021"\n')
@@ -61,7 +75,7 @@ path="src/viewer.rs"
     source.write_text('fn main() { println!("normal build control"); }\n#[test]\nfn normal() { assert_eq!(2 + 3, 5); }\n')
     (crate/'src/mcp.rs').write_text(source.read_text())
     (crate/'src/viewer.rs').write_text(source.read_text())
-    run_checked(['cargo', 'generate-lockfile', '--manifest-path', workspace/'Cargo.toml'], candidate, env)
+    run_checked(['cargo', 'generate-lockfile', '--offline', '--manifest-path', workspace/'Cargo.toml'], candidate, env)
     prefix = parent / 'installed'
     support = candidate / 'rebuild/scripts/check-fixture-manifest'
     entry.write_executable(support, '#!/usr/bin/env python3\nimport subprocess, os, json\nfrom pathlib import Path\n'

@@ -4,6 +4,14 @@ The validation owner is [validation-plan.md](../../../docs/design/validation-pla
 This record links changed responsibilities to their maintained execution paths;
 raw sources, compiler output, attempts and runtime state remain ignored.
 
+The synthetic installer candidate includes the real pinned layout vendor bytes,
+identity source files and manifests. Its small control crate resolves and compiles
+the actual pinned QuickJS package family offline, so the unchanged installer can
+verify and distribute its required notices. This fixture exercises build/output
+isolation; it does not attest layout behavior or replace the actual Product's
+installation and Reader checks. Its intentional support exit 37 still prevents
+Final and provider execution.
+
 | Contract | Producer / consumer | Executable check |
 | --- | --- | --- |
 | Qualification never reuses diagnostic targets or compiler settings | `scripts/validate gate` calls `shared/build_boundary.py::prepare` before admission; every runner child checks the same input/configuration/tool basis before and after execution | `gate-entrypoint-self-test`, including `build_boundary_self_test.py` |
