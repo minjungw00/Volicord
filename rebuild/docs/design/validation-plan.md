@@ -5430,3 +5430,17 @@ The existing near-limit `explanation_budgets` corpus is unchanged. The first
 expanded concise wording exceeded preparation by 40 bytes and was rejected;
 shortening redundant guidance while retaining every instruction restores that
 same complete evidence shape. No input, response, retention or gate limit changes.
+
+### Work Source validation materialization — 2026-11-07
+
+Actual new Work composition/recording exposed another full graph restoration:
+their current-code validation used only Source identity and inventory. The same
+verified metadata reader now supplies those fields for Work as for Repository
+articles. `work_source_authoring_uses_verified_metadata_without_certifying_graph_integrity`
+first reproduced rejection on unrelated corrupt graph bytes. It then checks
+identical healthy/graph-damaged realization, successful recording, independent
+doctor corruption, metadata-corruption rejection and unchanged prior records.
+The [cost observation](../../validation/end-to-end/multi-repository/runtime-read-costs.md)
+keeps the fixed real-source comparison distinct from new article quality and gate
+qualification. Source capture's recorded worktree provenance and cost remain
+separate; no snapshot schema, history, graph payload or authority is removed.

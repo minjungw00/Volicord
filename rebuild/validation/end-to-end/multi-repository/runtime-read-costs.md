@@ -75,3 +75,40 @@ history. Existing Candidate empty/unsupported/corrupt/unavailable controls remai
 
 These focused outcomes do not establish exact-candidate qualification,
 transferable explanation quality, human comprehension or assistive acceptance.
+
+## Work composition and recording
+
+New actual Work production observed 2.8–2.9 seconds in each composition/recording
+call. Current-code validation restored a full graph solely to obtain repository
+Source identity, snapshot identity and inventory. Repository articles already used
+verified metadata for the same responsibility. Work now uses that reader too;
+file hashes, identity bindings and fresh included-inventory comparison remain.
+
+A fixed actual retained repository, separate from the edited Product checkout,
+provided the controlled input. A new current-task investigation Goal and exact
+observed `rebuild/Cargo.toml` Source were recorded normally in a private Runtime.
+Two exact copies supplied the same preparation, canonical IDs, Source, body and
+draft to baseline `10fe4ef7` and corrected release CLIs. Composition and recording
+each ran once in a new process, with no competing task jobs. Complete realization,
+evidence and Source statuses were equal; normal publication IDs/times stayed
+independent. This bounded control is not a representative authored article or a
+comprehension test.
+
+| Public operation | Baseline wall ms | Corrected wall ms | Baseline peak KiB | Corrected peak KiB |
+| --- | ---: | ---: | ---: | ---: |
+| Work compose | 2,822.367 | 65.124 | 1,549,916 | 40,024 |
+| Work record | 2,769.623 | 70.537 | 1,550,224 | 40,032 |
+
+All four processes exited 0. Raw complete inputs/streams/resource observations and
+binary identities remain in ignored `runtime-reading-20261107/source-validation/`.
+OS caches were uncontrolled; the instrumentation and measurement windows were
+identical. These samples do not predict model time, a percentile or gate duration.
+
+The actual MCP regression first failed with `Analysis blob content identity is
+corrupt` despite a permitted unchanged file and healthy metadata. After correction,
+healthy and graph-damaged composition return the identical realization, recording
+works, and doctor independently reports graph corruption. Damaged metadata still
+rejects both compose and record without replacing prior publications. No graph,
+manifest, history or storage format is altered. Explicit Work file/command capture
+still restores its complete recorded worktree basis: the observed roughly 2.7-second
+capture cost is separate and has not been removed or relabelled as model cost.

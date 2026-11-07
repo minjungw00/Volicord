@@ -1445,6 +1445,15 @@ inspection. MCP retains its existing schema-path/allowed-value diagnostics befor
 decoding. This does not add aliases, accept malformed meaning, expose storage
 errors or change retained publication formats/readability.
 
+Work article composition/recording uses the same verified AnalysisMetadata
+authority as repository articles for current-code Source validation: exact
+Project/Analysis/Repository/Source identity, included inventory and fresh repository
+comparison remain required. It does not restore a code graph merely to obtain
+those fields or certify graph integrity. Corrupt metadata still rejects the write
+without replacing prior content, and doctor/full graph consumers still reject graph
+corruption. Explicit Work Source capture separately retains its complete recorded
+worktree provenance; this read optimization does not change that capture contract.
+
 Exact entity detail also focuses `ProjectUnderstanding.architecture` and its
 relationship evidence on `selected_entity`, actual bounded neighbors and incident
 relations. This read-side presentation selection precedes parent map bounds and

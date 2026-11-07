@@ -423,9 +423,9 @@ impl LocalOperations {
                                     ));
                                 }
                             } else {
-                                // Repository articles claim inspected Source meaning, not
-                                // graph completeness. Their authority is verified metadata,
-                                // included hashes and a fresh repository comparison.
+                                // Work and Repository articles claim inspected Source
+                                // meaning, not graph completeness. Verify metadata,
+                                // included hashes and the fresh repository comparison.
                                 let (repository_source, repository_snapshot, entries) = if matches!(
                                     subject,
                                     ExplanationSubject::Repository(_)
@@ -439,8 +439,10 @@ impl LocalOperations {
                                         metadata.inventory.entries.clone(),
                                     )
                                 } else {
-                                    let analysis =
-                                        self.load_analysis_snapshot(basis.project.id, analysis_id)?;
+                                    let analysis = self.repository_source_metadata(
+                                        basis.project.id,
+                                        analysis_id,
+                                    )?;
                                     (
                                         analysis.repository_source,
                                         analysis.repository_snapshot,

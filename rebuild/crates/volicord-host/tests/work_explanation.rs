@@ -1984,6 +1984,77 @@ fn every_reader_unit_is_grounded_atomic_and_invalidated_through_mcp() -> Result<
 }
 
 #[test]
+fn work_source_authoring_uses_verified_metadata_without_certifying_graph_integrity(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    let generation = f.generate()?;
+    let source = f.read(&generation, f.source)?;
+    let analysis = source["observation"]["analysis_snapshot_id"]
+        .as_str()
+        .ok_or("analysis")?;
+    let path = f
+        .host
+        .operations()
+        .layout()
+        .analysis_project_dir(f.project)
+        .join(format!("{analysis}.json"));
+    let manifest: Value = serde_json::from_slice(&fs::read(&path)?)?;
+    let blobs = path.parent().ok_or("analysis directory")?.join("blobs");
+    let graph = blobs.join(format!(
+        "{}.values",
+        manifest["values_blob"].as_str().ok_or("values")?
+    ));
+    let metadata = blobs.join(format!(
+        "{}.metadata",
+        manifest["metadata_blob"].as_str().ok_or("metadata")?
+    ));
+    let mut args = f.args("compose");
+    args["generation_id"] = generation["generation_id"].clone();
+    args["draft"] = json!({"plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
+        "generator":{"host":"control","session":"source-metadata","agent":null,"model":null},
+        "paragraphs":[
+            {"question":"heading","text":"Inspect the value","evidence_keys":["goal"],"sources":[]},
+            {"question":"synopsis","text":"A source observation, not an execution.","evidence_keys":["goal"],"sources":[]},
+            {"question":"observation","text":"The inspected function returns 7.","evidence_keys":["goal"],"sources":[
+                {"source_id":f.source.to_string(),"field":"body","use_kind":"current_code","start_byte":17,"end_byte":25,"claim":null}]}]});
+    let healthy = success(&mut f.host, args.clone())?;
+    fs::write(&graph, b"corrupt graph")?;
+    let without_graph = success(&mut f.host, args.clone())?;
+    assert_eq!(healthy["realization"], without_graph["realization"]);
+    let realization = serde_json::from_value(without_graph["realization"].clone())?;
+    let record = f.record_args(&generation, &realization)?;
+    success(&mut f.host, record.clone())?;
+    assert!(f
+        .host
+        .operations()
+        .health(Some(f.project))
+        .issues
+        .iter()
+        .any(|issue| {
+            issue.kind == volicord_operations::HealthIssueKind::Corrupt
+                && issue.scope.starts_with("derived_analysis:")
+        }));
+    let previous = f
+        .host
+        .operations()
+        .privacy_status(f.project)?
+        .managed_derived;
+    fs::write(&metadata, b"corrupt metadata")?;
+    assert_eq!(call(&mut f.host, args)["result"]["isError"], true);
+    assert_eq!(call(&mut f.host, record)["result"]["isError"], true);
+    assert_eq!(
+        previous,
+        f.host
+            .operations()
+            .privacy_status(f.project)?
+            .managed_derived
+    );
+    assert_eq!(fs::read(graph)?, b"corrupt graph");
+    assert_eq!(fs::read(metadata)?, b"corrupt metadata");
+    Ok(())
+}
+
+#[test]
 fn compose_work_name_summary_and_unicode_citations_without_manual_bindings(
 ) -> Result<(), Box<dyn Error>> {
     let mut f = Fixture::new()?;
