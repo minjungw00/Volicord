@@ -295,7 +295,7 @@ fn important_late_multi_citation_survives_initial_and_offline_bounds() -> Result
     let privacy = f.ops.privacy_status(f.project)?;
     let answers = f.answers()?;
     assert_eq!(answers.explanation_state, ExplanationState::Current);
-    assert!(answers.source_excerpts.len() >= 3 && answers.source_excerpts.len() < 11);
+    assert_eq!(answers.source_excerpts.len(), 11);
     assert_eq!(
         answers.embedded_source_scope[1].state,
         SourceWindowState::Complete
@@ -306,11 +306,11 @@ fn important_late_multi_citation_survives_initial_and_offline_bounds() -> Result
     );
     assert_eq!(
         answers.embedded_source_scope[0].state,
-        SourceWindowState::InitialOmission
+        SourceWindowState::Complete
     );
     assert_eq!(
         answers.source_reading_scope(true)[0].state,
-        SourceWindowState::OfflineOmission
+        SourceWindowState::Complete
     );
     assert_eq!(
         answers.omitted_source_excerpt_count,
@@ -359,7 +359,7 @@ fn important_late_multi_citation_survives_initial_and_offline_bounds() -> Result
         assert!(code_texts(&offline).iter().any(|s| s.contains(needle)));
     }
     assert!(!offline.contains("<script"));
-    assert!(offline.contains("data-source-window-state=\"offline_omission\""));
+    assert!(!offline.contains("data-source-window-state=\"offline_omission\""));
     assert!(offline.contains("All cited code included"));
     // A different traversal and duplicated early citations must preserve allocations.
     let mut reordered = f.realization.clone();
@@ -2321,6 +2321,100 @@ fn complete_permission_windows_fit_without_changing_source_or_transport_bounds(
 }
 
 #[test]
+fn complete_nonoverlapping_code_has_an_exact_aggregate_boundary() -> Result<(), Box<dyn Error>> {
+    for total in [65_535, 65_536, 65_537] {
+        let sources = (0..11).map(|i| {
+            let size = if i == 10 { total - 60_000 } else { 6_000 };
+            let mut body = format!("def independent_{i}(allowed):\n    if not allowed:\n        return None\n    return allowed\n#");
+            body.push_str(&"x".repeat(size - body.len() - 1));
+            body.push('\n');
+            (format!("independent{i}.py"), body)
+        }).collect();
+        let f = Fixture::new_sources(None, false, Some(sources))?;
+        assert_eq!(f.originals.iter().map(String::len).sum::<usize>(), total);
+        let answers = f.answers()?;
+        let fits = total <= 65_536;
+        assert_eq!(answers.omitted_source_excerpt_count, usize::from(!fits));
+        assert_eq!(answers.source_excerpts.len(), if fits { 11 } else { 10 });
+        assert_eq!(
+            answers
+                .source_reading_scope(true)
+                .iter()
+                .all(|s| s.state == SourceWindowState::Complete),
+            fits
+        );
+        assert!(
+            answers
+                .source_excerpts
+                .iter()
+                .map(|e| e.text.len())
+                .sum::<usize>()
+                <= 65_536
+        );
+        for e in &answers.source_excerpts {
+            assert_eq!(e.omitted_utf8_bytes, 0);
+            assert_eq!(e.text.len(), e.citation.end_byte - e.citation.start_byte);
+            assert!(
+                f.originals.contains(&e.text),
+                "complete independent original; no union or clipping"
+            );
+        }
+        let out = f.temp.path().join("complete-boundary.html");
+        ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+            .export_snapshot(&f.request(), &out)?;
+        for html in [f.get("/?view=repository")?, fs::read_to_string(out)?] {
+            let codes = code_texts(&html);
+            for original in &f.originals {
+                let included = answers.source_excerpts.iter().any(|e| &e.text == original);
+                assert_eq!(codes.contains(original), included);
+            }
+            assert_eq!(
+                html.contains("class=\"source-note initial-range-omission\""),
+                !fits
+            );
+        }
+        // Embedded omission is a declared static scope. The independent complete
+        // citation reader still consumes every original in bounded pages.
+        let provenance = answers.provenance.ok_or("provenance")?;
+        for (unit_index, unit) in answers.prose.iter().enumerate() {
+            for (citation_index, c) in unit.citations.iter().enumerate() {
+                let mut offset = 0;
+                let mut body = String::new();
+                loop {
+                    let chunk = f.ops.read_explanation_citation(
+                        f.project,
+                        provenance.subject,
+                        "en",
+                        &ExplanationCitationSelection {
+                            publication_id: provenance
+                                .publication_id
+                                .clone()
+                                .ok_or("publication")?,
+                            realization_fingerprint: provenance.realization_fingerprint.clone(),
+                            unit_index,
+                            citation_index,
+                            offset,
+                        },
+                    )?;
+                    assert_eq!(chunk["chunk"]["citation"], serde_json::to_value(c)?);
+                    let text = chunk["chunk"]["text"].as_str().ok_or("chunk")?;
+                    assert!(text.len() <= 4_096);
+                    body.push_str(text);
+                    if let Some(next) = chunk["chunk"]["next_offset"].as_u64() {
+                        offset = next as usize;
+                    } else {
+                        break;
+                    }
+                }
+                assert!(f.originals.contains(&body));
+                assert_eq!(explanation_text_hash(&body), c.range_sha256);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn same_named_nodes_retain_distinct_nonvisual_endpoints_in_actual_publication(
 ) -> Result<(), Box<dyn Error>> {
     let f = Fixture::new()?;
@@ -2425,45 +2519,67 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
 
 #[test]
 fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<dyn Error>> {
-    let f = Fixture::new()?;
-    let mut realization = diagram_control(&f, false)?;
-    // The first unit has eight large, genuinely retained inventory Sources.
-    // Only some fit. Selecting its grounded wording must disclose that locally.
-    let label = DiagramLabel {
-        text: realization.paragraphs[0].text[..14].to_owned(),
-        unit: 0,
-        start_byte: 0,
-        end_byte: 14,
-    };
-    let d = &mut realization.diagrams[0];
-    d.caption_unit = 0;
-    d.title = label.clone();
-    if let DiagramMeaning::Concept { nodes, relations } = &mut d.meaning {
-        for n in nodes {
-            n.identifier = Some(n.label.clone());
-            n.label = label.clone();
+    for needs_omission in [false, true] {
+        // Preserve the original input, which now fits. Add an independent larger
+        // negative control; qualification workload and existing originals are unchanged.
+        let f = if needs_omission {
+            let sources = (0..11)
+                .map(|i| {
+                    let mut body = format!("def capacity_{i}(allowed):\n    return allowed\n#");
+                    body.push_str(&"x".repeat(7_999 - body.len()));
+                    body.push('\n');
+                    (format!("capacity{i}.py"), body)
+                })
+                .collect();
+            Fixture::new_sources(None, false, Some(sources))?
+        } else {
+            Fixture::new()?
+        };
+        let mut realization = diagram_control(&f, false)?;
+        // Every Source is genuinely retained. A claim reports omissions exactly
+        // when its whole independent evidence set exceeds the embedded aggregate.
+        let label = DiagramLabel {
+            text: realization.paragraphs[0].text[..14].to_owned(),
+            unit: 0,
+            start_byte: 0,
+            end_byte: 14,
+        };
+        let d = &mut realization.diagrams[0];
+        d.caption_unit = 0;
+        d.title = label.clone();
+        if let DiagramMeaning::Concept { nodes, relations } = &mut d.meaning {
+            for n in nodes {
+                n.identifier = Some(n.label.clone());
+                n.label = label.clone();
+            }
+            relations[0].label = label;
+            relations[0].condition = None;
         }
-        relations[0].label = label;
-        relations[0].condition = None;
+        seal_diagrams(&mut realization)?;
+        f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            realization,
+        )?;
+        assert_eq!(
+            f.answers()?.omitted_source_excerpt_count > 0,
+            needs_omission
+        );
+        let html = f.get("/?view=repository")?;
+        let claim = html
+            .split("-diagram-mechanism-dependency-claim\" tabindex")
+            .nth(1)
+            .ok_or("exact claim")?
+            .split("</section>")
+            .next()
+            .ok_or("claim close")?;
+        assert_eq!(
+            claim.contains("class=\"source-window-omission\""),
+            needs_omission
+        );
+        assert_eq!(claim.contains("unavailable offline"), needs_omission);
     }
-    seal_diagrams(&mut realization)?;
-    f.ops.record_explanation(
-        f.project,
-        ExplanationSubject::Repository(f.analysis),
-        "en",
-        realization,
-    )?;
-    assert!(f.answers()?.omitted_source_excerpt_count > 0);
-    let html = f.get("/?view=repository")?;
-    let claim = html
-        .split("-diagram-mechanism-dependency-claim\" tabindex")
-        .nth(1)
-        .ok_or("exact claim")?
-        .split("</section>")
-        .next()
-        .ok_or("claim close")?;
-    assert!(claim.contains("class=\"source-window-omission\""));
-    assert!(claim.contains("unavailable offline"));
     Ok(())
 }
 

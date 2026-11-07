@@ -33,6 +33,22 @@ async function main(){
     if(included){assert.equal(await code.textContent(),original.toString('utf8'));completeBytes+=original.length;}
    }
    let origins=0,choices=0;
+   if(!pub.diagrams.length)for(const p of points){
+    await page.goto(address+'#'+p.id);
+    const point=page.locator('.source-point[id="'+p.id+'"]'),q=pub.prose[p.unit].citations[p.citation];
+    assert(await point.isVisible(),'native paragraph evidence is actually selected');
+    const selector=point.locator(':scope > .range-selector .point-others a');
+    assert.equal(await selector.count(),pub.prose[p.unit].citations.length,'one complete contextual range family');
+    const code=await openEmbeddedCode(point);
+    if(await code.count()){
+     assert(await code.isVisible(),'complete code is expanded before observations');
+     assert.equal(await code.textContent(),fs.readFileSync(path.join(c.repository,q.locator)).subarray(q.start_byte,q.end_byte).toString('utf8'));
+    }else assert(await point.locator('.initial-range-omission,.range-unavailable').isVisible(),'omitted native code has an explicit supported disposition');
+    const origin=await point.getAttribute('data-origin'),back=point.locator(':scope > .point-bar a.return');
+    assert.equal(await back.getAttribute('href'),'#'+origin);await back.focus();await back.press('Enter');
+    assert.equal(await page.locator('[id="'+origin+'"]').evaluate(n=>n===document.activeElement),true,'native paragraph keyboard return');
+    choices++;
+   }
    for(const d of pub.diagrams){
     const figure=page.locator('.admitted-diagram[data-semantic-fingerprint="'+d.semantic_fingerprint+'"]'),figureId=await figure.getAttribute('id');
     const m=d.meaning,nodes=m.nodes||m.participants,edges=m.relations||m.groups?.flatMap(g=>g.messages)||[];

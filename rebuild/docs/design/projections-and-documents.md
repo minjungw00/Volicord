@@ -2929,6 +2929,29 @@ changing retained representation, response budgets, transport, admitted prose,
 range hashes, semantic origins or historical publication validation. Distributed
 script-free exports retain their own original bytes and return interfaces.
 
+#### Complete embedded code capacity — accepted 2026-11-07
+
+The user-approved aggregate is now **65,536 UTF-8 bytes**, superseding the earlier
+49,152-byte aggregate only. A valid 55,000-byte independent-window publication
+fits response/retained admission but previously omitted two 5,000-byte windows.
+Its lack of overlap is a direct counterexample to deduplication as a capacity fix.
+The increase is bounded to one existing maximum window, with unchanged 32 KiB
+bundle allocation, 16,384-byte individual windows and 4,096-byte citation pages.
+Whole windows still share allocation only under their admitted Source/range binding.
+
+Required complete sets at 65,535/65,536 bytes embed without omission; at 65,537,
+whole-window omissions remain explicit. All exact citations stay inspectable, with
+complete live/MCP paging even for windows omitted from the static embedding. A
+partial offline scope is never labelled complete. There is no unvalidated sidecar,
+automatic partition or larger response, retained envelope or public wire bound.
+
+The additional read-time text can increase highlighting, line-number DOM, rendered
+HTML, memory and export size; its raw byte increment is not an HTML/RSS estimate.
+It creates no new retained record and reads only existing permitted Source copies.
+Old admitted publications retain their own meaning/hashes and independently checked
+bodies; new writes still validate the current basis. Exact-current formats and
+every Source's permission, lifetime, deletion and forgetting scope remain unchanged.
+
 ### Actual human CLI explanation consumption
 
 Repository and Work human output share the same explanation renderer. In addition

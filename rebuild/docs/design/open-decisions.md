@@ -882,6 +882,33 @@ human/assistive acceptance remains unobserved until actually supplied.
   forbidden bodies, or complete useful content still cannot fit the measured bound.
   Preserve originals and diagnose the responsible owner before another policy change.
 
+### Complete embedded code capacity — accepted 2026-11-07
+
+- Status: `accepted` by the current explicit answer, “65,536B 총량 변경 승인”.
+  This is the narrow read-time aggregate change presented with its downstream
+  scope, not authority to enlarge other budgets.
+- Counterexample: eleven independent 5,000-byte windows require 55,000 bytes,
+  with no overlap. The 10,761-byte response fits admission, but the 49,152-byte
+  embedded aggregate selects only 45,000 bytes and declares two whole omissions.
+  Sharing repeated markup or equal ranges cannot recover these distinct bytes.
+- Set the embedded aggregate to 65,536 bytes: one existing maximum 16,384-byte
+  window above the prior total. Preserve the established 32 KiB bundle allocation,
+  whole-window selection and independent Source authority. This is a general
+  capacity policy, not a repository-specific compact mode or qualification change.
+- Response 56,320, retained body 164,864, preparation 131,072, raw input 65,536,
+  per-window 16,384 and citation-page 4,096 byte bounds remain independent and
+  unchanged. No additional Source capture, retention renewal, format/decoder,
+  historical conversion or provider transmission is authorized.
+- Above the embedded total, live/MCP exact range paging remains the supported
+  complete-consumption path. Native output explicitly identifies omitted whole
+  ranges and cannot claim complete offline evidence. No clipping, lost citation,
+  unauthorized union, sidecar or implicit partition is permitted. A new partitioned
+  export format would have separate identity, integrity and lifecycle costs and is
+  not introduced to bypass these limits.
+- Retained publications keep original hashes/IDs and existing read validation.
+  Revisit if required evidence exceeds this supported disposition or measured
+  rendering/transport/lifecycle costs require another policy decision.
+
 ## Current diagram design adoption — 2026-11-07
 
 - Status: `accepted`. After delivery of the sequence foreground/supporting-guide

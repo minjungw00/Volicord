@@ -5379,3 +5379,25 @@ one permitted bounded prefix: neither old unions nor another identity may restor
 forbidden surrounding bytes. Preserve original hashes/coordinates and every
 unavailable choice. A nonoverlapping capacity control must identify its limiting
 policy separately; renderer savings cannot be claimed to solve that obstruction.
+
+### Complete embedded publication capacity — 2026-11-07
+
+The accepted capacity correction changes only Projection's read-time embedded
+aggregate, 49,152 -> 65,536 bytes. Preserve a valid 55,000-byte, zero-overlap
+control with its original two omitted windows before the correction. Afterward,
+read the same old publication and a normally prepared/composed/recorded fresh one
+through installed CLI, actual HTTP, full MCP reassembly and script-free export.
+Keep original publication/preparation IDs and managed-record bytes independent
+of new preparation. Do not infer a lifetime extension from better inclusion.
+
+`citation_reading::complete_nonoverlapping_code_has_an_exact_aggregate_boundary`
+uses unchanged complete independent originals totalling 65,535/65,536/65,537
+bytes. Check exact embedding through HTTP/native consumers, explicit whole-window
+overflow scope and complete 4,096-byte range paging including omitted windows.
+The existing priority fixture is not reduced: its formerly omitted inventory now
+fits, while complete mechanism windows and all original hashes remain required.
+Keep response/retained/preparation byte edges, role/format and fixture registry,
+locale, transport/reassembly, historical reading, mixed Source expiry/overlap,
+installer and real deletion controls directly coupled to this policy change.
+Measure additional original-code bytes, serialized markup, DOM, memory and wire
+pages separately; a larger raw inclusion bound does not predict their costs.

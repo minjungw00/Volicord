@@ -845,6 +845,15 @@ document metadata 11, all durable formats, exact original publications and Sourc
 retention remain unchanged. Newly authored bilingual examples are ordinary distinct
 publications from explicitly permitted new observations, not a historical conversion.
 
+### Complete embedded code capacity — 2026-11-07
+
+The separately approved embedded-code aggregate is 65,536 bytes (previously
+49,152). It is read-time whole-window inclusion policy, not an explanation or
+document-metadata revision. Response, preparation, retained envelope, raw input,
+individual window and public paging limits retain their exact existing values.
+The current reader validates original retained publications and their Source
+authority without rewriting preparation hashes or requiring new authorship.
+
 ### Shared native evidence presentation — 2026-11-07
 
 Evidence presentation shares one native context per element origin and compacts
