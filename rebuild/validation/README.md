@@ -1766,3 +1766,20 @@ changed separator keys and geometry-version return on actual permitted evidence.
 `interactions: true` retains the separate full history/resize/race/denial suite.
 Its completed-response teardown control has a finite response deadline, and BFCache
 restoration counts actual citation requests rather than unrelated HTTP traffic.
+
+For selected interactive Reader UI review, launch the actual installed Viewer as
+the primary entry using `viewer-design/live_product_review.py --config CONFIG
+--output NEW_PRIVATE_DIRECTORY --primary CASE_KEY`. Configuration uses the existing
+document-reader `viewer`/`cases` fields. One task-owned loopback listener is shared
+by cases with the same Runtime/Project; languages, subjects and figure links retain
+their actual scopes. Ctrl-C stops every listener; `--check` verifies startup and
+document reads, then tears them down. The private session metadata contains local
+paths/processes/URLs and is excluded from shareable static archives. The launcher
+only reads; it performs no Source capture, authorship, publication or provider work.
+
+Static gallery grids, cropped screenshots, native radio controls and isolated
+synthetic SVGs are supporting evidence, not the selected interactive Product UI.
+Keep them explicitly labelled and deliver a direct live entry plus restart command.
+Current live figure links must come from the actual response; stale input fixtures
+cannot reinstate a denied figure. Native packages retain the closed static boundary
+and must not embed live authenticity, scripts or Runtime material to imitate live UI.

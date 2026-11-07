@@ -5277,3 +5277,30 @@ Direct live/native code/claim/camera consumption passed 56 checks for the origin
 seven sequences in both locales and desktop/mobile widths. This focused paint
 validation neither reauthors publications nor supplies aggregate/official V11
 qualification; distributed previous exports retain their original stylesheet.
+
+### Primary live Reader UI review — 2026-11-07
+
+User review found that the diagram controls and overall review presentation did
+not show the adopted UI. The delivered gallery primarily opened static/native
+documents and cropped figures, while isolated synthetic PNGs contained no Product
+chrome. Those useful binding/geometry observations did not demonstrate the selected
+interactive experience. The existing Reader owner already requires a primary live
+entry; no new design approval or alternate UI is introduced.
+
+The correction launches actual installed Viewer listeners for the declared
+Runtime/Project scopes and links the current live documents/figures, using native
+exports and synthetic inspection only as explicitly labelled supplements. Current
+response identities own figure links; stale input cannot restore a missing figure.
+The launcher does no capture, authorship, publication or provider work. Its private
+process/session metadata is excluded from static shareable archives, and shutdown
+terminates only its own listeners. The static package entry now names its actual
+mode and does not imply camera, passive-TOC or resize parity with live UI.
+
+Supported local installation and startup/read/teardown passed for four listeners,
+seven existing documents and eighteen current figures. Installed Product versus
+immutable CE1 interaction fidelity passed ten desktop/mobile conditions; complete
+Work composition/pane/temporal drawing comparison passed four. The static package
+boundary checks also passed. These are technical/source-familiar results; the
+delivered correction is not independent human/assistive acceptance or aggregate
+qualification. Viewer presentation and admitted meanings were unchanged in this
+delivery correction.

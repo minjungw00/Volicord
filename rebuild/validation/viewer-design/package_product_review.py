@@ -58,8 +58,9 @@ def reader_entry(cases):
             + '</h2><p>' + escape(classification) + ' · ' + escape(origin) + '</p>'
             + ''.join(f'<a href="{prefix}#{escape(fragment)}">{escape(label)}</a> ' for label, fragment in links) + '</article>')
     return '''<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>Volicord 읽기 검토</title><style>body{font:16px/1.8 system-ui,sans-serif;margin:24px;color:#1c2b40;background:#f3f5f9}main{max-width:1000px;margin:auto}article{padding:24px;margin:24px 0;background:white}a{display:inline-block;padding:8px;color:#2357a0;overflow-wrap:anywhere}</style>
-<main><h1>실제 Product 읽기·탐색 검토</h1><p>아래 문서는 현재 후보가 내보낸 변경 없는 script-free 파일입니다. 인터넷이나 서버 없이 열 수 있습니다. 각 사례의 origin과 자료 한계를 함께 읽어 주세요.</p>
+<title>Volicord 정적 문서 검토</title><style>body{font:16px/1.8 system-ui,sans-serif;margin:24px;color:#1c2b40;background:#f3f5f9}main{max-width:1000px;margin:auto}article{padding:24px;margin:24px 0;background:white}a{display:inline-block;padding:8px;color:#2357a0;overflow-wrap:anywhere}</style>
+<main><h1>정적 문서 읽기·탐색 검토</h1><p>아래 문서는 현재 후보가 내보낸 변경 없는 script-free 파일입니다. 인터넷이나 서버 없이 열 수 있습니다. 각 사례의 origin과 자료 한계를 함께 읽어 주세요.</p>
+<p>채택된 대화형 UI 검토는 설치된 live Viewer에서 진행합니다. 이 정적 목록과 파일은 카메라 이동·확대 조작, 동적 목차 추적과 근거 창 너비 조절을 검토하는 기본 화면을 대신하지 않습니다.</p>
 <p>이전 전달 UI에 대한 거절은 보존됩니다. 이 전달물의 사람 독해·디자인 수용·보조기술·native zoom은 실제 관찰 전까지 pending입니다. 에이전트와 브라우저 검사로 승인하지 않습니다.</p>
 <p>normal은 현재 읽기 가능한 콘텐츠라는 표시입니다. 새 작업의 자동 수집·새 생성·의미 정확성·사용자 수락을 뜻하지 않습니다. record-only와 degraded도 각 origin의 한계를 유지합니다.</p>
 <p>먼저 문서만 읽고 자신의 답을 남겨 주세요. 기술 결과는 그 다음에 확인합니다. source-first 기대와 평가 정답은 이 패키지에 포함하지 않습니다.</p><ol>''' \
