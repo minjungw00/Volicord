@@ -134,6 +134,19 @@ async function citationPoint(page,href) {
  return own?page.locator('.source-point[id="'+own+'"]'):target;
 }
 module.exports.citationPoint=citationPoint;
+async function nativeEvidenceContext(point) {
+ const alias=point.locator(':scope > .source-origin-target:target');
+ const origin=await alias.count()?await alias.getAttribute('data-origin'):null;
+ const id=origin?origin+'-evidence-context':null;
+ if(!id)return await alias.count()?alias:point;
+ const context=point.page().locator('.source-origin-context[id="'+id+'"]');
+ // Immutable earlier exports keep their original inline native header.
+ if(!await context.count()&&await alias.locator(':scope > .point-bar').count())return alias;
+ assert.equal(await context.count(),1,'one exact native origin presentation');
+ assert.equal(await context.getAttribute('data-reader-publication'),await point.getAttribute('data-reader-publication'),'same managed publication');
+ return context;
+}
+module.exports.nativeEvidenceContext=nativeEvidenceContext;
 async function embeddedReference(point) {
  const id=new URL(point.page().url()).hash.slice(1).split('!')[0];
  const native=point.locator(':scope > .source-origin-target[id="'+id+'"]');

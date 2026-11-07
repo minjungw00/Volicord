@@ -1,3 +1,4 @@
+const {nativeEvidenceContext}=require('../../viewer-design/product_review_controls.cjs');
 // Single admitted temporal world -> exact claim/code -> originating camera/view.
 // Frozen comparison scenes are historical evidence, never extra Product trees.
 const assert=require('node:assert/strict');
@@ -27,13 +28,13 @@ async function inspect(page,figure,diagram,answers,{scripted,write,screenshot,se
  else {bytes=await(await openEmbeddedCode(point)).textContent();await returnFromEmbeddedCode(point);}
  assert.equal('sha256:'+require('node:crypto').createHash('sha256').update(bytes).digest('hex'),citation.range_sha256,'complete exact original code');
  await screenshot('timeline-code');const deep=page.url();
- if(scripted)await page.keyboard.press('Escape');else await point.locator('a.return:visible').click();await settled();
+ if(scripted)await page.keyboard.press('Escape');else await (await nativeEvidenceContext(point)).locator('a.return:visible').click();await settled();
  if(scripted)assert(await element.evaluate(n=>document.activeElement===n),'exact temporal focus return');else assert.equal(new URL(page.url()).hash,'#'+ns+'-'+message.id);
  const after=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left,pan:n.closest('.diagram-viewport').scrollLeft}));
  if(scripted)for(const key of ['top','left','pan'])assert(Math.abs(before[key]-after[key])<3,'visible temporal context return: '+key);
  await screenshot('timeline-returned');await page.goto(deep);await settled();
  if(scripted){await citationReady(point);await page.keyboard.press('Escape');await settled();assert(await element.evaluate(n=>n===document.activeElement),'fresh deep evidence returns to exact origin');}
- else {await point.locator('a.return:visible').click();await settled();assert.equal(new URL(page.url()).hash,'#'+ns+'-'+message.id);}
+ else {await (await nativeEvidenceContext(point)).locator('a.return:visible').click();await settled();assert.equal(new URL(page.url()).hash,'#'+ns+'-'+message.id);}
  const duplicates=await page.evaluate(()=>{const ids=[...document.querySelectorAll('[id]')].map(n=>n.id);return ids.filter((id,i)=>ids.indexOf(id)!==i);});assert.deepEqual(duplicates,[]);
  return {origin:ns+'-'+message.id,citation:citationIndex,source:citation.source_id,codeBytes:Buffer.byteLength(bytes),before,after};
 }

@@ -906,15 +906,13 @@ fn evidence_question(r: &ViewerRequest, answers: &ReaderAnswers<'_>) -> String {
         })
 }
 
-/// Native origins share the exact citation body, never the originating element.
-/// These bounded fragment targets also work in a script-free exported file.
+/// A fragment binds one citation to an origin; its presentation is shared by
+/// every range of that origin. Neither the context nor its bytes grant access.
 fn diagram_source_origins(
     html: &mut String,
-    r: &ViewerRequest,
     answers: &ReaderAnswers<'_>,
     unit: usize,
     citation: usize,
-    payload_aliases: bool,
 ) {
     let texts = answers
         .prose
@@ -923,12 +921,6 @@ fn diagram_source_origins(
         .collect::<Vec<_>>();
     let c = &answers.prose[unit].citations[citation];
     let point = source_point_anchor(answers, unit, citation);
-    let language = content_language_tag(
-        answers
-            .provenance
-            .as_ref()
-            .map_or("", |p| p.language.as_str()),
-    );
     for d in &answers.diagrams {
         for ns in diagram_namespaces(answers, d) {
             for (id, label) in crate::diagram::elements(d).into_iter().filter(|(_, l)| {
@@ -936,37 +928,75 @@ fn diagram_source_origins(
                     && c.claim_start_byte <= l.start_byte
                     && c.claim_end_byte >= l.end_byte
             }) {
-                let element = format!("{ns}-{id}");
-                let claim = format!("{element}-claim");
+                let claim = format!("{ns}-{id}-claim");
                 let alias = diagram_source_anchor(&claim, citation);
-                let alias = if payload_aliases {
-                    format!("{alias}-shared-code")
-                } else {
-                    alias
-                };
-                let caption = crate::diagram::element_caption(d, &id, &texts, r.locale.fixed());
-                let wording = volicord_projections::diagram_label(label, &texts).unwrap_or("");
-                html.push_str(&format!("<section class=\"source-origin-target{}\" id=\"{alias}\" data-selected-point=\"{point}\" data-origin=\"{claim}\" data-body-context=\"{}\" tabindex=\"-1\"><div class=\"point-bar reading-panel-header\"><strong>{}</strong><a class=\"return panel-close\" href=\"#{element}\" aria-label=\"{}\">×</a></div><p class=\"point-title\">{}</p><h2 class=\"evidence-claim\" lang=\"{language}\">{}</h2><p class=\"evidence-selection-context\">{}</p>",if payload_aliases {" shared-source-target"} else {""},wording!=answers.prose[unit].text.get(c.claim_start_byte..c.claim_end_byte).unwrap_or(""),text(r.locale,"Evidence","근거"),text(r.locale,"Return to explanation","설명으로 돌아가기"),evidence_question(r,answers),escape(wording),escape(&caption)));
-                let covering = answers.prose[unit]
+                let body_context =
+                    Some(volicord_projections::diagram_label(label, &texts).unwrap_or(""))
+                        != answers.prose[unit]
+                            .text
+                            .get(c.claim_start_byte..c.claim_end_byte);
+                // Retain both native fragment interfaces, without duplicating
+                // headers, wording, range menus or styles for the second alias.
+                for suffix in ["", "-shared-code"] {
+                    html.push_str(&format!("<span class=\"source-origin-target\" id=\"{alias}{suffix}\" data-selected-point=\"{point}\" data-origin=\"{claim}\" data-citation-index=\"{citation}\" data-body-context=\"{body_context}\" tabindex=\"-1\"></span>"));
+                }
+            }
+        }
+    }
+}
+
+fn diagram_source_contexts(
+    html: &mut String,
+    styles: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+) {
+    let texts = answers
+        .prose
+        .iter()
+        .map(|p| p.text.as_str())
+        .collect::<Vec<_>>();
+    let language = content_language_tag(
+        answers
+            .provenance
+            .as_ref()
+            .map_or("", |p| p.language.as_str()),
+    );
+    for n in 0..answers
+        .prose
+        .iter()
+        .map(|p| p.citations.len())
+        .max()
+        .unwrap_or(0)
+    {
+        styles.push_str(&format!(".appendix:has(.source-origin-target[data-citation-index=\"{n}\"]:target) .native-range-links [data-citation-index=\"{n}\"]{{background:var(--wash);color:var(--strong)}}"));
+    }
+    for d in &answers.diagrams {
+        for ns in diagram_namespaces(answers, d) {
+            for (id, label) in crate::diagram::elements(d) {
+                let covering = answers.prose[label.unit]
                     .citations
                     .iter()
                     .enumerate()
-                    .filter(|(_, other)| {
-                        other.claim_start_byte <= label.start_byte
-                            && other.claim_end_byte >= label.end_byte
+                    .filter(|(_, c)| {
+                        c.claim_start_byte <= label.start_byte && c.claim_end_byte >= label.end_byte
                     })
                     .collect::<Vec<_>>();
+                if covering.is_empty() {
+                    continue;
+                }
+                let element = format!("{ns}-{id}");
+                let claim = format!("{element}-claim");
+                let context = format!("{claim}-evidence-context");
+                let wording = volicord_projections::diagram_label(label, &texts).unwrap_or("");
+                let caption = crate::diagram::element_caption(d, &id, &texts, r.locale.fixed());
+                html.push_str(&format!("<section class=\"source-origin-context\" id=\"{context}\"{}><div class=\"point-bar reading-panel-header\"><strong>{}</strong><a class=\"return panel-close\" href=\"#{element}\" aria-label=\"{}\">×</a></div><p class=\"point-title\">{}</p><h2 class=\"evidence-claim\" lang=\"{language}\">{}</h2><p class=\"evidence-selection-context\">{}</p>",publication_scope(answers),text(r.locale,"Evidence","근거"),text(r.locale,"Return to explanation","설명으로 돌아가기"),evidence_question(r,answers),escape(wording),escape(&caption)));
                 if covering.len() > 1 {
                     html.push_str(&format!("<details class=\"native-range-selector\"><summary>{} · {}</summary><nav class=\"native-range-links\">",text(r.locale,"Choose evidence range","근거 범위 선택"),covering.len()));
-                    for (n, other) in covering {
+                    for (n, other) in &covering {
+                        let alias = diagram_source_anchor(&claim, *n);
                         html.push_str(&format!(
-                            "<a href=\"#{}\"{}>{}:{}–{}</a>",
-                            diagram_source_anchor(&claim, n),
-                            if n == citation {
-                                " aria-current=\"true\""
-                            } else {
-                                ""
-                            },
+                            "<a href=\"#{alias}\" data-citation-index=\"{n}\">{}:{}–{}</a>",
                             escape(&other.locator),
                             other.start_line,
                             other.end_line
@@ -975,9 +1005,9 @@ fn diagram_source_origins(
                     html.push_str("</nav></details>");
                 }
                 html.push_str("</section>");
-                // :target keeps the selected strip visible while reading its code,
-                // and after the native primary return reaches the actual element.
-                html.push_str(&format!("<style>body:not([data-reader-enhanced=true]):has([id=\"{alias}\"]:target,[id=\"{alias}-shared-code\"]:target,[id=\"{element}\"]:target) [id=\"{claim}\"]{{display:block}}</style>"));
+                // Match the immutable origin, independently of which citation
+                // fragment (or retained shared-code alias) selected it.
+                styles.push_str(&format!("body:not([data-reader-enhanced=true]) .appendix:has([data-origin=\"{claim}\"]:target)>[id=\"{context}\"]{{display:block}}body:not([data-reader-enhanced=true]):has([data-origin=\"{claim}\"]:target,[id=\"{element}\"]:target) [id=\"{claim}\"]{{display:block}}"));
             }
         }
     }
@@ -2254,11 +2284,16 @@ fn source_excerpt_anchor(
     answers: &ReaderAnswers<'_>,
     c: &volicord_projections::ExplanationCitation,
 ) -> String {
-    let key = serde_json::json!([c.source_id, c.field, c.start_byte, c.end_byte, c.use_kind]);
+    // Match same_source_range: equal bytes alone never identify a Source.
+    let mut binding = c.clone();
+    binding.claim_start_byte = 0;
+    binding.claim_end_byte = 0;
+    binding.claim_sha256.clear();
+    let key = serde_json::to_string(&binding).unwrap_or_default();
     format!(
         "reader-{}-source-{}",
         answers.namespace,
-        volicord_projections::explanation_text_hash(&key.to_string()).trim_start_matches("sha256:")
+        volicord_projections::explanation_text_hash(&key).trim_start_matches("sha256:")
     )
 }
 
@@ -2294,10 +2329,11 @@ fn render_source_excerpts(
         return;
     }
     html.push_str(&format!("<aside class=\"appendix\" role=\"region\" aria-label=\"{}\" data-reading-role=\"cited-source\" data-statement-role=\"observed-fact\">", text(r.locale,"Evidence","근거")));
-    let mut seen = std::collections::BTreeSet::new();
+    let mut seen = std::collections::BTreeMap::new();
     let mut payloads = String::new();
     let mut metadata_blocks = String::new();
     let mut selected_styles = String::new();
+    diagram_source_contexts(html, &mut selected_styles, r, answers);
     for (index, answer) in answers.prose.iter().enumerate() {
         for (n, c) in answer.citations.iter().enumerate() {
             let anchor = source_point_anchor(answers, index, n);
@@ -2311,9 +2347,12 @@ fn render_source_excerpts(
                 .unwrap_or("");
             let selected_question = evidence_question(r, answers);
             let range = source_excerpt_anchor(answers, c);
-            let first_payload = seen.insert(range.clone());
-            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-origin=\"{}\" data-source-id=\"{}\" data-range-sha256=\"{}\" data-citation-binding=\"{}\" data-cited-code=\"{range}\" data-source-metadata=\"{anchor}-observation-data\" data-unit-index=\"{index}\" data-citation-index=\"{n}\" tabindex=\"-1\"{}><div class=\"point-bar reading-panel-header\"><strong>{}</strong><a class=\"return panel-close\" href=\"#{}\" aria-label=\"{}\">×</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><p class=\"evidence-context-label\">{}</p><h2 class=\"evidence-claim\" lang=\"{}\">{}</h2><p class=\"evidence-selection-context\" hidden></p>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),escape(&c.range_sha256),escape(&serde_json::to_string(c).unwrap_or_default()),publication_scope(answers),text(r.locale,"Evidence","근거"),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),selected_question,text(r.locale,"Selected explanation","선택한 설명"),escape(&content_language_tag(&provenance.language)),escape(claim)));
-            diagram_source_origins(html, r, answers, index, n, false);
+            let next_key = seen.len();
+            let first_payload = !seen.contains_key(&range);
+            let code_key = *seen.entry(range.clone()).or_insert(next_key);
+            let point_key = format!("{index}-{n}");
+            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-point-key=\"{point_key}\" data-code-key=\"{code_key}\" data-origin=\"{}\" data-source-id=\"{}\" data-range-sha256=\"{}\" data-citation-binding=\"{}\" data-cited-code=\"{range}\" data-source-metadata=\"{anchor}-observation-data\" data-unit-index=\"{index}\" data-citation-index=\"{n}\" tabindex=\"-1\"{}><div class=\"point-bar reading-panel-header\"><strong>{}</strong><a class=\"return panel-close\" href=\"#{}\" aria-label=\"{}\">×</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><p class=\"evidence-context-label\">{}</p><h2 class=\"evidence-claim\" lang=\"{}\">{}</h2><p class=\"evidence-selection-context\" hidden></p>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),escape(&c.range_sha256),escape(&serde_json::to_string(c).unwrap_or_default()),publication_scope(answers),text(r.locale,"Evidence","근거"),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),selected_question,text(r.locale,"Selected explanation","선택한 설명"),escape(&content_language_tag(&provenance.language)),escape(claim)));
+            diagram_source_origins(html, answers, index, n);
             let mut context = String::new();
             if !answer.citations.is_empty() {
                 html.push_str(&format!("<details class=\"range-selector\"><summary>{} · {}</summary><nav class=\"point-others\">",text(r.locale,"Choose evidence range","근거 범위 선택"),answer.citations.len()));
@@ -2395,9 +2434,6 @@ fn render_source_excerpts(
                     ));
                 }
             }
-            if excerpt.is_some() {
-                diagram_source_origins(html, r, answers, index, n, true);
-            }
             html.push_str("</section>");
             let mut metadata = String::new();
             {
@@ -2432,8 +2468,8 @@ fn render_source_excerpts(
                         context.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.","제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
                     }
                     if first_payload {
-                        selected_styles.push_str(&format!(".appendix:has([id=\"{range}\"]:target,[id=\"{range}\"] :target)>:is([id=\"{anchor}\"],[id=\"{anchor}-observation-data\"]){{display:block}}"));
-                        payloads.push_str(&format!("<details class=\"cited-code evidence-disclosure\" id=\"{range}\" data-source-id=\"{}\" data-range-sha256=\"{}\" data-default-point=\"{anchor}\" open{}><summary>{}</summary>",escape(&c.source_id),escape(&c.range_sha256),publication_scope(answers),text(r.locale,"Complete cited code","인용된 전체 코드")));
+                        selected_styles.push_str(&format!(".appendix:has(>.cited-code[data-code-key=\"{code_key}\"]:target,>.cited-code[data-code-key=\"{code_key}\"] :target)>[data-point-key=\"{point_key}\"]{{display:block}}"));
+                        payloads.push_str(&format!("<details class=\"cited-code evidence-disclosure\" id=\"{range}\" data-code-key=\"{code_key}\" data-source-id=\"{}\" data-range-sha256=\"{}\" data-default-point=\"{anchor}\" open{}><summary>{}</summary>",escape(&c.source_id),escape(&c.range_sha256),publication_scope(answers),text(r.locale,"Complete cited code","인용된 전체 코드")));
                         let syntax = crate::source_highlight::language(
                             c,
                             e.source_representation.as_deref(),
@@ -2522,8 +2558,8 @@ fn render_source_excerpts(
                     .unwrap_or_else(|| text(r.locale, "Date unavailable", "날짜 확인 불가").into());
                 html.push_str(&format!("<details><summary>{}</summary><p>{}: {}</p><pre>{}</pre></details>",text(r.locale,"Source identity · observed scope","Source identity · 관측 범위"),text(r.locale,"Source observed at","근거 관측 시각"),escape(&observed),escape(&format!("output: {}\nsubject: {:?}\ncitation: {c:#?}\nCanonical Work revision: {:?}\nobserved at (Unix microseconds): {:?}",provenance.realization_fingerprint,provenance.subject,excerpt.map(|e|e.work_revision),excerpt.map(|e|e.observed_at_unix_micros)))));
             }
-            metadata_blocks.push_str(&format!("<details class=\"source-metadata evidence-disclosure\" id=\"{anchor}-observation-data\" data-source-context=\"{anchor}\" data-source-id=\"{}\"{}><summary>{}</summary>{metadata}</details>",escape(&c.source_id),publication_scope(answers),text(r.locale,"Observation information and limits","관측 정보와 한계")));
-            selected_styles.push_str(&format!(".appendix:has([id=\"{anchor}\"]:target,[id=\"{anchor}\"] :target,[id=\"{anchor}-observation-data\"]:target,[id=\"{anchor}-observation-data\"] :target)>:is([id=\"{range}\"],[id=\"{anchor}-observation-data\"]){{display:block}}.appendix:has([id=\"{anchor}-observation-data\"]:target,[id=\"{anchor}-observation-data\"] :target)>[id=\"{anchor}\"]{{display:block}}"));
+            metadata_blocks.push_str(&format!("<details class=\"source-metadata evidence-disclosure\" id=\"{anchor}-observation-data\" data-point-key=\"{point_key}\" data-source-context=\"{anchor}\" data-source-id=\"{}\"{}><summary>{}</summary>{metadata}</details>",escape(&c.source_id),publication_scope(answers),text(r.locale,"Observation information and limits","관측 정보와 한계")));
+            selected_styles.push_str(&format!(".appendix:has(>[data-point-key=\"{point_key}\"]:target,>[data-point-key=\"{point_key}\"] :target)>:is(.cited-code[data-code-key=\"{code_key}\"],[data-point-key=\"{point_key}\"]){{display:block}}"));
         }
     }
     if answers.omitted_source_excerpt_count > 0 {

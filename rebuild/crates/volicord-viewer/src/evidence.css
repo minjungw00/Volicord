@@ -170,10 +170,10 @@ body[data-viewer-mode=snapshot]:has(#works:target,#works :target,.snapshot-page[
 .native-range-links {display:flex;flex-direction:column;gap:6px;padding:5px;font-size:11px}
 .native-range-links a {padding:6px 9px;color:var(--muted);border:1px solid var(--line);border-radius:5px}
 .native-range-links a[aria-current] {background:var(--wash);color:var(--strong)}
-body:not([data-reader-enhanced=true]) .source-origin-target:target {display:block}
+.source-origin-context {display:none;padding-top:76px}
+body:not([data-reader-enhanced=true]) .source-point:has(>.source-origin-target:target) {padding-top:0}
 body:not([data-reader-enhanced=true]) .source-point:has(>.source-origin-target:target)>:is(.point-bar,.point-title,.evidence-claim,.evidence-selection-context,.range-selector,.source-code-reference) {display:none}
 body:not([data-reader-enhanced=true]) .source-point:has(>.source-origin-target:target) {display:flex;flex-direction:column}
-body:not([data-reader-enhanced=true]) .source-origin-target:target {order:-1}
 
 .connected-overview .diagram-condition {font-size:13px}
 .doc:has(>.scope-summary) .doc-head {margin-bottom:6px}
@@ -403,7 +403,7 @@ body:has(.diagram-expanded) .doc,body:has(.native-figure-toggle:checked) .doc{co
    box cannot contain a sticky header for the full evidence scroll. Keep the
    existing exact-context controls in the viewport and reserve their space. */
 .appendix .source-point{padding-top:76px}
-body .appendix .source-point .point-bar{position:fixed;top:0;right:24px;width:calc(var(--evidence-width,464px) - 48px);margin:0;padding:10px 0;z-index:3}
-@media(min-width:761px) and (max-width:1199px){body .appendix .source-point .point-bar{width:calc(var(--evidence-width,540px) - 48px)}}
-@media(max-width:760px){body .appendix .source-point .point-bar{right:18px;width:calc(100vw - 36px)}}
-@media print{.appendix .source-point{padding-top:0}body .appendix .source-point .point-bar{position:static;width:auto;margin-bottom:20px}}
+body .appendix :is(.source-point,.source-origin-context) .point-bar{position:fixed;top:0;right:24px;width:calc(var(--evidence-width,464px) - 48px);margin:0;padding:10px 0;z-index:3}
+@media(min-width:761px) and (max-width:1199px){body .appendix :is(.source-point,.source-origin-context) .point-bar{width:calc(var(--evidence-width,540px) - 48px)}}
+@media(max-width:760px){body .appendix :is(.source-point,.source-origin-context) .point-bar{right:18px;width:calc(100vw - 36px)}}
+@media print{.appendix :is(.source-point,.source-origin-context){padding-top:0}body .appendix :is(.source-point,.source-origin-context) .point-bar{position:static;width:auto;margin-bottom:20px}}

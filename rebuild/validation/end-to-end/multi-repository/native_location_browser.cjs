@@ -1,3 +1,4 @@
+const {nativeEvidenceContext}=require('../../viewer-design/product_review_controls.cjs');
 // Real request/fragment ownership with scripting disabled at context creation.
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http');
 const assert=require('node:assert/strict'),crypto=require('node:crypto'),{spawn}=require('node:child_process');
@@ -66,14 +67,14 @@ async function timelineOrigins(page,c,{kind,width,snapshot,projectName,prefix,ad
    await page.screenshot({path:path.join(config.output,`${prefix}-${d.id}-${selection.id.replaceAll(':','-')}-timeline-code.png`)});
    for(const deep of [false,true]){
     if(deep){await page.goto(directCode);await page.reload();await pause(page);await cue(page,kind,c,width,snapshot,projectName);}
-    await returnFromEmbeddedCode(point);await point.locator('a.return:visible').click();await pause(page);
+    await returnFromEmbeddedCode(point);await (await nativeEvidenceContext(point)).locator('a.return:visible').click();await pause(page);
     await timelineReturn(page,details,element,origin,c,{kind,width,snapshot,projectName});
    }
    await page.screenshot({path:path.join(config.output,`${prefix}-${d.id}-${selection.id.replaceAll(':','-')}-timeline-returned.png`)});
    // An otherwise valid same-publication/same-role return to the scene is a
    // counterexample. Mutate only the disposable page, never its public export.
    await page.goto(directCode);await returnFromEmbeddedCode(point);
-   const back=point.locator('a.return:visible');await back.evaluate((a,scene)=>a.setAttribute('href','#'+scene),ns+'-'+selection.id);
+   const back=(await nativeEvidenceContext(point)).locator('a.return:visible');await back.evaluate((a,scene)=>a.setAttribute('href','#'+scene),ns+'-'+selection.id);
    await back.click();await pause(page);
    await assert.rejects(()=>timelineReturn(page,details,element,origin,c,{kind,width,snapshot,projectName}),{code:'ERR_ASSERTION'},'same wording cannot satisfy view-specific return');
    observations.push({diagram:d.id,element:selection.id,origin,source:citation.source_id,range: citation.range_sha256,wrong_view_rejected:true});
@@ -108,10 +109,10 @@ async function timelineOrigins(page,c,{kind,width,snapshot,projectName,prefix,ad
     await element.focus();await page.keyboard.press('Enter');await pause(page);await cue(page,kind,c,width,snapshot,projectName);
     const link=page.locator(`[id="${claim}"] a.evidence-link`).first(),href=await link.getAttribute('href'),point=await citationPoint(page,href);await link.click();await pause(page);await cue(page,kind,c,width,snapshot,projectName);
     const code=await openEmbeddedCode(point);assert.ok((await code.textContent()).length,'permitted native complete code remains available');const directCode=page.url();await cue(page,kind,c,width,snapshot,projectName);await page.screenshot({path:path.join(config.output,prefix+'-code.png')});await returnFromEmbeddedCode(point);
-    await point.locator('a.return:visible').click();await pause(page);assert.equal(new URL(page.url()).hash,'#'+origin);await cue(page,kind,c,width,snapshot,projectName);await page.screenshot({path:path.join(config.output,prefix+'-returned.png')});
+    await (await nativeEvidenceContext(point)).locator('a.return:visible').click();await pause(page);assert.equal(new URL(page.url()).hash,'#'+origin);await cue(page,kind,c,width,snapshot,projectName);await page.screenshot({path:path.join(config.output,prefix+'-returned.png')});
     await page.goBack();await pause(page);await cue(page,kind,c,width,snapshot,projectName);await page.goForward();await pause(page);await cue(page,kind,c,width,snapshot,projectName);
     await page.goto(directCode);await pause(page);await cue(page,kind,c,width,snapshot,projectName);await page.reload();await pause(page);await cue(page,kind,c,width,snapshot,projectName);
-    await returnFromEmbeddedCode(point);await point.locator('a.return:visible').click();await pause(page);await cue(page,kind,c,width,snapshot,projectName);
+    await returnFromEmbeddedCode(point);await (await nativeEvidenceContext(point)).locator('a.return:visible').click();await pause(page);await cue(page,kind,c,width,snapshot,projectName);
    }
    const timelines=await timelineOrigins(page,c,{kind,width,snapshot,projectName,prefix,address});
    if(snapshot){await page.goto(address+'#unknown-native-destination');await pause(page);await cue(page,'overview',c,width,true,projectName);assert.equal(await page.locator('#overview').isVisible(),true);assert.equal(await page.locator('.snapshot-link-help').isVisible(),true,'unknown target has an explicit unavailable-link notice');}

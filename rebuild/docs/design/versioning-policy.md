@@ -845,6 +845,16 @@ document metadata 11, all durable formats, exact original publications and Sourc
 retention remain unchanged. Newly authored bilingual examples are ordinary distinct
 publications from explicitly permitted new observations, not a historical conversion.
 
+### Shared native evidence presentation — 2026-11-07
+
+Evidence presentation shares one native context per element origin and compacts
+pane-local selection rules. These ephemeral ordinals are not stored or accepted
+by citation APIs. Exact claim/Source bindings and both native citation fragment
+interfaces survive; physical code identity now includes the complete Source-range
+binding rather than only a subset of its fields. No explanation, document-metadata,
+canonical, Source-copy or diagram-geometry format changes. Old supported publications
+use the existing retained reader; static exports retain their own original markup.
+
 ### Topology-aware Derived rendering — 2026-11-07
 
 SVG renderer 22 replaces general graph geometry with locally embedded ELK 0.11.1 /

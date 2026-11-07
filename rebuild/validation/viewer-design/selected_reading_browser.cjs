@@ -1,3 +1,4 @@
+const {nativeEvidenceContext}=require('./product_review_controls.cjs');
 const {citationReady,citationInspection}=require('./product_review_controls.cjs');
 // Actual Product HTTP/native/export journeys. No generation, capture or semantic verdict.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
@@ -126,7 +127,7 @@ async function main(){
     await page.setViewportSize({width,height:1000});await page.waitForTimeout(60);
    }
    await page.screenshot({path:path.join(out,`${mode}-${width}-code.png`)});
-   if(scripted)await page.keyboard.press('Escape');else await point.locator('a.return:visible').click();
+   if(scripted)await page.keyboard.press('Escape');else await (await nativeEvidenceContext(point)).locator('a.return:visible').click();
    await page.waitForTimeout(180);
    const after=await element.evaluate(n=>({id:document.activeElement.id,left:n.closest('.diagram-viewport').scrollLeft,top:n.closest('.diagram-viewport').scrollTop,scale:n.closest('figure').dataset.scale}));
    if(scripted){assert.equal(after.id,before.id,'exact focus');assert.equal(after.scale,before.scale);assert(Math.abs(after.left-before.left)<3&&Math.abs(after.top-before.top)<3,'same camera return');}

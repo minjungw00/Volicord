@@ -1786,3 +1786,20 @@ Keep them explicitly labelled and deliver a direct live entry plus restart comma
 Current live figure links must come from the actual response; stale input fixtures
 cannot reinstate a denied figure. Native packages retain the closed static boundary
 and must not embed live authenticity, scripts or Runtime material to imitate live UI.
+
+## Shared evidence presentation
+
+Use `validate focused` for `python3 -B
+rebuild/validation/viewer-design/evidence_representation.py <original.html> ...`
+and its `--self-test`. The report partitions original UTF-8 bytes without summing
+nested audit regions. Serialized code markup is distinct from raw Source text;
+gzip is a separate compressibility observation.
+
+`node rebuild/validation/viewer-design/evidence_sharing_browser.cjs <private-config.json>`
+checks real script-free exports against preserved public records and original
+repository ranges. Supply ordinary `cases`, browser/font paths, fresh `output`,
+`widths` and optionally `all_ranges:true`. It checks every binding/body and native
+origin/range/return; it does not assess prose entailment or human comprehension.
+For actual live HTTP, paging, history, keyboard and late-response negatives, use
+`grounded_diagrams_browser.cjs` with `document_reader:true`, alongside the installed
+CLI and complete MCP reader. The document journey file itself exports a module.

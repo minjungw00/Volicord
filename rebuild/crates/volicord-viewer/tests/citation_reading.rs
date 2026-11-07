@@ -1831,7 +1831,7 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
             // The primary native return owns the actual selected element. An
             // optional index or scripted Back must not repair this journey.
             let origins = html
-                .split("<section class=\"source-origin-target\"")
+                .split("<span class=\"source-origin-target\"")
                 .skip(1)
                 .collect::<Vec<_>>();
             assert!(!origins.is_empty());
@@ -1849,7 +1849,14 @@ fn admitted_diagrams_roundtrip_public_read_svg_text_exact_source_and_loss(
                     .and_then(|s| s.split('"').next())
                     .ok_or("native citation")?;
                 assert!(html.contains(&format!("class=\"source-point\" id=\"{point}\"")));
-                assert!(origin
+                let context = format!("{claim}-evidence-context");
+                let context = html
+                    .split(&format!(
+                        "<section class=\"source-origin-context\" id=\"{context}\""
+                    ))
+                    .nth(1)
+                    .ok_or("exact native presentation")?;
+                assert!(context
                     .split("</section>")
                     .next()
                     .ok_or("origin body")?
@@ -2559,6 +2566,276 @@ fn identical_wording_republication_cannot_rebind_a_selected_citation() -> Result
             .is_err(),
         "a selected older publication must not silently bind to its replacement"
     );
+    Ok(())
+}
+
+#[test]
+fn native_contexts_share_presentation_across_ranges_without_merging_origins(
+) -> Result<(), Box<dyn Error>> {
+    for (copies, ranges) in [(1, 1), (1, 3), (3, 1), (3, 3)] {
+        let f = Fixture::new()?;
+        let mut realization = diagram_control(&f, false)?;
+        let original = realization.diagrams[0].clone();
+        for ordinal in 1..copies {
+            let mut d = original.clone();
+            d.id = format!("separate-{ordinal}");
+            realization.diagrams.push(d);
+        }
+        realization.paragraphs[1].citations.truncate(ranges);
+        seal_diagrams(&mut realization)?;
+        f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            realization,
+        )?;
+        let html = f.get("/?view=repository")?;
+        // Two nodes, relation and condition: independent return identities
+        // even with duplicate wording. Vary citation and origin counts separately.
+        let contexts = html
+            .matches("<section class=\"source-origin-context\"")
+            .count();
+        assert_eq!(contexts, 4 * copies);
+        assert_eq!(
+            html.matches("<span class=\"source-origin-target\"").count(),
+            contexts * ranges * 2
+        );
+        assert_eq!(
+            html.matches("class=\"native-range-selector\"").count(),
+            if ranges > 1 { contexts } else { 0 }
+        );
+        assert_eq!(
+            html.matches("<style>").count(),
+            2,
+            "shared stylesheet, no per-alias style elements"
+        );
+        for ordinal in 0..copies {
+            let id = if ordinal == 0 {
+                original.id.clone()
+            } else {
+                format!("separate-{ordinal}")
+            };
+            assert!(html.contains(&format!("-diagram-{id}-admit-claim")));
+        }
+        for href in html
+            .split("href=\"#")
+            .skip(1)
+            .map(|s| s.split('"').next().unwrap_or(""))
+        {
+            assert_eq!(
+                html.matches(&format!(" id=\"{href}\"")).count(),
+                1,
+                "unique exact origin {href}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn overlapping_observations_cannot_restore_expired_surrounding_bytes() -> Result<(), Box<dyn Error>>
+{
+    use volicord_context::{FixedClock, SourceId, SystemIdGenerator, TimestampMicros};
+    use volicord_privacy::{ManagedDerivedKind, PrivacyStore};
+    let source_id = |id: &str| -> Result<SourceId, Box<dyn Error>> {
+        let bytes = (0..16)
+            .map(|i| u8::from_str_radix(&id[i * 2..i * 2 + 2], 16))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(SourceId::from_slice(&bytes)?)
+    };
+    let f = Fixture::new_retention(None, false, None, true)?;
+    let prefix_end = f.originals[8]
+        .match_indices('\n')
+        .nth(1)
+        .ok_or("two lines")?
+        .0
+        + 1;
+    let overlap_start = f.originals[8].find('\n').ok_or("first line")? + 1;
+    let overlap_end = f.originals[8]
+        .match_indices('\n')
+        .nth(2)
+        .ok_or("three lines")?
+        .0
+        + 1;
+    let mut added = Vec::new();
+    for (start, end, lifetime) in [(0, prefix_end, 3600), (overlap_start, overlap_end, 60)] {
+        let observed = f
+            .ops
+            .observe_repository_file(RepositoryFileObservationRequest {
+                project_id: f.project,
+                analysis_snapshot_id: f.analysis,
+                path: "admit.py".into(),
+                byte_range: Some(FileByteRange {
+                    start_byte: start,
+                    end_byte: end,
+                }),
+                retain_seconds: lifetime,
+            })?;
+        added.push(RepositoryClaimRange {
+            source_id: source_id(observed["source_id"].as_str().ok_or("Source")?)?,
+            start_byte: start,
+            end_byte: end,
+            claim: None,
+        });
+    }
+    let diagrams = diagram_control(&f, false)?.diagrams;
+    let plan =
+        f.ops
+            .prepare_explanation(f.project, ExplanationSubject::Repository(f.analysis), "en")?;
+    let mut paragraphs = Vec::new();
+    for (index, p) in f.realization.paragraphs.iter().enumerate() {
+        let mut sources = p
+            .citations
+            .iter()
+            .map(|c| {
+                Ok::<_, Box<dyn Error>>(RepositoryClaimRange {
+                    source_id: source_id(&c.source_id)?,
+                    start_byte: c.start_byte,
+                    end_byte: c.end_byte,
+                    claim: None,
+                })
+            })
+            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+        if index == 1 {
+            sources.extend(added.clone());
+        }
+        paragraphs.push(RepositoryReaderUnit {
+            question: p.question,
+            text: p.text.clone(),
+            evidence_keys: p.evidence_keys.clone(),
+            sources,
+        });
+    }
+    let realization = f.ops.compose_repository_explanation(
+        f.project,
+        f.analysis,
+        RepositoryExplanationDraft {
+            plan_fingerprint: plan.fingerprint,
+            language: "en".into(),
+            generator: f.realization.generator.clone(),
+            diagrams,
+            paragraphs,
+        },
+    )?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        realization,
+    )?;
+    let before = f.answers()?;
+    for original in [
+        &f.originals[8],
+        &f.originals[8][..prefix_end].to_owned(),
+        &f.originals[8][overlap_start..overlap_end].to_owned(),
+    ] {
+        assert!(before.source_excerpts.iter().any(|e| &e.text == original));
+    }
+    let deadline = f
+        .ops
+        .privacy_status(f.project)?
+        .managed_derived
+        .iter()
+        .filter(|r| r.kind == ManagedDerivedKind::SourceObservation)
+        .filter_map(|r| r.retained_until)
+        .min()
+        .ok_or("deadline")?;
+    let mut privacy = PrivacyStore::open_with(
+        f.ops.layout().privacy_store(),
+        SystemIdGenerator,
+        FixedClock::new(TimestampMicros::from_unix_micros(
+            deadline.as_unix_micros() + 30_000_000,
+        )),
+    )?;
+    assert_eq!(privacy.cleanup_expired(f.project)?.len(), 2);
+    drop(privacy);
+    let after = f.answers()?;
+    assert_eq!(before.prose, after.prose);
+    assert_eq!(after.prose[1].citations.len(), 5);
+    let allowed = &f.originals[8][..prefix_end];
+    let out = f.temp.path().join("overlap.html");
+    ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .export_snapshot(&f.request(), &out)?;
+    for html in [f.get("/?view=repository")?, fs::read_to_string(out)?] {
+        let codes = code_texts(&html);
+        assert_eq!(codes.iter().filter(|s| *s == allowed).count(), 1);
+        assert!(
+            codes.iter().all(|s| !s.contains("검증 맥락")),
+            "expired overlap/union cannot leak surrounding bytes"
+        );
+        assert!(html.contains("range-unavailable"));
+    }
+    Ok(())
+}
+
+#[test]
+fn equal_bytes_keep_independent_source_expiry_in_shared_presentation() -> Result<(), Box<dyn Error>>
+{
+    use volicord_context::{FixedClock, SystemIdGenerator, TimestampMicros};
+    use volicord_privacy::{ManagedDerivedKind, PrivacyStore};
+    let same = "def admit(value):\n    return verify(value)\n";
+    let sources = (0..11)
+        .map(|i| (format!("source{i}.py"), same.to_owned()))
+        .collect();
+    let f = Fixture::new_retention(None, false, Some(sources), true)?;
+    let response = diagram_control(&f, false)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        response,
+    )?;
+    let before = f.answers()?;
+    assert_eq!(
+        before.source_excerpts.len(),
+        11,
+        "equal bytes retain eleven independent authorities"
+    );
+    let deadline = f
+        .ops
+        .privacy_status(f.project)?
+        .managed_derived
+        .iter()
+        .filter(|r| r.kind == ManagedDerivedKind::SourceObservation)
+        .filter_map(|r| r.retained_until)
+        .min()
+        .ok_or("deadline")?;
+    let denied = before.prose[1].citations[0].source_id.clone();
+    let mut privacy = PrivacyStore::open_with(
+        f.ops.layout().privacy_store(),
+        SystemIdGenerator,
+        FixedClock::new(TimestampMicros::from_unix_micros(
+            deadline.as_unix_micros() + 1,
+        )),
+    )?;
+    assert_eq!(privacy.cleanup_expired(f.project)?.len(), 1);
+    drop(privacy);
+    let after = f.answers()?;
+    assert_eq!(before.prose, after.prose);
+    assert_eq!(before.diagrams, after.diagrams);
+    assert_eq!(after.source_excerpts.len(), 10);
+    assert!(after
+        .source_excerpts
+        .iter()
+        .all(|e| e.citation.source_id != denied));
+    let out = f.temp.path().join("mixed-expiry.html");
+    ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+        .export_snapshot(&f.request(), &out)?;
+    for html in [f.get("/?view=repository")?, fs::read_to_string(out)?] {
+        assert_eq!(code_texts(&html).iter().filter(|s| *s == same).count(), 10);
+        assert!(
+            !html
+                .split("<details class=\"cited-code evidence-disclosure\"")
+                .skip(1)
+                .any(|s| s.split('>').next().is_some_and(|tag| tag.contains(&denied))),
+            "no payload for the expired identity"
+        );
+        assert_eq!(
+            html.matches("class=\"native-range-selector\"").count(),
+            4,
+            "all original Source choices remain exact"
+        );
+    }
     Ok(())
 }
 

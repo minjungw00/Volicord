@@ -1,3 +1,4 @@
+const {nativeEvidenceContext}=require('../../viewer-design/product_review_controls.cjs');
 // Actual admitted document -> grounded element -> exact range -> visible return.
 // The unchanged reference is a separate visual oracle; this driver judges bindings.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
@@ -100,18 +101,18 @@ async function run(config){
      else {assert.equal(await page.locator('.project-shell').evaluate(n=>n.inert),true);}
     }else{
      await claim.locator('a.evidence-link').first().click();await settled(page);
-     assert.equal(await point.locator(':scope > .source-origin-target:target > .evidence-claim').textContent(),label.text,'native selected heading keeps the same admitted wording');
-     if(publicAnswers.prose.some(u=>u.question==='Heading'))assert.equal(await point.locator(':scope > .source-origin-target:target > .point-title span').textContent(),publicAnswers.prose.find(u=>u.question==='Heading').text,'native question keeps this publication heading');
+     assert.equal(await (await nativeEvidenceContext(point)).locator(':scope > .evidence-claim').textContent(),label.text,'native selected heading keeps the same admitted wording');
+     if(publicAnswers.prose.some(u=>u.question==='Heading'))assert.equal(await (await nativeEvidenceContext(point)).locator(':scope > .point-title span').textContent(),publicAnswers.prose.find(u=>u.question==='Heading').text,'native question keeps this publication heading');
      const opened=await openEmbeddedCode(point);assert.equal(await opened.textContent(),expected,'native/offline complete exact code');
      await returnFromEmbeddedCode(point);
     }
     await page.screenshot({path:path.join(config.output,key+'-code.png')});
     if(!scripted){
-     const origin=point.locator(':scope > .source-origin-target:target'),chooser=origin.locator('.native-range-selector>summary');
+     const origin=await nativeEvidenceContext(point),chooser=origin.locator('.native-range-selector>summary');
      assert.equal(await origin.count(),1,'native claim origin is retained');
      assert.equal(await chooser.count(),unit.citations.filter(q=>q.claim_start_byte<=label.start_byte&&q.claim_end_byte>=label.end_byte).length>1?1:0,'native range choices reflect admitted covering citations');
      if(await chooser.count()){
-      await chooser.click();const next=origin.locator('.native-range-links a:not([aria-current])').first();
+      await chooser.click();const next=origin.locator('.native-range-links a:not([href="'+new URL(page.url()).hash+'"])').first();
       const nextHref=await next.getAttribute('href');await next.click();await settled(page);
       const nextPoint=await citationPoint(page,nextHref),n=Number(nextHref.match(/-c(\d+)$/)[1])-1,q=unit.citations[n];
       assert.equal(await nextPoint.getAttribute('data-source-id'),q.source_id,'native alternate exact Source');
@@ -123,7 +124,7 @@ async function run(config){
      }
     }
     if(scripted)await page.keyboard.press('Escape');else {
-      await returnPoint.locator('a.return:visible').click();
+      await (await nativeEvidenceContext(returnPoint)).locator('a.return:visible').click();
       assert.equal(new URL(page.url()).hash,'#'+figureId+'-'+semantic.id,'native exact diagram return');
     }await settled(page);
     if(scripted){

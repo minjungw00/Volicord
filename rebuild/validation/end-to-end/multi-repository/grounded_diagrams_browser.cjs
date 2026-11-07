@@ -1,3 +1,4 @@
+const {nativeEvidenceContext}=require('../../viewer-design/product_review_controls.cjs');
 // Real retained publications only. Config supplies independently selected element,
 // original Source file and exact expected snippet, never a generated SVG oracle.
 const fs = require('node:fs');
@@ -277,11 +278,11 @@ async function nativeLinkNavigation(page, link, receipt) {
               await page.unroute(/\/citation\?/);
             }
           } else if(config.precise_return) {
-            await point.locator('a.return:visible').click();
+            await (await nativeEvidenceContext(point)).locator('a.return:visible').click();
             assert.equal(await page.evaluate(()=>location.hash),'#'+elementId,'exact native no-script return');
             if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-returned.png`)});
           } else {
-            await point.locator('a.return:visible').click();
+            await (await nativeEvidenceContext(point)).locator('a.return:visible').click();
             await page.goBack(); // native history also preserves script-free access
           }
           if(return_ms===null)return_ms=Date.now()-returnStarted;

@@ -5344,3 +5344,38 @@ both focused commands exited 0. These are prior candidate-bound results, not new
 executions by this documentation-only adoption record. User design adoption,
 independent comprehension/assistive evaluation and aggregate/official V11
 qualification remain separate; the latter two are not established by this statement.
+
+### Shared evidence presentation controls — 2026-11-07
+
+`viewer-design/evidence_representation.py` partitions original serialized UTF-8
+bytes into disjoint CSS (including style attributes), SVG, code markup, observation
+metadata, native origins, claim contexts and remaining HTML. Its `--self-test`
+checks nested code and inline CSS accounting. Regions sum to raw bytes; gzip is
+compressibility only. Count DOM, style elements, aliases and shared contexts
+separately from original Source text, response, retained envelope and wire pages.
+
+`viewer-design/evidence_sharing_browser.cjs <private-config.json>` reads actual
+script-free exports at declared widths. It independently checks every citation
+against preserved public bindings and repository range hashes, every physical
+payload against complete original bytes, and every public diagram role's contextual
+range family and exact native return. Private config uses the ordinary `cases`,
+`playwright`, `chromium`, `fontconfig`, `output`, `widths` fields; `all_ranges:true`
+visits every covering choice. Exclusive attempts retain failures and first-display
+samples; these are technical observations, not human/assistive acceptance.
+
+Keep live/native history, focus, resize, changed-engine identity and late-response
+negative controls in the existing document evidence journey. Its executable entry
+is `grounded_diagrams_browser.cjs` with `document_reader:true`;
+`document_evidence_journey.cjs` is its module, not a standalone executable.
+Installed CLI preparation/composition/record/export, actual HTTP and complete MCP
+reassembly remain independent downstream controls. Real forgetting on a disposable
+Runtime must remove shared origin contexts and code from new live/native output;
+previously distributed exports remain immutable.
+
+Viewer citation controls vary origin and citation counts independently, including
+duplicate wording. Equal-byte independent Sources have mixed expiry. Partly
+overlapping observations include an expired enclosing body, an expired overlap and
+one permitted bounded prefix: neither old unions nor another identity may restore
+forbidden surrounding bytes. Preserve original hashes/coordinates and every
+unavailable choice. A nonoverlapping capacity control must identify its limiting
+policy separately; renderer savings cannot be claimed to solve that obstruction.

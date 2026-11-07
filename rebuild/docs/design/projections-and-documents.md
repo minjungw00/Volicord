@@ -2904,6 +2904,31 @@ admitted Work name/summary content retains its own authority. An untyped network
 failure establishes no publication-wide authority change. These are local DOM
 invalidation rules, not revocation of previously distributed static exports.
 
+#### Shared native evidence presentation — 2026-11-07
+
+Each publication/view/diagram-element origin has one native heading, exact element
+return and covering-range menu, shared by its citation fragments. Each fragment
+still selects its own full claim/Source binding and original point. The retained
+shared-code fragment also resolves to that exact point; it grants no additional
+bytes. Live selection continues to validate the original association and uses its
+single contextual dropdown. Native selected path, complete code and observation
+records remain in that order, with the contextual header available during scrolling.
+
+Pane-local point/code ordinals compact derived CSS selection only. They are neither
+Source keys nor transport selectors. CSS resolves targets within their own pane;
+permission still belongs to the original publication and Source readers. Physical
+code keys include every `same_source_range` field, excluding only claim coordinates
+and hash. Equal text, overlapping windows or a different Source/revision/observation
+never establish authority or permit a union. Expiry removes all payloads for that
+Source, including overlapping windows, while independently permitted Sources keep
+their own bodies. Publication denial also clears shared native contexts. Fetch-created
+code and expiry placeholders preserve only the derived pane selection key.
+
+This replaces repeated origin headers/menus and per-alias style elements, without
+changing retained representation, response budgets, transport, admitted prose,
+range hashes, semantic origins or historical publication validation. Distributed
+script-free exports retain their own original bytes and return interfaces.
+
 ### Actual human CLI explanation consumption
 
 Repository and Work human output share the same explanation renderer. In addition

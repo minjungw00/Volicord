@@ -22,6 +22,7 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
     if(!code&&create){
       code=document.createElement('details');code.id=id;code.className='cited-code evidence-disclosure';code.open=true;
       code.dataset.sourceId=point.dataset.sourceId;code.dataset.rangeSha256=point.dataset.rangeSha256;code.dataset.readerPublication=point.dataset.readerPublication;code.dataset.defaultPoint=point.id;
+      code.dataset.codeKey=point.dataset.codeKey;
       const summary=document.createElement('summary');summary.textContent=ko?'인용된 전체 코드':'Complete cited code';code.append(summary);
       const appendix=point.closest('.appendix');appendix.insertBefore(code,appendix.querySelector(':scope > .source-metadata'));
     }
@@ -67,7 +68,7 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
     }
     for(const code of document.querySelectorAll('.cited-code'))if(code.dataset.sourceId===source){
       const position=document.createElement('span');position.id=code.id;position.dataset.codePlaceholder='true';
-      for(const key of ['sourceId','rangeSha256','readerPublication'])position.dataset[key]=code.dataset[key];code.replaceWith(position);
+      for(const key of ['sourceId','rangeSha256','readerPublication','codeKey'])position.dataset[key]=code.dataset[key];code.replaceWith(position);
     }
   }
   let expiryTimer;
