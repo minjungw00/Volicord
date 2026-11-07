@@ -1410,3 +1410,11 @@ dash patterns still distinguish returns, lifelines and admitted parallel operand
 This is shared live/native paint only: admitted meaning, SVG coordinates, text
 metrics, layout keys and camera/claim origins are unchanged. Existing distributed
 exports keep their original stylesheet bytes; a new export carries the correction.
+
+The subsequent user review found those guides stronger than the participant objects.
+Object borders now retain their own screen weight at fit and use stronger contrast
+than lifelines, group boundaries and parallel separators. Supporting dashes stay
+opaque but thinner and lighter; the prior absolute guide-contrast threshold is
+superseded by this foreground/supporting hierarchy. Dashed return arrows remain
+foreground messages. Geometry, text, semantic roles and the selected CE1 controls
+are unchanged.

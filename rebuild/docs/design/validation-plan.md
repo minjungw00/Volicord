@@ -5304,3 +5304,23 @@ boundary checks also passed. These are technical/source-familiar results; the
 delivered correction is not independent human/assistive acceptance or aggregate
 qualification. Viewer presentation and admitted meanings were unchanged in this
 delivery correction.
+
+### Sequence foreground and supporting-guide hierarchy — 2026-11-07
+
+Subsequent user feedback rejected the dashed guides as stronger than the objects.
+The preceding absolute-contrast pass did not test visual hierarchy: guide strokes
+kept their screen width while pale participant borders shrank at width-fit.
+Participant borders now also keep screen weight, with stronger contrast and width
+than lifelines, group frames and parallel separators. Supporting guides remain
+opaque and visible but lighter/thinner; dashed returns stay foreground messages.
+The earlier absolute guide-contrast threshold is not retained as the acceptance
+criterion for this correction.
+
+An actual live preview and normal installed/native output were compared using the
+same seven real and two synthetic sequences at five widths. All 45 prior entry
+conditions reproduced the hierarchy inversion. Corrected entry and native full
+views preserved exact SVG geometry/text and placed object/message contrast and
+screen weight above the supporting guides. This is source-familiar browser/style
+evidence, not independent human acceptance. There is no retained-format, layout-key,
+Source-lifetime or authored-meaning change. The review launcher permits explicit
+loopback binds so replacing its own session can retain the user's current URLs.

@@ -1776,6 +1776,9 @@ their actual scopes. Ctrl-C stops every listener; `--check` verifies startup and
 document reads, then tears them down. The private session metadata contains local
 paths/processes/URLs and is excluded from shareable static archives. The launcher
 only reads; it performs no Source capture, authorship, publication or provider work.
+Cases may supply the same loopback `bind` for a shared listener to preserve review
+URLs when replacing their own previous session; the default remains an ephemeral
+loopback port. Stop the previous session before reusing its ports.
 
 Static gallery grids, cropped screenshots, native radio controls and isolated
 synthetic SVGs are supporting evidence, not the selected interactive Product UI.

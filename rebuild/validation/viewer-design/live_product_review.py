@@ -56,6 +56,11 @@ def run(config, output, primary, check_only=False):
             if stopping:
                 return
             scope = (str(Path(case['runtime']).resolve(strict=True)), case['project'])
+            bind = case.get('bind', '127.0.0.1:0')
+            if not isinstance(bind, str) or not re.fullmatch(r'127\.0\.0\.1:\d+', bind) or int(bind.rsplit(':', 1)[1]) > 65535:
+                raise ValueError('review bind must be a loopback address and valid port')
+            if scope in listeners and listeners[scope]['bind'] != bind:
+                raise ValueError('cases sharing a listener must use the same bind')
             if scope not in listeners:
                 index = len(listeners)
                 log = output / f'listener-{index}.stderr'
@@ -63,9 +68,9 @@ def run(config, output, primary, check_only=False):
                 streams.append(stream)
                 child = subprocess.Popen(
                     [str(viewer), '--runtime', scope[0], '--project', scope[1],
-                     '--bind', '127.0.0.1:0'],
+                     '--bind', bind],
                     stdout=subprocess.DEVNULL, stderr=stream)
-                listeners[scope] = {'child': child, 'base': None}
+                listeners[scope] = {'child': child, 'base': None, 'bind': bind}
                 deadline = time.monotonic() + 15
                 while time.monotonic() < deadline:
                     match = re.search(r'http://127\.0\.0\.1:\d+/', log.read_text())
