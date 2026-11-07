@@ -389,6 +389,12 @@ body:has(.diagram-expanded) .doc,body:has(.native-figure-toggle:checked) .doc{co
 .spatial-world[data-sequence-layout=timeline] .sequence-message>text{font-weight:650}
 .spatial-world[data-sequence-layout=timeline] .relation-line{stroke:#087bb8;stroke-width:2}
 
+/* Temporal guides must survive width-fit without acquiring message emphasis. */
+.connected-overview[data-sequence-layout=timeline] :is(.lifeline,.sequence-frame,.parallel-operand,.relation-line,.route-bridge){vector-effect:non-scaling-stroke}
+.connected-overview[data-sequence-layout=timeline] .lifeline{stroke:#4f7289;stroke-width:1.5;stroke-dasharray:6 5;stroke-linecap:round;opacity:1}
+.connected-overview[data-sequence-layout=timeline] .sequence-frame{stroke:#6b879b;stroke-width:1.25;fill-opacity:.21;opacity:1}
+.connected-overview[data-sequence-layout=timeline] .parallel-operand{stroke:#6b879b;stroke-width:1.25;stroke-dasharray:4 5;stroke-linecap:round;opacity:1}
+
 .diagram-controls button{min-width:28px}
 .diagram-controls [data-diagram-action=expand]{flex-basis:auto}
 

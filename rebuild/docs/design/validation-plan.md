@@ -5253,3 +5253,27 @@ code ranges. Single cold-process samples ranged 0.118–4.535s and 17,816–50,3
 RSS; MCP performs no graph layout and these numbers do not imply engine speedup.
 The installed real-publication browser matrix and its raw conditions remain in
 task-scoped ignored evidence, separate from independent human acceptance.
+
+### Sequence dashed-stroke visibility — 2026-11-07
+
+User review identified faint sequence dashes. The shared Reader half-opacity
+lifeline rule compounded the spacious scene's pale stroke, and fit also reduced
+stroke width. The correction uses opaque contrasting temporal guides and
+non-scaling guide/message/bridge strokes for inline and spacious sequences. Group
+fill retains its prior effective alpha (0.35 × 0.6 = 0.21); only stroke visibility
+changes. SVG coordinates, text, semantic roles, dash meanings and layout keys do not.
+
+Seven real sequences and two explicitly synthetic sequences were compared at
+1440/1024/768/390/320, retaining both entry and native full-scale observations.
+All 45 before conditions exposed the visibility threshold miss; corrected strokes
+passed while exact SVG path/participant/text geometry stayed unchanged. Calculated
+minimum composited stroke contrast was 1.17 before and 3.40 after, with minimum
+screen stroke 0.13px/1.25px. These are computed-style/alpha observations, not pixel
+contrast on every device or independent user/assistive acceptance. Browser captures
+and failed/earlier trials remain in ignored `sequence-contrast-20261107` evidence.
+
+The actual final Viewer and CLI build and seven ordinary native exports passed.
+Direct live/native code/claim/camera consumption passed 56 checks for the original
+seven sequences in both locales and desktop/mobile widths. This focused paint
+validation neither reauthors publications nor supplies aggregate/official V11
+qualification; distributed previous exports retain their original stylesheet.

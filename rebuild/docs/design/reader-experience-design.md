@@ -1401,3 +1401,12 @@ unchanged. Actual reader controls verify the accessible wording, displayed minim
 and maximum widths, reset, unchanged code/Source identity and semantic return after a
 controlled layout-key revision with unchanged world dimensions. Single-range evidence
 contexts are legitimate: a visible chooser alone is not proof of an alternate range.
+
+Sequence lifelines, group frames and parallel separators use opaque contrasting
+strokes in both inline and spacious scenes. Their strokes and message/bridge strokes
+retain screen width under figure scaling, so width-fit does not erase temporal
+guides or dashed returns. Guides remain subordinate to message arrows and labels;
+dash patterns still distinguish returns, lifelines and admitted parallel operands.
+This is shared live/native paint only: admitted meaning, SVG coordinates, text
+metrics, layout keys and camera/claim origins are unchanged. Existing distributed
+exports keep their original stylesheet bytes; a new export carries the correction.
