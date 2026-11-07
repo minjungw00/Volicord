@@ -1418,3 +1418,16 @@ opaque but thinner and lighter; the prior absolute guide-contrast threshold is
 superseded by this foreground/supporting hierarchy. Dashed return arrows remain
 foreground messages. Geometry, text, semantic roles and the selected CE1 controls
 are unchanged.
+
+### Current diagram design baseline — 2026-11-07
+
+The user explicitly adopts the implemented current diagram design with “현재 도식
+디자인을 우선 채택하겠습니다.” The
+[accepted decision](open-decisions.md#current-diagram-design-adoption--2026-11-07)
+binds the delivered `97fae94d` presentation and scope. Its type-appropriate layouts,
+CE1 frame/controls, width-fit entry and corrected object/message-over-guide hierarchy
+are the working baseline for later refinements. Preserve exact evidence and camera
+return, admitted meaning and distinct dashed-return semantics. Earlier rejected
+guide treatments remain historical evidence. Reopen the affected aspect when new
+reading feedback requires it; this choice adds no permanent freeze or universal
+comprehension/assistive acceptance claim.

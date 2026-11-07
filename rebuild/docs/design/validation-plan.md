@@ -5324,3 +5324,23 @@ screen weight above the supporting guides. This is source-familiar browser/style
 evidence, not independent human acceptance. There is no retained-format, layout-key,
 Source-lifetime or authored-meaning change. The review launcher permits explicit
 loopback binds so replacing its own session can retain the user's current URLs.
+
+### Current diagram design user adoption — 2026-11-07
+
+After delivery of `97fae94d7ce3ccc0358d67fcf3c33e99f3ca99e8`, the user stated
+“현재 도식 디자인을 우선 채택하겠습니다.” This supplies explicit adoption of the
+current diagram design, recorded with scope and revisit conditions in
+[the decision owner](open-decisions.md#current-diagram-design-adoption--2026-11-07).
+It follows the corrected hierarchy and live Reader delivery; it does not rewrite
+the earlier rejected presentations or their source-familiar technical results.
+
+The delivered candidate's post-commit hierarchy comparison passed nine sequences
+at five widths (45 paired conditions), preserving exact SVG geometry/text. Its
+actual installed live Reader passed at 1440/390 with object borders stronger than
+supporting guides and working movement, zoom and expand/return controls. The private
+`hierarchy-post/result.json` and `active-ui-check-post-02/result.json` retain these
+observations under `rebuild/.local/sequence-hierarchy-20261107/`;
+both focused commands exited 0. These are prior candidate-bound results, not new
+executions by this documentation-only adoption record. User design adoption,
+independent comprehension/assistive evaluation and aggregate/official V11
+qualification remain separate; the latter two are not established by this statement.

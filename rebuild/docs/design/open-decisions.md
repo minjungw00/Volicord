@@ -881,3 +881,28 @@ human/assistive acceptance remains unobserved until actually supplied.
 - Revisit if dependency comparison admits corrected/foreign meaning, a read exposes
   forbidden bodies, or complete useful content still cannot fit the measured bound.
   Preserve originals and diagnose the responsible owner before another policy change.
+
+## Current diagram design adoption — 2026-11-07
+
+- Status: `accepted`. After delivery of the sequence foreground/supporting-guide
+  correction, the user explicitly stated: “현재 도식 디자인을 우선 채택하겠습니다.”
+- Basis: the implemented diagram presentation at
+  `97fae94d7ce3ccc0358d67fcf3c33e99f3ca99e8`, delivered through the installed live
+  Reader. This includes the current type-appropriate graph/sequence layouts, CE1
+  in-frame controls and width-fit entry, and participant/message emphasis above
+  lighter, thinner temporal guides. The dashed-return message distinction remains.
+- Scope: adopt the current diagram design as the working Product baseline.
+  Subsequent refinements start from this baseline; the earlier faint-guide and
+  overemphasized-guide presentations are historical corrections, not alternatives
+  awaiting selection. The original package-43 CE1 reference remains unchanged.
+- This records the user's design choice separately from technical validation.
+  It does not imply comprehension or assistive acceptance for every diagram/input,
+  aggregate qualification, new authorship, publication or renewed Source access.
+- Revisit the affected aspect when the user requests a change or actual reading
+  exposes unclear relationships, lost temporal meaning, unreadable labels or lost
+  evidence/return context. “우선” establishes the current baseline while allowing
+  later refinement; it does not require another blanket design selection.
+- Presentation requirements remain owned by
+  [Reader experience](reader-experience-design.md#current-diagram-design-baseline--2026-11-07);
+  technical observations and their limits remain in
+  [Validation](validation-plan.md#current-diagram-design-user-adoption--2026-11-07).
