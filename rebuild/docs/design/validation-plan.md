@@ -5413,3 +5413,20 @@ graph versus metadata scope and nonmutation. Existing Candidate dependency contr
 remain required. Code-map integrity stays with doctor/code consumers; a record
 result explicitly reports `code_graph: not_requested`. The historical passed gate
 and missing original phase telemetry remain distinct from this new measurement.
+
+### Actionable ordinary authoring failures — 2026-11-07
+
+A new Work flow diagram exposed `flow` in preparation wording while the actual
+serialized variant is `flowchart`; generic CLI decoding also hid that cause.
+Preparation now uses the exact kind, and CLI returns a bounded input-only
+diagnostic. MCP already supplies schema-path/allowed-value failures; that behavior
+is preserved rather than replaced. `explanation_cli` rejects unsupported roles/kinds and long
+control-containing values without mutation; the existing host composition test
+checks the same cause and preserved prior records. Normal Source-backed Work
+composition remains the positive downstream control. These changes correct a
+producer barrier; they do not establish transferable semantic quality by guidance.
+
+The existing near-limit `explanation_budgets` corpus is unchanged. The first
+expanded concise wording exceeded preparation by 40 bytes and was rejected;
+shortening redundant guidance while retaining every instruction restores that
+same complete evidence shape. No input, response, retention or gate limit changes.

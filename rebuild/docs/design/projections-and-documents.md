@@ -1435,6 +1435,16 @@ certifies graph integrity. `doctor check`, code consumers and full document read
 retain their full graph checks. A damaged graph cannot block otherwise permitted
 records, and damaged metadata still reports its own unavailable scope.
 
+Authoring preparation names the serialized diagram `meaning.kind` values exactly:
+`concept`, `component`, `flowchart`, `state`, `sequence`. Node and edge identities
+are distinct across one diagram. The concise preparation path preserves those
+constraints without growing its previous byte budget. CLI explicit
+draft/realization decoding reports a bounded, escaped cause from the caller's own
+input, so an unsupported role or kind can be corrected without source-code
+inspection. MCP retains its existing schema-path/allowed-value diagnostics before
+decoding. This does not add aliases, accept malformed meaning, expose storage
+errors or change retained publication formats/readability.
+
 Exact entity detail also focuses `ProjectUnderstanding.architecture` and its
 relationship evidence on `selected_entity`, actual bounded neighbors and incident
 relations. This read-side presentation selection precedes parent map bounds and

@@ -10,6 +10,17 @@ pub struct Error {
 }
 
 impl Error {
+    /// Only for decoding the caller's explicit explanation input. Do not expose
+    /// storage/provider error chains through this authoring diagnostic.
+    pub fn explanation_input(context: &str, source: serde_json::Error) -> Self {
+        let diagnostic = source
+            .to_string()
+            .escape_debug()
+            .take(512)
+            .collect::<String>();
+        Self::with_source(format!("{context}: {diagnostic}"), source)
+    }
+
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),

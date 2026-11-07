@@ -4,6 +4,7 @@
 mod reading_fixture;
 use serde_json::{json, Value};
 use std::process::Command;
+use volicord_projections::{EXPLANATION_KIND, EXPLANATION_VERSION};
 
 fn invoke(
     f: &reading_fixture::Fixture,
@@ -46,6 +47,91 @@ fn contains_answer(value: &Value, kind: &str, state: &str, fingerprint: Option<&
         _ => false,
     }
 }
+#[test]
+fn malformed_author_input_reports_bounded_decoder_causes_without_writing(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let analysis = f
+        .operations
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity
+        .to_string();
+    let work = f.goals["older"].to_string();
+    let prepared = invoke(&f, &["work", "explain", "prepare", "--work", &work])?;
+    let instructions = prepared["plan"]["instructions"]
+        .as_str()
+        .ok_or("instructions")?;
+    assert!(instructions.contains("meaning.kind: concept/component/flowchart/state/sequence"));
+    let canonical = f.operations.canonical_basis(f.project)?;
+    let retained = f.operations.privacy_status(f.project)?.managed_derived;
+    let base = json!({"plan_fingerprint":prepared["plan"]["fingerprint"],"language":"en",
+        "generator":{"host":"control","session":"malformed-input","agent":null,"model":null},
+        "paragraphs":[{"question":"heading","text":"Control","evidence_keys":["goal"],"sources":[]}],
+        "diagrams":[]});
+    for (index, kind, action, invalid, expected) in [
+        (0, "work", "compose", "role", "narrative"),
+        (1, "repository", "compose", "diagram", "flowchart"),
+        (2, "work", "record", "role", "narrative"),
+        (3, "work", "compose", "long", "unknown variant"),
+    ] {
+        let mut draft = base.clone();
+        if invalid == "diagram" {
+            draft["diagrams"] = json!([{"id":"control","title":{"text":"Control","unit":0,"start_byte":0,"end_byte":7},
+                "caption_unit":0,"meaning":{"kind":"flow","nodes":[],"relations":[]}}]);
+        } else {
+            draft["paragraphs"][0]["question"] = json!(if invalid == "long" {
+                format!("{}UNEXPOSED_TAIL", "x\n".repeat(4096))
+            } else {
+                "architecture".into()
+            });
+        }
+        if action == "record" {
+            draft["format_kind"] = json!(EXPLANATION_KIND);
+            draft["format_version"] = json!(EXPLANATION_VERSION);
+        }
+        let input = f._temporary.path().join(format!("malformed-{index}.json"));
+        std::fs::write(&input, serde_json::to_vec(&draft)?)?;
+        let (selector, identity) = if kind == "repository" {
+            ("--analysis", &analysis)
+        } else {
+            ("--work", &work)
+        };
+        let result = Command::new(env!("CARGO_BIN_EXE_volicord"))
+            .args([
+                "--runtime",
+                f.operations.layout().root().to_str().ok_or("runtime")?,
+                "--project",
+                &f.project.to_string(),
+                "--json",
+                kind,
+                "explain",
+                action,
+                selector,
+                identity,
+                "--input",
+                input.to_str().ok_or("input")?,
+            ])
+            .output()?;
+        assert_eq!(result.status.code(), Some(1));
+        assert!(result.stdout.is_empty());
+        let error = String::from_utf8(result.stderr)?;
+        assert!(
+            error.contains("unknown variant") && error.contains(expected),
+            "{error}"
+        );
+        assert!(error.len() < 1024 && !error.contains("UNEXPOSED_TAIL"));
+        assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
+        assert_eq!(
+            retained,
+            f.operations.privacy_status(f.project)?.managed_derived
+        );
+    }
+    Ok(())
+}
+
 #[test]
 fn actual_work_and_decision_prepare_record_delete_readback(
 ) -> Result<(), Box<dyn std::error::Error>> {

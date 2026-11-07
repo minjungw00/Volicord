@@ -2032,6 +2032,21 @@ fn compose_work_name_summary_and_unicode_citations_without_manual_bindings(
     let next = f.generate()?;
     f.read(&next, f.source)?;
     compose["generation_id"] = next["generation_id"].clone();
+    let mut malformed = compose.clone();
+    malformed["draft"]["diagrams"] = json!([{"id":"control",
+        "title":{"text":"Control","unit":0,"start_byte":0,"end_byte":7},
+        "caption_unit":0,"meaning":{"kind":"flow","nodes":[],"relations":[]}}]);
+    let refused = call(&mut f.host, malformed);
+    assert_eq!(refused["result"]["isError"], true);
+    assert!(refused.to_string().contains("meaning.kind"), "{refused}");
+    assert!(refused.to_string().contains("flowchart"), "{refused}");
+    assert_eq!(
+        previous,
+        f.host
+            .operations()
+            .privacy_status(f.project)?
+            .managed_derived
+    );
     // Split a multibyte claim, then foreign Work/Project and malformed input.
     compose["draft"]["paragraphs"][2]["sources"][0]["claim"] = json!({"start_byte":1,"end_byte":4});
     assert_eq!(

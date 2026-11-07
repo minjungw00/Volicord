@@ -572,6 +572,15 @@ remains historical and cannot supply new authoring without adequate current evid
 
 ### Explicit host explanation failure
 
+Malformed explicit authoring input remains a non-writing failure. CLI includes
+at most 512 escaped characters of the input decoder's cause alongside
+the input context, including supported enum names for an unknown role/kind.
+This diagnostic is confined to caller-supplied draft/realization decoding;
+underlying storage/provider error chains do not gain disclosure authority. MCP
+keeps its existing schema-path/allowed-value diagnostics before decoding.
+Correction requires a valid current preparation and the existing Source checks,
+not an implicit alias, rewritten prior publication or automatic retry.
+
 MCP generation preparation is `awaiting_host_interpretation`; missing host
 capability/authority is scoped incomplete generation, with canonical read-only facts
 usable. No fallback is labeled completed prose. Request expiry/restart or denied

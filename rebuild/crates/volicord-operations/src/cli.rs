@@ -533,8 +533,10 @@ fn dispatch_repository(
         if action == "compose" {
             let analysis = crate::AnalysisSnapshotId::from_hex(required(params, "analysis")?)
                 .map_err(Error::new)?;
-            let draft = serde_json::from_value(read_explanation_input(params)?)
-                .map_err(|_| Error::new("invalid repository reader draft"))?;
+            let draft =
+                serde_json::from_value(read_explanation_input(params)?).map_err(|error| {
+                    Error::explanation_input("invalid repository reader draft", error)
+                })?;
             return Ok(
                 json!({"operation":"repository_explanation_compose","realization":operations.compose_repository_explanation(project,analysis,draft)?}),
             );
@@ -1084,8 +1086,9 @@ fn dispatch_explanation_action(
     };
     match action {
         "compose" => {
-            let draft = serde_json::from_value(read_explanation_input(args)?)
-                .map_err(|_| Error::new("invalid host-authored article draft"))?;
+            let draft = serde_json::from_value(read_explanation_input(args)?).map_err(|error| {
+                Error::explanation_input("invalid host-authored article draft", error)
+            })?;
             let realization = match subject {
                 volicord_projections::ExplanationSubject::Work(_)
                 | volicord_projections::ExplanationSubject::WorkName(_)
@@ -1145,8 +1148,9 @@ fn dispatch_explanation_action(
                     "unsupported explanation format; regenerate from current preparation",
                 ));
             }
-            let response = serde_json::from_value(header)
-                .map_err(|e| Error::with_source("invalid explanation realization", e))?;
+            let response = serde_json::from_value(header).map_err(|error| {
+                Error::explanation_input("invalid explanation realization", error)
+            })?;
             Ok({
                 let retained = operations.record_explanation(
                     project,
