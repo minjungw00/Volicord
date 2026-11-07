@@ -1,0 +1,11 @@
+{
+  "rquickjs": "0.11.0",
+  "rquickjs_source": "https://github.com/DelSkayn/rquickjs/tree/c99675e50201d74554d0f667094f800e1287001b",
+  "quickjs_source": "https://crates.io/crates/rquickjs-sys/0.11.0",
+  "license": "MIT",
+  "files": {
+    "rquickjs-LICENSE": "0517c7f76916dcc6557b3c0e1c077f14dd05bfe8e0d7d2a2fa298fe0d49a790a",
+    "quickjs-LICENSE": "98de27cc1e8c21a61cb242021aeb5b3711d694fab59fd75ad5b84c36b2c86b7e"
+  },
+  "modifications": "None. License texts copied unchanged from pinned Cargo distributions."
+}

@@ -5170,9 +5170,9 @@ under ignored `rebuild/.local/topology-layout-20261107/` and focused-runner rece
 Initial locale/namespace, unsupported private-runner paths and CLI draft enum errors
 remain preserved as harness/setup failures. Engine layout time, initialization,
 process memory, output size, dependency bytes and public reading are separate costs.
-A debug cold engine observation took roughly 0.94s and a later state layout 0.19s;
-these are individual diagnostic samples, not installed medians or whole-journey
-speedups. User comprehension, independent assistive acceptance and broader Work-kind
+A debug cold graph render including engine initialization took roughly 0.94s and a
+later state render 0.19s; these are individual diagnostic samples, not isolated engine
+times, installed medians or whole-journey speedups. User comprehension, independent assistive acceptance and broader Work-kind
 coverage are not inferred from collision checks or successful code recovery.
 
 The separate temporal correction preserves original participants, guard/message
@@ -5202,3 +5202,54 @@ finite deadline, but it is not established as that attempt's causal failure. Fre
 bounded execution passed; non-reproduction is not an engine or environment repair.
 Only this task's regenerable compiler incremental caches were removed for space;
 originals, source, binaries, logs, raw attempts and earlier gate artifacts remain.
+
+Post-commit temporal checks also preserved two Source-setup chronology failures
+before layout: observations exceeded their canonical recorded times by 6,957µs and
+10,161µs, with unchanged kind and revision. Both original stores remain under the
+reported temporary paths, and the comparison is retained in ignored task evidence.
+No clock, host service, Source lifetime or validation condition was changed. A
+subsequent serial complete citation-consumer run passed all 32 tests; the first
+post-commit library run passed 30 with one explicit manual probe ignored. This is
+an environment/chronology observation and successful rerun, not causal repair or
+new aggregate qualification.
+
+The supported installer now verifies the embedded ELK distribution, exact runtime
+family and upstream license hashes before building; installed notices include the
+actual Viewer identity. Corrupted distribution and unpinned dependency controls
+are refused. Clean-prefix installation and supported install/uninstall/reinstall
+passed, preserving canonical data and unrelated notice files. The first installer
+attempt built successfully but returned 2 because its Python command branch lacked
+a success return; that packaging defect was corrected and the failed receipt kept.
+The initial release build took about 146s; the successful clean-prefix installation
+reused those build artifacts and must not be reported as a cold build measurement.
+
+After installation, a child mount/network namespace hid development crates and
+validation files, removed Node/npm/dot from PATH and disabled external networking.
+The actual installed prepare/compose/record/status/export interfaces admitted the
+reserved Tiny City article and served it through localhost. Every command exited 0;
+live output was 1,173,132 bytes and the genuinely script-free native export 1,084,793
+bytes. Its first live HTTP sample took 774ms. Native export as a whole took 0.81s and
+46,684KiB peak RSS; this includes Product reads/rendering and is not isolated layout
+time. Original frozen corpus words and histories remain unchanged. A Runtime-copy
+Source-forget control removed dependent diagrams from the same live Viewer and a
+new export while leaving distributed prior export bytes unchanged; its authorization
+Source was explicitly synthetic, not represented as real user/Work history.
+
+An optimized isolated diagnostic of the unchanged production Engine implementation
+measured initialization at 153ms and three representative-shape layouts at
+545/48/43ms, with 6,440-byte geometry outputs. It used the earlier measured
+representative rectangles with current port-spacing/configuration; it does not
+measure the installed article journey. Initialized JS heap was 11,650,523 bytes;
+post-layout retained heap was 15,648,623–15,654,347 bytes, distinct from the diagnostic
+process peak RSS of 30,360KiB and the enforced 64MiB heap limit. These single-process
+samples have uncontrolled OS caches and establish no percentile or memory-leak claim.
+Embedded ELK source is 1,607,470 bytes. Installed Viewer/CLI/MCP executables are
+22,614,496/32,663,712/35,078,448 bytes and notices/manifest 20,277 bytes; those are total
+artifacts, not incremental dependency size or a comparison with another build.
+
+Installed CLI/MCP complete-read reassembly passed for all six mechanically rebound
+original articles plus Tiny City, against separately recorded meanings and original
+code ranges. Single cold-process samples ranged 0.118–4.535s and 17,816–50,352KiB peak
+RSS; MCP performs no graph layout and these numbers do not imply engine speedup.
+The installed real-publication browser matrix and its raw conditions remain in
+task-scoped ignored evidence, separate from independent human acceptance.

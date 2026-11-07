@@ -18,13 +18,14 @@ case "$prefix" in /*) ;; *) echo "--prefix must be absolute" >&2; exit 2 ;; esac
 case "$runtime_dir" in /*) ;; *) echo "--runtime-dir must be absolute" >&2; exit 2 ;; esac
 
 bin_dir="$prefix/bin"
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ "$uninstall" -eq 1 ]; then
     rm -f "$bin_dir/volicord" "$bin_dir/volicord-viewer" "$bin_dir/volicord-mcp"
+    python3 "$script_dir/validation/shared/build_boundary.py" uninstall-layout "$prefix"
     echo "Removed Volicord executables. Canonical data remains at $runtime_dir"
     exit 0
 fi
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 python3 "$script_dir/validation/shared/build_boundary.py" install "$prefix"
 mkdir -p "$runtime_dir"
 VOLICORD_RUNTIME_DIR="$runtime_dir" "$bin_dir/volicord" doctor check >/dev/null

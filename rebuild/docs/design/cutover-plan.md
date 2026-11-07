@@ -550,3 +550,13 @@ stages and independent archive verification. Its incomplete inner qualification
 is expected support evidence and supplies none of the required Naturalistic or
 human observations. Historical gates without this stage cannot establish current
 readiness. The proposed preparation pack leaves measured launch and Phase 9 closed.
+
+### Local diagram dependency installation — 2026-11-07
+
+The reconstruction installer embeds the one selected graph engine in the native
+Viewer. Pinned ELK/rquickjs/QuickJS licenses, source provenance and an installed
+engine/Viewer digest manifest accompany the executables. Local installation needs
+no Node/npm download step or remote renderer; future ordinary publication/export
+uses those same embedded bytes. This adds no Runtime Home migration, canonical
+geometry, legacy compatibility or cutover approval. Uninstall preserves data and
+unrelated notice-directory files.

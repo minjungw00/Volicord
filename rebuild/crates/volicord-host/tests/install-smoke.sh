@@ -18,6 +18,10 @@ HOME="$test_home" RUSTUP_HOME="$test_rustup_home" CARGO_HOME="$test_cargo_home" 
 test -x "$test_prefix/bin/volicord"
 test -x "$test_prefix/bin/volicord-viewer"
 test -x "$test_prefix/bin/volicord-mcp"
+test -f "$test_prefix/share/volicord/licenses/diagram-layout/elkjs-LICENSE.md"
+test -f "$test_prefix/share/volicord/licenses/diagram-layout/quickjs-LICENSE"
+test -f "$test_prefix/share/volicord/licenses/diagram-layout/rquickjs-LICENSE"
+test -f "$test_prefix/share/volicord/licenses/diagram-layout/manifest.json"
 test -f "$test_runtime/canonical.sqlite3"
 test -f "$test_runtime/candidates.sqlite3"
 test -f "$test_runtime/privacy.sqlite3"
@@ -41,6 +45,7 @@ HOME="$test_home" RUSTUP_HOME="$test_rustup_home" CARGO_HOME="$test_cargo_home" 
     --prefix "$test_prefix" --runtime-dir "$test_runtime" --uninstall
 
 test ! -e "$test_prefix/bin/volicord"
+test ! -e "$test_prefix/share/volicord/licenses/diagram-layout/manifest.json"
 test -f "$test_runtime/canonical.sqlite3"
 test "$(wc -c < "$test_runtime/canonical.sqlite3")" -eq "$canonical_size"
 

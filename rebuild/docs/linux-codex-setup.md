@@ -7,7 +7,7 @@ cutover. From the repository root:
 rebuild/install.sh
 ```
 
-The local installer requires Cargo/Rust and Python 3.11 or newer. It preserves
+The local installer requires Cargo/Rust, a native C compiler (for bundled SQLite and QuickJS), and Python 3.11 or newer. It preserves
 Cargo build streams and artifact identities under ignored `rebuild/.local/builds/`
 and installs the executable paths returned by that build, including custom Cargo
 targets.
@@ -18,6 +18,15 @@ current runtime at `$XDG_DATA_HOME/volicord` or
 `$HOME/.local/share/volicord`. `--prefix` and `--runtime-dir` accept explicit
 absolute alternatives. The installer does not look for or interpret any other
 runtime.
+
+General diagrams use the locally embedded ELK 0.11.1 / rquickjs 0.11.0 engine.
+Installed reads, later new publications and native exports require no Node, npm,
+Graphviz executable, CDN or development source files. Engine code and conservative
+text metrics are in the Viewer executable; the browser receives the same derived SVG
+as a script-free export. The installer verifies pinned distribution/license bytes
+before building and installs upstream notices plus an engine/executable identity
+manifest under `<prefix>/share/volicord/licenses/diagram-layout/`. Uninstall removes
+only those owned notice files, preserving unrelated files and canonical data.
 
 Installation does not register a user-global MCP server. Explicitly authorize
 each repository that should expose Volicord to Codex:

@@ -9,16 +9,77 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 import uuid
 
 CONTEXT = "VOLICORD_BUILD_CONTEXT"
 CONTEXT_HASH = "VOLICORD_BUILD_CONTEXT_SHA256"
 ROOT = Path(__file__).resolve().parents[3]
+
+LAYOUT_NOTICES = {
+    'elkjs-LICENSE.md': 'elkjs/LICENSE.md',
+    'elkjs-provenance.json': 'elkjs/provenance.json',
+    'rquickjs-LICENSE': 'runtime/rquickjs-LICENSE',
+    'quickjs-LICENSE': 'runtime/quickjs-LICENSE',
+    'runtime-provenance.json': 'runtime/provenance.json',
+    'NOTICE.md': 'NOTICE.md',
+}
+
+
+def layout_dependency_metadata(root):
+    """Verify exact local bytes before packaging; never download at installation."""
+    viewer = Path(root) / 'rebuild/crates/volicord-viewer'
+    vendor = viewer / 'vendor'
+    elk = json.loads((vendor / 'elkjs/provenance.json').read_text())
+    runtime = json.loads((vendor / 'runtime/provenance.json').read_text())
+    for directory, manifest in ((vendor / 'elkjs', elk), (vendor / 'runtime', runtime)):
+        for name, expected in manifest['files'].items():
+            if Path(name).name != name or digest(directory / name) != expected:
+                raise ValueError('layout dependency bytes differ from pinned provenance')
+    dependency = tomllib.loads((viewer / 'Cargo.toml').read_text())['dependencies']['rquickjs']
+    if dependency != '=' + runtime['rquickjs']:
+        raise ValueError('layout runtime dependency must match its exact license provenance')
+    packages = tomllib.loads((Path(root) / 'rebuild/Cargo.lock').read_text())['package']
+    resolved = {p['name']: p for p in packages if p['name'] in ('rquickjs', 'rquickjs-core', 'rquickjs-sys')}
+    if set(resolved) != {'rquickjs', 'rquickjs-core', 'rquickjs-sys'} or any(p['version'] != runtime['rquickjs'] for p in resolved.values()):
+        raise ValueError('layout runtime lock differs from pinned package family')
+    engine = re.search(r'const ENGINE_ID: &str\s*=\s*"([^"]+)"', (viewer / 'src/diagram_engine.rs').read_text())
+    renderer = re.search(r'const RENDERER_ID: &str\s*=\s*"([^"]+)"', (viewer / 'src/diagram.rs').read_text())
+    if not engine or not renderer or not engine[1].startswith(f"elkjs/{elk['version']};quickjs-ng/rquickjs-{runtime['rquickjs']};"):
+        raise ValueError('layout executable identity differs from pinned dependencies')
+    return {'format_kind': 'volicord_layout_dependencies', 'format_version': 1,
+            'engine': engine[1], 'renderer': renderer[1],
+            'elkjs_sha256': elk['files']['elk.bundled.js'],
+            'runtime_packages': {name: {'version': p['version'], 'checksum': p['checksum']} for name, p in resolved.items()},
+            'notices': {name: digest(vendor / source) for name, source in LAYOUT_NOTICES.items()}}
+
+
+def install_layout_notices(root, prefix, viewer_identity):
+    metadata = layout_dependency_metadata(root)
+    destination = Path(prefix) / 'share/volicord/licenses/diagram-layout'
+    destination.mkdir(parents=True, exist_ok=True)
+    vendor = Path(root) / 'rebuild/crates/volicord-viewer/vendor'
+    for name, source in LAYOUT_NOTICES.items():
+        subprocess.run(['install', '-m', '644', str(vendor / source), str(destination / name)], check=True)
+        if digest(destination / name) != metadata['notices'][name]:
+            raise ValueError('installed layout notice differs from pinned source')
+    metadata['viewer'] = viewer_identity
+    write(destination / 'manifest.json', metadata)
+    return {name: identity(destination / name) for name in (*LAYOUT_NOTICES, 'manifest.json')}
+
+
+def uninstall_layout_notices(prefix):
+    destination = Path(prefix) / 'share/volicord/licenses/diagram-layout'
+    for name in (*LAYOUT_NOTICES, 'manifest.json'):
+        (destination / name).unlink(missing_ok=True)
+    if destination.is_dir() and not any(destination.iterdir()):
+        destination.rmdir()
 
 
 def digest(path):
@@ -330,6 +391,7 @@ def build_binaries(root, names, *, release=False):
 
 
 def install_binaries(prefix):
+    layout_dependency_metadata(ROOT)
     artifacts = build_binaries(ROOT, ('volicord', 'volicord-viewer', 'volicord-mcp'), release=True)
     destination = Path(prefix) / 'bin'
     destination.mkdir(parents=True, exist_ok=True)
@@ -339,15 +401,20 @@ def install_binaries(prefix):
         subprocess.run(['install', '-m', '755', artifact['path'], str(destination / name)], check=True)
         if digest(destination / name) != artifact['sha256']:
             raise ValueError('installed executable differs from Cargo artifact')
+    notices = install_layout_notices(ROOT, prefix, identity(destination / 'volicord-viewer'))
     if CONTEXT in os.environ:
         receipt(read_context(), {'kind': 'installed_executables', 'artifacts': artifacts,
-                                'installed': {name: identity(destination/name) for name in artifacts}})
+                                'installed': {name: identity(destination/name) for name in artifacts},
+                                'layout_notices': notices})
 
 
 def main():
     try:
         if sys.argv[1] == 'install':
             install_binaries(sys.argv[2])
+            return 0
+        elif sys.argv[1] == 'uninstall-layout':
+            uninstall_layout_notices(sys.argv[2])
             return 0
         if sys.argv[1] == 'execute':
             return execute(sys.argv[2:])

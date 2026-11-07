@@ -862,3 +862,9 @@ context and parallel operand separators over existing v9 roles. Graph engine and
 its configuration are unchanged. The renderer/layout key invalidates prior physical
 camera positions; the same semantic origin survives. No retained-format, canonical,
 Source, document-metadata or evidence-lifetime revision is introduced.
+
+The local installation receipt `volicord_layout_dependencies` version 1 records
+engine/config/metrics identity, renderer, resolved runtime package checksums,
+embedded engine digest, installed Viewer identity and exact upstream notices.
+This package metadata is neither canonical meaning nor a retained/publication
+geometry cache and cannot grant Source authority or alter a document version.
