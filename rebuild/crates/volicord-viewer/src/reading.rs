@@ -2444,6 +2444,19 @@ fn render_source_excerpts(
                 c.start_line,
                 c.end_line
             ));
+            if c.use_kind == volicord_projections::ExplanationSourceUse::ObservedExecution {
+                let observed = excerpt
+                    .map(|e| {
+                        timestamp_label(
+                            TimestampMicros::from_unix_micros(e.observed_at_unix_micros),
+                            r.locale,
+                        )
+                    })
+                    .unwrap_or_else(|| text(r.locale, "Date unavailable", "날짜 확인 불가").into());
+                html.push_str(&format!("<p class=\"source-note source-stream\">{} · {} {}–{} · bytes {}–{} · {}: {}</p>",
+                    escape(&c.field),text(r.locale,"Command output lines","명령 출력 행"),c.start_line,c.end_line,c.start_byte,c.end_byte,
+                    text(r.locale,"Source observed at","근거 관측 시각"),escape(&observed)));
+            }
             html.push_str(&format!(
                 "<p class=\"evidence-correspondence\" data-evidence-comparison>{}</p>",
                 comparison_label(
@@ -2534,11 +2547,22 @@ fn render_source_excerpts(
                     if first_payload {
                         selected_styles.push_str(&format!(".appendix:has(>.cited-code[data-code-key=\"{code_key}\"]:target,>.cited-code[data-code-key=\"{code_key}\"] :target)>[data-point-key=\"{point_key}\"]{{display:block}}"));
                         payloads.push_str(&format!("<details class=\"cited-code evidence-disclosure\" id=\"{range}\" data-code-key=\"{code_key}\" data-source-id=\"{}\" data-range-sha256=\"{}\" data-default-point=\"{anchor}\" open{}><summary>{}</summary>",escape(&c.source_id),escape(&c.range_sha256),publication_scope(answers),text(r.locale,"Complete cited code","인용된 전체 코드")));
-                        let syntax = crate::source_highlight::language(
-                            c,
-                            e.source_representation.as_deref(),
-                            e.execution.is_some(),
-                        );
+                        if let Some(origin) = &e.code_origin {
+                            payloads.push_str(&format!("<p class=\"source-note code-origin\">{}: {}:{}–{} · {} {} · {} · {} {}–{}</p>",
+                                text(r.locale,"Verified code origin","검증된 코드 원본"),escape(&origin.path),origin.start_line,origin.end_line,
+                                text(r.locale,"revision","리비전"),escape(&origin.revision),
+                                text(r.locale,"Byte equality only; command coordinates and observation time remain separate. No current-code correspondence or experiment rerun is established.","바이트 일치만 확인했습니다. 명령 출력 좌표와 관측 시각은 별개이며, 현재 코드 대응이나 실험 재실행을 뜻하지 않습니다."),
+                                text(r.locale,"Original file bytes","원본 파일 바이트"),origin.start_byte,origin.end_byte));
+                        }
+                        let syntax =
+                            crate::source_highlight::origin_language(e.code_origin.as_ref())
+                                .or_else(|| {
+                                    crate::source_highlight::language(
+                                        c,
+                                        e.source_representation.as_deref(),
+                                        e.execution.is_some(),
+                                    )
+                                });
                         if e.text.contains('\0') {
                             payloads.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"This excerpt contains NUL characters. HTML parsing displays replacement characters for NUL; exact NUL text is available only in the permitted live citation response.","이 발췌에는 NUL 문자가 있습니다. HTML 파서는 NUL을 대체 문자로 표시합니다. 정확한 NUL 텍스트는 허용된 실시간 인용 응답에서만 읽을 수 있습니다.")));
                         }

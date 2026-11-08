@@ -310,6 +310,8 @@ pub enum ProviderExecution {
 #[serde(rename_all = "snake_case")]
 pub enum ManagedDerivedKind {
     SourceObservation,
+    /// Explicit local byte-equality verification; no provider interpretation.
+    CodeOrigin,
     SemanticAnnotation,
     Embedding,
     CachedSummary,

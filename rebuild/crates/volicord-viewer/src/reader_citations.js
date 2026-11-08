@@ -3,7 +3,7 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
   let pendingRead = null;
   const reads = new WeakMap(), codeBuffers = new WeakMap();
   // Weak keys preserve native visibility without retaining detached denied code.
-  const nativeVisibility = new WeakMap([...document.querySelectorAll('pre.code-region,.code-caption,.initial-range-omission,.source-code-reference')].map(node=>[node,node.hidden]));
+  const nativeVisibility = new WeakMap([...document.querySelectorAll('pre.code-region,.code-caption,.code-origin,.initial-range-omission,.source-code-reference')].map(node=>[node,node.hidden]));
   const ko = document.documentElement.lang === 'ko';
   const syntaxNames = {javascript:'JavaScript', typescript:'TypeScript', rust:'Rust', python:'Python', shell:'Shell', json:'JSON'};
   const tokenKinds = new Set(['keyword','comment','string','type','function','number','variable']);
@@ -58,7 +58,7 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
     for(const point of document.querySelectorAll('.source-point')){
       if(point.dataset.sourceId!==source)continue;
       codeBuffers.delete(point);
-      point.querySelectorAll('pre.code-region,.code-caption,.initial-range-omission,.source-code-reference').forEach(n=>n.remove());
+      point.querySelectorAll('pre.code-region,.code-caption,.code-origin,.initial-range-omission,.source-code-reference').forEach(n=>n.remove());
       point.dataset.rangeState=reason;
       let notice=point.querySelector('.range-unavailable');
       if(!notice){notice=document.createElement('p');notice.className='source-note range-unavailable';point.querySelector('.source-path')?.after(notice);}
@@ -179,6 +179,13 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
       const syntaxName = paintCode(region.querySelector('code'), buffer.text, {language:buffer.language,tokens:buffer.tokens});
       caption.textContent = `${syntaxName} · ${ko ? '관측된 인용 범위 · 구문 색상은 읽기 보조 표시' : 'Observed cited range · syntax colors are a reading aid'}`;
       caption.hidden = false;
+      let originNote=codePane.querySelector('.code-origin');
+      if(chunk.code_origin){
+        if(!originNote){originNote=document.createElement('p');originNote.className='source-note code-origin';originNote.dataset.fetchedCode='true';caption.before(originNote);}
+        const o=chunk.code_origin;
+        originNote.textContent=`${ko?'검증된 코드 원본':'Verified code origin'}: ${o.path}:${o.start_line}–${o.end_line} · ${ko?'리비전':'revision'} ${o.revision} · ${ko?'원본 파일 바이트':'Original file bytes'} ${o.start_byte}–${o.end_byte} · ${ko?'바이트 일치만 확인했습니다. 명령 출력 좌표와 관측 시각은 별개이며, 현재 코드 대응이나 실험 재실행을 뜻하지 않습니다.':'Byte equality only; command coordinates and observation time remain separate. No current-code correspondence or experiment rerun is established.'}`;
+        originNote.hidden=false;
+      }else originNote?.remove();
       codePane.querySelectorAll('.initial-range-omission').forEach(n=>n.hidden=true);
       const numbers = region.querySelector('.source-line-numbers'); numbers.replaceChildren();
       for (let line = buffer.startLine; line <= chunk.displayed_end_line; line++) {
@@ -229,7 +236,7 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
     cancel(); clearTimeout(expiryTimer);
     document.querySelectorAll('.source-point').forEach(point=>codeBuffers.delete(point));
     document.querySelectorAll('[data-fetched-code]').forEach(node=>node.remove());
-    for(const node of document.querySelectorAll('pre.code-region,.code-caption,.initial-range-omission,.source-code-reference')){
+    for(const node of document.querySelectorAll('pre.code-region,.code-caption,.code-origin,.initial-range-omission,.source-code-reference')){
       if(nativeVisibility.has(node))node.hidden=nativeVisibility.get(node);
     }
   });

@@ -242,11 +242,18 @@ impl ViewerServer {
             ),
             chunk["text"].as_str(),
         ) {
-            let language = crate::source_highlight::language(
-                &citation,
-                chunk["source_representation"].as_str(),
-                !chunk["execution"].is_null(),
-            );
+            let origin = serde_json::from_value::<volicord_projections::VerifiedCodeOrigin>(
+                chunk["code_origin"].clone(),
+            )
+            .ok();
+            let language =
+                crate::source_highlight::origin_language(origin.as_ref()).or_else(|| {
+                    crate::source_highlight::language(
+                        &citation,
+                        chunk["source_representation"].as_str(),
+                        !chunk["execution"].is_null(),
+                    )
+                });
             result["highlight"] = crate::source_highlight::decoration(source, language);
         }
         let mut body = serde_json::to_vec(&result)

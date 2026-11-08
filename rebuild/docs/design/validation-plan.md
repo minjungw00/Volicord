@@ -5483,6 +5483,16 @@ verdict. Use focused logs and numeric exits; no aggregate or official V11 is imp
 
 ### User-activated Viewer entry
 
+For command-code origin, run the scoped Host `work_explanation` regression
+`pinned_command_origin_preserves_observation_and_does_not_color_labels_or_mixed_logs`
+and Viewer syntax/reader checks through `validate focused`. Normal MCP preparation,
+retrieval, composition, recording, Projection and selected citation reads must keep
+command identity/coordinates while exposing independently verified Git-file origin.
+Python and a different supported language, wrong revision/range, misleading labels,
+plain/mixed output and denial are independent controls. Actual dependent publication
+CLI/full MCP/live/script-free wide/narrow reading, exact code/hash/origin comparison,
+focus return, Source expiry/deletion and portable extraction remain separate checks.
+
 `executable_http::user_document_links_allow_entry_without_admitting_cross_origin_data_or_mutations`
 checks actual listener entry and negative Host/Origin, incomplete/duplicate Fetch
 Metadata, iframe, citation and POST boundaries without canonical mutation.

@@ -254,6 +254,7 @@ impl LocalOperations {
         let mut excerpts = Vec::new();
         let mut excerpt_keys = std::collections::BTreeSet::new();
         let mut availability = Vec::new();
+        let mut origins = std::collections::BTreeMap::new();
         for (unit_index, citation_index, citation) in response
             .generated_units()
             .enumerate()
@@ -544,6 +545,25 @@ impl LocalOperations {
                     &citation.repository_source_id,
                 )?));
                 bound_expiry(&mut expiry, read)?;
+                let origin_key = (
+                    citation.source_id.clone(),
+                    citation.field.clone(),
+                    citation.start_byte,
+                    citation.end_byte,
+                );
+                let code_origin = origins
+                    .entry(origin_key)
+                    .or_insert_with(|| match subject {
+                        ExplanationSubject::Work(work) | ExplanationSubject::WorkSummary(work)
+                            if citation.use_kind == ExplanationSourceUse::ObservedExecution =>
+                        {
+                            inspection.as_ref().and_then(|inspection| {
+                                self.verified_code_origin(basis, work, citation, inspection)
+                            })
+                        }
+                        _ => None,
+                    })
+                    .clone();
                 if let Some((target, offset)) = selection.filter(|(target, _)| *target == citation)
                 {
                     let suffix = range
@@ -557,7 +577,7 @@ impl LocalOperations {
                         size -= 1;
                     }
                     selected = Some(json!({
-                        "citation":target, "text":&suffix[..size],
+                        "citation":target, "text":&suffix[..size], "code_origin":code_origin,
                         "displayed_start_byte":citation.start_byte + offset,
                         "displayed_end_byte":citation.start_byte + offset + size,
                         "displayed_start_line":line(start + offset),
@@ -597,6 +617,7 @@ impl LocalOperations {
                     if bytes > 0 {
                         let end = citation.start_byte + bytes;
                         excerpts.push(volicord_projections::ExplanationSourceExcerpt {
+                        code_origin,
                         citation: citation.clone(),
                         work_revision: match subject {
                             ExplanationSubject::Work(_) | ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_) => Some(observation["work_revision"].as_u64().ok_or_else(||Error::new("Source Work revision unavailable"))?),

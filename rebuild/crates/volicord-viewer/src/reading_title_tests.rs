@@ -86,6 +86,7 @@ fn reading(w: &UnderstandingWork, r: &ViewerRequest, claim: &str) -> Explanation
         }),
         diagnostic: None,
         source_excerpts: vec![ExplanationSourceExcerpt {
+            code_origin: None,
             citation,
             work_revision: Some(1),
             observed_at_unix_micros: 1,

@@ -1,7 +1,8 @@
 //! Bounded lexical decoration of already admitted text. No I/O, parser claims,
 //! retained state, or context outside this chunk. Static and live use this lexer.
 //! Deliberately incomplete syntax (including chunk boundaries) is only a visual
-//! approximation. Unknown formats and command streams receive no decoration.
+//! approximation. Unknown formats and command streams without separately
+//! verified, exact-range code origin receive no decoration.
 use volicord_projections::{ExplanationCitation, ExplanationSourceUse};
 
 const MAX_BYTES: usize = 4096;
@@ -42,8 +43,8 @@ impl Language {
 }
 
 /// A locator supplies a display hint only after scoped Source validation. It is
-/// never opened. No language metadata exists in the current excerpt envelope;
-/// field/use/representation distinguish file bytes from execution streams.
+/// never opened. Field/use/representation distinguish file bytes from execution
+/// streams; separately verified command origins use `origin_language` instead.
 pub(crate) fn language(
     citation: &ExplanationCitation,
     representation: Option<&str>,
@@ -56,7 +57,19 @@ pub(crate) fn language(
     {
         return None;
     }
-    match citation.locator.rsplit('.').next()? {
+    path_language(&citation.locator)
+}
+
+/// Called only with Operations-verified, range-bound origin metadata. Command
+/// labels and authored language hints never enter this path.
+pub(crate) fn origin_language(
+    origin: Option<&volicord_projections::VerifiedCodeOrigin>,
+) -> Option<Language> {
+    path_language(&origin?.path)
+}
+
+fn path_language(path: &str) -> Option<Language> {
+    match path.rsplit('.').next()? {
         "js" | "mjs" | "cjs" | "jsx" => Some(Language::JavaScript),
         "ts" | "mts" | "cts" | "tsx" => Some(Language::TypeScript),
         "rs" => Some(Language::Rust),
@@ -346,6 +359,29 @@ pub(crate) fn decoration(source: &str, language: Option<Language>) -> serde_json
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verified_origin_uses_supported_file_syntax_without_interpreting_labels() {
+        let mut origin = volicord_projections::VerifiedCodeOrigin {
+            path: "library/value.py".into(),
+            revision: "1".repeat(40),
+            start_byte: 23,
+            end_byte: 48,
+            start_line: 3,
+            end_line: 4,
+            file_sha256: "verified by Operations".into(),
+            verified_at_unix_micros: 1,
+        };
+        assert_eq!(origin_language(None), None);
+        assert_eq!(origin_language(Some(&origin)), Some(Language::Python));
+        let source = "def value():\n    return 7\n";
+        assert!(html(source, origin_language(Some(&origin))).contains("syn-keyword"));
+        origin.path = "library/value.js".into();
+        assert_eq!(origin_language(Some(&origin)), Some(Language::JavaScript));
+        origin.path = "library/value.custom".into();
+        assert_eq!(origin_language(Some(&origin)), None);
+        assert_eq!(html(source, origin_language(Some(&origin))), source);
+    }
 
     #[test]
     fn comment_decoration_keeps_crlf_together_for_native_copying() {

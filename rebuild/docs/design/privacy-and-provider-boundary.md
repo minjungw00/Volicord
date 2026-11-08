@@ -622,6 +622,19 @@ old associated bodies as current evidence. Snapshot-stale copies may be inspecte
 only as exact historical observations; they never assert current repository state.
 Deletion/expiry cannot refill a body from the filesystem or retained explanation.
 
+Explicit local `work source verify-origin` adds only a `CodeOrigin` Derived
+annotation for one already permitted command range. Its regular pinned Git file
+must be in that Source's included inventory; transient verification is bounded to
+16 MiB, disables Git transports/replacement objects/filters and removes process
+artifacts. No new Source, retention grant, canonical record, publication mutation,
+MCP execution input or provider request is created. The annotation carries no code
+body, expires no later than its Source, and links Work, command Source and repository
+Source for existing forgetting/deletion. Readers first revalidate exact Source
+access, then annotation identity/range/fingerprint/state/deadline. Metadata can
+decorate permitted bytes only; it cannot recover deleted/expired content or grant
+current-code correspondence. Verification rechecks Source and repository binding
+after child-process inspection before recording metadata under the mutation lock.
+
 `work_source` is an explicit current-host request constrained by the host's
 already authorized Project/source scope, not a grant to read other repositories.
 Its file action uses exact Work/snapshot/path and explicit bounded local

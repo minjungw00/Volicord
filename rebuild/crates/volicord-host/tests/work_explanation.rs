@@ -7,6 +7,218 @@ use volicord_host::HostAdapter;
 use volicord_operations::{FileObservationRequest, LocalOperations, RuntimeLayout};
 use volicord_projections::*;
 
+#[test]
+fn pinned_command_origin_preserves_observation_and_does_not_color_labels_or_mixed_logs(
+) -> Result<(), Box<dyn Error>> {
+    use std::{process::Command, time::Duration};
+    use volicord_operations::{CodeOriginRequest, WorkCommandRequest};
+    let mut f = Fixture::new()?;
+    let repo = f.temp.path().join("repo");
+    let python = "def value():\n    return 7\n";
+    let javascript = "export function double(x) { return x * 2; }\n";
+    fs::write(repo.join("math.js"), javascript)?;
+    for args in [
+        vec!["init", "-q"],
+        vec!["add", "."],
+        vec![
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-qm",
+            "origin fixture",
+        ],
+    ] {
+        assert!(Command::new("git")
+            .current_dir(&repo)
+            .args(args)
+            .status()?
+            .success());
+    }
+    let revision = String::from_utf8(
+        Command::new("git")
+            .current_dir(&repo)
+            .args(["rev-parse", "HEAD"])
+            .output()?
+            .stdout,
+    )?
+    .trim()
+    .to_owned();
+    let analysis = f
+        .host
+        .operations()
+        .analyze(f.project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let canonical = f.host.operations().canonical_basis(f.project)?;
+    for (path, bytes, positive) in [
+        ("main.py", python, true),
+        ("math.js", javascript, true),
+        (
+            "main.py",
+            "running check\ndef value():\n    return 7\nOK\n",
+            false,
+        ),
+        ("main.py", "plain log\n", false),
+    ] {
+        let capture = f.host.operations().run_work_command(WorkCommandRequest {
+            project_id: f.project,
+            work_item_id: f.work,
+            analysis_snapshot_id: analysis,
+            command_label: "misleading.py".into(),
+            program: "printf".into(),
+            arguments: vec!["%s".into(), bytes.into()],
+            timeout: Duration::from_secs(5),
+            retain_seconds: 3600,
+        })?;
+        let before =
+            f.host
+                .operations()
+                .read_explanation_source(f.project, f.work, capture.source_id)?;
+        let canonical_before = f.host.operations().canonical_basis(f.project)?;
+        let request = CodeOriginRequest {
+            field: "stdout".into(),
+            start_byte: 0,
+            end_byte: bytes.len(),
+            path: path.into(),
+            revision: revision.clone(),
+            origin_start_byte: 0,
+            origin_end_byte: if path == "main.py" {
+                python.len()
+            } else {
+                javascript.len()
+            },
+        };
+        let bad_revision = CodeOriginRequest {
+            revision: "0".repeat(40),
+            ..request.clone()
+        };
+        assert!(f
+            .host
+            .operations()
+            .verify_work_code_origin(f.project, f.work, capture.source_id, bad_revision)
+            .is_err());
+        let bad_range = CodeOriginRequest {
+            origin_start_byte: 1,
+            ..request.clone()
+        };
+        assert!(f
+            .host
+            .operations()
+            .verify_work_code_origin(f.project, f.work, capture.source_id, bad_range)
+            .is_err());
+        let verified = f.host.operations().verify_work_code_origin(
+            f.project,
+            f.work,
+            capture.source_id,
+            request,
+        );
+        assert_eq!(verified.is_ok(), positive, "{verified:?}");
+        assert_eq!(
+            before,
+            f.host
+                .operations()
+                .read_explanation_source(f.project, f.work, capture.source_id)?
+        );
+        assert_eq!(
+            canonical_before,
+            f.host.operations().canonical_basis(f.project)?
+        );
+        let generation = f.generate()?;
+        f.read(&generation, capture.source_id)?;
+        let mut args = f.args("compose");
+        args["generation_id"] = generation["generation_id"].clone();
+        args["draft"] = json!({"plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
+            "generator":{"host":"fixture","session":"origin","agent":null,"model":null},
+            "paragraphs":[
+                {"question":"heading","text":"Inspect retained command output","evidence_keys":["goal"],"sources":[]},
+                {"question":"synopsis","text":"A controlled fixture checks code origin without asserting an executed test outcome.","evidence_keys":["goal"],"sources":[]},
+                {"question":"observation","text":"A retained command output was inspected.","evidence_keys":["goal"],"sources":[
+                {"source_id":capture.source_id.to_string(),"field":"stdout","use_kind":"observed_execution","start_byte":0,"end_byte":bytes.len(),"claim":null}]}]});
+        let composed = success(&mut f.host, args)?;
+        let realization: ExplanationRealization =
+            serde_json::from_value(composed["realization"].clone())?;
+        let record = f.record_args(&generation, &realization)?;
+        success(&mut f.host, record)?;
+        let projection = f.host.operations().project_projection(f.project)?;
+        let answers = work_answers(
+            projection
+                .work_history
+                .iter()
+                .find(|w| w.work_item_id == f.work)
+                .ok_or("Work")?,
+            "en",
+            FixedLocale::English,
+        );
+        let excerpt = answers.source_excerpts.first().ok_or("excerpt")?;
+        assert_eq!(excerpt.text, bytes);
+        assert_eq!(excerpt.citation.field, "stdout");
+        assert_eq!(excerpt.citation.start_line, 1);
+        assert_eq!(excerpt.code_origin.is_some(), positive);
+        if let Some(origin) = &excerpt.code_origin {
+            assert_eq!(origin.path, path);
+            assert_eq!(origin.revision, revision);
+            assert_eq!(origin.start_line, 1);
+        }
+        let provenance = answers.provenance.ok_or("provenance")?;
+        let selector = volicord_operations::ExplanationCitationSelection {
+            publication_id: provenance.publication_id.ok_or("publication")?,
+            realization_fingerprint: explanation_text_hash(&serde_json::to_string(&realization)?),
+            unit_index: 2,
+            citation_index: 0,
+            offset: 0,
+        };
+        let page = f.host.operations().read_explanation_citation(
+            f.project,
+            ExplanationSubject::Work(f.work),
+            "en",
+            &selector,
+        )?;
+        assert_eq!(page["chunk"]["code_origin"].is_object(), positive);
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let exit = volicord_operations::run_cli(
+            [
+                "--runtime",
+                f.host
+                    .operations()
+                    .layout()
+                    .root()
+                    .to_str()
+                    .ok_or("runtime")?,
+                "--project",
+                &f.project.to_string(),
+                "status",
+                "--language",
+                "en",
+            ],
+            &mut stdout,
+            &mut stderr,
+        );
+        assert_eq!(exit.code(), 0, "{}", String::from_utf8_lossy(&stderr));
+        let human = String::from_utf8(stdout)?;
+        assert_eq!(human.contains("Verified code origin:"), positive);
+        assert!(human.contains("Command output lines"));
+        f.host
+            .operations()
+            .delete_work_source_observation(f.project, f.work, capture.source_id)?;
+        assert!(f
+            .host
+            .operations()
+            .read_explanation_citation(f.project, ExplanationSubject::Work(f.work), "en", &selector)
+            .is_err());
+    }
+    // Only the explicitly requested execution Sources were added. Origin
+    // verification itself does not alter Work/Goal/Checkpoint canonical state.
+    let after = f.host.operations().canonical_basis(f.project)?;
+    assert_eq!(canonical.context_items, after.context_items);
+    assert_eq!(canonical.checkpoint_history, after.checkpoint_history);
+    Ok(())
+}
+
 fn call(host: &mut HostAdapter, args: Value) -> Value {
     host.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"work_explanation","arguments":args}})).unwrap_or(Value::Null)
 }

@@ -33,6 +33,23 @@ failure and its bounded, unresolved investigation.
 
 ## Commands
 
+`node end-to-end/multi-repository/code_origin_browser.cjs <private-config.json>`
+checks separately verified pinned-file origin and unchanged command-stream
+coordinates in live, live-no-JS and genuinely script-free file exports, at wide
+and narrow widths. Use `validate focused`; configuration supplies existing browser
+tools, Viewer, fresh output, ordinary publication cases and independent `expected`
+ranges (`source_id`, `field`, stream lines, `body_file`, expected syntax and optional
+verified origin). Optional immutable `baselines` compare original file presentation
+with the command-output regression. Original code files/retained receipts must
+establish expectations before rendering. It checks complete bytes, inert syntax,
+actual selected HTTP pages and exact return/focus, not claim entailment or acceptance.
+
+The Host `work_explanation::pinned_command_origin_preserves_observation_and_does_not_color_labels_or_mixed_logs`
+test exercises the explicit local producer plus normal MCP prepare/retrieve/compose/
+record and public reads for Python, JavaScript, misleading labels, mixed/plain
+output, wrong revision/range and Source deletion. Actual dependent-publication
+expiry/replacement, independent cards and portable extraction remain separate checks.
+
 `node rebuild/validation/end-to-end/multi-repository/reader_ownership_self_test.cjs`
 checks the shared Reader
 lifetime and modal handoff directly. Run through `validate focused`. Actual

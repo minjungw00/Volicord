@@ -1,5 +1,16 @@
 # Versioning 정책
 
+Local pinned code-origin annotations use the independent exact-current
+`volicord_code_origin` format version `1`, under the existing managed Derived
+`CodeOrigin` kind. It stores only verification metadata for an exact command
+observation fingerprint/field/range/hash. Non-current or corrupt annotations supply
+no origin or syntax authority. This adds no alternative Source/explanation decoder:
+canonical schema 18, portable bundle 11, SourceObservation 4, explanation 9 and
+privacy SQL schema 2 retain their existing representations and meaning. The new
+Derived kind is not a provider SemanticAnnotation. Existing publications and
+Sources are never converted or rewritten; origin is separately permitted read-time
+metadata with its own identity, capped deadline and Source denial barrier.
+
 - 상태: active specialized architecture owner
 - 소유 범위: new-product canonical schema와 portable/analysis/derived/document format의
   독립 version boundary, current-only read/write behavior, deterministic serialization,

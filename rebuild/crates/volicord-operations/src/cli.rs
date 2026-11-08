@@ -347,6 +347,8 @@ fn work_source_command() -> Command {
             .arg(Arg::new("offset").long("offset").value_parser(clap::value_parser!(usize)).default_value("0"))
             .arg(Arg::new("expected-fingerprint").long("expected-fingerprint")))
         .subcommand(Command::new("read").about("Read one permitted retained observation; no filesystem fallback").arg(work()).arg(source()))
+        .subcommand(Command::new("verify-origin").about("Verify an exact retained command range against a local pinned Git file; metadata only, no Source renewal")
+            .arg(work()).arg(source()).arg(path_arg("input", "input", "CodeOriginRequest JSON").required(true)))
         .subcommand(Command::new("delete").about("Delete one Work Source copy, retaining canonical identity").arg(work()).arg(source()))
 }
 
@@ -361,6 +363,15 @@ fn dispatch_work_source(
     let project = resolve_project(operations, selection)?;
     let work = ContextItemId::from_bytes(parse_identity(required(args, "work")?)?);
     let receipt = match action {
+        "verify-origin" => {
+            return operations.verify_work_code_origin(
+                project,
+                work,
+                SourceId::from_bytes(parse_identity(required(args, "source")?)?),
+                serde_json::from_value(read_explanation_input(args)?)
+                    .map_err(|e| Error::with_source("invalid code origin request", e))?,
+            )
+        }
         "list" => {
             return operations.explanation_source_manifest(
                 project,
@@ -2216,6 +2227,37 @@ fn render_field(
         }
         for excerpt in answers["source_excerpts"].as_array().into_iter().flatten() {
             let c = &excerpt["citation"];
+            if c["use_kind"] == "observed_execution" {
+                write_line(
+                    stdout,
+                    format!(
+                        "{padding}  {} · {} {}–{} · bytes {}–{} · {} {}",
+                        terminal_explanation_text(c["field"].as_str().unwrap_or_default()),
+                        match locale {
+                            CliLocale::English => "Command output lines",
+                            CliLocale::Korean => "명령 출력 행",
+                        },
+                        c["start_line"],
+                        c["end_line"],
+                        c["start_byte"],
+                        c["end_byte"],
+                        match locale {
+                            CliLocale::English => "Source observed at (Unix µs):",
+                            CliLocale::Korean => "근거 관측 시각 (Unix µs):",
+                        },
+                        excerpt["observed_at_unix_micros"]
+                    ),
+                )?;
+            }
+            if let Some(origin) = excerpt["code_origin"].as_object() {
+                write_line(stdout,format!("{padding}  {}: {}:{}–{} · revision {} · {} {}–{} · {}",
+                    match locale {CliLocale::English=>"Verified code origin",CliLocale::Korean=>"검증된 코드 원본"},
+                    terminal_explanation_text(origin["path"].as_str().unwrap_or_default()),origin["start_line"],origin["end_line"],
+                    terminal_explanation_text(origin["revision"].as_str().unwrap_or_default()),
+                    match locale {CliLocale::English=>"Original file bytes",CliLocale::Korean=>"원본 파일 바이트"},origin["start_byte"],origin["end_byte"],
+                    match locale {CliLocale::English=>"Byte equality only; no current-code correspondence or experiment rerun is established.",
+                        CliLocale::Korean=>"바이트 일치만 확인했습니다. 현재 코드 대응이나 실험 재실행을 뜻하지 않습니다."}))?;
+            }
             write_line(
                 stdout,
                 format!(

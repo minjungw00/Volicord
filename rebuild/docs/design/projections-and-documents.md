@@ -2255,8 +2255,35 @@ dependency, external grammar, I/O, retained state or semantic parsing authority.
 Current excerpt metadata has no explicit programming-language field: admitted
 file `body` plus `whole_file`/`bounded_excerpt` representation and recorded locator
 suffix select JavaScript/TypeScript, Rust, Python, Shell or JSON decoration.
-Execution/stdout/stderr and unrecognized formats remain plain text regardless of
-their locator. This display hint neither opens a path nor establishes capability.
+Execution/stdout/stderr remain plain text regardless of their locator unless an
+explicit local pinned-origin verification exists for the exact admitted range.
+Unrecognized formats remain plain text. This display hint neither opens a path
+nor establishes capability.
+
+`work source verify-origin --work WORK --source SOURCE --input REQUEST` verifies
+one retained stdout/stderr interval against one included repository path at a
+full Git commit ID. The request supplies both half-open byte intervals; Operations
+reads only a regular pinned blob, at most the existing 16 MiB file-verification
+bound, and requires exact UTF-8 byte equality. Local Git transports, replacement
+objects, revision expressions and filters are unavailable. Verification artifacts
+are removed; only bounded `CodeOrigin` Derived metadata is retained, under the
+original Source deadline and canonical Work/Source/repository forgetting links.
+Source identity, fingerprint, streams, byte/line coordinates, observation time,
+execution facts and comparison state are unchanged. A label grants no origin.
+
+The exact-current `volicord_code_origin` annotation supplies independently verified
+path, full revision, original file bytes/lines, full-file hash and verification
+time. Read-time excerpts and selected citation pages attach it only after the
+existing exact Source validation, matching range/hash/fingerprint and current
+annotation permission/lifetime checks. It is separate from the retained authored
+publication, which remains unchanged; no read-time authorship or conversion occurs.
+Static and live code windows label origin separately from bound stdout/stderr
+coordinates and original observation time. Only a recognized verified origin path
+enables the existing inert lexer for command bytes. Absent, corrupt, unsupported or
+expired metadata falls back to plain text; denied Source bytes remain denied.
+Mixed logs cannot verify as a code-only file interval unless the explicitly selected
+bytes actually equal that interval. Byte equality asserts neither current repository
+correspondence, execution, claim entailment nor an experiment rerun.
 
 The same lexer produces escaped static markup (including script-free offline
 HTML) and bounded UTF-16 token ranges for live DOM text nodes/spans. Identical

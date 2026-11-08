@@ -304,8 +304,22 @@ pub struct ExplanationReading {
 
 /// Exact inspected range, bounded independently of prose and its full grounding.
 /// A comparison describes observed file bytes, never an inferred patch.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct VerifiedCodeOrigin {
+    pub path: String,
+    pub revision: String,
+    pub start_byte: usize,
+    pub end_byte: usize,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub file_sha256: String,
+    pub verified_at_unix_micros: i64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct ExplanationSourceExcerpt {
+    pub code_origin: Option<VerifiedCodeOrigin>,
     pub citation: ExplanationCitation,
     pub work_revision: Option<u64>,
     pub observed_at_unix_micros: i64,

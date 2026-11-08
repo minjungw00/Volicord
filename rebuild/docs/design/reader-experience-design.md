@@ -1,5 +1,15 @@
 # Reader experience design
 
+Verified historical command code keeps two locations visible: the actual command
+stream/range and a separately verified original repository path, full pinned
+revision and file lines/bytes. An explicit local byte-equality check may enable the
+existing decorative lexer for that exact range; labels and ordinary/mixed command
+logs provide no language authority. Original observation time, Source identity,
+execution scope and unavailable current correspondence remain unchanged. This
+reading metadata does not rewrite the article or renew evidence. Live and native
+code windows preserve complete text, repeated-range identity and exact claim/element
+return; Source denial clears code and origin together.
+
 Status: accepted experience requirements, adopted 2026-10-19. Implementation,
 focused technical checks, semantic quality and human acceptance are separate.
 
