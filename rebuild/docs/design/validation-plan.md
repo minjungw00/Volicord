@@ -1437,8 +1437,12 @@ value-stream bytes; decoded delta scratch ends before competing complete
 compression. Profitable large deltas are
 chosen even when their saving is below one half; an incompressible 12 MiB control
 checks retained-base selection, exact reconstruction and independent complete
-fallback. The cache keeps an 8 MiB long-distance window and both retained cache
-identities. None of these changes raises a V11 or publication budget.
+fallback. The cache uses level 3 with the same 8 MiB long-distance window and both
+retained cache identities. Unbuffered codec controls check exact current compressed
+bytes and complete reads at levels 1 and 3. Retained-cache comparisons require
+identical decoded bytes and unchanged original files; they remain diagnostics,
+not a replacement for the current candidate's V11 measurement. None of these
+changes raises a V11 or publication budget.
 
 ### Metadata accumulation diagnosis after selected-reading integration
 

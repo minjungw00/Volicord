@@ -577,7 +577,7 @@ base와 복원 value stream은 필요하지만, 전체 decoded delta는 별도�
 Literal scratch는 64 KiB이며 operation/copy/literal/output bounds, envelope의 exact
 decoded length와 EOF를 검사한다. Cache miss와 durable inspection은 같은 reader를
 쓰며 bulk delta decoder는 differential test oracle에만 남는다.
-Cache의 streamed MessagePack을 낮은 압축 수준과 bounded 8 MiB 긴 거리 매칭으로
+Cache의 streamed MessagePack을 압축 수준 3과 bounded 8 MiB 긴 거리 매칭으로
 무손실 압축하여 section 사이의 먼 반복도 재사용한다. Cache header/schema, exact
 snapshot 검증과 두 항목 retention은 바뀌지 않는다.
 Snapshot publication은 normalized JSON shape 조각, value stream, typed capability metadata를

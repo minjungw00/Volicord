@@ -375,10 +375,11 @@ fn write_analysis_cache_value(
     output
         .write_all(ANALYSIS_CACHE_MAGIC)
         .map_err(|error| Error::with_source("cannot write Analysis read cache header", error))?;
-    let mut encoder = zstd::stream::write::Encoder::new(output, 1)
+    let mut encoder = zstd::stream::write::Encoder::new(output, 3)
         .map_err(|error| Error::with_source("cannot create Analysis read cache encoder", error))?;
     // A large graph repeats facts across sections farther apart than the
-    // default window. Reuse them without raising the compression level.
+    // default window. Level 3 also reduces repeated reference/field overhead
+    // within that same bounded window; retain the complete MessagePack stream.
     encoder
         .window_log(23)
         .and_then(|_| encoder.long_distance_matching(true))
@@ -2467,22 +2468,31 @@ mod tests {
         assert_eq!(buffered.bytes, direct.bytes);
         assert!(direct.calls > 100_000);
         assert!(buffered.calls <= direct.bytes.len() / (64 * 1024) + 1);
-        // Pin the complete former compressed representation too, not just JSON meaning.
-        let mut previous = ANALYSIS_CACHE_MAGIC.to_vec();
-        let mut encoder = zstd::stream::write::Encoder::new(&mut previous, 1)
-            .map_err(|error| Error::with_source("cannot create reference encoder", error))?;
-        encoder
-            .window_log(23)
-            .and_then(|_| encoder.long_distance_matching(true))
-            .map_err(|error| Error::with_source("cannot configure reference encoder", error))?;
-        rmp_serde::encode::write_named(&mut encoder, &value)
-            .map_err(|error| Error::with_source("cannot write reference cache", error))?;
-        encoder
-            .finish()
-            .map_err(|error| Error::with_source("cannot finish reference cache", error))?;
         let mut actual = Vec::new();
         write_analysis_cache_value(&mut actual, &value)?;
-        assert_eq!(actual, previous);
+        // Pin current compressed bytes against an unbuffered reference. Both
+        // ordinary zstd levels remain the same complete, current cache format.
+        for level in [1, 3] {
+            let mut reference = ANALYSIS_CACHE_MAGIC.to_vec();
+            let mut encoder = zstd::stream::write::Encoder::new(&mut reference, level)
+                .map_err(|error| Error::with_source("cannot create reference encoder", error))?;
+            encoder
+                .window_log(23)
+                .and_then(|_| encoder.long_distance_matching(true))
+                .map_err(|error| Error::with_source("cannot configure reference encoder", error))?;
+            rmp_serde::encode::write_named(&mut encoder, &value)
+                .map_err(|error| Error::with_source("cannot write reference cache", error))?;
+            encoder
+                .finish()
+                .map_err(|error| Error::with_source("cannot finish reference cache", error))?;
+            assert_eq!(
+                read_analysis_cache_value::<serde_json::Value>(reference.as_slice())?,
+                json!(value)
+            );
+            if level == 3 {
+                assert_eq!(actual, reference);
+            }
+        }
         let mut failing = Writes {
             bytes: Vec::new(),
             calls: 0,
