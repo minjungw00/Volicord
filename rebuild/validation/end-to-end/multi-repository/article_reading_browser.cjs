@@ -2,7 +2,7 @@
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const {spawn, spawnSync, execFileSync} = require('node:child_process');
 const {pathToFileURL} = require('node:url'), crypto = require('node:crypto');
-const {sourceTasks,criticalLink,criticalPoint,citationResponse,criticalBytes}=require('../../viewer-design/product_review_controls.cjs');
+const {sourceTasks,criticalLink,criticalPoint,citationResponse,criticalBytes,citationPoint,nativeEvidenceContext}=require('../../viewer-design/product_review_controls.cjs');
 const config = JSON.parse(fs.readFileSync(process.argv[2]));
 const {chromium} = require(config.playwright);
 const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -46,20 +46,24 @@ async function inspect(page,c,qa,url,width,mode,language) {
   for(const s of primary.filter(s=>s.heading_index!==null)) {
     const text=qa.prose[s.heading_index].text;
     const link=nav.locator('a').filter({hasText:text});assert.equal(await link.count(),1);
-    await nav.locator(':scope > summary').click();
+    if(!await nav.evaluate(n=>n.open))await nav.locator(':scope > summary').click();
     const fragment=await link.getAttribute('href');
     await link.focus();await page.keyboard.press('Enter');await page.waitForURL(u=>u.hash===fragment);
     const target=page.locator(`[id="${fragment.slice(1)}"]`);
-    assert.equal(await target.locator('h2').textContent(),text);
+    assert.equal(await target.evaluate(n=>n.tagName),'H2','native contents target is the authored heading');
+    assert.equal(await target.textContent(),text);
     assert.equal(await target.evaluate(n=>document.activeElement===n),true,'authored section has native fragment focus');
     const geometry=await target.evaluate(n=>({top:n.getBoundingClientRect().top,bottom:document.querySelector('.doc .document-nav').getBoundingClientRect().bottom}));
     assert.ok(geometry.top>=geometry.bottom-2,'sticky controls do not cover heading');
-    await page.reload();assert.equal(await target.locator('h2').textContent(),text,'direct fragment survives reload');
+    await page.reload();assert.equal(await target.textContent(),text,'direct fragment survives reload');
   }
   // Original admitted vector order is the expectation. In particular, an early
   // verification or material caveat must not migrate past a following figure.
   const authored=qa.prose.filter(u=>!['Heading','Synopsis'].includes(u.question));
-  assert.deepEqual(await doc.locator('.unit-text').allTextContents(),authored.map(u=>u.text),
+  const articleUnits=await doc.locator('.unit-text').evaluateAll((nodes,publication)=>
+    nodes.filter(n=>n.closest('[data-reader-publication]')?.dataset.readerPublication===publication)
+      .map(n=>n.textContent),qa.provenance.publication_id);
+  assert.deepEqual(articleUnits,authored.map(u=>u.text),
     'complete logical paragraphs, captions and result qualifications retain authored order');
   for(const role of ['Verification','Limits']) {
     const nodes=doc.locator(`[data-question="${role}"]`);
@@ -75,15 +79,15 @@ async function inspect(page,c,qa,url,width,mode,language) {
     const origin=await evidence.getAttribute('data-origin'),fragment=await evidence.getAttribute('href');
     const pending=mode==='live'?citationResponse(page,task,0):null;
     await evidence.focus();await page.keyboard.press('Enter');
-    const point=page.locator(`[id="${fragment.slice(1)}"]`);await point.waitFor();
+    const point=await citationPoint(page,fragment);await point.waitFor();
     await criticalPoint(point,task);
     await criticalBytes(page,point,task,mode==='offline',pending);
     await page.screenshot({path:path.join(config.output,`${c.key}-${language}-${width}-${mode}-code.png`)});
     if(mode==='live') {
       assert.equal(await doc.evaluate(n=>n.inert),width<1200);
-      assert.equal(await point.getAttribute('aria-modal'),width<1200?'true':null);
+      assert.equal(await point.evaluate(n=>n.closest('.appendix').getAttribute('aria-modal')),width<1200?'true':null);
       await page.keyboard.press('Escape');
-    } else {await point.locator('.return').focus();await page.keyboard.press('Enter');}
+    } else {await (await nativeEvidenceContext(point)).locator('a.return').focus();await page.keyboard.press('Enter');}
     await page.waitForURL(u=>u.hash==='#'+origin);
     // Live inspection restores the exact activating control. Script-free native
     // fragments focus the originating claim, whose anchor is the return target.
