@@ -3701,3 +3701,22 @@ locally with each message, and parallel operands stay visibly distinct. Node/edg
 identity, Source/claim traversal and format 9 do not change. There is no new phase
 field, label inferred from narrative, automatic reauthoring or sequence-to-graph
 conversion. Both live and native consumers use the same temporal drawing.
+
+### Work findings and their original basis
+
+Ordinary Work preparation asks the author to connect original records to the
+reader's issue, symptom, confirmed cause or hypothesis, actual choice/action,
+change or no-change, claim-to-check support, outcome and remaining work. This is a
+compact investigation aid, not new canonical fields or a required article template.
+A missing relationship remains unknown. The issue and supported outcome lead;
+mechanism, original identifiers and capture provenance serve that explanation.
+Readable verification questions precede exact test names and output. A case, report,
+execution, repeat, completion and acceptance retain their own units and authority.
+Recorded intent is distinct from code effect or the author's interpretation.
+
+The existing units, exact citations and independent Goal/progress publications
+carry this meaning. A new wording uses ordinary prepare/compose/record and a new
+publication; no old article, Source, Decision rationale or historical result is
+rewritten. A summary uses its permitted original fields even when the article is
+unavailable. Guidance/admission alone establishes no transferable content quality;
+compare normal production with original records and public consumers separately.
