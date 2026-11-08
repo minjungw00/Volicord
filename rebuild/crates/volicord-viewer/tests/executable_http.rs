@@ -98,6 +98,81 @@ fn get(address: &str, target: &str) -> String {
     )
 }
 
+#[test]
+fn user_document_links_allow_entry_without_admitting_cross_origin_data_or_mutations() {
+    let temporary = TempDir::new().expect("temporary root");
+    let operations =
+        LocalOperations::new(RuntimeLayout::new(temporary.path().join("runtime")).expect("layout"));
+    let project = operations
+        .initialize_project("Link opened Project", None)
+        .expect("Project")
+        .project
+        .id;
+    let viewer = start_viewer(operations.layout().root(), &project.to_string());
+    let before = operations.canonical_basis(project).expect("before");
+    let navigation =
+        "Sec-Fetch-Mode: navigate\r\nSec-Fetch-Dest: document\r\nSec-Fetch-User: ?1\r\n";
+    for site in ["cross-site", "same-site"] {
+        let response = exchange(
+            &viewer.address,
+            &format!("GET /?view=overview HTTP/1.1\r\nHost: {}\r\nSec-Fetch-Site: {site}\r\n{navigation}\r\n", viewer.address),
+        );
+        assert!(response.starts_with("HTTP/1.1 200"));
+        assert!(response.contains("Link opened Project"));
+        assert!(response.contains("frame-ancestors 'none'"));
+        assert!(response.contains("Referrer-Policy: no-referrer"));
+    }
+    for headers in [
+        "",
+        "Sec-Fetch-Mode: navigate\r\nSec-Fetch-Dest: document\r\n",
+        "Sec-Fetch-Mode: navigate\r\nSec-Fetch-User: ?1\r\n",
+        "Sec-Fetch-Dest: document\r\nSec-Fetch-User: ?1\r\n",
+        "Sec-Fetch-Mode: cors\r\nSec-Fetch-Dest: document\r\nSec-Fetch-User: ?1\r\n",
+        "Sec-Fetch-Mode: navigate\r\nSec-Fetch-Dest: iframe\r\nSec-Fetch-User: ?1\r\n",
+        "Sec-Fetch-Mode: navigate\r\nSec-Fetch-Dest: document\r\nSec-Fetch-User: ?0\r\n",
+    ] {
+        let response = exchange(
+            &viewer.address,
+            &format!(
+                "GET / HTTP/1.1\r\nHost: {}\r\nSec-Fetch-Site: cross-site\r\n{headers}\r\n",
+                viewer.address
+            ),
+        );
+        assert!(response.starts_with("HTTP/1.1 403"));
+        assert!(!response.contains("Link opened Project"));
+    }
+    for (target, extra, expected) in [
+        ("/citation", "", 403),
+        ("/guarded/anything", "", 403),
+        ("/", "Origin: http://foreign.invalid\r\n", 403),
+        ("/", "Origin: null\r\n", 403),
+        ("/", "Sec-Fetch-Mode: navigate\r\n", 400),
+        ("/", "Sec-Fetch-Dest: document\r\n", 400),
+        ("/", "Sec-Fetch-User: ?1\r\n", 400),
+    ] {
+        let response = exchange(
+            &viewer.address,
+            &format!("GET {target} HTTP/1.1\r\nHost: {}\r\nSec-Fetch-Site: cross-site\r\n{navigation}{extra}\r\n", viewer.address),
+        );
+        assert!(
+            response.starts_with(&format!("HTTP/1.1 {expected}")),
+            "{response}"
+        );
+        assert!(!response.contains("Link opened Project"));
+    }
+    let wrong_host = exchange(
+        &viewer.address,
+        &format!("GET / HTTP/1.1\r\nHost: foreign.invalid\r\nSec-Fetch-Site: cross-site\r\n{navigation}\r\n"),
+    );
+    assert!(wrong_host.starts_with("HTTP/1.1 421"));
+    let post = exchange(
+        &viewer.address,
+        &format!("POST /guarded/confirm HTTP/1.1\r\nHost: {}\r\nOrigin: http://{}\r\nSec-Fetch-Site: cross-site\r\n{navigation}Content-Length: 0\r\n\r\n", viewer.address, viewer.address),
+    );
+    assert!(post.starts_with("HTTP/1.1 403"));
+    assert_eq!(before, operations.canonical_basis(project).expect("after"));
+}
+
 fn post(address: &str, target: &str, body: &str, request_authenticity: &str) -> String {
     let body = format!("{body}&request_authenticity={request_authenticity}");
     post_with_context(

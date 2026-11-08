@@ -10,6 +10,23 @@ const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const result={outcome:'failed',scope:'actual script-free file/HTTP and live-no-JS navigation; no human/assistive verdict',checks:[],external:[],viewer:hash(fs.readFileSync(config.viewer)),driver:hash(fs.readFileSync(__filename))};
 let browser,files,child,active;
 const pause=p=>p.waitForTimeout(100);
+async function linkedDocument(page,context,address,launcher){
+ // Route interception can omit Fetch Metadata from Playwright Request headers.
+ // Observe final browser wire headers instead, without changing the request.
+ const wire=await context.newCDPSession(page);await wire.send('Network.enable');
+ let selected,complete;const extra=new Map(),metadata=new Promise(resolve=>complete=resolve);
+ const publish=()=>{if(selected&&extra.has(selected))complete(extra.get(selected));};
+ wire.on('Network.requestWillBeSent',e=>{if(e.request.url===address){selected=e.requestId;publish();}});
+ wire.on('Network.requestWillBeSentExtraInfo',e=>{extra.set(e.requestId,e.headers);publish();});
+ let timer;
+ try{
+  await page.goto(launcher);
+  const navigation=page.waitForResponse(r=>r.url()===address&&r.request().isNavigationRequest());
+  await page.locator('#open-viewer').click();const response=await navigation;
+  const headers=await Promise.race([metadata,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('browser navigation metadata missing')),10000);})]);
+  return {response,headers:Object.fromEntries(Object.entries(headers).map(([k,v])=>[k.toLowerCase(),v]))};
+ }finally{clearTimeout(timer);await wire.detach();}
+}
 async function cue(page,kind,c,width,snapshot,projectName){
  const names=c.locale==='ko'?{overview:'개요',repository:'저장소 설명',work:'작업'}:{overview:'Overview',repository:'Repository explanation',work:'Work'};
  if(width<=980){assert.equal(await page.locator('.mobile-location').isVisible(),true,'the location cue cannot be hidden');assert.equal((await page.locator('.mobile-location').innerText()).trim(),names[kind],'native location must match owning destination');}
@@ -95,11 +112,27 @@ async function timelineOrigins(page,c,{kind,width,snapshot,projectName,prefix,ad
   child=spawn(config.viewer,['--runtime',runtime,'--project',c.project,'--bind','127.0.0.1:0']);let stderr='';child.stderr.on('data',b=>stderr+=b);const done=new Promise(r=>child.once('close',r));
   const base=await new Promise((r,j)=>{const timer=setTimeout(()=>j(Error(stderr||'listener timeout')),10000);child.once('error',j);child.stderr.on('data',()=>{const m=stderr.match(/http:\/\/127\.0\.0\.1:\d+\//);if(m){clearTimeout(timer);r(m[0]);}});});
   for(const transport of ['live-no-js','snapshot-http'])for(const width of config.widths||[1440,1024,768,390,320]){
-   const snapshot=transport==='snapshot-http',context=await browser.newContext({javaScriptEnabled:false,viewport:{width,height:900}});context.setDefaultTimeout(15000);const page=await context.newPage();active=page;
-   await context.route('**/*',route=>[new URL(base).origin,fileBase].includes(new URL(route.request().url()).origin)?route.continue():(result.external.push(route.request().url()),route.abort()));
+   const snapshot=transport==='snapshot-http',prefix=`${c.key}-${transport}-${width}`,context=await browser.newContext({javaScriptEnabled:false,viewport:{width,height:900}});context.setDefaultTimeout(15000);const page=await context.newPage();active=page;
+   const launcher=pathToFileURL(path.join(config.output,prefix+'-entry.html')).href;
+   await context.route('**/*',route=>(!snapshot&&route.request().url()===launcher)||[new URL(base).origin,fileBase].includes(new URL(route.request().url()).origin)?route.continue():(result.external.push(route.request().url()),route.abort()));
    const address=snapshot?fileBase+'/'+c.key+'.html':base+`?project=${c.project}&view=overview&locale=${c.locale}&language=${c.language}`;
-   const response=await page.goto(address);await pause(page);if(snapshot)assert.equal(hash(await response.body()),hash(fs.readFileSync(c.offline)),'server delivers unchanged export bytes');
-   const projectName=await page.locator('.mobile-project').textContent(),prefix=`${c.key}-${transport}-${width}`;
+   let response;
+   if(snapshot){response=await page.goto(address);assert.equal(hash(await response.body()),hash(fs.readFileSync(c.offline)),'server delivers unchanged export bytes');}
+   else {
+    // Follow the delivered file-to-live link. Direct goto has Fetch-Site:none
+    // and cannot detect a Viewer that rejects actual user link navigation.
+    const entry=path.join(config.output,prefix+'-entry.html');
+    fs.writeFileSync(entry,'<!doctype html><a id="open-viewer" href="'+address.replaceAll('&','&amp;').replaceAll('"','&quot;')+'">Open Viewer</a>',{flag:'wx'});
+    const observed=await linkedDocument(page,context,address,launcher);response=observed.response;
+    const headers=observed.headers;
+    assert.equal(headers['sec-fetch-site'],'cross-site');
+    assert.equal(headers['sec-fetch-mode'],'navigate');
+    assert.equal(headers['sec-fetch-dest'],'document');
+    assert.equal(headers['sec-fetch-user'],'?1');
+    assert.equal(response.status(),200,'user activation from the delivered local launcher opens the actual Viewer');
+   }
+   await pause(page);
+   const projectName=await page.locator('.mobile-project').textContent();
    await cue(page,'overview',c,width,snapshot,projectName);await page.screenshot({path:path.join(config.output,prefix+'-overview.png')});
    await navigate(page,c.work?'work':'repository',width);
    await cue(page,c.work?'work':'repository',c,width,snapshot,projectName);

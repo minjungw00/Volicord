@@ -42,6 +42,11 @@ hashes and scope on every chunk. It never opens an arbitrary path, captures new
 Sources, extends retention, generates prose or invokes a provider. Untrusted text
 is escaped. Host/Origin and fetch-metadata protections remain enforced.
 
+Links from a local review file or another site can open the Viewer when the
+browser reports an explicit user navigation to the top-level document. This is
+limited to `GET /`; cross-origin fetch, iframe entry, citation API reads and
+mutation requests retain their existing restrictions.
+
 Static output contains the three destinations, bounded Work/Decision explanations,
 selected admitted Sources and truthful omissions/currentness. Native fragments and
 disclosures work without JavaScript or Runtime access. Native page-kind and

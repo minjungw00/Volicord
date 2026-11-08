@@ -916,6 +916,15 @@ reader. Live GET forms preserve Host/Origin/fetch protections, no-store response
 fixed locale and separate content language. Projection owns query semantics and
 refresh tokens; tokens confer no authority and bind no hidden text.
 
+An explicit user link from a local file or another origin may enter the Viewer
+document at `GET /`: cross-site or same-site Fetch Metadata must identify
+`navigate`, destination `document`, and user activation `?1` together. Exact Host
+and any supplied Origin still have to match the listener. Missing or contradictory
+navigation metadata, cross-origin fetch and iframe entry remain blocked. This
+document-entry exception never applies to `/citation`, Guarded routes or POST;
+their existing Source, origin and mutation-token checks remain unchanged. Response
+no-store, no-referrer and frame-ancestor protections also remain enforced.
+
 Catalogue return state stores at most 24 route/row/viewport coordinate entries in
 tab session storage, with no names, summaries, articles, evidence or code bodies.
 The exact effective Project/query/language/basis must match before restoration.

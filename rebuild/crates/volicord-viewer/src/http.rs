@@ -74,10 +74,9 @@ impl ViewerServer {
         self.validate_authority(&request)?;
         if request.method == "GET"
             && (request.origin.as_deref().is_some_and(|s| s != self.origin)
-                || request
-                    .fetch_site
-                    .as_deref()
-                    .is_some_and(|s| !["same-origin", "none"].contains(&s)))
+                || request.fetch_site.as_deref().is_some_and(|s| {
+                    !["same-origin", "none"].contains(&s) && !request.user_document_navigation()
+                }))
         {
             return Err(HttpFailure::forbidden());
         }
@@ -413,10 +412,23 @@ struct HttpRequest {
     host: Option<String>,
     origin: Option<String>,
     fetch_site: Option<String>,
+    fetch_mode: Option<String>,
+    fetch_destination: Option<String>,
+    fetch_user: Option<String>,
     body: Vec<u8>,
 }
 
 impl HttpRequest {
+    fn user_document_navigation(&self) -> bool {
+        // An explicit link from a local launcher or another site is a document
+        // visit, not a cross-origin API read. Host and Origin remain checked.
+        self.path == "/"
+            && matches!(self.fetch_site.as_deref(), Some("cross-site" | "same-site"))
+            && self.fetch_mode.as_deref() == Some("navigate")
+            && self.fetch_destination.as_deref() == Some("document")
+            && self.fetch_user.as_deref() == Some("?1")
+    }
+
     fn read(reader: &mut impl Read) -> Result<Self, HttpFailure> {
         let mut header = Vec::new();
         let mut byte = [0_u8; 1];
@@ -464,6 +476,9 @@ impl HttpRequest {
         let mut host = None;
         let mut origin = None;
         let mut fetch_site = None;
+        let mut fetch_mode = None;
+        let mut fetch_destination = None;
+        let mut fetch_user = None;
         for line in lines {
             let (name, value) = line
                 .split_once(':')
@@ -490,6 +505,11 @@ impl HttpRequest {
                 "host" => set_unique_header(&mut host, value, "Host")?,
                 "origin" => set_unique_header(&mut origin, value, "Origin")?,
                 "sec-fetch-site" => set_unique_header(&mut fetch_site, value, "Sec-Fetch-Site")?,
+                "sec-fetch-mode" => set_unique_header(&mut fetch_mode, value, "Sec-Fetch-Mode")?,
+                "sec-fetch-dest" => {
+                    set_unique_header(&mut fetch_destination, value, "Sec-Fetch-Dest")?
+                }
+                "sec-fetch-user" => set_unique_header(&mut fetch_user, value, "Sec-Fetch-User")?,
                 "transfer-encoding" => {
                     return Err(HttpFailure::bad_request(
                         "Transfer-Encoding is not supported",
@@ -519,6 +539,9 @@ impl HttpRequest {
             host,
             origin,
             fetch_site,
+            fetch_mode,
+            fetch_destination,
+            fetch_user,
             body,
         })
     }

@@ -5469,3 +5469,13 @@ host production from original records. Compare their claim-to-check relationship
 and scope with those originals, and test CLI/complete MCP/live/native reading.
 A transport/order pass or controlled fixture is no independent semantic or human
 verdict. Use focused logs and numeric exits; no aggregate or official V11 is implied.
+
+### User-activated Viewer entry
+
+`executable_http::user_document_links_allow_entry_without_admitting_cross_origin_data_or_mutations`
+checks actual listener entry and negative Host/Origin, incomplete/duplicate Fetch
+Metadata, iframe, citation and POST boundaries without canonical mutation.
+`native_location_browser.cjs` follows a real local-file link with scripting off,
+observes final browser wire metadata and requires HTTP 200 before document/code
+navigation. Direct `goto` alone cannot cover this entry. Preserve the old Viewer's
+403 as the counterexample; do not weaken Source or mutation authorization.

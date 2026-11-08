@@ -1698,6 +1698,13 @@ Sequence return controls use a different real participant origin as the negative
 case for a message or guard. The selected single-scene presentation has no second
 equal-worded view; a rejection check must not submit the correct return identity.
 
+Live entry follows an actual link from a local HTML launcher, with JavaScript
+disabled, and checks its cross-site/user-activated document metadata and HTTP 200.
+Direct browser `goto` reports `Sec-Fetch-Site: none` and cannot establish that
+delivered links work. `executable_http` separately rejects incomplete navigation
+metadata, iframe/fetch entry, foreign Host/Origin, duplicate headers, cross-origin
+citations and cross-site POST without changing canonical memory.
+
 Run the snapshot boundary consumer on actual exports containing admitted concept,
 component, flow, sequence and state figures, not only the small markup control.
 It rejects hidden live figure buttons as well as visible/unknown active controls;
