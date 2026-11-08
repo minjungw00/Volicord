@@ -247,7 +247,12 @@ fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_ac
         "implementing callees/callbacks",
         "every language/revision independently",
         "reasoning unit",
-        "Caption explains figure purpose/scope/phase",
+        // Check the visual obligations, not a superseded editorial sentence.
+        "lifetime/order=sequence",
+        "transitions=state",
+        "Before/after needs evidence for both states",
+        "question/scope/phase",
+        "prose: consequences",
         "effect_review.py",
     ] {
         assert!(
