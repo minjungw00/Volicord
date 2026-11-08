@@ -1,5 +1,5 @@
 //! Reader structure over admitted units, preserving their exact citation indices.
-//! Roles select independent reading layers; they never author section names.
+//! Roles classify evidence; they never author section names or reorder a document.
 use crate::ExplanationQuestion;
 use serde::Serialize;
 
@@ -63,10 +63,57 @@ pub fn article_sections(
     Ok(sections)
 }
 
+/// Only a trailing run of supporting sections can be grouped separately without
+/// moving a check or caveat away from the authored claim/figure it qualifies.
+/// Sections and their original unit indices remain in authored order on both sides.
+pub fn article_supporting_start(sections: &[ArticleSection]) -> usize {
+    sections
+        .iter()
+        .rposition(|section| section.layer == ArticleLayer::Article)
+        .map_or(0, |index| index + 1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use ExplanationQuestion::*;
+
+    #[test]
+    fn supporting_groups_never_extract_interleaved_checks_or_caveats() -> Result<(), String> {
+        for (roles, expected_split) in [
+            (vec![Narrative, Verification, Limits], 1),
+            (
+                vec![
+                    Narrative,
+                    Verification,
+                    Limits,
+                    Narrative,
+                    Limits,
+                    Verification,
+                ],
+                4,
+            ),
+            (vec![Limits, Narrative, Verification, NextStep], 4),
+            (vec![Limits, Verification], 0),
+            (vec![], 0),
+        ] {
+            let sections = article_sections(roles.clone())?;
+            let split = article_supporting_start(&sections);
+            assert_eq!(split, expected_split);
+            assert!(sections[split..]
+                .iter()
+                .all(|s| s.layer != ArticleLayer::Article));
+            assert_eq!(
+                sections[..split]
+                    .iter()
+                    .chain(&sections[split..])
+                    .flat_map(|s| s.unit_indices.iter().copied())
+                    .collect::<Vec<_>>(),
+                (0..roles.len()).collect::<Vec<_>>()
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn author_order_and_independent_layers_preserve_original_indices() -> Result<(), String> {

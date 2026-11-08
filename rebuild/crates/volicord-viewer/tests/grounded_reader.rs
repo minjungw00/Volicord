@@ -2455,3 +2455,142 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
     );
     Ok(())
 }
+
+#[test]
+fn authored_checks_and_caveats_stay_with_their_figure_across_public_consumers(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let f = seed(temp.path(), "missing_before_state")?;
+    let mut host = HostAdapter::new(ops(&f)?);
+    let generation = call(
+        &mut host,
+        "work_explanation",
+        json!({
+            "action":"generate", "project_id":f["project"],
+            "work_item_id":f["work"], "language":"en"
+        }),
+    )?;
+    call(
+        &mut host,
+        "work_explanation",
+        json!({
+            "action":"read_source", "project_id":f["project"],
+            "work_item_id":f["work"], "generation_id":generation["generation_id"],
+            "source_id":f["after"]
+        }),
+    )?;
+    // Controlled counterexample: meaningful checks/limits interrupt the body,
+    // and the final supporting roles intentionally appear in Limits/Check order.
+    let units = [
+        ("heading", "Inspect a constant without running it"),
+        ("synopsis", "Static findings preserve unobserved execution."),
+        ("narrative", "The value function returns the literal 5."),
+        ("section_heading", "What does this static observation establish?"),
+        ("verification", "Source inspection supports the return value; no command was run."),
+        ("limits", "This finding does not establish caller behavior."),
+        ("narrative", "The figure connects the observed definition to its literal return, without a runtime trace."),
+        ("next_step", "No next step was recorded."),
+        ("limits", "No prior implementation body is available for a before-image."),
+        ("verification", "No user acceptance or new execution is established."),
+    ];
+    let paragraphs: Vec<_> = units.iter().enumerate().map(|(i,(q,t))| json!({
+        "question":q,"text":t,"evidence_keys":[if *q=="next_step" {"next_step"}else{"goal"}],
+        "sources":if [2,6].contains(&i) {vec![json!({"source_id":f["after"],
+            "field":"body","use_kind":"current_code","start_byte":0,"end_byte":26,"claim":null})]}else{vec![]}
+    })).collect();
+    let label = |text: &str, unit: usize| {
+        json!({"text":text,"unit":unit,
+        "start_byte":0,"end_byte":units[unit].1.len()})
+    };
+    let composed = call(
+        &mut host,
+        "work_explanation",
+        json!({
+            "action":"compose","project_id":f["project"],"work_item_id":f["work"],
+            "generation_id":generation["generation_id"],"draft":{
+                "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
+                "generator":{"host":"authored-control","session":"article-order","agent":null,"model":null},
+                "paragraphs":paragraphs,"diagrams":[{"id":"constant-return",
+                    "title":label("Definition and return",6),"caption_unit":6,
+                    "meaning":{"kind":"flowchart","nodes":[
+                        {"id":"definition","kind":"process","label":label("value",2),"identifier":null},
+                        {"id":"literal","kind":"process","label":label("5",2),"identifier":null}],
+                        "relations":[{"id":"returns","from":"definition","to":"literal",
+                            "kind":"control_flow","label":label("returns",2),"condition":null}]}}]
+            }
+        }),
+    )?;
+    call(
+        &mut host,
+        "work_explanation",
+        json!({"action":"record",
+        "project_id":f["project"],"work_item_id":f["work"],
+        "generation_id":generation["generation_id"],"realization":composed["realization"]}),
+    )?;
+    let public = public_answers(&f, &mut host)?;
+    assert_eq!(
+        public["prose"]
+            .as_array()
+            .ok_or("prose")?
+            .iter()
+            .map(|u| u["text"].as_str().ok_or("text"))
+            .collect::<Result<Vec<_>, _>>()?,
+        units.iter().map(|u| u.1).collect::<Vec<_>>()
+    );
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    assert_eq!(
+        run_cli(
+            [
+                "--runtime",
+                f["runtime"].as_str().ok_or("runtime")?,
+                "--project",
+                f["project"].as_str().ok_or("project")?,
+                "status",
+            ],
+            &mut stdout,
+            &mut stderr
+        ),
+        CliExit::SUCCESS
+    );
+    let terminal = String::from_utf8(stdout)?;
+    let caption = terminal.find(units[6].1).ok_or("CLI caption")?;
+    let figure = terminal.find("Definition and return").ok_or("CLI figure")?;
+    let following = terminal.find(units[7].1).ok_or("CLI following paragraph")?;
+    assert!(
+        caption < figure && figure < following,
+        "CLI must read the figure at its caption, before later paragraphs"
+    );
+    let before = ops(&f)?.canonical_basis(project(&f)?)?;
+    for page in [
+        get(&f)?,
+        ViewerAdapter::new(ops(&f)?)
+            .render_snapshot(&request(&f)?, TimestampMicros::from_unix_micros(1))?
+            .html,
+    ] {
+        assert!(page.contains("data-section-number=\"01\""));
+        let positions = units[2..]
+            .iter()
+            .map(|(question, text)| {
+                let tag = if *question == "section_heading" {
+                    "h2"
+                } else {
+                    "p"
+                };
+                page.find(&format!(">{text}</{tag}>"))
+                    .ok_or("complete authored paragraph")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        assert!(
+            positions.windows(2).all(|p| p[0] < p[1]),
+            "checks and material caveats must retain authored order: {positions:?}"
+        );
+        let figure = page.find("class=\"admitted-diagram\"").ok_or("figure")?;
+        assert!(positions[3] < figure && figure < positions[4]);
+        assert!(code_texts(&page)
+            .iter()
+            .any(|text| text == "def value():\n    return 5\n"));
+    }
+    assert_eq!(before, ops(&f)?.canonical_basis(project(&f)?)?);
+    Ok(())
+}

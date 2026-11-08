@@ -1431,3 +1431,18 @@ return, admitted meaning and distinct dashed-return semantics. Earlier rejected
 guide treatments remain historical evidence. Reopen the affected aspect when new
 reading feedback requires it; this choice adds no permanent freeze or universal
 comprehension/assistive acceptance claim.
+
+### Authored checks and caveats beside their claims
+
+Verification and Limits classify admitted content; they do not authorize moving
+it past later prose or a figure. The shared section index preserves every original
+unit position. Reader renders interleaved checks and material qualifications in
+that order, including caption placement. Only the trailing supporting sections
+can occupy the separate CE1 checks group, preserving their relative order as well.
+An article with no authored verification still exposes the independent recorded
+report. Supporting originals, full code and exact return identities remain intact.
+
+This repairs the reproduced record-read article's displaced verification and the
+same generic mixed-role shape. It adds no article-specific rule, heading inferred
+from code, new diagram phase, format conversion or geometry change. The selected
+CE1 shell, ELK graph layout and sequence camera continue to consume admitted meaning.

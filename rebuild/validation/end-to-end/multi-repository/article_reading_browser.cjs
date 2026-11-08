@@ -42,7 +42,7 @@ async function inspect(page,c,qa,url,width,mode,language) {
   const response=await page.goto(url);if(mode==='live')assert.equal(response.status(),200);
   const doc=page.locator(`[id="work-${c.work}"] .doc`).first();await doc.waitFor();
   const nav=doc.locator('.document-nav');assert.equal(await nav.count(),1);
-  const primary=qa.sections.filter(s=>s.layer==='article');
+  const primary=qa.sections.slice(0,qa.sections.map(s=>s.layer).lastIndexOf('article')+1);
   for(const s of primary.filter(s=>s.heading_index!==null)) {
     const text=qa.prose[s.heading_index].text;
     const link=nav.locator('a').filter({hasText:text});assert.equal(await link.count(),1);
@@ -56,6 +56,11 @@ async function inspect(page,c,qa,url,width,mode,language) {
     assert.ok(geometry.top>=geometry.bottom-2,'sticky controls do not cover heading');
     await page.reload();assert.equal(await target.locator('h2').textContent(),text,'direct fragment survives reload');
   }
+  // Original admitted vector order is the expectation. In particular, an early
+  // verification or material caveat must not migrate past a following figure.
+  const authored=qa.prose.filter(u=>!['Heading','Synopsis'].includes(u.question));
+  assert.deepEqual(await doc.locator('.unit-text').allTextContents(),authored.map(u=>u.text),
+    'complete logical paragraphs, captions and result qualifications retain authored order');
   for(const role of ['Verification','Limits']) {
     const nodes=doc.locator(`[data-question="${role}"]`);
     assert.deepEqual(await nodes.allTextContents(),qa.prose.filter(u=>u.question===role).map(u=>u.text));

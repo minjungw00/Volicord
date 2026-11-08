@@ -494,9 +494,14 @@ fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>
         _ => "div",
     };
     let tag = if answer.question == "SectionHeading" {
-        if answers.sections.iter().any(|s| {
-            s.heading_index == Some(index) && s.layer != volicord_projections::ArticleLayer::Article
-        }) {
+        if answers
+            .sections
+            .iter()
+            .skip(volicord_projections::article_supporting_start(
+                &answers.sections,
+            ))
+            .any(|s| s.heading_index == Some(index))
+        {
             "h3"
         } else {
             "h2"
@@ -507,7 +512,10 @@ fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>
     let section_number = answers
         .sections
         .iter()
-        .filter(|section| section.layer == volicord_projections::ArticleLayer::Article)
+        .take(volicord_projections::article_supporting_start(
+            &answers.sections,
+        ))
+        .filter(|section| section.heading_index.is_some())
         .position(|section| section.heading_index == Some(index))
         .map(|number| format!(" data-section-number=\"{:02}\"", number + 1))
         .unwrap_or_default();
@@ -1013,15 +1021,21 @@ fn diagram_source_contexts(
     }
 }
 
-fn render_article_layer(
+fn render_article_sections(
     html: &mut String,
     r: &ViewerRequest,
     answers: &ReaderAnswers<'_>,
-    layer: volicord_projections::ArticleLayer,
+    sections: &[volicord_projections::ArticleSection],
+    work: bool,
     snapshot: bool,
 ) {
-    for section in answers.sections.iter().filter(|s| s.layer == layer) {
-        html.push_str("<section class=\"article-section\">");
+    for section in sections {
+        let role = match section.layer {
+            volicord_projections::ArticleLayer::Article => "",
+            volicord_projections::ArticleLayer::Verification => " verification-reading",
+            volicord_projections::ArticleLayer::Limits => " limits-section",
+        };
+        html.push_str(&format!("<section class=\"article-section{role}\">"));
         if let Some(index) = section.heading_index {
             reader_unit(html, r, answers, index);
         }
@@ -1057,6 +1071,33 @@ fn render_article_layer(
         }
         if flow_open {
             html.push_str("</ol>");
+        }
+        // Keep supporting-record navigation with its last authored role, whether
+        // that role is inline or in the trailing checks group. Never duplicate prose.
+        for (question, target, en, ko) in [
+            (
+                "Verification",
+                "verification-originals",
+                "Inspect original verification records",
+                "검증 원문에서 개별 기록 확인",
+            ),
+            (
+                "Limits",
+                "limit-originals-content",
+                "Inspect recorded limitation originals",
+                "기록된 한계 원문 확인",
+            ),
+        ] {
+            if work
+                && answers
+                    .prose
+                    .iter()
+                    .rposition(|a| a.question == question)
+                    .is_some_and(|index| section.unit_indices.contains(&index))
+            {
+                html.push_str(&format!("<p class=\"verification-records-return\"><a class=\"evidence-link\" href=\"#{}\">{}</a></p>",
+                    document_anchor(answers,target),text(r.locale,en,ko)));
+            }
         }
         html.push_str("</section>");
     }
@@ -1143,7 +1184,8 @@ fn render_document_body(
             .sections
             .iter()
             .any(|s| s.layer == volicord_projections::ArticleLayer::Verification);
-    let has_limits = answers.prose.iter().any(|a| a.question == "Limits");
+    let supporting_start = volicord_projections::article_supporting_start(&answers.sections);
+    let authored_verification = answers.prose.iter().any(|a| a.question == "Verification");
     let current = answers.provenance.is_some();
     let (back_view, back_id, back_label, kind) = if work.is_some() {
         (
@@ -1290,11 +1332,12 @@ fn render_document_body(
                 text(r.locale,"Original recorded result · quotation", "원래 기록된 결과 · 인용"),escape(result)));
         }
     }
-    render_article_layer(
+    render_article_sections(
         html,
         r,
         answers,
-        volicord_projections::ArticleLayer::Article,
+        &answers.sections[..supporting_start],
+        work.is_some(),
         snapshot,
     );
     html.push_str("</div>");
@@ -1318,50 +1361,71 @@ fn render_document_body(
     if let Some(d) = decision {
         render_recorded_choice(html, r, answers, d);
     }
-    if has_verification {
-        html.push_str(&format!("<section class=\"reading-section verification-reading\" id=\"{}\" tabindex=\"-1\"><h2 class=\"reading-layer-heading\">{}</h2>", document_anchor(answers,"verification"), text(r.locale,"Verification report","검증 보고")));
-        render_article_layer(
+    let mut offset = supporting_start;
+    let mut verification_groups = 0;
+    let mut limit_groups = 0;
+    while offset < answers.sections.len() {
+        let layer = answers.sections[offset].layer;
+        let end = answers.sections[offset..]
+            .iter()
+            .position(|s| s.layer != layer)
+            .map_or(answers.sections.len(), |n| offset + n);
+        let (class, anchor, title, count) = match layer {
+            volicord_projections::ArticleLayer::Verification => {
+                verification_groups += 1;
+                (
+                    "verification-reading",
+                    "verification",
+                    text(r.locale, "Verification report", "검증 보고"),
+                    verification_groups,
+                )
+            }
+            volicord_projections::ArticleLayer::Limits => {
+                limit_groups += 1;
+                (
+                    "limits-section",
+                    "limits",
+                    text(r.locale, "Explanation limits", "설명 한계"),
+                    limit_groups,
+                )
+            }
+            volicord_projections::ArticleLayer::Article => {
+                render_article_sections(
+                    html,
+                    r,
+                    answers,
+                    &answers.sections[offset..end],
+                    work.is_some(),
+                    snapshot,
+                );
+                offset = end;
+                continue;
+            }
+        };
+        let anchor = if count == 1 {
+            anchor.to_owned()
+        } else {
+            format!("{anchor}-{count}")
+        };
+        html.push_str(&format!("<section class=\"reading-section {class}\" id=\"{}\" tabindex=\"-1\"><h2 class=\"reading-layer-heading\">{title}</h2>", document_anchor(answers,&anchor)));
+        render_article_sections(
             html,
             r,
             answers,
-            volicord_projections::ArticleLayer::Verification,
+            &answers.sections[offset..end],
+            work.is_some(),
             snapshot,
         );
+        html.push_str("</section>");
+        offset = end;
+    }
+    if has_verification && !authored_verification {
+        html.push_str(&format!("<section class=\"reading-section verification-reading\" id=\"{}\" tabindex=\"-1\"><h2 class=\"reading-layer-heading\">{}</h2>", document_anchor(answers,"verification"), text(r.locale,"Verification report","검증 보고")));
         if let Some(w) = work {
-            if !answers
-                .prose
-                .iter()
-                .any(|unit| unit.question == "Verification")
-            {
-                verification::render_digest(html, r, answers, &w.reading.verification_report);
-            }
-        }
-        if work.is_some() {
-            html.push_str(&format!(
-                "<p class=\"verification-records-return\"><a class=\"evidence-link paragraph-evidence-action\" href=\"#{}\">{}</a></p>",
-                document_anchor(answers, "verification-originals"),
-                text(
-                    r.locale,
-                    "Inspect original verification records",
-                    "검증 원문에서 개별 기록 확인"
-                )
-            ));
+            verification::render_digest(html, r, answers, &w.reading.verification_report);
+            html.push_str(&format!("<p class=\"verification-records-return\"><a class=\"evidence-link paragraph-evidence-action\" href=\"#{}\">{}</a></p>",document_anchor(answers,"verification-originals"),text(r.locale,"Inspect original verification records","검증 원문에서 개별 기록 확인")));
         }
         html.push_str("</section>");
-    }
-    if has_limits {
-        html.push_str(&format!("<section class=\"reading-section limits-section\" id=\"{}\" tabindex=\"-1\"><h2 class=\"reading-layer-heading\">{}</h2><div class=\"reading-layer-body\">",document_anchor(answers,"limits"),text(r.locale,"Explanation limits","설명 한계")));
-        render_article_layer(
-            html,
-            r,
-            answers,
-            volicord_projections::ArticleLayer::Limits,
-            snapshot,
-        );
-        if work.is_some() {
-            html.push_str(&format!("<p class=\"verification-records-return\"><a class=\"evidence-link\" href=\"#{}\">{}</a></p>",document_anchor(answers,"limit-originals-content"),text(r.locale,"Inspect recorded limitation originals","기록된 한계 원문 확인")));
-        }
-        html.push_str("</div></section>");
     }
     if grouped {
         html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"records\" aria-label=\"{}\">",text(r.locale,"Original records and evidence","원문과 근거")));

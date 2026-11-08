@@ -5452,3 +5452,20 @@ The [cost observation](../../validation/end-to-end/multi-repository/runtime-read
 keeps the fixed real-source comparison distinct from new article quality and gate
 qualification. Source capture's recorded worktree provenance and cost remain
 separate; no snapshot schema, history, graph payload or authority is removed.
+
+### Work claim, figure and qualification order
+
+Use task-scoped `volicord-projections` article tests and Viewer `grounded_reader`
+with `authored_checks_and_caveats_stay_with_their_figure_across_public_consumers`.
+The controlled case submits mixed roles and a Source-grounded figure through
+normal MCP prepare/read/compose/record and compares complete original paragraphs,
+figure position and full code in human CLI, live HTTP and native snapshots. It includes an
+unavailable prior body and no execution/acceptance; no before-image is fabricated.
+The ordinary article browser additionally compares the whole admitted unit vector
+with actual DOM order, retaining exact evidence/return and nonmutation checks.
+
+Actual investigation and performance Work publications are separate dependent
+host production from original records. Compare their claim-to-check relationships
+and scope with those originals, and test CLI/complete MCP/live/native reading.
+A transport/order pass or controlled fixture is no independent semantic or human
+verdict. Use focused logs and numeric exits; no aggregate or official V11 is implied.

@@ -2079,6 +2079,23 @@ fn render_field(
                 },
             )?;
         }
+        let texts = answers["prose"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|unit| unit["text"].as_str().unwrap_or(""))
+            .collect::<Vec<_>>();
+        let diagrams = answers["diagrams"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|raw| {
+                serde_json::from_value::<volicord_projections::GroundedDiagram>(raw.clone())
+                    .map_err(|error| {
+                        Error::with_source("unsupported diagram meaning in explanation", error)
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         for (section, facts) in [("prose", false), ("facts", true)] {
             if facts {
                 write_line(
@@ -2089,15 +2106,34 @@ fn render_field(
                     },
                 )?;
             }
-            for a in answers[section].as_array().into_iter().flatten() {
-                if !facts && a["question"] == "Heading" && a["text"] == value["reading_title"] {
-                    continue; // This authored heading was already printed above.
-                }
-                if let Some(text) = a["text"].as_str() {
+            for (index, a) in answers[section]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                // A heading printed above still owns its caption position.
+                if let Some(text) = a["text"].as_str().filter(|_| {
+                    facts || a["question"] != "Heading" || a["text"] != value["reading_title"]
+                }) {
                     write_line(
                         stdout,
                         format_args!("{padding}  {}", terminal_explanation_text(text)),
                     )?;
+                }
+                if !facts {
+                    for diagram in diagrams.iter().filter(|d| d.caption_unit == index) {
+                        let meaning = volicord_projections::diagram_text_localized(
+                            diagram,
+                            &texts,
+                            match locale {
+                                CliLocale::English => FixedLocale::English,
+                                CliLocale::Korean => FixedLocale::Korean,
+                            },
+                        )
+                        .map_err(Error::new)?;
+                        write_line(stdout, terminal_explanation_text(&meaning))?;
+                    }
                 }
             }
         }
@@ -2114,28 +2150,6 @@ fn render_field(
                         .unwrap_or("unavailable")
                 ),
             )?;
-        }
-        let texts = answers["prose"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|unit| unit["text"].as_str().unwrap_or(""))
-            .collect::<Vec<_>>();
-        for raw in answers["diagrams"].as_array().into_iter().flatten() {
-            let diagram: volicord_projections::GroundedDiagram =
-                serde_json::from_value(raw.clone()).map_err(|error| {
-                    Error::with_source("unsupported diagram meaning in explanation", error)
-                })?;
-            let meaning = volicord_projections::diagram_text_localized(
-                &diagram,
-                &texts,
-                match locale {
-                    CliLocale::English => FixedLocale::English,
-                    CliLocale::Korean => FixedLocale::Korean,
-                },
-            )
-            .map_err(Error::new)?;
-            write_line(stdout, terminal_explanation_text(&meaning))?;
         }
         for (unit_index, unit) in answers["prose"]
             .as_array()

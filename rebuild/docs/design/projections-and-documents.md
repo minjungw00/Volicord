@@ -3720,3 +3720,23 @@ publication; no old article, Source, Decision rationale or historical result is
 rewritten. A summary uses its permitted original fields even when the article is
 unavailable. Guidance/admission alone establishes no transferable content quality;
 compare normal production with original records and public consumers separately.
+
+### Authored order across explanation, figures and verification
+
+The current section index already preserves ordered units and exact citation
+indices. `article_supporting_start` identifies only the final run of supporting
+sections: an earlier Verification or Limits section remains beside the claim or
+figure it qualifies. All consumers preserve the admitted vector; grouping cannot
+sort it by role. The native/live Reader uses that split without changing units,
+claims, citations, figures or independent name/summary authority. Alternating
+trailing roles also keep their authored order and unique native anchors. Human CLI
+prints each complete text diagram at its admitted caption before subsequent prose
+and supporting facts, using the same labels, guards and terminal-safe text.
+
+Ordinary diagram preparation selects the explanatory question before its kind:
+sequence for lifetime/order, state for transitions, and grounded evidence for both
+states before a before/after comparison. Structure or dependency is not temporal
+order. Captions state scope/conditions; prose explains consequences, exact evidence
+supports them. Complete and bounded guidance preserve these obligations within the
+existing preparation ceiling. This changes new preparation hashes only; admitted
+format-9 publications retain their original preparation provenance and lifecycle.
