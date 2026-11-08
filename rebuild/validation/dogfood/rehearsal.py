@@ -21,6 +21,7 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 
 sys.dont_write_bytecode = True
 
@@ -293,6 +294,7 @@ class Processes:
     """Private complete streams with bounded portable hash/exit observations."""
     def __init__(self, root, process_timeout=300):
         self.root, self.records = root, []
+        self.teardown_errors = []
         self.process_timeout = process_timeout
         root.mkdir(mode=0o700)
 
@@ -330,8 +332,10 @@ class Product:
     """Bounded stdio client with actual responses; no synthetic Product facts."""
     active = set()
 
-    def __init__(self, binary, runtime, repository, logs):
+    def __init__(self, binary, runtime, repository, logs, *, response_timeout=60, close_timeout=5):
         self.logs, self.counter, self.buffer, self.stdout = logs, 0, b"", b""
+        self.response_timeout, self.close_timeout = response_timeout, close_timeout
+        self.closed = False
         self.started = time.monotonic_ns()
         self.label = "mcp-" + secrets.token_hex(8)
         self.stderr = (logs.root / (self.label + ".stderr-private")).open("w+b")
@@ -347,11 +351,14 @@ class Product:
         request = {"jsonrpc": "2.0", "id": self.counter, "method": method, "params": params}
         self.process.stdin.write((json.dumps(request) + "\n").encode())
         self.process.stdin.flush()
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + self.response_timeout
+        operation = method + (" " + params["name"] if method == "tools/call" else "")
         with selectors.DefaultSelector() as selector:
             selector.register(self.process.stdout, selectors.EVENT_READ)
             while b"\n" not in self.buffer:
-                require(time.monotonic() < deadline, "MCP response timed out")
+                require(time.monotonic() < deadline,
+                    f"MCP response timed out (request {self.counter}, {operation}, "
+                    f"{self.response_timeout:g}s limit)")
                 if selector.select(max(0, deadline - time.monotonic())):
                     data = os.read(self.process.stdout.fileno(), 65536)
                     require(data, "MCP ended without a complete response")
@@ -369,20 +376,54 @@ class Product:
         return response["structuredContent"]
 
     def close(self):
+        if self.closed:
+            return
         try:
-            self.process.stdin.close()
-            self.process.wait(timeout=5)
+            if self.process.stdin is not None:
+                self.process.stdin.close()
+                self.process.stdin = None
+            # Drain while waiting: EOF can make the child emit a final response
+            # larger than the pipe capacity, including after an RPC timeout.
+            tail, _ = self.process.communicate(timeout=self.close_timeout)
         except (OSError, subprocess.TimeoutExpired):
             self.process.kill()
-            self.process.wait(timeout=5)
-        self.stdout += self.process.stdout.read()
+            self.process.stdin = None
+            tail, _ = self.process.communicate(timeout=self.close_timeout)
+        self.stdout += tail
         self.process.stdout.close()
         self.stderr.seek(0)
         stderr = self.stderr.read()
         self.stderr.close()
         self.logs.save(self.label, self.stdout, stderr, self.process.returncode, self.started)
         self.active.discard(self)
+        self.closed = True
         require(self.process.returncode == 0, "MCP did not tear down normally")
+
+
+def retain_teardown_failure(client, error):
+    client.logs.teardown_errors.append(client.label)
+    with (client.logs.root / "teardown-failures-private.txt").open("a") as output:
+        output.write(client.label + "\n")
+        output.write("".join(traceback.format_exception(error, chain=False)))
+
+
+@contextmanager
+def product_session(client):
+    """Cleanup cannot replace the actual operation failure."""
+    try:
+        yield client
+    except BaseException:
+        try:
+            client.close()
+        except Exception as error:
+            retain_teardown_failure(client, error)
+        raise
+    else:
+        try:
+            client.close()
+        except Exception as error:
+            retain_teardown_failure(client, error)
+            raise
 
 
 def authored_capture(path, repository, revision, session, task, activation, operations):
@@ -526,7 +567,7 @@ def run_sessions(root, campaign_root, binary, logs):
             operations.append((name, arguments, value, time.monotonic_ns() - started,
                 wall_started, explanation_evidence.timestamp()))
             return value
-        try:
+        with product_session(client):
             if kind == "volicord" and label == "A" and role == "start":
                 resource = observe_initial_process(root, prepared['candidate_artifacts'],
                     runtime, repository, logs)
@@ -567,8 +608,6 @@ def run_sessions(root, campaign_root, binary, logs):
                     after_response, after_receipt, after)
             else:
                 call("recall", {"project_id": project, "requested_language": "en"})
-        finally:
-            client.close()
         path = root / (c.session_slot_id(kind, label, role) + ".jsonl")
         authored_capture(path, repository, state["repository_revision"], session, task, activation, operations)
         paths.append(path)
@@ -635,10 +674,8 @@ def regenerate(root, campaign_root, paths, prepared, binary, logs):
     originals = {p: p.read_bytes() for item in selected
         for p in explanation_evidence.entry_path(campaign_root, item['identity']).rglob('*') if p.is_file()}
     client = Product(binary.with_name('volicord-mcp'), Path(journey['runtime_home']), Path(journey['repository_path']), logs)
-    try:
+    with product_session(client):
         mutation = rehearsal_support.correction(client.tool, project, work, 1, scenario)
-    finally:
-        client.close()
     c.write_json(root / 'regeneration-correction.json', {'scenario': scenario, 'project_id': project,
         'work_item_id': work, 'receipt': mutation, 'process_identity': client.label})
     outcomes = {}
@@ -917,16 +954,17 @@ def main():
         result["status"] = "passed"
     except BaseException as error:
         result["status"], result["failure_kind"] = "failed", type(error).__name__
-        (output / "failure.txt").write_text(str(error) + "\n")
+        (output / "failure.txt").write_text("".join(traceback.format_exception(error)))
     finally:
-        teardown = "completed"
+        teardown = "failed" if logs.teardown_errors else "completed"
         for client in list(Product.active):
             try:
                 client.close()
-            except Exception:
+            except Exception as error:
+                retain_teardown_failure(client, error)
                 teardown = "failed"
                 result["status"] = "failed"
-                result["failure_kind"] = "ProcessTeardownError"
+                result.setdefault("failure_kind", "ProcessTeardownError")
         signal.alarm(0)
         # Canonical/analysis/source copies stay private; no processes survive into V11.
         result["processes"] = logs.records

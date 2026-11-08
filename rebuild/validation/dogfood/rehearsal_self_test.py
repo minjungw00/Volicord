@@ -12,6 +12,115 @@ import rehearsal  # Import the actual runner and its bounded workflow builders.
 from rehearsal_test_support import passed_result
 
 
+class ProductProcessTests(unittest.TestCase):
+    """Real pipe/EOF/exit controls, never candidate rehearsal receipts."""
+
+    def child(self, root, ending):
+        script = root / 'stdio-child'
+        script.write_text('#!/usr/bin/python3\nimport json, sys, time\n'
+            'request = json.loads(sys.stdin.readline())\n'
+            'print(json.dumps({"id": request["id"], "result": {}}), flush=True)\n'
+            + ending)
+        script.chmod(0o700)
+        return rehearsal.Product(script, root / 'runtime', root,
+            rehearsal.Processes(root / 'processes'), response_timeout=2, close_timeout=2)
+
+    def assert_reaped(self, client):
+        import os
+        self.assertIsNotNone(client.process.poll())
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(client.process.pid, os.WNOHANG)
+        self.assertNotIn(client, rehearsal.Product.active)
+
+    def test_rpc_timeout_preserves_primary_and_separate_forced_teardown(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = self.child(root, 'sys.stdin.readline()\n'
+                'print("analysis still pending", file=sys.stderr, flush=True)\n'
+                'time.sleep(60)\n')
+            client.response_timeout = 0.05
+            client.close_timeout = 0.05
+            with self.assertRaisesRegex(ValueError,
+                    r'MCP response timed out \(request 2, tools/call repository_analyze, 0.05s limit\)'):
+                with rehearsal.product_session(client):
+                    client.tool('repository_analyze', {'private_argument': 'must not enter diagnostics'})
+            self.assert_reaped(client)
+            self.assertEqual(client.logs.teardown_errors, [client.label])
+            self.assertLess(client.logs.records[0]['exit_code'], 0)
+            failure = (client.logs.root / 'teardown-failures-private.txt').read_text()
+            self.assertIn('MCP did not tear down normally', failure)
+            self.assertNotIn('private_argument', failure)
+            self.assertEqual((client.logs.root / (client.label + '.stderr')).read_bytes(),
+                b'analysis still pending\n')
+            client.close()
+            self.assertEqual(len(client.logs.records), 1)
+
+    def test_eof_drains_more_than_pipe_capacity_before_waiting_for_exit(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = self.child(root, 'sys.stdin.read()\n'
+                'sys.stdout.write("x" * (512 * 1024))\n'
+                'sys.stdout.flush()\n')
+            client.close()
+            self.assert_reaped(client)
+            self.assertEqual(client.logs.records[0]['exit_code'], 0)
+            self.assertTrue((client.logs.root / (client.label + '.stdout')).read_bytes()
+                .endswith(b'x' * (512 * 1024)))
+
+    def test_operation_error_survives_a_real_nonzero_child_exit(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = self.child(root, 'sys.stdin.read()\nsys.exit(7)\n')
+            original = LookupError('original operation failure')
+            with self.assertRaises(LookupError) as caught:
+                with rehearsal.product_session(client):
+                    raise original
+            self.assertIs(caught.exception, original)
+            self.assert_reaped(client)
+            self.assertEqual(client.logs.records[0]['exit_code'], 7)
+            self.assertEqual(client.logs.teardown_errors, [client.label])
+
+    def test_nonzero_exit_without_primary_is_still_a_failure(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = self.child(root, 'sys.stdin.read()\nsys.exit(9)\n')
+            with self.assertRaisesRegex(ValueError, 'MCP did not tear down normally'):
+                with rehearsal.product_session(client):
+                    pass
+            self.assert_reaped(client)
+            self.assertEqual(client.logs.records[0]['exit_code'], 9)
+            self.assertEqual(client.logs.teardown_errors, [client.label])
+
+    def test_top_level_cleanup_preserves_primary_failure_kind_and_traceback(self):
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = self.child(root, 'sys.stdin.read()\nsys.exit(7)\n')
+            output = root / 'rehearsal'
+            def fail_pipeline(*args):
+                client.logs = args[-1]
+                raise LookupError('original pipeline failure')
+            with patch.object(rehearsal.sys, 'argv', ['rehearsal.py',
+                    '--candidate-head', 'a' * 40, '--output', str(output), '--bin-dir', str(root)]), \
+                    patch.object(rehearsal.c, 'require_current_candidate'), \
+                    patch.object(rehearsal.c.harness, 'sha256', return_value='b' * 64), \
+                    patch.object(rehearsal, 'pipeline', side_effect=fail_pipeline):
+                self.assertEqual(rehearsal.main(), 1)
+            self.assert_reaped(client)
+            result = json.loads((output / 'result.json').read_text())
+            self.assertEqual(result['failure_kind'], 'LookupError')
+            self.assertEqual(result['teardown'], 'failed')
+            self.assertEqual(result['processes'][0]['exit_code'], 7)
+            self.assertIn('LookupError: original pipeline failure', (output / 'failure.txt').read_text())
+            self.assertIn('MCP did not tear down normally',
+                (output / 'processes/teardown-failures-private.txt').read_text())
+
+
 class ObservationFailureTests(unittest.TestCase):
     def test_rejected_observation_is_retained_before_teardown_and_stops_the_session(self):
         import tempfile

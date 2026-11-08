@@ -995,6 +995,23 @@ provider/chat. Authored transport metadata and realization/review inputs remain 
 support. Product receipts, actual observer samples and artifacts remain distinct.
 Complete raw process evidence is retained privately under the output; only bounded
 hashes/identities/inner verdicts/controls may enter technical handoff evidence.
+An MCP response timeout identifies the request number and operation, without its
+arguments. The original operation exception/traceback remains in `failure.txt`;
+cleanup exceptions remain separately in `processes/teardown-failures-private.txt`.
+EOF cleanup drains stdout while waiting, then kills/reaps a child that exceeds the
+unchanged five-second cleanup bound. A cleanup failure cannot replace the primary
+failure or become success. The response deadline remains sixty seconds.
+Real subprocess controls cover timeout plus forced termination, nonzero exit with
+and without a primary failure, and EOF output larger than the pipe capacity.
+
+Run large clone/build campaigns in a clean checkout outside an editor's watched
+workspace when generated Python files trigger repeated whole-workspace searches.
+Use the same committed candidate, complete workload and original limits there;
+do not suspend unrelated services, relax deadlines or reuse failed stage receipts.
+For diagnosis, retain the original failure and compare the same binary/request in
+fresh watched and unwatched clones, including CPU execution versus run-queue wait.
+An isolated diagnostic is still not qualification: run the complete authoritative
+gate anew from that checkout and independently verify its candidate-bound archive.
 The initial candidate observation writes `actual-resource.json` before testing
 its measured/nonzero admission condition. Rejected partial or missing observations
 retain their complete samples, ticks and finite error codes through teardown;

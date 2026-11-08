@@ -2766,6 +2766,17 @@ reject them. Waiting and positively confirmed termination remain valid controls.
 
 ### Required retention and launch rehearsal controls
 
+Rehearsal process failure preserves the original operation traceback separately
+from cleanup diagnostics. MCP timeout diagnostics identify request/operation but
+exclude request arguments. Cleanup drains complete stdout concurrently with EOF
+termination, retaining the existing 60-second response and 5-second cleanup bounds.
+Real child-process controls cover primary plus cleanup failure, healthy EOF with
+output exceeding pipe capacity, and nonzero termination without a primary error.
+Editor-triggered searches over generated clones/builds are an environment cause to
+diagnose with CPU execution/run-queue observations and same-binary fresh-clone
+controls. A clean checkout outside the watched workspace may run the unchanged
+full gate; it supplies no exception to workload, timing, candidate or archive rules.
+
 Post-session resume materialization records `runtime_home_copied` from the
 actual Runtime path used by its candidate operations. Immutable reprocessing
 therefore reports its private copy; live collection reports the original Home.
