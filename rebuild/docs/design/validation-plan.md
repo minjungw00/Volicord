@@ -5483,6 +5483,21 @@ verdict. Use focused logs and numeric exits; no aggregate or official V11 is imp
 
 ### User-activated Viewer entry
 
+Viewer's local-engine ownership controls
+`pending_job_errors_discard_runtime_without_releasing_a_borrowed_context` and
+`interrupted_job_releases_context_and_runtime_without_leaking` use actual deferred
+native jobs and an actual VM interrupt. They require failure, disposal, a released
+Rust runtime handle and fresh successful layout; throwing null/undefined cannot
+be treated as absent failure. Run the complete Viewer library in default parallel
+mode as well as these scoped controls. Native sanitizer diagnostics have separate
+build/exit records and never replace the ordinary gate or justify changed limits.
+Passing scoped controls or one complete execution does not resolve a failure in
+a broader or repeated execution. Preserve every numeric exit and signal with its
+candidate/build identity and scope; label missing identity as unbound evidence.
+A proposed repair remains unqualified while covering evidence is missing or
+failures remain unresolved. Qualification from an earlier candidate cannot be
+assigned to a changed worktree.
+
 For command-code origin, run the scoped Host `work_explanation` regression
 `pinned_command_origin_preserves_observation_and_does_not_color_labels_or_mixed_logs`
 and Viewer syntax/reader checks through `validate focused`. Normal MCP preparation,

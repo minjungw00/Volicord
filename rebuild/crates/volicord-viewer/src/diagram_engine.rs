@@ -87,9 +87,7 @@ impl Engine {
             {
                 return Err("local layout time/job budget exceeded".into());
             }
-            self.runtime
-                .execute_pending_job()
-                .map_err(|_| "local layout execution failed or exceeded its bound")?;
+            self.execute_job()?;
         }
         let output: String = self
             .context
@@ -103,6 +101,18 @@ impl Engine {
             return Err("local layout geometry budget exceeded".into());
         }
         Ok(output)
+    }
+
+    fn execute_job(&self) -> Result<bool, &'static str> {
+        self.runtime.execute_pending_job().map_err(|error| {
+            // rquickjs 0.11.0 wraps JS_ExecutePendingJob's borrowed
+            // context in an owning JobException without duplicating its
+            // C reference. Ctx::clone owns only a C reference (no Rust
+            // runtime handle): transfer one to that error's destructor.
+            // Forgetting the JobException itself would leak the runtime.
+            error.0.with(|ctx| std::mem::forget(ctx.clone()));
+            "local layout execution failed or exceeded its bound"
+        })
     }
 }
 
@@ -135,6 +145,67 @@ pub(super) fn layout(input: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn interrupted_job_releases_context_and_runtime_without_leaking() -> Result<(), String> {
+        let engine = Engine::new()?;
+        engine
+            .context
+            .with(|ctx| -> rquickjs::Result<()> {
+                let job: Function = ctx.eval("() => { while (true) {} }")?;
+                job.defer(())
+            })
+            .map_err(|_| "cannot enqueue interrupted job".to_owned())?;
+        let probe = Arc::new(());
+        let released = Arc::downgrade(&probe);
+        engine
+            .runtime
+            .set_interrupt_handler(Some(Box::new(move || Arc::strong_count(&probe) > 0)));
+        assert!(
+            engine.execute_job().is_err(),
+            "actual native job is interrupted"
+        );
+        drop(engine);
+        assert!(
+            released.upgrade().is_none(),
+            "failure does not retain a Rust runtime handle"
+        );
+        Ok(())
+    }
+    #[test]
+    fn pending_job_errors_discard_runtime_without_releasing_a_borrowed_context(
+    ) -> Result<(), String> {
+        const GRAPH: &str = r#"{"id":"root","layoutOptions":{"elk.algorithm":"layered"},"children":[{"id":"a","width":20,"height":20}]}"#;
+        for thrown in [
+            "new Error('controlled job failure')",
+            "null",
+            "undefined",
+            "7",
+        ] {
+            LOCAL.with(|slot| -> Result<(), String> {
+                let engine = Engine::new()?;
+                engine
+                    .context
+                    .with(|ctx| -> rquickjs::Result<()> {
+                        let fail: Function = ctx.eval(format!("() => {{ throw {thrown}; }}"))?;
+                        fail.defer(())
+                    })
+                    .map_err(|_| "cannot enqueue controlled failure".to_owned())?;
+                *slot.borrow_mut() = Some(engine);
+                Ok(())
+            })?;
+            let failure = layout(GRAPH).expect_err("a failed job cannot supply geometry");
+            assert!(failure.contains("execution failed"), "{failure}");
+            assert!(
+                LOCAL.with(|slot| slot.borrow().is_none()),
+                "failed runtime is discarded"
+            );
+            assert!(
+                layout(GRAPH).is_ok(),
+                "a fresh runtime recovers without stale jobs"
+            );
+        }
+        Ok(())
+    }
     #[test]
     fn embedded_runtime_has_no_external_hosts_and_interrupts_work() -> Result<(), String> {
         let engine = Engine::new()?;

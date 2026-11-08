@@ -11,6 +11,14 @@ Derived kind is not a provider SemanticAnnotation. Existing publications and
 Sources are never converted or rewritten; origin is separately permitted read-time
 metadata with its own identity, capped deadline and Source denial barrier.
 
+Local layout cleanup changes must be assessed against the pinned binding's
+ownership contract. Unchanged dependency or format versions do not establish
+unchanged successful geometry or safe runtime disposal. A cleanup repair must
+preserve renderer 23, Source/explanation formats and existing resource bounds,
+with behavioral qualification separate from version selection. Any dependency
+upgrade must revisit binding-specific ownership handling; it does not authorize
+a version-dependent production branch or retained conversion.
+
 - 상태: active specialized architecture owner
 - 소유 범위: new-product canonical schema와 portable/analysis/derived/document format의
   독립 version boundary, current-only read/write behavior, deterministic serialization,

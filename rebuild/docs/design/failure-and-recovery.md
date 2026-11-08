@@ -102,6 +102,13 @@ cause와 현재 workflow/required next action을 보존하며 internal storage s
 
 ### Projection failure
 
+- Local diagram pending-job errors must preserve the original failure, reject
+  geometry and release the failed runtime without damaging another local read.
+  Error/null/undefined/numeric throws and VM interruption remain failures. Recovery
+  must respect the existing time, memory, stack, job and output bounds. A scoped
+  cleanup check does not establish safe disposal across the complete Viewer;
+  broader failures remain unresolved until covered by corresponding evidence.
+
 - Retained repository Source identity/binding rejection identifies the failed fixed
   predicate names without disclosing body bytes, identities or stored values. All
   Project, Analysis Snapshot, Source, binding, retention and chronology predicates

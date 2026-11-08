@@ -3718,6 +3718,13 @@ The engine exposes no network, filesystem, process, module loader or browser Wor
 host. Its local asynchronous shim only queues trusted callbacks as microtasks.
 Thread-local reuse retains engine code, not geometry or Source authority; results
 are consumed and garbage-collected, and a failed execution discards the runtime.
+Pending-job failure handling must respect the pinned binding's Context and Runtime
+ownership rules during error propagation and disposal. Job errors, including
+null/undefined throws and VM interruption, must reject partial geometry and discard
+the failed runtime without corrupting another local read. A proposed ownership
+repair requires evidence for those properties; a passing scoped control alone
+does not establish complete runtime recovery. The existing engine, geometry policy,
+host capability and resource bounds remain the requirements for that repair.
 No geometry cache can supply denied meaning. Live, newly published native snapshots
 and CLI-invoked exports all call this same server-side renderer. Browser enhancement
 continues to own only the camera and existing reading interactions.
