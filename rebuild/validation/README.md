@@ -1694,6 +1694,10 @@ interception. Run the same driver against the preserved failing export: applicab
 live-no-JS should be assessed separately from the native export failure. This is
 technical navigation evidence, not an assistive/human verdict.
 
+Sequence return controls use a different real participant origin as the negative
+case for a message or guard. The selected single-scene presentation has no second
+equal-worded view; a rejection check must not submit the correct return identity.
+
 Run the snapshot boundary consumer on actual exports containing admitted concept,
 component, flow, sequence and state figures, not only the small markup control.
 It rejects hidden live figure buttons as well as visible/unknown active controls;

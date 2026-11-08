@@ -28,13 +28,12 @@ async function navigate(page,destination,width){
  await pause(page);
 }
 async function timelineReturn(page,details,element,origin,c,state){
- assert.equal(new URL(page.url()).hash,'#'+origin,'native primary return retains timeline role, not its equal-worded scene');
+ assert.equal(new URL(page.url()).hash,'#'+origin,'native primary return retains the exact sequence role');
  if(await details.count())assert.equal(await details.getAttribute('open'),'','native return reveals the exact timeline');
  assert(await element.isVisible());await cue(page,state.kind,c,state.width,state.snapshot,state.projectName);
 }
-// A timeline's native Source aliases live outside its disclosure. Check the
-// actual page owner as well as the exact view on return; the first scene node
-// cannot establish either property for later sequence/guard origins.
+// Check the actual page owner and exact role on return. The first participant
+// cannot establish correct return to a later message or guard.
 async function timelineOrigins(page,c,{kind,width,snapshot,projectName,prefix,address}){
  const publication=JSON.parse(fs.readFileSync(c.public));
  assert.equal(publication.provenance.publication_id,c.publication);
@@ -71,13 +70,17 @@ async function timelineOrigins(page,c,{kind,width,snapshot,projectName,prefix,ad
     await timelineReturn(page,details,element,origin,c,{kind,width,snapshot,projectName});
    }
    await page.screenshot({path:path.join(config.output,`${prefix}-${d.id}-${selection.id.replaceAll(':','-')}-timeline-returned.png`)});
-   // An otherwise valid same-publication/same-role return to the scene is a
-   // counterexample. Mutate only the disposable page, never its public export.
+   // The current sequence has one scene. Select a genuinely different admitted
+   // origin; writing the correct origin back cannot be a negative control.
+   // Mutate only the disposable page, never its public export.
    await page.goto(directCode);await returnFromEmbeddedCode(point);
-   const back=(await nativeEvidenceContext(point)).locator('a.return:visible');await back.evaluate((a,scene)=>a.setAttribute('href','#'+scene),ns+'-'+selection.id);
+   const wrongOrigin=ns+'-'+d.meaning.participants[0].id;
+   assert.notEqual(wrongOrigin,origin,'negative control must change the return identity');
+   assert.equal(await figure.locator(`a[id="${wrongOrigin}"]`).count(),1,'wrong origin is a real same-publication role');
+   const back=(await nativeEvidenceContext(point)).locator('a.return:visible');await back.evaluate((a,target)=>a.setAttribute('href','#'+target),wrongOrigin);
    await back.click();await pause(page);
-   await assert.rejects(()=>timelineReturn(page,details,element,origin,c,{kind,width,snapshot,projectName}),{code:'ERR_ASSERTION'},'same wording cannot satisfy view-specific return');
-   observations.push({diagram:d.id,element:selection.id,origin,source:citation.source_id,range: citation.range_sha256,wrong_view_rejected:true});
+   await assert.rejects(()=>timelineReturn(page,details,element,origin,c,{kind,width,snapshot,projectName}),{code:'ERR_ASSERTION'},'another admitted role cannot satisfy exact return');
+   observations.push({diagram:d.id,element:selection.id,origin,source:citation.source_id,range: citation.range_sha256,wrong_origin:wrongOrigin,wrong_origin_rejected:true});
   }
  }
  return observations;
