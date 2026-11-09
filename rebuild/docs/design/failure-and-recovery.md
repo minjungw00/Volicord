@@ -333,6 +333,20 @@ batch with remaining eligible records requires another batch. Physical sanitizat
 and provider erasure are outside this expiry receipt. Pure reads still withhold
 expired bodies before any maintenance. Canonical forgetting repair remains separate.
 
+### Selective annotation deletion recovery
+
+The annotation deletion operation validates the complete exact selection and current
+metadata fingerprint under the mutation lock before local mutation. Local removal
+is transactional; physical SQLite sanitization is a later independent boundary.
+A sanitization failure cannot become completed cleanup, even when bodies are already
+logically unavailable. Replan the same persisted IDs and retry sanitization after
+releasing readers. A process interrupted after commit returns no completion receipt;
+inspection and that same retry remain available. Keep original deletion receipts.
+Provider deletion is a separate explicitly requested step and outcome; a local-only
+retry does not retry a remote effect, revoke opt-in, or overwrite its failed/unknown
+receipt. The current production transport returns unsupported without remote effects.
+No local failure or provider failure restores content or mutates canonical records.
+
 ## 6. Retry ownership
 
 Retry에는 original operation identity, input/source version, idempotency/commit state,

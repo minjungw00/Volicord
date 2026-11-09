@@ -1874,3 +1874,15 @@ The Viewer control waits for its recorded ten-second Source deadline; it does no
 alter publication/source metadata or submit a future maintenance clock. Expiry
 receipts promise logical removal only; no physical-erasure assertion is inferred.
 These are focused supporting checks, not the aggregate gate or external acceptance.
+
+
+Selective semantic annotation controls additionally use Operations
+`lifecycle_controls`, `guarded_provider`, and Host `privacy_controls` / `mcp`.
+They cover the real producer-to-local-deletion path with a local provider fixture,
+current selection fingerprint and provider-effect mismatch, rejected cross-Project /
+non-annotation IDs, restart, preserved opt-in/canonical/article records, and DB/WAL
+sentinel absence only after explicit sanitization completion. A held SQLite reader
+forces incomplete local cleanup; a local adapter independently returns provider
+failure. These adapter outcomes are controls, not evidence of remote erasure. The
+production Codex deletion capability is unsupported and sends no request. Existing
+Source/explanation and canonical forgetting tests cover the shared WAL post-check.

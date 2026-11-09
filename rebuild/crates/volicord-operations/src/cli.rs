@@ -724,6 +724,16 @@ fn context_command() -> Command {
 fn privacy_command() -> Command {
     Command::new("privacy")
         .about("Inspect or change collection, retention and provider controls")
+        .subcommand(Command::new("annotations").about("Selectively delete semantic annotations; inspect IDs with privacy status. Canonical records and provider authorization are independent.")
+            .subcommand_required(true)
+            .subcommands(["plan", "delete"].map(|action| {
+                let command = Command::new(action)
+                    .arg(repeat_arg("id", "ANNOTATION_ID", "Exact semantic annotation identity; select 1..64 distinct IDs").required(true))
+                    .arg(Arg::new("request_provider_deletion").long("request-provider-deletion").action(ArgAction::SetTrue).help("Request provider deletion for these exact IDs; current Codex transport reports unsupported. No provider revocation."));
+                if action == "delete" { command
+                    .arg(Arg::new("expected_fingerprint").long("expected-fingerprint").required(true).help("Current fingerprint from annotations plan"))
+                    .arg(Arg::new("basis").long("basis").required(true)) } else { command }
+            })))
         .subcommand(Command::new("cleanup").about("Remove expired Candidate and managed bodies in explicit bounded batches; logical removal only, no provider deletion. Repeat while remaining_eligible is nonzero; incomplete partitions require inspection and retry.")
             .arg(Arg::new("limit").long("limit").default_value("64").value_parser(clap::value_parser!(u16).range(1..=256))))
         .subcommand(Command::new("collection").about("Control automatic Candidate collection; omitted filters match all values, combined filters must all match. Enabling resets only the exact scope; other opt-outs still apply. Explicit user-directed collection is independent.")
@@ -1265,6 +1275,31 @@ fn dispatch_privacy(
         .subcommand()
         .ok_or_else(|| Error::new("a privacy action is required"))?;
     let project = resolve_project(operations, selection)?;
+    if action == "annotations" {
+        let (action, args) = args
+            .subcommand()
+            .ok_or_else(|| Error::new("annotation action required"))?;
+        let ids = many(args, "id")
+            .iter()
+            .map(|id| crate::parse_managed_id(id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let request_provider_deletion = args.get_flag("request_provider_deletion");
+        return match action {
+            "plan" => operations
+                .annotation_deletion_plan(project, &ids, request_provider_deletion)
+                .map(|plan| json!({"operation":"annotation_deletion_plan","plan":plan})),
+            "delete" => operations
+                .delete_semantic_annotations(crate::AnnotationDeletionRequest {
+                    project_id: project,
+                    ids,
+                    request_provider_deletion,
+                    expected_fingerprint: required(args, "expected_fingerprint")?.into(),
+                    basis: required(args, "basis")?.into(),
+                })
+                .map(|result| json!({"operation":"annotation_deletion","result":result})),
+            _ => Err(Error::new("unsupported annotation action")),
+        };
+    }
     if action == "cleanup" {
         let result = operations.cleanup_expired(
             project,

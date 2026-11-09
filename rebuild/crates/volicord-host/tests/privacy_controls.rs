@@ -178,3 +178,99 @@ fn mcp_expiry_batches_inspect_and_restart_through_real_stdio(
     assert_eq!(ops.canonical_basis(project)?, before);
     Ok(())
 }
+
+#[test]
+fn mcp_selective_annotation_deletion_validates_and_reports_independent_outcomes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_privacy::*;
+    let root = tempfile::tempdir()?;
+    let layout = RuntimeLayout::new(root.path().join("runtime"))?;
+    let ops = LocalOperations::new(layout.clone());
+    let project = ops.initialize_project("Annotation MCP", None)?.project.id;
+    let other = ops.initialize_project("Other", None)?.project.id;
+    let mut store = PrivacyStore::open(layout.privacy_store())?;
+    let draft = |project_id, content: &str| ManagedDerivedDraft {
+        project_id,
+        kind: ManagedDerivedKind::SemanticAnnotation,
+        provider: Some("openai-codex".into()),
+        model: Some("fixture".into()),
+        purpose: "explicit fixture".into(),
+        analysis_snapshot: Some(
+            volicord_operations::AnalysisSnapshotId::from_hex(&"11".repeat(32)).expect("fixture"),
+        ),
+        included_sources: vec![],
+        canonical_links: vec![],
+        content: content.into(),
+        uncertainty: Some(volicord_repository_intelligence::Uncertainty::none()),
+        retained_until: None,
+        retention_basis: "until explicitly removed".into(),
+    };
+    let secret = "MCP_ANNOTATION_ERASURE_SENTINEL_524";
+    let selected = store.record_managed_derived(draft(project, secret))?;
+    let retained = store.record_managed_derived(draft(project, "retained"))?;
+    let foreign = store.record_managed_derived(draft(other, "foreign"))?;
+    drop(store);
+    let mut adapter = HostAdapter::new(ops);
+    adapter.handle(json!({"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}));
+    for args in [
+        json!({"action":"plan","project_id":project.to_string(),"ids":[]}),
+        json!({"action":"plan","project_id":project.to_string(),"ids":[selected.id.to_string(),foreign.id.to_string()]}),
+        json!({"action":"plan","project_id":project.to_string(),"ids":[selected.id.to_string(),selected.id.to_string()]}),
+        json!({"action":"delete","project_id":project.to_string(),"ids":[selected.id.to_string()],"expected_fingerprint":"stale","basis":"explicit deletion"}),
+    ] {
+        assert_eq!(
+            call(&mut adapter, "semantic_annotation_delete", args)["result"]["isError"],
+            true
+        );
+    }
+    let plan = call(
+        &mut adapter,
+        "semantic_annotation_delete",
+        json!({"action":"plan","project_id":project.to_string(),"ids":[selected.id.to_string()],"request_provider_deletion":true}),
+    );
+    assert_eq!(plan["result"]["isError"], false, "{plan}");
+    assert!(!plan.to_string().contains(secret));
+    let result = call(
+        &mut adapter,
+        "semantic_annotation_delete",
+        json!({"action":"delete","project_id":project.to_string(),"ids":[selected.id.to_string()],"expected_fingerprint":plan["result"]["structuredContent"]["fingerprint"],"basis":"explicit annotation-only removal","request_provider_deletion":true}),
+    );
+    assert_eq!(result["result"]["isError"], false, "{result}");
+    assert_eq!(
+        result["result"]["structuredContent"]["local_cleanup_completed"],
+        true
+    );
+    assert!(
+        result["result"]["structuredContent"]["provider_outcomes"][0]["retained_outcome"]
+            .get("unsupported")
+            .is_some()
+    );
+    drop(adapter);
+    // The persisted receipt survives a real fresh MCP process. No annotation
+    // body is present in lifecycle inspection, even for the retained identity.
+    let status = stdio_call(
+        &layout,
+        "privacy_status",
+        json!({"project_id":project.to_string()}),
+    )?;
+    assert!(!status.to_string().contains(secret));
+    let metadata = status["result"]["structuredContent"]["managed_records"]
+        .as_array()
+        .ok_or("metadata")?;
+    assert!(metadata
+        .iter()
+        .any(|r| r["id"] == selected.id.to_string() && r["state"] == "deleted"));
+    let store = PrivacyStore::open(layout.privacy_store())?;
+    assert_eq!(store.get_derived(project, retained.id)?, retained);
+    assert_eq!(store.get_derived(other, foreign.id)?, foreign);
+    for suffix in ["", "-wal"] {
+        let path =
+            std::path::PathBuf::from(format!("{}{suffix}", layout.privacy_store().display()));
+        if path.exists() {
+            assert!(!std::fs::read(path)?
+                .windows(secret.len())
+                .any(|b| b == secret.as_bytes()));
+        }
+    }
+    Ok(())
+}

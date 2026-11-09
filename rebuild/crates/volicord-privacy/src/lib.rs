@@ -11,17 +11,17 @@ mod store;
 
 pub use error::{Error, ErrorKind};
 pub use model::{
-    AuthorityKind, AuthorityObservation, AuthorizedProviderDispatch, BackgroundSemanticRequest,
-    BackgroundSource, CanonicalForgettingCleanup, FilterOutcome, LocalDeletion,
-    ManagedCanonicalLink, ManagedDeletionResult, ManagedDeletionScope, ManagedDerivedDraft,
-    ManagedDerivedId, ManagedDerivedKind, ManagedDerivedRecord, ManagedDerivedState,
-    PreparationOutcome, ProjectPrivacyInspection, ProviderAvailability, ProviderConfigurationState,
-    ProviderDeletionOutcome, ProviderDeletionRequest, ProviderExecution,
-    ProviderGeneratedAnnotation, ProviderIdentity, ProviderIntentProvenance, ProviderInvocation,
-    ProviderInvocationSource, ProviderOptInEvent, ProviderOptInPolicy, ProviderOptInState,
-    ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord, ProviderRetentionPolicy,
-    ScopeOutcome, SecretFilteringPolicy, SourceClass, SourceExclusionPolicy, SourceManifestEntry,
-    TransmissionOutcome,
+    AnnotationProviderDeletion, AuthorityKind, AuthorityObservation, AuthorizedProviderDispatch,
+    BackgroundSemanticRequest, BackgroundSource, CanonicalForgettingCleanup, FilterOutcome,
+    LocalDeletion, ManagedCanonicalLink, ManagedDeletionResult, ManagedDeletionScope,
+    ManagedDerivedDraft, ManagedDerivedId, ManagedDerivedKind, ManagedDerivedRecord,
+    ManagedDerivedState, PreparationOutcome, ProjectPrivacyInspection, ProviderAvailability,
+    ProviderConfigurationState, ProviderDeletionOutcome, ProviderDeletionRequest,
+    ProviderExecution, ProviderGeneratedAnnotation, ProviderIdentity, ProviderIntentProvenance,
+    ProviderInvocation, ProviderInvocationSource, ProviderOptInEvent, ProviderOptInPolicy,
+    ProviderOptInState, ProviderRequestId, ProviderRequestOutcome, ProviderRequestRecord,
+    ProviderRetentionPolicy, ScopeOutcome, SecretFilteringPolicy, SemanticAnnotationDeletion,
+    SourceClass, SourceExclusionPolicy, SourceManifestEntry, TransmissionOutcome,
 };
 pub use store::{
     BackgroundSemanticProvider, PrivacyStore, MANAGED_DERIVED_CONTENT_BYTE_LIMIT,

@@ -7378,6 +7378,29 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 &["project_id", "action", "basis"],
             ),
         ],
+        "semantic_annotation_delete" => vec![
+            shape(
+                &["project_id", "action", "ids", "request_provider_deletion"],
+                &["project_id", "action", "ids"],
+            ),
+            shape(
+                &[
+                    "project_id",
+                    "action",
+                    "ids",
+                    "request_provider_deletion",
+                    "expected_fingerprint",
+                    "basis",
+                ],
+                &[
+                    "project_id",
+                    "action",
+                    "ids",
+                    "expected_fingerprint",
+                    "basis",
+                ],
+            ),
+        ],
         "expiry_cleanup" => vec![shape(&["project_id", "limit"], &["project_id", "limit"])],
         "privacy_status" => vec![shape(&["project_id"], &["project_id"])],
         "canonical_inspect" => vec![

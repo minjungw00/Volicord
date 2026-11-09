@@ -520,3 +520,20 @@ pub enum PreparationOutcome {
     Ready(AuthorizedProviderDispatch),
     Rejected(ProviderRequestRecord),
 }
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AnnotationProviderDeletion {
+    pub id: ManagedDerivedId,
+    /// The retained provider receipt, independent of this request's local cleanup.
+    pub outcome: ProviderDeletionOutcome,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SemanticAnnotationDeletion {
+    pub ids: Vec<ManagedDerivedId>,
+    pub logical_deletion_committed: bool,
+    pub local_cleanup_completed: bool,
+    pub local_diagnostic: Option<String>,
+    pub provider_deletion_requested: bool,
+    pub provider_outcomes: Vec<AnnotationProviderDeletion>,
+}

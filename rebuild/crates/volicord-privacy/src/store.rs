@@ -597,6 +597,112 @@ impl PrivacyStore {
         sanitize_deleted_content(&self.connection)
     }
 
+    /// Exact annotation-only deletion. Validate the entire selection before any
+    /// mutation, atomically remove local bodies, then sanitize even on retry.
+    /// Provider permission must be explicit for this exact operation; old opt-in
+    /// or retention receipts never cause a delete request.
+    pub fn delete_semantic_annotations(
+        &mut self,
+        project: ProjectId,
+        ids: &[ManagedDerivedId],
+        basis: &str,
+        request_provider_deletion: bool,
+        mut provider: Option<&mut dyn BackgroundSemanticProvider>,
+    ) -> Result<crate::SemanticAnnotationDeletion, Error> {
+        validate_text("annotation deletion basis", basis)?;
+        if ids.is_empty()
+            || ids.len() > 64
+            || ids.iter().collect::<BTreeSet<_>>().len() != ids.len()
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "select 1..64 distinct semantic annotation identities",
+            ));
+        }
+        let now = self.clock.now().map_err(clock_error)?;
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(write_error)?;
+        let mut records = ids
+            .iter()
+            .map(|id| self.get_derived(project, *id))
+            .collect::<Result<Vec<_>, _>>()?;
+        if records
+            .iter()
+            .any(|r| r.kind != ManagedDerivedKind::SemanticAnnotation)
+        {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "selection contains a non-annotation managed record",
+            ));
+        }
+        for record in &mut records {
+            if record.state != ManagedDerivedState::Deleted || record.content.is_some() {
+                record.content = None;
+                record.state = ManagedDerivedState::Deleted;
+                record.local_deletion = Some(LocalDeletion {
+                    deleted_at: now,
+                    basis: basis.into(),
+                });
+                self.update_derived(record)?;
+            }
+        }
+        transaction.commit().map_err(write_error)?;
+        let sanitized = sanitize_deleted_content(&self.connection);
+        let completed = sanitized.is_ok();
+        let diagnostic=sanitized.err().map(|_|"Annotation bodies were removed but SQLite sanitization is incomplete; inspect, prepare the same IDs and retry deletion after releasing active readers".to_owned());
+        if completed && request_provider_deletion {
+            let mut groups = BTreeMap::<Option<String>, Vec<usize>>::new();
+            for (index, record) in records.iter().enumerate() {
+                groups
+                    .entry(record.provider.clone())
+                    .or_default()
+                    .push(index);
+            }
+            for (name, indices) in groups {
+                let outcome=match (name,provider.as_deref_mut()) {
+                    (Some(name),Some(adapter)) if adapter.identity().provider==name => {
+                        // Persist uncertainty before a possible external effect. A
+                        // crash or failed final receipt must never leave a false
+                        // not-requested/succeeded observation behind.
+                        let transaction=self.connection.unchecked_transaction().map_err(write_error)?;
+                        for index in &indices {
+                            records[*index].provider_deletion=ProviderDeletionOutcome::Unknown {
+                                diagnostic:"Provider deletion requested; dispatch/completion is unconfirmed; inspect before an explicit retry".into(),
+                            };
+                            self.update_derived(&records[*index])?;
+                        }
+                        transaction.commit().map_err(write_error)?;
+                        adapter.delete(ProviderDeletionRequest {project_id:project,
+                            managed_ids:indices.iter().map(|i|records[*i].id).collect(),
+                            source_ids:indices.iter().flat_map(|i|records[*i].included_sources.iter().map(|s|s.identity())).collect::<BTreeSet<_>>().into_iter().collect(),
+                            provider:name})
+                    },
+                    _ => ProviderDeletionOutcome::Unknown {diagnostic:"No matching provider deletion adapter; remote erasure was not attempted".into()},
+                };
+                for index in indices {
+                    records[index].provider_deletion = outcome.clone();
+                    self.update_derived(&records[index])?;
+                }
+            }
+        }
+        Ok(crate::SemanticAnnotationDeletion {
+            ids: ids.to_vec(),
+            logical_deletion_committed: true,
+            local_cleanup_completed: completed,
+            local_diagnostic: diagnostic,
+            provider_deletion_requested: request_provider_deletion,
+            provider_outcomes: records
+                .into_iter()
+                .map(|r| crate::AnnotationProviderDeletion {
+                    id: r.id,
+                    outcome: r.provider_deletion,
+                })
+                .collect(),
+        })
+    }
+
     pub fn cleanup_expired(
         &mut self,
         project_id: ProjectId,
@@ -1032,6 +1138,12 @@ fn apply_read_invalidations(
 }
 
 fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {
+    truncate_deleted_wal(connection)?;
+    connection.execute_batch("VACUUM;").map_err(write_error)?;
+    truncate_deleted_wal(connection)
+}
+
+fn truncate_deleted_wal(connection: &Connection) -> Result<(), Error> {
     let (busy, _, _): (i64, i64, i64) = connection
         .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?))
@@ -1043,9 +1155,7 @@ fn sanitize_deleted_content(connection: &Connection) -> Result<(), Error> {
             "managed Derived cleanup committed but WAL truncation is busy",
         ));
     }
-    connection
-        .execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);")
-        .map_err(write_error)
+    Ok(())
 }
 
 struct FilteredBody {

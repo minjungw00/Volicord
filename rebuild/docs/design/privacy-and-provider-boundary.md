@@ -395,6 +395,55 @@ canonical invalidation과 operation identity를 사용해 idempotent cleanup만 
 forgotten canonical content를 복원하지 않는다. Provider deletion은 `not_requested`,
 `unsupported`, `failed`, `unknown` 또는 observed success로 계속 별도 보고한다.
 
+### Exact semantic annotation deletion operations
+
+Use `privacy status` / MCP `privacy_status` to inspect managed lifecycle metadata
+and exact annotation IDs. CLI `privacy annotations plan --id ID [--id ID...]`
+returns a current metadata fingerprint; `privacy annotations delete` requires
+that same selection, `--expected-fingerprint` and a nonempty `--basis`. MCP
+`semantic_annotation_delete` exposes equivalent `plan` and `delete` actions.
+Select 1..64 distinct IDs. Unknown, cross-Project, non-annotation and stale metadata
+selections are rejected before mutation. Reordering the same IDs preserves the
+selection. The fingerprint also binds `request_provider_deletion` (CLI
+`--request-provider-deletion`), so a local-only plan cannot silently gain a provider
+effect. It is metadata equality, not a new permission token or provider opt-in.
+
+Privacy owns atomic local body removal and the per-record tombstone. The whole
+selection is validated before writing. Explicit deletion retries sanitize even
+already deleted IDs without rewriting their original deletion receipt. Local
+completion requires secure SQLite content deletion, VACUUM and checked WAL
+truncation both before and after VACUUM. A blocked/failed sanitization reports
+`logical_deletion_committed: true`, `local_cleanup_completed: false`, and explicit
+same-ID replan/retry guidance. No interrupted invocation certifies physical cleanup.
+The guarantee covers the active local SQLite content/WAL paths; exported copies
+and provider retention are independent. Expiry maintenance retains its logical-only
+contract. Existing Source/explanation deletion uses the same checked sanitization.
+
+Provider deletion is **not requested by default**, irrespective of old opt-in,
+provider receipts or credential availability. An explicit current request is bound
+to the selected IDs and grouped by their recorded provider; a mismatched adapter
+receives no deletion request. Local cleanup failure blocks this provider step.
+Results report the current step separately from each retained provider outcome,
+including failed/unknown/unsupported historical receipts. The current Codex adapter
+returns `unsupported` without process, credential probe or network access. A provider
+with no matching adapter reports `unknown`, explicitly without attempted erasure.
+Before any matching adapter deletion, a durable `unknown` receipt records that
+dispatch/completion is unconfirmed. Interruption or failed final-outcome persistence
+cannot leave a false `not_requested` or historical success. An adapter failure
+remains `failed` even when local cleanup completed. Local-only
+retry does not replace an earlier remote failure with success or revoke generation.
+No new production remote erasure capability or background transmission is added.
+
+Current production provider output stores semantic bodies once in Privacy; request
+and Guarded receipts carry no annotation body, and the local analysis producer does
+not copy provider annotations into Analysis Snapshots, embeddings or cached articles.
+Deletion therefore removes that actual owned body and subsequent inspection withholds
+it. Independently retained articles and unrelated annotations are preserved. A future
+annotation-derived cache producer must add explicit dependency invalidation at this
+owner boundary rather than reconstruct deleted annotation text from historical
+canonical or request records. This operation neither deletes canonical records nor
+implicitly disables/revokes provider policy. No durable representation or version changes.
+
 ## 9. User correction protection
 
 User Correction, explicit adoption, Decision과 canonical Context는 analyzer/provider

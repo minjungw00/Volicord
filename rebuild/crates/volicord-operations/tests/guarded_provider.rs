@@ -195,7 +195,7 @@ impl BackgroundSemanticProvider for FixtureProvider {
     }
 
     fn delete(&mut self, _request: ProviderDeletionRequest) -> ProviderDeletionOutcome {
-        ProviderDeletionOutcome::NotRequested
+        panic!("this generation fixture has no provider deletion intent")
     }
 }
 
@@ -633,4 +633,89 @@ fn source_id(value: &str) -> Result<SourceId, Box<dyn std::error::Error>> {
         bytes[index] = u8::from_str_radix(std::str::from_utf8(pair)?, 16)?;
     }
     Ok(SourceId::from_bytes(bytes))
+}
+
+#[test]
+fn generated_annotations_can_be_deleted_without_revocation_canonical_loss_or_recollection(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_operations::AnnotationDeletionRequest;
+    use volicord_privacy::{ManagedDerivedState, ProviderGeneratedAnnotation};
+    let fixture = Fixture::new()?;
+    let mut preparation = fixture.prepare()?;
+    fixture.confirm(&preparation)?;
+    let source = preparation
+        .provider_request
+        .manifest
+        .iter()
+        .find(|e| e.scope_outcome == ScopeOutcome::Included)
+        .ok_or("Source")?
+        .source
+        .identity();
+    let mut provider = FixtureProvider {
+        execution: ProviderExecution::Completed {
+            annotations: vec![ProviderGeneratedAnnotation {
+                included_sources: vec![source],
+                text: "producer-to-deletion fixture annotation".into(),
+                uncertainty: volicord_repository_intelligence::Uncertainty::none(),
+            }],
+            diagnostic: None,
+        },
+        calls: 0,
+        invocations: vec![],
+    };
+    let revision = preparation.candidate.request_revision;
+    let fingerprint = preparation.candidate.effect_fingerprint.clone();
+    fixture.operations.dispatch_guarded_provider(
+        &mut preparation,
+        revision,
+        &fingerprint,
+        &mut provider,
+    )?;
+    let before = fixture.operations.privacy_status(fixture.project)?;
+    let canonical = fixture.operations.canonical_basis(fixture.project)?;
+    let id = before
+        .managed_derived
+        .iter()
+        .find(|r| r.kind == volicord_privacy::ManagedDerivedKind::SemanticAnnotation)
+        .ok_or("annotation")?
+        .id;
+    let plan = fixture
+        .operations
+        .annotation_deletion_plan(fixture.project, &[id], false)?;
+    let result = fixture
+        .operations
+        .delete_semantic_annotations_with_provider(
+            AnnotationDeletionRequest {
+                project_id: fixture.project,
+                ids: vec![id],
+                expected_fingerprint: plan.fingerprint,
+                basis: "explicit local annotation removal".into(),
+                request_provider_deletion: false,
+            },
+            Some(&mut provider),
+        )?;
+    assert_eq!(result["local_cleanup_completed"], true);
+    assert_eq!(result["provider_step"], "not_requested");
+    assert_eq!(provider.calls, 1);
+    let after = fixture.operations.privacy_status(fixture.project)?;
+    assert_eq!(after.current_opt_in, before.current_opt_in);
+    assert_eq!(after.requests, before.requests);
+    assert_eq!(after.managed_derived[0].state, ManagedDerivedState::Deleted);
+    assert!(after.managed_derived[0].semantic_annotation().is_none());
+    assert_eq!(
+        fixture.operations.canonical_basis(fixture.project)?,
+        canonical
+    );
+    let restarted = LocalOperations::new(fixture.operations.layout().clone());
+    restarted.analyze(fixture.project, vec![])?;
+    assert!(
+        restarted.privacy_status(fixture.project)?.managed_derived[0]
+            .content
+            .is_none()
+    );
+    assert_eq!(
+        restarted.privacy_status(fixture.project)?.current_opt_in,
+        before.current_opt_in
+    );
+    Ok(())
 }

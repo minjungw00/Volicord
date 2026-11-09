@@ -52,7 +52,7 @@ use volicord_projections::{
     UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingWork,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 27] = [
+pub const HOST_TOOL_NAMES: [&str; 28] = [
     "project_resolve",
     "project_initialize",
     "project_health",
@@ -77,6 +77,7 @@ pub const HOST_TOOL_NAMES: [&str; 27] = [
     "candidate_collection",
     "privacy_status",
     "expiry_cleanup",
+    "semantic_annotation_delete",
     "background_semantic_operation",
     "document_preview",
     "guarded_interaction",
@@ -231,6 +232,7 @@ impl HostAdapter {
                 "candidate_manage" => self.candidate_manage(&arguments),
                 "candidate_collection" => self.candidate_collection(&arguments),
                 "privacy_status" => self.privacy_status(&arguments),
+                "semantic_annotation_delete" => self.semantic_annotation_delete(&arguments),
                 "expiry_cleanup" => self
                     .operations
                     .cleanup_expired(
@@ -2281,6 +2283,36 @@ impl HostAdapter {
         }
     }
 
+    fn semantic_annotation_delete(&self, args: &Value) -> Result<Value, HostError> {
+        let project_id = project(args)?;
+        let ids = required_strings(args, "ids")?
+            .iter()
+            .map(|id| volicord_operations::parse_managed_id(id).map_err(operation_error))
+            .collect::<Result<Vec<_>, _>>()?;
+        let request_provider_deletion = args
+            .get("request_provider_deletion")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        match required_str(args, "action")? {
+            "plan" => self
+                .operations
+                .annotation_deletion_plan(project_id, &ids, request_provider_deletion)
+                .map(|p| json!(p))
+                .map_err(operation_error),
+            "delete" => self
+                .operations
+                .delete_semantic_annotations(volicord_operations::AnnotationDeletionRequest {
+                    project_id,
+                    ids,
+                    request_provider_deletion,
+                    expected_fingerprint: required_str(args, "expected_fingerprint")?.into(),
+                    basis: required_str(args, "basis")?.into(),
+                })
+                .map_err(operation_error),
+            _ => Err(HostError::new("unsupported annotation deletion action")),
+        }
+    }
+
     fn candidate_collection(&self, args: &Value) -> Result<Value, HostError> {
         let project_id = project(args)?;
         let action = required_str(args, "action")?;
@@ -3700,6 +3732,24 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ("candidate_kind",enum_schema("Candidate kind",volicord_operations::COLLECTION_KINDS)),
                 ("basis",text_schema("Current explicit collection policy intent",1,4096))],
                 &["project_id","action","basis"])]}),
+            ToolBehavior::DestructiveClosed,
+        ),
+        "semantic_annotation_delete" => (
+            "Plan or delete exact semantic annotation IDs from privacy_status. Delete requires the current plan fingerprint, including provider-deletion intent. Local SQLite sanitization and retained provider outcomes are independent. Default is local-only; request_provider_deletion explicitly requests this exact provider scope, with unsupported/unknown outcomes when no remote erasure capability exists. Neither generation nor provider revocation nor canonical deletion is performed. On local cleanup failure, replan the same IDs and retry; no success is inferred from logical removal.",
+            json!({"oneOf":([false,true].map(|deleting|{
+                let mut fields=vec![("project_id",identity_schema("Project identity")),
+                    ("action",enum_schema("Annotation deletion stage",if deleting { &["delete"] } else { &["plan"] })),
+                    ("ids", {
+                        let mut schema=identity_array_schema("Exact semantic annotation IDs (1..64 distinct)",1);
+                        schema["maxItems"]=json!(64);
+                        schema["uniqueItems"]=json!(true);
+                        schema
+                    }),
+                    ("request_provider_deletion",json!({"type":"boolean","description":"Current exact provider deletion request; default false"}))];
+                let mut required=vec!["project_id","action","ids"];
+                if deleting {fields.extend([("expected_fingerprint",text_schema("Current plan fingerprint",1,128)),("basis",text_schema("Explicit deletion intent",1,4096))]);required.extend(["expected_fingerprint","basis"]);}
+                object_schema(fields,&required)
+            }))}),
             ToolBehavior::DestructiveClosed,
         ),
         "expiry_cleanup" => (

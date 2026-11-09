@@ -26,8 +26,9 @@ mod code_origin;
 pub use code_origin::CodeOriginRequest;
 mod lifecycle;
 pub use lifecycle::{
-    collection_policy_json, managed_lifecycle_json, parse_collection_kind, ExpiryCleanupOutcome,
-    ExpiryPartition, COLLECTION_KINDS,
+    collection_policy_json, managed_lifecycle_json, parse_collection_kind, parse_managed_id,
+    AnnotationDeletionPlan, AnnotationDeletionRequest, ExpiryCleanupOutcome, ExpiryPartition,
+    COLLECTION_KINDS,
 };
 mod layout;
 mod model;
