@@ -85,6 +85,15 @@ where
         Ok(()) => CliExit::SUCCESS,
         Err(error) => {
             let _ = writeln!(stderr, "Error: {}", error.message());
+            if let Some(diagnostic) = error
+                .canonical_cause()
+                .and_then(|cause| cause.scoped_check_failure())
+            {
+                // Closed typed metadata only, never the generic storage chain.
+                if let Ok(detail) = serde_json::to_string(diagnostic) {
+                    let _ = writeln!(stderr, "Scoped check basis: {detail}");
+                }
+            }
             if !explanation_operation {
                 let _ = writeln!(
                     stderr,

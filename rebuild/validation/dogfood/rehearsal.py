@@ -336,6 +336,8 @@ class Product:
         self.logs, self.counter, self.buffer, self.stdout = logs, 0, b"", b""
         self.response_timeout, self.close_timeout = response_timeout, close_timeout
         self.closed = False
+        self.first_request_failure = None
+        self.executable_sha256 = c.harness.sha256(Path(binary))
         self.started = time.monotonic_ns()
         self.label = "mcp-" + secrets.token_hex(8)
         self.stderr = (logs.root / (self.label + ".stderr-private")).open("w+b")
@@ -347,12 +349,50 @@ class Product:
             "clientInfo": {"name": "self-authored-evidence-rehearsal", "version": "1"}})
 
     def rpc(self, method, params):
+        started = time.monotonic_ns()
+        try:
+            return self._rpc(method, params)
+        except BaseException as error:
+            # Keep the first request outcome before cleanup can fail or a later
+            # call can succeed. No exception text, RPC arguments or body bytes.
+            if self.first_request_failure is None:
+                operation = ("repository_analyze" if method == "tools/call"
+                    and params.get("name") == "repository_analyze" else
+                    "other_tool" if method == "tools/call" else
+                    "initialize" if method == "initialize" else "other_method")
+                self.first_request_failure = {
+                    "request_id": self.counter, "operation": operation,
+                    "stage": self.request_stage,
+                    "outcome": "interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else
+                        "timeout" if self.request_stage == "response_wait" and
+                            time.monotonic_ns() - started >= self.response_timeout * 1e9 else "failed",
+                    "duration_ns": time.monotonic_ns() - started,
+                    "response_limit_seconds": self.response_timeout,
+                    "process_lifetime_ns": time.monotonic_ns() - self.started,
+                    "pid": self.process.pid, "process_exit_code": self.process.poll(),
+                    "executable_sha256": self.executable_sha256,
+                    "response_bytes_received": len(self.stdout),
+                    "host_load_average": list(os.getloadavg()),
+                    "server_internal_stage": "unobserved",
+                }
+                try:
+                    c.write_json(self.logs.root / (self.label + ".request-failure.json"),
+                        self.first_request_failure)
+                except OSError:
+                    # Diagnostic persistence has no authority to replace the
+                    # request failure; the in-memory first observation survives.
+                    self.logs.teardown_errors.append(self.label + ":request_diagnostic_unavailable")
+            raise
+
+    def _rpc(self, method, params):
+        self.request_stage = "request_write"
         self.counter += 1
         request = {"jsonrpc": "2.0", "id": self.counter, "method": method, "params": params}
         self.process.stdin.write((json.dumps(request) + "\n").encode())
         self.process.stdin.flush()
         deadline = time.monotonic() + self.response_timeout
         operation = method + (" " + params["name"] if method == "tools/call" else "")
+        self.request_stage = "response_wait"
         with selectors.DefaultSelector() as selector:
             selector.register(self.process.stdout, selectors.EVENT_READ)
             while b"\n" not in self.buffer:
@@ -366,6 +406,7 @@ class Product:
                     self.buffer += data
                     require(len(self.buffer) <= 32 << 20, "MCP response exceeds bound")
         line, self.buffer = self.buffer.split(b"\n", 1)
+        self.request_stage = "response_decode"
         response = json.loads(line)
         require(response.get("id") == self.counter and "error" not in response, "MCP correlation/error")
         return response["result"]

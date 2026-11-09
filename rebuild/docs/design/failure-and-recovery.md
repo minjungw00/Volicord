@@ -100,6 +100,27 @@ precondition으로 preflight하고 Store는 transaction 안에서 다시 검증�
 cause와 현재 workflow/required next action을 보존하며 internal storage source/backtrace를 노출하지
 않는다. Canonical inspection으로 exact Work applicability를 확인한 뒤 수정한다.
 
+### Scoped verification failure attribution
+
+Scoped Checkpoint admission preserves the existing predicates and records the
+failed fixed predicate names in a bounded typed error. The diagnostic includes
+Work identity/revision, verification/assertion states, execution window, artifact
+and target counts, repository Source identity and digests of supplied operation,
+invocation and snapshot identifiers. Command-binding failures additionally name
+the Command Source and its recorded time. Declarations, target paths, assertion
+text, environment descriptions, output and raw invocations are excluded. CLI and
+MCP expose this safe cause without exposing generic storage error chains. Rejection
+commits no Checkpoint; a later valid capture does not explain a historical rejection.
+
+The local rehearsal preserves the first failed RPC separately before teardown:
+request number, closed operation/stage/outcome, monotonic request/process durations,
+response limit, process identity/executable digest, observed numeric process outcome,
+received-byte count and host load. It never retains arguments or arbitrary exception
+text in this diagnostic. Failure to persist it cannot replace the primary exception.
+The private complete allowed process streams and final numeric teardown outcome
+remain separate. A response-wait timeout identifies no internal analyzer stage;
+that stage remains explicitly unobserved without corresponding evidence.
+
 ### Projection failure
 
 - Local diagram pending-job errors must preserve the original failure, reject

@@ -8850,6 +8850,7 @@ fn canonical_cause_json(error: &volicord_operations::Error) -> Value {
     error.canonical_cause().map(|cause| json!({
         "kind":format!("{:?}",cause.kind()),
         "message":cause.to_string(),
+        "scoped_check_failure":cause.scoped_check_failure(),
         "checkpoint_decision_work_mismatch":cause.checkpoint_decision_work_mismatch().map(|mismatch| json!({
             "checkpoint_work_item_id":mismatch.checkpoint_work_item_id.map(|id| id.to_string()),
             "decision_id":mismatch.decision_id.to_string(),
@@ -8860,6 +8861,19 @@ fn canonical_cause_json(error: &volicord_operations::Error) -> Value {
 }
 
 fn operation_error(error: volicord_operations::Error) -> HostError {
+    if error
+        .canonical_cause()
+        .is_some_and(|cause| cause.scoped_check_failure().is_some())
+    {
+        return HostError::with_details(
+            error.to_string(),
+            json!({
+                "diagnostic":"scoped_check_basis_rejected", "cause":canonical_cause_json(&error),
+                "checkpoint_recorded":false,
+                "next_supported_action":"inspect the failed predicates and exact capture basis before a fresh explicit check",
+            }),
+        );
+    }
     if let Some(reason) = error.reading_failure() {
         return HostError::with_details(
             error.to_string(),

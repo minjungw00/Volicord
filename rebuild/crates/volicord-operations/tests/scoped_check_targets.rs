@@ -49,3 +49,41 @@ fn check_target_fingerprints_support_non_ascii_empty_and_polyglot_files_without_
     }
     Ok(())
 }
+
+#[test]
+fn cli_preserves_content_free_scoped_checkpoint_rejection() -> Result<(), Box<dyn Error>> {
+    let f = fixture::fixture()?;
+    let before = f.ops.canonical_basis(f.project)?;
+    let mut request = fixture::recording(f.work, f.passed.source_id, true);
+    request.assertion_evidence = None;
+    request.outcome = "SECRET output".into();
+    let path = f.temp.path().join("request.json");
+    fs::write(&path, serde_json::to_vec(&request)?)?;
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let args = vec![
+        "--runtime".to_owned(),
+        f.ops.layout().root().to_string_lossy().into_owned(),
+        "--project".into(),
+        f.project.to_string(),
+        "work".into(),
+        "check".into(),
+        "--input".into(),
+        path.to_string_lossy().into_owned(),
+    ];
+    let code = volicord_operations::run_cli_with_input(
+        args,
+        &mut std::io::empty(),
+        &mut stdout,
+        &mut stderr,
+    );
+    assert_eq!(code.code(), 1);
+    assert!(stdout.is_empty());
+    let stderr = String::from_utf8(stderr)?;
+    assert!(stderr.contains("assertion_evidence_presence"), "{stderr}");
+    assert!(stderr.contains(&f.work.to_string()));
+    assert!(!stderr.contains("SECRET"));
+    assert!(!stderr.contains("main.py"));
+    assert_eq!(before, f.ops.canonical_basis(f.project)?);
+    Ok(())
+}

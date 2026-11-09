@@ -53,8 +53,36 @@ class ProductProcessTests(unittest.TestCase):
             self.assertNotIn('private_argument', failure)
             self.assertEqual((client.logs.root / (client.label + '.stderr')).read_bytes(),
                 b'analysis still pending\n')
+            diagnostic_path = client.logs.root / (client.label + '.request-failure.json')
+            original = diagnostic_path.read_bytes()
+            diagnostic = json.loads(original)
+            self.assertEqual(diagnostic['operation'], 'repository_analyze')
+            self.assertEqual(diagnostic['outcome'], 'timeout')
+            self.assertEqual(diagnostic['stage'], 'response_wait')
+            self.assertIsNone(diagnostic['process_exit_code'])
+            self.assertEqual(len(diagnostic['executable_sha256']), 64)
+            self.assertNotIn('private_argument', original.decode())
+            self.assertNotIn('must not enter diagnostics', original.decode())
+            with self.assertRaises((BrokenPipeError, ValueError, OSError, AttributeError)):
+                client.rpc('tools/call', {'name': 'secret-name', 'arguments': {}})
+            self.assertEqual(diagnostic_path.read_bytes(), original)
             client.close()
             self.assertEqual(len(client.logs.records), 1)
+
+    def test_request_diagnostic_write_failure_cannot_mask_timeout(self):
+        import tempfile
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = self.child(root, 'sys.stdin.readline()\ntime.sleep(60)\n')
+            client.response_timeout = client.close_timeout = 0.02
+            with self.assertRaisesRegex(ValueError, 'MCP response timed out'):
+                with rehearsal.product_session(client):
+                    with patch.object(rehearsal.c, 'write_json', side_effect=OSError('private path')):
+                        client.tool('repository_analyze', {'secret': 'not retained'})
+            self.assert_reaped(client)
+            self.assertEqual(client.first_request_failure['outcome'], 'timeout')
+            self.assertIn(client.label + ':request_diagnostic_unavailable', client.logs.teardown_errors)
 
     def test_eof_drains_more_than_pipe_capacity_before_waiting_for_exit(self):
         import tempfile

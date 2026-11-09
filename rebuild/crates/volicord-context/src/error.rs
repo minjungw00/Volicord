@@ -30,6 +30,7 @@ pub struct CheckpointDecisionWorkMismatch {
 #[derive(Debug)]
 pub struct Error {
     checkpoint_decision_work_mismatch: Option<CheckpointDecisionWorkMismatch>,
+    scoped_check_failure: Option<Box<crate::ScopedCheckFailure>>,
     kind: ErrorKind,
     message: String,
     source: Option<Box<dyn StdError + Send + Sync>>,
@@ -39,6 +40,7 @@ impl Error {
     pub(crate) fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
         Self {
             checkpoint_decision_work_mismatch: None,
+            scoped_check_failure: None,
             kind,
             message: message.into(),
             source: None,
@@ -52,6 +54,7 @@ impl Error {
     ) -> Self {
         Self {
             checkpoint_decision_work_mismatch: None,
+            scoped_check_failure: None,
             kind,
             message: message.into(),
             source: Some(Box::new(source)),
@@ -69,6 +72,29 @@ impl Error {
 
     pub fn checkpoint_decision_work_mismatch(&self) -> Option<&CheckpointDecisionWorkMismatch> {
         self.checkpoint_decision_work_mismatch.as_ref()
+    }
+
+    pub(crate) fn scoped_check_failure_error(diagnostic: crate::ScopedCheckFailure) -> Self {
+        let mut error = Self::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "scoped check basis rejected: {}",
+                diagnostic.failed_predicates.join(", ")
+            ),
+        );
+        error.scoped_check_failure = Some(Box::new(diagnostic));
+        error
+    }
+
+    pub(crate) fn attach_scoped_command_basis(&mut self, source: &crate::Source) {
+        if let Some(diagnostic) = self.scoped_check_failure.as_mut() {
+            diagnostic.command_source_id = Some(source.id.to_string());
+            diagnostic.command_recorded_at_unix_micros = Some(source.recorded_at.as_unix_micros());
+        }
+    }
+
+    pub fn scoped_check_failure(&self) -> Option<&crate::ScopedCheckFailure> {
+        self.scoped_check_failure.as_deref()
     }
 
     pub fn kind(&self) -> ErrorKind {

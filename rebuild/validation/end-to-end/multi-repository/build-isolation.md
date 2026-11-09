@@ -153,3 +153,14 @@ No real authoritative aggregate, official V11 or provider qualification is run b
 this task. Synthetic gate controls deliberately end at support exit 37, preserving
 Final and external stages as not run. Technical isolation, the unresolved invariant
 and actual human visual acceptance remain separate conclusions.
+
+## Current recurrence attribution
+
+Scoped verification admission now reports each failed fixed predicate and bounded,
+content-free Work/revision, assertion/verification state, execution-window, count,
+Source and hashed operation/snapshot basis through CLI and MCP. The original missing
+state remains missing; these diagnostics neither reconstruct it nor establish a
+causal repair. Context `diagnostic_tests`, Host `scoped_checks` and Operations
+`scoped_check_targets` exercise independent rejections, public propagation and
+nonmutation. Compiler/executable attribution still requires the runner's actual
+selected-artifact receipts; the canonical diagnostic does not invent it.

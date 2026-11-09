@@ -1352,6 +1352,18 @@ trusted Volicord activation/source authority must exist for that separate positi
 its absence is Blocked, never a synthetic substitute. No authoritative gate ran.
 
 
+## First-failure diagnostics
+
+Focused `volicord-context --lib diagnostic_tests`, Host `--test scoped_checks`
+and Operations `--test scoped_check_targets` cover individual scoped Checkpoint
+predicates, safe basis metadata, rejected-record nonmutation and valid subsequent
+admission. Run `python3 -B rebuild/validation/dogfood/rehearsal_self_test.py` through
+`validate focused` for real timeout/nonzero/EOF controls and diagnostic-persistence
+failure. Each MCP process keeps at most one private `*.request-failure.json`; it
+contains closed request metadata, never RPC arguments or arbitrary exception text.
+Final process streams and numeric exit/signal remain in the separate process
+manifest. Successful later execution cannot replace the first diagnostic.
+
 ## Scoped checks and comparable reruns
 
 Run `validate focused scoped-checks -- cargo test --manifest-path rebuild/Cargo.toml

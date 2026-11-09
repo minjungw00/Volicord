@@ -48,3 +48,37 @@ fn explicit_host_attachment_reuses_exact_source_but_cannot_execute_commands(
     );
     Ok(())
 }
+
+#[test]
+fn scoped_rejection_reports_predicate_and_bounded_basis_without_recording(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture::fixture()?;
+    let baseline = f.ops.canonical_basis(f.project)?;
+    let mut host = HostAdapter::new(volicord_operations::LocalOperations::new(
+        f.ops.layout().clone(),
+    ));
+    let mut request = fixture::recording(f.work, f.passed.source_id, true);
+    request.assertion_evidence = None;
+    request.outcome = "SECRET operator output".into();
+    request.next_step = "SECRET conversation".into();
+    let denied = call(
+        &mut host,
+        json!({"action":"record_check","project_id":f.project.to_string(),
+        "work_item_id":f.work.to_string(),"recording":request}),
+    );
+    assert_eq!(denied["result"]["isError"], true, "{denied}");
+    let text = serde_json::to_string(&denied)?;
+    assert!(text.contains("assertion_evidence_presence"), "{denied}");
+    assert!(text.contains("scoped_check_basis_rejected"), "{denied}");
+    assert!(text.contains(&f.work.to_string()), "{denied}");
+    assert!(!text.contains("SECRET"));
+    assert!(!text.contains("main.py"));
+    assert_eq!(baseline, f.ops.canonical_basis(f.project)?);
+    let accepted = call(
+        &mut host,
+        json!({"action":"record_check","project_id":f.project.to_string(),
+        "work_item_id":f.work.to_string(),"recording":fixture::recording(f.work,f.passed.source_id,true)}),
+    );
+    assert_eq!(accepted["result"]["isError"], false, "{accepted}");
+    Ok(())
+}
