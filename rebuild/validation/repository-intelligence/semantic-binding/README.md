@@ -12,9 +12,12 @@ Run `rebuild/scripts/validate focused semantic-binding-language-oracle -- node
 rebuild/validation/repository-intelligence/semantic-binding/receiver.ts` with a
 Node version that supports TypeScript type stripping. The Rust `semantic` test
 target runs the real production analyzer and independent per-language positive
-and negative expectations. Imported symbols and inferred external receivers
-remain explicitly unsupported; a resolved relative module edge grants neither
-symbol nor alias binding. Synthetic obsolete-producer injection is labelled in
+and negative expectations. `import_bindings` additionally checks explicit local
+Java package/public-static targets and TypeScript named relative exports. Binding
+needs its actual lexical import, verified file/declaration and supported module
+context; a relative module edge alone grants neither symbol nor alias binding.
+JPMS, inherited/altered TypeScript module lookup, alias/default/re-export and
+inferred external receivers remain explicitly unsupported. Synthetic obsolete-producer injection is labelled in
 the test and must never be presented as captured historical output.
 
 `object_scope.ts` independently executes object-method, object `this`, named

@@ -179,7 +179,7 @@ fn three_production_ecosystems_publish_normalized_semantic_relations() -> Result
                 CapabilityState::Available | CapabilityState::Partial
             ) && report.coverage.covered_relation_count > 0
                 && report.analyzer.as_ref().is_some_and(|analyzer| {
-                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "6"
+                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "7"
                 })
                 && report.provenance_class == ProvenanceClass::SemanticResult
         }));
@@ -1060,7 +1060,7 @@ fn superseded_semantic_producers_remain_historical_and_reanalysis_reuses_only_st
     ))?;
     let grounding = support::repository_grounding(0x71, 0x72)?;
     // Synthetic obsolete-producer fault injection, not a claimed historical run.
-    for obsolete_version in ["4", "5"] {
+    for obsolete_version in ["4", "5", "6"] {
         let mut obsolete = current.clone();
         for report in &mut obsolete.capabilities {
             if let Some(analyzer) = report

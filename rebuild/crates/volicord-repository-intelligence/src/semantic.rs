@@ -19,7 +19,7 @@ use std::fs;
 use std::path::Path;
 
 const SEMANTIC_ANALYZER_NAME: &str = "volicord-source-semantic-index";
-const SEMANTIC_ANALYZER_VERSION: &str = "6";
+const SEMANTIC_ANALYZER_VERSION: &str = "7";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CanonicalLinkSelector {
@@ -232,6 +232,7 @@ fn analyze_repository_semantics_inner(
             &bindings,
             &mut language_results,
             &analysis,
+            supported_import_context(&root, &analysis, &language),
         );
         add_type_relations(&language_facts, &bindings, &mut language_results, &analysis);
         let imports = language_facts
@@ -441,13 +442,87 @@ fn add_definition_relations(
     }
 }
 
+/// Only a supported observed module context can justify a cross-file binding.
+/// Unknown configuration never becomes permission to choose the sole spelling.
+fn supported_import_context(root: &Path, analysis: &AnalysisSnapshot, language: &Language) -> bool {
+    if *language == Language::Java {
+        // JPMS exports/readability and multi-module selection are not inferred.
+        return !analysis.inventory.entries.iter().any(|entry| {
+            Path::new(&entry.area.path)
+                .file_name()
+                .is_some_and(|n| n == "module-info.java")
+        });
+    }
+    if *language != Language::TypeScript {
+        return false;
+    }
+    for entry in &analysis.inventory.entries {
+        let name = Path::new(&entry.area.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        if !(name.starts_with("tsconfig") && name.ends_with(".json")) {
+            continue;
+        }
+        let Ok(bytes) = fs::read(root.join(&entry.area.path)) else {
+            return false;
+        };
+        if !crate::inventory::matches_observed_content(entry.content_sha256.as_deref(), &bytes) {
+            return false;
+        }
+        let Ok(config) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            return false;
+        };
+        let Some(config) = config.as_object() else {
+            return false;
+        };
+        if config.contains_key("extends") || config.contains_key("references") {
+            return false;
+        }
+        if let Some(options) = config.get("compilerOptions") {
+            let Some(options) = options.as_object() else {
+                return false;
+            };
+            if [
+                "moduleSuffixes",
+                "rootDirs",
+                "paths",
+                "baseUrl",
+                "noResolve",
+            ]
+            .iter()
+            .any(|key| options.contains_key(*key))
+            {
+                return false;
+            }
+            if options.get("moduleResolution").is_some_and(|value| {
+                value.as_str().is_none_or(|v| {
+                    !matches!(
+                        v.to_ascii_lowercase().as_str(),
+                        "node" | "node10" | "node16" | "nodenext" | "bundler" | "classic"
+                    )
+                })
+            }) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 fn add_structural_semantics(
     facts: &[&crate::StructuralFact],
     entities: &BTreeMap<String, &CodeEntity>,
     bindings: &BTreeMap<&str, crate::bindings::BindingFile<'_>>,
     results: &mut Vec<SemanticAnalysisResult>,
     analysis: &AnalysisSnapshot,
+    supported_import_context: bool,
 ) {
+    let imports = crate::bindings::imports::ImportIndex::new(
+        bindings,
+        &analysis.inventory.entries,
+        supported_import_context,
+    );
     for fact in facts {
         for relation in &fact.relations {
             match relation.kind {
@@ -458,6 +533,7 @@ fn add_structural_semantics(
                         relation.supporting_range.as_ref(),
                         false,
                         bindings,
+                        &imports,
                     );
                     let semantic_target = target.clone();
                     results.push(make_result(
@@ -487,6 +563,7 @@ fn add_structural_semantics(
                         relation.supporting_range.as_ref(),
                         true,
                         bindings,
+                        &imports,
                     );
                     let range =
                         semantic_range(relation.supporting_range.as_ref(), &fact.entity.language);
@@ -510,7 +587,13 @@ fn add_structural_semantics(
                     }
                 }
                 StructuralRelationKind::Imports => {
-                    let target = resolve_import(&fact.entity, &relation.target, facts, analysis);
+                    let target = resolve_import(
+                        &fact.entity,
+                        &relation.target,
+                        facts,
+                        analysis,
+                        supported_import_context,
+                    );
                     results.push(make_result(
                         analysis,
                         &fact.entity,
@@ -599,10 +682,11 @@ fn bound_target(
     range: Option<&SourceRange>,
     call: bool,
     bindings: &BTreeMap<&str, crate::bindings::BindingFile<'_>>,
+    imports: &crate::bindings::imports::ImportIndex,
 ) -> RelationTarget {
     bindings
         .get(source.area.path.as_str())
-        .map(|binding| binding.target(source, target, range, call))
+        .map(|binding| binding.target(source, target, range, call, imports, bindings))
         .unwrap_or_else(|| {
             let display = match target {
                 RelationTarget::Unresolved(u) => u.display.clone(),
@@ -628,12 +712,13 @@ fn resolve_import(
     target: &RelationTarget,
     facts: &[&crate::StructuralFact],
     analysis: &AnalysisSnapshot,
+    supported_context: bool,
 ) -> RelationTarget {
     let RelationTarget::Unresolved(unresolved) = target else {
         return target.clone();
     };
     let display = unresolved.display.trim_matches(['"', '\'']);
-    if source.language == Language::TypeScript && display.starts_with('.') {
+    if supported_context && source.language == Language::TypeScript && display.starts_with('.') {
         let parent = Path::new(&source.area.path)
             .parent()
             .unwrap_or_else(|| Path::new(""));
@@ -672,8 +757,9 @@ fn resolve_import(
         display: display.to_owned(),
         language: Some(source.language.clone()),
         locator_hint: Some(source.area.path.clone()),
-        reason: "dependency is external, wildcard-based, or absent from the local snapshot"
-            .to_owned(),
+        reason:
+            "dependency is external, wildcard-based, absent, or its module context is unsupported"
+                .to_owned(),
     })
 }
 

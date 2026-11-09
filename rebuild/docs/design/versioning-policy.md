@@ -158,7 +158,8 @@ request-owned scratch이고 durable cache나 새 body retention이 아니다. Pr
 path는 하나이며 bulk/stream JSON reconstruction은 differential test oracle에만 남는다.
 Publisher bytes, canonical/Analysis version, cache header와 history disposition은 바뀌지 않는다.
 
-Source-semantic analyzer `6` changes binding selection and per-occurrence relation identity,
+Source-semantic analyzer `7` adds explicit verified local Java package/static-owner and
+TypeScript named-export bindings to the earlier lexical binding selection and per-occurrence identity,
 not the Analysis Snapshot format `5` representation. Producer identity participates in new
 Analysis identity and repository-observation equivalence. Structural incremental reuse does
 not reuse semantic targets: semantics is recomputed against current verified source and the
@@ -168,6 +169,8 @@ read-side Search/grounding/Projection and full/metadata repository comparison ma
 semantic producers stale and require explicit reanalysis. Persisted historical bytes,
 canonical records, and independently retained publications are never relabelled or rewritten.
 Read-model target/provenance/uncertainty fields add no new durable format or publication seal.
+Version `6` results retain their original unresolved/import limitations; they are not
+retroactively resolved. The existing superseded-producer read boundary includes `6`.
 
 ## 6. Derived Index version
 

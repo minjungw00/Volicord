@@ -2,6 +2,24 @@
 
 ## Status
 
+Current binding integration correction: the clean `bd25e3bc8` gate's Final failed
+`curated_semantic_queries_keep_per_ecosystem_precision_and_recall` with Java precision
+0. The original queries require explicit imported implementation/static calls in
+Java and named relative imports in TypeScript. Analyzer 6 correctly rejected global
+name fallback but did not supply those positive bindings. The unchanged corpus,
+query set and 1.0 precision/recall thresholds remain the acceptance input; this is
+not an authorization to reduce recall or relabel unsupported results as resolved.
+
+Analyzer 7 verifies actual lexical import binding, exact package/module, directly
+declared public/exported target, value/type authority, receiver shadowing and
+unambiguous supported arity. Alias, wildcard, default/re-export, inaccessible,
+inferred and ambiguous cases stay unresolved. `--test import_bindings` independently
+checks the positive paths and negative package/module/access/receiver cases through
+public Search and grounding. Existing semantic controls preserve unrelated unique
+declarations, console receivers, three ecosystems, historical producers and ranges.
+Current focused success requires a fresh clean-candidate gate; the failed original
+capsule/archive remains at ignored `20261109T124359.699307Z-v11-gate-98ptswc6`.
+
 Passed for the maintained seven-language Tier 1 corpus and for the three
 revision-pinned Tier 2 public repositories executed on 2026-08-23. This result
 is bounded to the declared source scopes, current Production adapters, and the

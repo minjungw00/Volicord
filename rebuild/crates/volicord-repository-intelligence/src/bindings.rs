@@ -6,6 +6,7 @@ use crate::{
 };
 use std::collections::BTreeMap;
 use tree_sitter::{Node, Parser, Tree};
+pub(crate) mod imports;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Namespace {
@@ -450,6 +451,8 @@ impl<'a> BindingFile<'a> {
         target: &RelationTarget,
         range: Option<&SourceRange>,
         call: bool,
+        imports: &imports::ImportIndex,
+        files: &BTreeMap<&str, BindingFile<'_>>,
     ) -> RelationTarget {
         let RelationTarget::Unresolved(unresolved) = target else {
             return self.unresolved(
@@ -492,6 +495,7 @@ impl<'a> BindingFile<'a> {
                 arity,
                 call,
             )
+            .or_else(|| imports.resolve(self, files, at, display, arity, call))
         });
         resolved.map(RelationTarget::ResolvedEntity).unwrap_or_else(|| self.unresolved(source, display, "binding is absent, shadowed, ambiguous, external, or unsupported; receiver/import/lexical scope cannot justify a unique target"))
     }

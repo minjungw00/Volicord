@@ -407,7 +407,7 @@ in-process source-semantic symbol index를 둔다. 이 선택은 compiler/LSP co
   Source-semantic analyzer version `2`는 이름/type/override 후보의 첫 항목을
   임의로 선택하지 않는다. Observation-bound identity의 정렬 순서는 해석 근거가
   아니며, 중복 override 후보로는 확정된 override relation을 만들지 않는다.
-- Source-semantic analyzer version `6`는 같은 파일의 parser-owned lexical namespace,
+- Source-semantic analyzer version `7`는 같은 파일의 parser-owned lexical namespace,
   receiver owner와 exact declaration identity를 binding 근거로 확인한다. 이름·유일성·
   arity·existing entity·valid envelope만으로 다른 scope/module/package target을 확정하지 않는다.
   TypeScript의 bare lexical function, instance `this`/class-static member, Java의
@@ -416,8 +416,20 @@ in-process source-semantic symbol index를 둔다. 이 선택은 compiler/LSP co
   Object-literal method는 lexical declaration이 아니며 named function/class expression의
   own scope와 `this`의 실제 enclosing class body를 구분한다. Unsupported object receiver는
   바깥 class나 같은 이름의 function으로 승격하지 않는다.
-  Import alias, external receiver, inferred receiver type, cross-file symbol lookup,
-  wildcard와 지원하지 않는 pattern은 unresolved reason/diagnostic/uncertainty로 남는다.
+  명시적인 Java package import는 verified local file의 유일한 public top-level type과
+  그 type이 직접 선언한 public static member에만 연결한다. TypeScript named import는
+  정규화된 유일 local `.ts` module의 직접 exported declaration에만 연결한다.
+  두 경로 모두 실제 lexical import binding과 shadowing, namespace, access, arity를
+  확인하며 type-only import는 value call authority가 아니다. 다른 package의 같은 이름,
+  중복 qualified type, non-exported/private declaration이나 competing runtime/TSX file은
+  target을 만들지 않는다. Import alias, namespace/default/re-export, external receiver,
+  inferred receiver type, 나머지 cross-file lookup, wildcard와 지원하지 않는 pattern은
+  unresolved reason/diagnostic/uncertainty로 남는다.
+  JPMS와 inherited/custom TypeScript lookup context는 현재 import binding 범위 밖이다.
+  Observed tsconfig bytes/hash를 확인할 수 없거나 configuration이 해석 불가능하면,
+  또는 `extends`, project references, module suffix/root/path overrides나 unknown
+  resolver가 있으면 symbol과 relative module edge 모두 unresolved로 남긴다. 기존
+  같은 파일 lexical binding은 계속 사용할 수 있다.
   Relative TypeScript module edge는 정규화된 유일 `.ts` file basis와 competing runtime/
   TSX file 부재를 요구하며, module edge가 imported symbol binding을 증명하지 않는다.
   Override는 bound owner의 supported parameter/return signature가 일치할 때만 publish한다.
