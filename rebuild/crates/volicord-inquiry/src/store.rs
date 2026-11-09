@@ -16,7 +16,7 @@ use volicord_context::{
     QuestionDraft, QuestionMateriality, QuestionResearchState, SourceId, Store as ContextStore,
     SystemClock, SystemIdGenerator,
 };
-use volicord_repository_intelligence::AnalysisSnapshot;
+use volicord_repository_intelligence::RepositoryChangeView;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
 pub const CANDIDATE_SCHEMA_VERSION: u32 = 24;
@@ -84,8 +84,10 @@ impl CandidateStore {
         &mut self,
         draft: CandidateDraft,
         canonical: &CanonicalReadBasis,
-        baseline: &AnalysisSnapshot,
+        baseline: &dyn RepositoryChangeView,
     ) -> Result<SubmissionOutcome, Error> {
+        let baseline_view = baseline.change_basis();
+        let baseline = baseline_view.as_ref();
         if draft.kind != CandidateKind::EngineeringChoiceDiscovery
             || canonical.project.id != draft.project_id
             || baseline.project.identity() != draft.project_id
@@ -119,10 +121,14 @@ impl CandidateStore {
         &mut self,
         mut draft: CandidateDraft,
         canonical: &CanonicalReadBasis,
-        baseline: &AnalysisSnapshot,
-        current: &AnalysisSnapshot,
+        baseline: &dyn RepositoryChangeView,
+        current: &dyn RepositoryChangeView,
         discovery_candidate: &CandidateRecord,
     ) -> Result<SubmissionOutcome, Error> {
+        let baseline_view = baseline.change_basis();
+        let baseline = baseline_view.as_ref();
+        let current_view = current.change_basis();
+        let current = current_view.as_ref();
         if draft.kind != CandidateKind::MaterialityReview
             || canonical.project.id != draft.project_id
             || baseline.project.identity() != draft.project_id
@@ -187,11 +193,15 @@ impl CandidateStore {
         project_id: ProjectId,
         candidate_id: CandidateId,
         canonical: &CanonicalReadBasis,
-        baseline: &AnalysisSnapshot,
-        current: &AnalysisSnapshot,
+        baseline: &dyn RepositoryChangeView,
+        current: &dyn RepositoryChangeView,
         discovery_candidate: &CandidateRecord,
         revision: crate::MaterialityReviewRevision,
     ) -> Result<CandidateRecord, Error> {
+        let baseline_view = baseline.change_basis();
+        let baseline = baseline_view.as_ref();
+        let current_view = current.change_basis();
+        let current = current_view.as_ref();
         validate_text("Materiality Review rationale", &revision.rationale)?;
         if canonical.project.id != project_id
             || baseline.project.identity() != project_id
@@ -303,12 +313,16 @@ impl CandidateStore {
     pub fn bind_executable_work_scope(
         &mut self,
         candidate_id: CandidateId,
-        baseline: &AnalysisSnapshot,
-        current: &AnalysisSnapshot,
+        baseline: &dyn RepositoryChangeView,
+        current: &dyn RepositoryChangeView,
         mut scope: ApplicabilityScope,
         mut coupled_artifact_review: CoupledArtifactReview,
         canonical: &CanonicalReadBasis,
     ) -> Result<CandidateRecord, Error> {
+        let baseline_view = baseline.change_basis();
+        let baseline = baseline_view.as_ref();
+        let current_view = current.change_basis();
+        let current = current_view.as_ref();
         let project_id = canonical.project.id;
         if baseline.project.identity() != project_id || current.project.identity() != project_id {
             return Err(Error::new(
@@ -986,9 +1000,11 @@ impl CandidateStore {
         project_id: ProjectId,
         candidate_id: CandidateId,
         canonical: &CanonicalReadBasis,
-        analysis: &AnalysisSnapshot,
+        analysis: &dyn RepositoryChangeView,
         basis: RepositoryResearchBasis,
     ) -> Result<CandidateRecord, Error> {
+        let analysis_view = analysis.change_basis();
+        let analysis = analysis_view.as_ref();
         let repository_snapshot = analysis.repository_snapshot.to_string();
         let analysis_snapshot = analysis.identity.to_string();
         if canonical.project.id != project_id
@@ -3061,9 +3077,13 @@ fn detect_late_work_authority_revisions(
     existing: &MaterialityReview,
     revised_learning_participation: &crate::LearningParticipation,
     revised_dimensions: &[crate::MaterialityDimension],
-    baseline: &AnalysisSnapshot,
-    current: &AnalysisSnapshot,
+    baseline: &dyn RepositoryChangeView,
+    current: &dyn RepositoryChangeView,
 ) -> Result<Vec<LateWorkAuthorityRevision>, Error> {
+    let baseline_view = baseline.change_basis();
+    let baseline = baseline_view.as_ref();
+    let current_view = current.change_basis();
+    let current = current_view.as_ref();
     let changed_paths = match crate::attribute_repository_changes(
         baseline.project.identity(),
         &crate::RepositoryWorkBasis {
@@ -3246,8 +3266,10 @@ fn validate_learning_value_revisions(
     revised_dimensions: &[crate::MaterialityDimension],
     requests: &[crate::LearningValueRevisionRequest],
     canonical: &CanonicalReadBasis,
-    current: &AnalysisSnapshot,
+    current: &dyn RepositoryChangeView,
 ) -> Result<Vec<crate::LearningValueRevision>, Error> {
+    let current_view = current.change_basis();
+    let current = current_view.as_ref();
     let mut indexed = std::collections::BTreeMap::new();
     for request in requests {
         validate_text(

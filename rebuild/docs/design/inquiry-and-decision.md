@@ -987,6 +987,13 @@ bounded repository delta를 사용한다. Baseline dirty path는 별도 pre-exis
 missing, stale, freshness-unknown, wrong-Project 또는 incompatible-source이면 attribution을
 거부하며 current state나 post-work snapshot으로 추정하지 않는다.
 
+Inventory-based attribution과 Work authority 검증은 exact retained Analysis Snapshot의
+identity, Source, inventory, repository worktree와 freshness를 보존한 typed change view를
+받을 수 있다. Full snapshot과 이 view는 같은 판정을 제공하며, view는 graph completeness나
+semantic resolution을 인증하지 않는다. Storage reader는 original manifest/blob integrity와
+binding을 먼저 확인한다. 이는 baseline 교체, freshness 추정, evidence omission 또는
+Checkpoint admission 완화를 허용하지 않는다.
+
 같은 operation은 current Goal과 exact baseline에 bind된 retained Materiality Review를 찾아
 current changed path/Decision applicability로 work authority를 다시 평가한다. Missing review,
 wrong Goal/baseline, late first review, unresolved user-owned dimension, active pending Learning

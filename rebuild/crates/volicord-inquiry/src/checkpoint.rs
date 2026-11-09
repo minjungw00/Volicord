@@ -7,16 +7,32 @@ use volicord_context::{
     UserReviewFact, UserReviewState, VerificationFact, VerificationState, WorkState,
 };
 use volicord_repository_intelligence::{
-    AnalysisSnapshot, CanonicalSourceBasis, EntryKind, FreshnessState, InventoryClassification,
+    CanonicalSourceBasis, EntryKind, FreshnessState, InventoryClassification,
+    RepositoryChangeBasis, RepositoryChangeView,
 };
 
 #[derive(Clone, Debug)]
 pub struct RepositoryWorkBasis<'a> {
-    pub baseline: &'a AnalysisSnapshot,
-    pub current: &'a AnalysisSnapshot,
+    pub baseline: &'a dyn RepositoryChangeView,
+    pub current: &'a dyn RepositoryChangeView,
     /// Paths known dirty before this bounded work from an existing canonical
     /// Source/observation. They are evidence, not inferred ownership.
     pub pre_existing_dirty_paths: Vec<String>,
+}
+
+struct ScopedWorkBasis<'a> {
+    baseline: std::borrow::Cow<'a, RepositoryChangeBasis>,
+    current: std::borrow::Cow<'a, RepositoryChangeBasis>,
+    pre_existing_dirty_paths: Vec<String>,
+}
+impl RepositoryWorkBasis<'_> {
+    fn scoped(&self) -> ScopedWorkBasis<'_> {
+        ScopedWorkBasis {
+            baseline: self.baseline.change_basis(),
+            current: self.current.change_basis(),
+            pre_existing_dirty_paths: self.pre_existing_dirty_paths.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -48,6 +64,7 @@ pub fn compatibility_verification_notes(
     compatibility_required: bool,
     terminal: bool,
 ) -> Result<Vec<Vec<String>>, crate::Error> {
+    let repository = repository.scoped();
     let mut notes = vec![Vec::new(); states.len()];
     let CheckpointVerificationBasis::BehaviorPreserving {
         surfaces,
@@ -166,6 +183,7 @@ pub fn attribute_repository_changes(
     project_id: ProjectId,
     basis: &RepositoryWorkBasis<'_>,
 ) -> ChangeAttribution {
+    let basis = basis.scoped();
     let mut pre_existing = basis.pre_existing_dirty_paths.clone();
     pre_existing.sort();
     pre_existing.dedup();
@@ -193,8 +211,8 @@ pub fn attribute_repository_changes(
                 .to_owned(),
         };
     }
-    let baseline = inventory_fingerprints(basis.baseline);
-    let current = inventory_fingerprints(basis.current);
+    let baseline = inventory_fingerprints(&basis.baseline);
+    let current = inventory_fingerprints(&basis.current);
     let changed = baseline
         .keys()
         .chain(current.keys())
@@ -207,7 +225,7 @@ pub fn attribute_repository_changes(
     }
 }
 
-fn inventory_fingerprints(snapshot: &AnalysisSnapshot) -> BTreeMap<String, Option<String>> {
+fn inventory_fingerprints(snapshot: &RepositoryChangeBasis) -> BTreeMap<String, Option<String>> {
     snapshot
         .inventory
         .entries
@@ -276,6 +294,10 @@ pub fn evaluate_checkpoint_candidate(
     canonical: &CanonicalReadBasis,
     candidate: CheckpointCandidate<'_>,
 ) -> CheckpointEvaluation {
+    let repository_work = candidate
+        .repository_work
+        .as_ref()
+        .map(RepositoryWorkBasis::scoped);
     if canonical.project.id != candidate.project_id {
         return reject(
             CheckpointRejection::WrongProject,
@@ -294,7 +316,7 @@ pub fn evaluate_checkpoint_candidate(
         .repository_work
         .as_ref()
         .map(|basis| attribute_repository_changes(candidate.project_id, basis));
-    if let Some(basis) = &candidate.repository_work {
+    if let Some(basis) = &repository_work {
         let repository_rejection = if basis.baseline.project.identity() != candidate.project_id
             || basis.current.project.identity() != candidate.project_id
             || basis.baseline.repository_source.project() != candidate.project_id
@@ -345,12 +367,10 @@ pub fn evaluate_checkpoint_candidate(
         Some(ChangeAttribution::Attributed { changed_paths, .. }) => changed_paths.clone(),
         _ => Vec::new(),
     };
-    let baseline_repository_source = candidate
-        .repository_work
+    let baseline_repository_source = repository_work
         .as_ref()
         .map(|basis| basis.baseline.repository_source.identity());
-    let current_repository_source = candidate
-        .repository_work
+    let current_repository_source = repository_work
         .as_ref()
         .map(|basis| basis.current.repository_source.identity());
     for source_id in &candidate.supporting_sources {
@@ -363,7 +383,7 @@ pub fn evaluate_checkpoint_candidate(
             return reject(error.reason, error.detail, attribution);
         }
     }
-    if let Some(repository_work) = &candidate.repository_work {
+    if let Some(repository_work) = &repository_work {
         for (reference, semantic_use) in [
             (
                 &repository_work.baseline.repository_source,

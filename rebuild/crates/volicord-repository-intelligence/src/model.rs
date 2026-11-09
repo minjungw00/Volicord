@@ -400,6 +400,89 @@ impl From<&AnalysisSnapshot> for AnalysisMetadata {
     }
 }
 
+/// Exact snapshot fields used for repository change attribution. This projection
+/// carries no graph or structural/semantic coverage claim.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
+#[serde(try_from = "RepositoryChangeBasisWire")]
+pub struct RepositoryChangeBasis {
+    pub format_kind: String,
+    pub format_version: u32,
+    pub identity: AnalysisSnapshotId,
+    pub repository_snapshot: RepositorySnapshotId,
+    pub project: CanonicalProjectRef,
+    pub repository_source: CanonicalSourceRef,
+    pub repository_worktree: RepositoryWorktreeObservation,
+    pub inventory: InventorySnapshot,
+    pub generated_at_unix_micros: i64,
+    pub freshness: FreshnessBasis,
+}
+
+#[derive(Deserialize)]
+struct RepositoryChangeBasisWire {
+    format_kind: String,
+    format_version: u32,
+    identity: AnalysisSnapshotId,
+    repository_snapshot: RepositorySnapshotId,
+    project: CanonicalProjectRef,
+    repository_source: CanonicalSourceRef,
+    repository_worktree: RepositoryWorktreeObservation,
+    inventory: InventorySnapshot,
+    generated_at_unix_micros: i64,
+    freshness: FreshnessBasis,
+}
+
+impl TryFrom<RepositoryChangeBasisWire> for RepositoryChangeBasis {
+    type Error = String;
+    fn try_from(wire: RepositoryChangeBasisWire) -> Result<Self, Self::Error> {
+        if wire.format_kind != ANALYSIS_SNAPSHOT_KIND
+            || wire.format_version != ANALYSIS_SNAPSHOT_FORMAT_VERSION
+        {
+            return Err("unsupported repository change basis format".into());
+        }
+        validate_repository_worktree(&wire.repository_worktree)?;
+        Ok(Self {
+            format_kind: wire.format_kind,
+            format_version: wire.format_version,
+            identity: wire.identity,
+            repository_snapshot: wire.repository_snapshot,
+            project: wire.project,
+            repository_source: wire.repository_source,
+            repository_worktree: wire.repository_worktree,
+            inventory: wire.inventory,
+            generated_at_unix_micros: wire.generated_at_unix_micros,
+            freshness: wire.freshness,
+        })
+    }
+}
+
+/// Inventory-based consumers accept a full snapshot or its exact scoped view.
+pub trait RepositoryChangeView: fmt::Debug {
+    fn change_basis(&self) -> std::borrow::Cow<'_, RepositoryChangeBasis>;
+}
+
+impl RepositoryChangeView for RepositoryChangeBasis {
+    fn change_basis(&self) -> std::borrow::Cow<'_, RepositoryChangeBasis> {
+        std::borrow::Cow::Borrowed(self)
+    }
+}
+
+impl RepositoryChangeView for AnalysisSnapshot {
+    fn change_basis(&self) -> std::borrow::Cow<'_, RepositoryChangeBasis> {
+        std::borrow::Cow::Owned(RepositoryChangeBasis {
+            format_kind: self.format_kind.clone(),
+            format_version: self.format_version,
+            identity: self.identity,
+            repository_snapshot: self.repository_snapshot,
+            project: self.project,
+            repository_source: self.repository_source.clone(),
+            repository_worktree: self.repository_worktree.clone(),
+            inventory: self.inventory.clone(),
+            generated_at_unix_micros: self.generated_at_unix_micros,
+            freshness: self.freshness.clone(),
+        })
+    }
+}
+
 #[derive(Deserialize)]
 struct AnalysisSnapshotWire {
     format_kind: String,

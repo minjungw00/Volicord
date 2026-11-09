@@ -83,8 +83,8 @@ use volicord_projections::{
 use volicord_repository_intelligence::{
     analyze_repository_semantics, AnalysisMetadata, AnalysisSnapshot, AnalysisSnapshotId,
     CanonicalGrounding, CapabilityState, EntryKind, InventoryClassification, InventoryEntry,
-    InventoryRequest, RepositoryWorktreeObservation, SemanticAnalysisRequest,
-    StructuralAnalysisRequest,
+    InventoryRequest, RepositoryChangeBasis, RepositoryChangeView, RepositoryWorktreeObservation,
+    SemanticAnalysisRequest, StructuralAnalysisRequest,
 };
 
 pub struct LocalOperations {
@@ -1112,7 +1112,8 @@ impl LocalOperations {
             .find(|item| item.id == goal_id)
             .ok_or_else(|| Error::new("current Goal is unavailable"))?
             .clone();
-        let baseline = self.load_analysis_snapshot(project_id, baseline_analysis_snapshot_id)?;
+        let baseline =
+            self.load_repository_change_basis(project_id, baseline_analysis_snapshot_id)?;
         self.validate_exploratory_baseline_continuity(project_id, goal_id, baseline.identity)?;
         let goal_sources = canonical
             .sources
@@ -1164,8 +1165,8 @@ impl LocalOperations {
         draft: EngineeringChoiceDiscoveryDraft,
     ) -> Result<EngineeringChoiceDiscoveryOutcome, Error> {
         self.initialize_runtime()?;
-        let baseline =
-            self.load_analysis_snapshot(draft.project_id, draft.baseline_analysis_snapshot_id)?;
+        let baseline = self
+            .load_repository_change_basis(draft.project_id, draft.baseline_analysis_snapshot_id)?;
         let _mutation = self.layout.acquire_mutation_lock()?;
         self.validate_exploratory_baseline_continuity(
             draft.project_id,
@@ -1271,8 +1272,8 @@ impl LocalOperations {
         draft: MaterialityReviewDraft,
     ) -> Result<MaterialityReviewOutcome, Error> {
         self.initialize_runtime()?;
-        let baseline =
-            self.load_analysis_snapshot(draft.project_id, draft.baseline_analysis_snapshot_id)?;
+        let baseline = self
+            .load_repository_change_basis(draft.project_id, draft.baseline_analysis_snapshot_id)?;
         let excluded_paths = baseline
             .inventory
             .entries
@@ -1286,11 +1287,11 @@ impl LocalOperations {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        let current = self
-            .analyze_with_previous(draft.project_id, excluded_paths, Some(&baseline))?
-            .value
-            .ok_or_else(|| Error::new("Materiality Review analysis produced no usable snapshot"))?
-            .analysis;
+        let current = self.analyze_repository_change_basis(
+            draft.project_id,
+            excluded_paths,
+            "Materiality Review analysis produced no usable snapshot",
+        )?;
         let _mutation = self.layout.acquire_mutation_lock()?;
         self.validate_exploratory_baseline_continuity(
             draft.project_id,
@@ -1444,8 +1445,8 @@ impl LocalOperations {
             .map_err(|error| {
                 Error::with_source("Engineering Choice Discovery lookup failed", error)
             })?;
-        let baseline =
-            self.load_analysis_snapshot(draft.project_id, review.baseline_analysis_snapshot_id)?;
+        let baseline = self
+            .load_repository_change_basis(draft.project_id, review.baseline_analysis_snapshot_id)?;
         let excluded_paths = baseline
             .inventory
             .entries
@@ -1459,11 +1460,11 @@ impl LocalOperations {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        let current = self
-            .analyze_with_previous(draft.project_id, excluded_paths, Some(&baseline))?
-            .value
-            .ok_or_else(|| Error::new("revised Materiality Review analysis produced no snapshot"))?
-            .analysis;
+        let current = self.analyze_repository_change_basis(
+            draft.project_id,
+            excluded_paths,
+            "revised Materiality Review analysis produced no snapshot",
+        )?;
         let _mutation = self.layout.acquire_mutation_lock()?;
         let canonical = self.canonical_basis(draft.project_id)?;
         let record = CandidateStore::open(self.layout.candidate_store())
@@ -1528,7 +1529,8 @@ impl LocalOperations {
                 "executable work scope Goal or baseline basis does not match",
             ));
         }
-        let baseline = self.load_analysis_snapshot(project_id, baseline_analysis_snapshot_id)?;
+        let baseline =
+            self.load_repository_change_basis(project_id, baseline_analysis_snapshot_id)?;
         let excluded_paths = baseline
             .inventory
             .entries
@@ -1545,7 +1547,7 @@ impl LocalOperations {
         // The Review already published a fresh, Source-bound Analysis Snapshot.
         // A scope inspection immediately after Review needs a new publication only
         // when the repository observation or Git worktree state has changed.
-        let reviewed = self.load_analysis_snapshot(
+        let reviewed = self.load_repository_change_basis(
             project_id,
             existing_review.current_review_analysis_snapshot_id,
         );
@@ -1570,18 +1572,18 @@ impl LocalOperations {
             if same_repository && same_worktree {
                 reviewed
             } else {
-                self.analyze_with_previous(project_id, excluded_paths, Some(&baseline))?
-                    .value
-                    .ok_or_else(|| {
-                        Error::new("executable-scope analysis produced no usable snapshot")
-                    })?
-                    .analysis
+                self.analyze_repository_change_basis(
+                    project_id,
+                    excluded_paths,
+                    "executable-scope analysis produced no usable snapshot",
+                )?
             }
         } else {
-            self.analyze_with_previous(project_id, excluded_paths, Some(&baseline))?
-                .value
-                .ok_or_else(|| Error::new("executable-scope analysis produced no usable snapshot"))?
-                .analysis
+            self.analyze_repository_change_basis(
+                project_id,
+                excluded_paths,
+                "executable-scope analysis produced no usable snapshot",
+            )?
         };
         let _mutation = self.layout.acquire_mutation_lock()?;
         let canonical = self.canonical_basis(project_id)?;
@@ -3621,8 +3623,8 @@ impl LocalOperations {
             }
         }
 
-        let baseline =
-            self.load_analysis_snapshot(draft.project_id, draft.baseline_analysis_snapshot_id)?;
+        let baseline = self
+            .load_repository_change_basis(draft.project_id, draft.baseline_analysis_snapshot_id)?;
         let excluded_paths = baseline
             .inventory
             .entries
@@ -3636,14 +3638,14 @@ impl LocalOperations {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        let current_result =
-            self.analyze_with_previous(draft.project_id, excluded_paths, Some(&baseline))?;
-        let current_outcome = current_result.value.ok_or_else(|| {
-            Error::new("current repository analysis completed without a usable snapshot")
-        })?;
+        let current_analysis = self.analyze_repository_change_basis(
+            draft.project_id,
+            excluded_paths,
+            "current repository analysis completed without a usable snapshot",
+        )?;
         let repository_work = RepositoryWorkBasis {
             baseline: &baseline,
-            current: &current_outcome.analysis,
+            current: &current_analysis,
             pre_existing_dirty_paths: baseline.repository_worktree.dirty_paths().to_vec(),
         };
         let (pre_existing_dirty_paths, changed_paths) =
@@ -3894,9 +3896,9 @@ impl LocalOperations {
             checkpoint_revision: checkpoint.revision,
             goal_context_id: draft.goal_context_id,
             baseline_analysis_snapshot_id: baseline.identity,
-            current_analysis_snapshot_id: current_outcome.analysis.identity,
+            current_analysis_snapshot_id: current_analysis.identity,
             baseline_repository_snapshot_id: baseline.repository_snapshot,
-            current_repository_snapshot_id: current_outcome.analysis.repository_snapshot,
+            current_repository_snapshot_id: current_analysis.repository_snapshot,
             pre_existing_dirty_paths,
             changed_paths: checkpoint.changed_paths,
             applied_decisions: checkpoint.applied_decisions,
@@ -4369,6 +4371,41 @@ impl LocalOperations {
             Ok(vec![value])
         })();
         (result, decodes)
+    }
+
+    fn analyze_repository_change_basis(
+        &self,
+        project_id: ProjectId,
+        excluded_paths: Vec<String>,
+        unavailable: &'static str,
+    ) -> Result<RepositoryChangeBasis, Error> {
+        // The persisted snapshot remains complete. Only the observation fields
+        // needed by Work consumers survive this request-owned analysis result.
+        Ok(self
+            .analyze(project_id, excluded_paths)?
+            .value
+            .ok_or_else(|| Error::new(unavailable))?
+            .analysis
+            .change_basis()
+            .into_owned())
+    }
+
+    fn load_repository_change_basis(
+        &self,
+        project_id: ProjectId,
+        analysis_id: AnalysisSnapshotId,
+    ) -> Result<RepositoryChangeBasis, Error> {
+        let path = self
+            .layout
+            .analysis_project_dir(project_id)
+            .join(format!("{analysis_id}.json"));
+        let value = crate::analysis_io::read_repository_change_basis(&path)?;
+        if value.identity != analysis_id || value.project.identity() != project_id {
+            return Err(Error::new(
+                "baseline Analysis Snapshot identity or Project binding is incompatible",
+            ));
+        }
+        Ok(value)
     }
 
     pub(crate) fn load_analysis_snapshot(
@@ -5685,6 +5722,152 @@ mod performance_tests {
             .structural_facts
             .iter()
             .any(|fact| fact.entity.display_name.as_deref() == Some("b")));
+        Ok(())
+    }
+
+    /// The default is a disposable polyglot control. Resource qualification may
+    /// supply an explicitly prepared Runtime copy bound to a frozen repository;
+    /// this is a focused Work-analysis phase, never an official V11 replay.
+    #[test]
+    fn work_refresh_releases_graphs_and_preserves_complete_retained_history(
+    ) -> Result<(), Box<dyn StdError>> {
+        use serde::Serialize;
+        use sha2::{Digest, Sha256};
+        use std::io::Write;
+        struct HashWriter(Sha256);
+        impl Write for HashWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.update(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        fn fingerprint(value: &impl Serialize) -> Result<String, serde_json::Error> {
+            let mut writer = HashWriter(Sha256::new());
+            serde_json::to_writer(&mut writer, value)?;
+            Ok(format!("{:x}", writer.0.finalize()))
+        }
+        fn memory(stage: &str) {
+            if let Ok(status) = fs::read_to_string("/proc/self/status") {
+                let values = status
+                    .lines()
+                    .filter(|line| line.starts_with("VmRSS:") || line.starts_with("VmHWM:"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                eprintln!("work_resource stage={stage} {values}");
+            }
+        }
+        let home = tempfile::tempdir()?;
+        let (operations, project, baseline_id) = if let Some(path) =
+            std::env::var_os("VOLICORD_WORK_RESOURCE_INPUT")
+        {
+            let input: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+            assert_eq!(input["fixture_kind"], "disposable_work_refresh");
+            let runtime = input["runtime"].as_str().ok_or("runtime")?;
+            let original = input["source_runtime"].as_str().ok_or("source Runtime")?;
+            assert_ne!(fs::canonicalize(runtime)?, fs::canonicalize(original)?);
+            let project =
+                ProjectId::from_bytes(parse_identity(input["project"].as_str().ok_or("project")?)?);
+            let baseline =
+                AnalysisSnapshotId::from_hex(input["baseline"].as_str().ok_or("baseline")?)?;
+            (
+                LocalOperations::new(RuntimeLayout::new(runtime)?),
+                project,
+                baseline,
+            )
+        } else {
+            let repository = home.path().join("repository");
+            fs::create_dir(&repository)?;
+            for (path, body) in [
+                ("lib.rs", "pub fn value() -> u8 { 7 }\n"),
+                ("value.py", "def value():\n    return 7\n"),
+                (
+                    "value.ts",
+                    "export function value(): number { return 7; }\n",
+                ),
+            ] {
+                fs::write(repository.join(path), body)?;
+            }
+            let operations = LocalOperations::new(RuntimeLayout::new(home.path().join("runtime"))?);
+            let project = operations
+                .initialize_project("Synthetic Work refresh", Some(&repository))?
+                .project
+                .id;
+            let baseline = operations
+                .analyze(project, Vec::new())?
+                .value
+                .ok_or("baseline")?
+                .analysis
+                .identity;
+            (operations, project, baseline)
+        };
+        let oracle_start = Instant::now();
+        let mut originals = Vec::new();
+        for path in operations.analysis_paths(project)? {
+            let snapshot = read_analysis_durable(&path)?;
+            originals.push((path.clone(), fs::read(path)?, fingerprint(&snapshot)?));
+        }
+        eprintln!(
+            "work_resource before_oracle_ms={} retained_snapshots={}",
+            oracle_start.elapsed().as_millis(),
+            originals.len()
+        );
+        memory("complete_history_oracle_before");
+        let baseline = operations.load_repository_change_basis(project, baseline_id)?;
+        let excluded = baseline
+            .inventory
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .classifications
+                    .contains(&InventoryClassification::Excluded)
+            })
+            .map(|entry| entry.area.path.clone())
+            .collect::<Vec<_>>();
+        for iteration in 0..3 {
+            let start = Instant::now();
+            let current = operations.analyze_repository_change_basis(
+                project,
+                excluded.clone(),
+                "resource refresh produced no snapshot",
+            )?;
+            eprintln!(
+                "work_resource iteration={iteration} analysis_publication_ms={}",
+                start.elapsed().as_millis()
+            );
+            memory("work_analysis_and_publication");
+            let oracle_start = Instant::now();
+            let full = operations.load_analysis_snapshot(project, current.identity)?;
+            assert_eq!(full.change_basis().as_ref(), &current);
+            assert!(!full.structural_facts.is_empty());
+            eprintln!(
+                "work_resource iteration={iteration} current_oracle_ms={} entities={} relations={}",
+                oracle_start.elapsed().as_millis(),
+                full.structural_facts.len(),
+                full.structural_facts
+                    .iter()
+                    .map(|fact| fact.relations.len())
+                    .sum::<usize>()
+                    + full.semantic_results.len()
+            );
+        }
+        assert_eq!(
+            operations.load_repository_change_basis(project, baseline_id)?,
+            baseline
+        );
+        let oracle_start = Instant::now();
+        for (path, bytes, expected) in originals {
+            assert_eq!(fs::read(&path)?, bytes);
+            assert_eq!(fingerprint(&read_analysis_durable(&path)?)?, expected);
+        }
+        eprintln!(
+            "work_resource after_oracle_ms={}",
+            oracle_start.elapsed().as_millis()
+        );
+        memory("complete_history_oracle_after");
         Ok(())
     }
 }

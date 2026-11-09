@@ -174,3 +174,83 @@ receipts; both were control-authoring errors, not Product failures. These checks
 are focused support, not the authoritative gate, naturalistic evidence, independent
 quality review or human comprehension. The complete original gate still requires
 current explicit transmission authority on the clean committed candidate.
+
+## Work change attribution and observation dictionaries
+
+The exact-candidate gate at `e95a1359a2808622b4e590a6be0c641cd9df40f2`
+completed all 55 functional V11 steps but failed its named resource budgets:
+MCP peak RSS 5,332,635,648 bytes exceeded 4 GiB, and post-warmup logical Analysis
+storage growth 590,995,633 bytes exceeded 512 MiB. The original capsule, numeric
+exit, performance calls and independently verified archive remain in ignored
+`20261109T140904.499664Z-v11-gate-6rbthv4h`. This is an actual measured failure,
+not an inference from historical headroom. Materiality Review and Checkpoint calls
+established the largest process high-water values.
+
+The declared frozen input has 38,214 entities and 582,448 relations in its first
+complete snapshot, 1,466,390,284 serialized JSON bytes, and 15 retained Volicord
+snapshots. The original second snapshot's values delta occupies 33,754,146 bytes.
+Its complete reconstruction, identity and provenance are the equivalence oracle;
+neither files nor required graph/history are removed.
+
+Work attribution and authority consumers only use snapshot/Repository/Project/Source
+identity, complete inventory, original Git/worktree observation and freshness.
+`RepositoryChangeBasis` now names that exact scoped view instead of retaining a
+complete pre-work graph throughout another complete analysis and publication.
+The reader checks current format, manifest/blob integrity and exact bindings; it
+never represents this view as an empty-graph Analysis Snapshot or certifies graph
+meaning. Full graph readers keep their own typed validation. Discovery, Review,
+executable-scope and Checkpoint predicates and current canonical authority remain
+unchanged. Fresh Work observations analyze all supported inputs and publish the
+complete graph. They can trade optional previous-graph structural reuse for lower
+live memory; the explicit structural-refresh API retains its independent reuse
+contract. No retention, admission, schema or graph/history limit changes.
+
+An actual installed MCP `engineering_choice_discovery` draft read used the same
+unchanged disposable Runtime and exact retained C Work baseline for both binaries.
+It invoked no analysis, Source capture, publication or cleanup. Complete 13,840-byte
+drafts were identical across all six calls, including provenance, authoring fields
+and original Source identity, SHA-256
+`bff9b122be29a4e112d819b60f63e6c3ab14934626d074d2dd61612d25032193`.
+All five logical store hashes remained unchanged. Before/after binaries, requests,
+responses and original timing/memory observations are retained separately.
+
+| Installed MCP draft read | New-process / warm / restarted RPC ms | Process lifetime high-water KiB |
+| --- | --- | --- |
+| Original `e95a1359a` | 2,470.985 / 2,012.169 / 2,478.536 | 2,557,824 / 2,709,348 / 2,557,524 |
+| Scoped Work reader | 1,225.984 / 1,211.999 / 1,232.588 | 960,404 / 992,760 / 960,336 |
+
+These are declared same-input observations, not percentiles or whole-host memory.
+Warm calls share a server; restarted calls use a new one. OS caches are uncontrolled,
+so new-process does not mean cold disk. Setup and independent store hashing are
+outside RPC timing and remain separate; process high water includes initialization.
+
+A separate disposable Runtime copy kept all 15 original snapshots while performing
+three complete Work-analysis/publication phases through the production scoped
+helper. Complete serialized graph/provenance fingerprints of every original matched
+before and after. Current full readbacks matched their returned change views.
+Analysis/publication took 30,218 / 29,866 / 29,490 ms; full current-graph oracle reads
+took 2,317 / 2,341 / 2,322 ms. Original-history oracles took 52,628 / 51,077 ms.
+Whole-process high-water RSS was 3,329,256 KiB, including all oracle work; none of
+that work is represented as model authoring time or hidden in a different process.
+This is a supplemental analysis-phase control, not an official V11 replay or a
+claim that its named MCP ceiling has qualified.
+
+The storage correction stops preloading an earlier symbol dictionary into the
+current snapshot's normalizer. Fresh observation identities can otherwise shift
+reference runs throughout a large unchanged graph. Current first-seen ordering
+keeps those runs reusable by the existing byte-delta codec. The frozen original
+second snapshot encoded to 26,310,275 values bytes, with complete JSON/metadata and
+repeated durable-read equality. Earlier current-format symbol orders still decode
+through the same reader, and original manifests/blobs remain unchanged. Stronger
+compression experiments on the unchanged original delta increased size and were
+not adopted. No compression ceiling, alternate format or migration is introduced.
+
+Raw declarations, immutable baseline test executable identity, full-graph oracles,
+failed support attempts and controlled results remain under ignored
+`rebuild/.local/accumulated-use-20261109/` (`v11-resource-*`, `draft-read-*`) and its
+focused validation receipts. The source-byte identity of the large Work control
+is recorded separately. Cache/no-cache equivalence and damaged-blob rejection
+have normal Rust coverage. These observations justify scoped materialization and
+symbol-order changes; the new exact clean candidate still requires its own gate.
+Naturalistic conversations, independent quality review and human comprehension
+are separate evidence and are not supplied by these controls.

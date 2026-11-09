@@ -172,6 +172,20 @@ Read-model target/provenance/uncertainty fields add no new durable format or pub
 Version `6` results retain their original unresolved/import limitations; they are not
 retroactively resolved. The existing superseded-producer read boundary includes `6`.
 
+`RepositoryChangeBasis` is an ephemeral typed read of exact-current Analysis Snapshot 5,
+not a new durable kind, stored side payload or incomplete Analysis Snapshot. It uses the same
+verified normalized/MessagePack representation and exact header binding, selecting only identity,
+Source, inventory, worktree, time and freshness. Graph readers retain full typed validation;
+change readers do not certify graph meaning. Canonical, Candidate, Source, explanation and
+Analysis/cache formats are unchanged.
+
+The sole production normalizer now assigns symbols in the current snapshot's first-seen order
+instead of preloading a prior dictionary. Existing byte-delta storage can still reuse a verified
+complete base. Physical blob hashes/distribution can change; the complete reconstructed JSON,
+identity and provenance cannot. Earlier current-format symbol orders remain readable by the
+same decoder, without rewriting retained manifests, blobs or history and without a numeric
+compatibility branch. Test-only encoders preserve those original ordering controls.
+
 ## 6. Derived Index version
 
 Derived Index version은 full-text/semantic index, graph, embedding, fingerprint cache,

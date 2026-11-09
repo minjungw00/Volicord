@@ -678,13 +678,20 @@ formatting/임시 allocation을 줄여도 JSON 및 MessagePack bytes, identity�
 string 안의 quote/escape 없는 fragment를 한 번에 복사할 수 있으며 임의의 write
 분할에서도 escapes, UTF-8, exact token stream과 corruption 검사를 보존해야 한다.
 
-Bounded work의 Materiality Review/revision, executable scope와 Checkpoint가 이미 읽은
-baseline은 structural refresh의 previous input으로 재사용한다. 현재 inventory와 content/
-build/adapter/dependency invalidation 검사는 계속 수행하고 semantic resolution도 현재
-snapshot에서 계산한다. 새 observation의 Source, entity/range/provenance와 repository/
-analysis identity를 함께 rebind하며, 동일한 새 observation에서 full rebuild와 결과가
-일치해야 한다. 이름/파일별 lookup index는 후보 검색 비용만 줄이며 ambiguity를 임의
-선택으로 해소하지 않는다.
+Bounded Work의 Discovery, Materiality Review/revision, executable scope와 Checkpoint는
+exact retained snapshot의 `RepositoryChangeBasis`를 사용할 수 있다. 이 ephemeral typed
+view는 Project/Analysis/Repository/Source identity, complete inventory, original Git/worktree
+observation과 freshness를 보존하며 graph content나 structural/semantic coverage를 인증하지
+않는다. Original manifest와 referenced blob integrity, exact-current format과 identity binding은
+계속 검증한다. Scoped view를 empty-graph Analysis Snapshot으로 가장하지 않는다.
+
+이 경로의 새 observation은 complete supported analysis를 계산·게시한다. Optional structural
+reuse만을 위해 pre-work graph 전체를 두 번째 graph의 분석·인코딩 동안 유지하지 않는다.
+Graph가 이미 필요한 explicit structural-refresh caller는 previous input을 재사용할 수 있으며,
+현재 inventory와 content/build/adapter/dependency invalidation 검사, fresh semantic resolution,
+새 Source/entity/range/provenance와 repository/analysis identity rebinding 및 같은 observation의
+full rebuild와 결과 동등성을 유지한다. 이름/파일별 lookup index는 후보 검색 비용만 줄이며
+ambiguity를 임의 선택으로 해소하지 않는다.
 Semantic lookup은 source line 경계를 한 번 index하고 declaration arity를 fact마다 한 번
 계산하여 같은 이름의 후보를 반복 검사할 때 재사용한다. CRLF/Unicode/빈 줄 및 unknown
 arity와 ambiguity의 의미는 바뀌지 않는다. 이 index는 해당 analysis 실행 안에서만 산다.

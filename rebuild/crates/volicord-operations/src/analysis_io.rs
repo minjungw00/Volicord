@@ -14,7 +14,7 @@ use std::{
 use volicord_context::ProjectId;
 use volicord_repository_intelligence::{
     AnalysisMetadata, AnalysisSnapshot, AnalysisSnapshotId, CanonicalProjectRef,
-    ANALYSIS_SNAPSHOT_FORMAT_VERSION, ANALYSIS_SNAPSHOT_KIND,
+    RepositoryChangeBasis, ANALYSIS_SNAPSHOT_FORMAT_VERSION, ANALYSIS_SNAPSHOT_KIND,
 };
 
 const STORAGE_FORMAT: &str = "volicord.normalized_analysis.v2";
@@ -92,10 +92,11 @@ pub(crate) fn encode_analysis(
 ) -> Result<EncodedAnalysis, Error> {
     #[cfg(test)]
     trace_analysis_memory("encode_start");
-    let mut encoder = match &base_values {
-        Some(base) => NormalizingWriter::with_base_symbols(&unpack_blob(&base.packed)?)?,
-        None => NormalizingWriter::default(),
-    };
+    // First-seen order belongs to this complete snapshot. Preloading an older
+    // symbol dictionary shifts fresh observation identities to its tail and
+    // changes otherwise identical reference runs throughout a large graph.
+    // The existing byte-delta codec still reuses the retained complete base.
+    let mut encoder = NormalizingWriter::default();
     #[cfg(test)]
     trace_analysis_memory("base_symbols");
     serde_json::to_writer(&mut encoder, analysis)
@@ -267,9 +268,45 @@ fn read_analysis_from_manifest(
     path: &Path,
     manifest: AnalysisManifest,
 ) -> Result<AnalysisSnapshot, Error> {
+    let snapshot: AnalysisSnapshot = read_projection_payload(path, &manifest)?;
+    if snapshot.identity != manifest.identity
+        || snapshot.project != manifest.project
+        || snapshot.generated_at_unix_micros != manifest.generated_at_unix_micros
+    {
+        return Err(Error::new("Analysis manifest and payload bindings differ"));
+    }
+    Ok(snapshot)
+}
+
+/// Read the exact change-attribution fields, retaining blob integrity checks but
+/// without certifying or materializing graph content.
+pub(crate) fn read_repository_change_basis(path: &Path) -> Result<RepositoryChangeBasis, Error> {
+    let manifest = read_manifest(path)?;
+    verify_manifest_blobs(path, &manifest)?;
+    let matches = |value: &RepositoryChangeBasis| {
+        value.identity == manifest.identity
+            && value.project == manifest.project
+            && value.generated_at_unix_micros == manifest.generated_at_unix_micros
+    };
+    if let Some(value) = read_cached_projection(path, &manifest, matches) {
+        return Ok(value);
+    }
+    let value = read_projection_payload(path, &manifest)?;
+    if !matches(&value) {
+        return Err(Error::new(
+            "Analysis manifest and change basis bindings differ",
+        ));
+    }
+    Ok(value)
+}
+
+fn read_projection_payload<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    manifest: &AnalysisManifest,
+) -> Result<T, Error> {
     #[cfg(test)]
     trace_analysis_memory("read_start");
-    read_metadata(path, &manifest)?;
+    read_metadata(path, manifest)?;
     let blobs = blob_dir(path)?;
     if manifest.shape_blobs.is_empty() {
         return Err(Error::new("Analysis manifest has no shape blobs"));
@@ -301,15 +338,9 @@ fn read_analysis_from_manifest(
     let reader = DenormalizingReader::new(shape, values, manifest.scalar_count)?;
     #[cfg(test)]
     trace_analysis_memory("values_reconstructed");
-    let snapshot: AnalysisSnapshot = normalized::decode(reader, manifest.logical_json_bytes)?;
+    let snapshot: T = normalized::decode(reader, manifest.logical_json_bytes)?;
     #[cfg(test)]
     trace_analysis_memory("read_decoded");
-    if snapshot.identity != manifest.identity
-        || snapshot.project != manifest.project
-        || snapshot.generated_at_unix_micros != manifest.generated_at_unix_micros
-    {
-        return Err(Error::new("Analysis manifest and payload bindings differ"));
-    }
     Ok(snapshot)
 }
 
@@ -437,6 +468,18 @@ fn verify_manifest_blobs(path: &Path, manifest: &AnalysisManifest) -> Result<(),
 }
 
 fn read_cached_analysis(path: &Path, manifest: &AnalysisManifest) -> Option<AnalysisSnapshot> {
+    read_cached_projection(path, manifest, |snapshot: &AnalysisSnapshot| {
+        snapshot.identity == manifest.identity
+            && snapshot.project == manifest.project
+            && snapshot.generated_at_unix_micros == manifest.generated_at_unix_micros
+    })
+}
+
+fn read_cached_projection<T: serde::de::DeserializeOwned>(
+    path: &Path,
+    manifest: &AnalysisManifest,
+    matches: impl Fn(&T) -> bool,
+) -> Option<T> {
     let project_directory = path.parent()?;
     let cache_directory = project_directory.join("cache");
     let prefix = format!("{}-", manifest.identity);
@@ -459,12 +502,8 @@ fn read_cached_analysis(path: &Path, manifest: &AnalysisManifest) -> Option<Anal
         if digest_file(&candidate).ok()?.as_str() != expected {
             continue;
         }
-        let snapshot: AnalysisSnapshot =
-            read_analysis_cache_value(File::open(&candidate).ok()?).ok()?;
-        if snapshot.identity == manifest.identity
-            && snapshot.project == manifest.project
-            && snapshot.generated_at_unix_micros == manifest.generated_at_unix_micros
-        {
+        let snapshot: T = read_analysis_cache_value(File::open(&candidate).ok()?).ok()?;
+        if matches(&snapshot) {
             return Some(snapshot);
         }
     }
@@ -1135,6 +1174,10 @@ impl Write for NormalizingWriter {
 }
 
 impl NormalizingWriter {
+    // Fixture encoder for retained current-format symbol ordering. Production
+    // emits only first-seen dictionaries; the one decoder still reads original
+    // current-format streams without rewriting their symbols or references.
+    #[cfg(test)]
     fn with_base_symbols(values: &[u8]) -> Result<Self, Error> {
         let mut at = expect_magic(values, VALUES_MAGIC)?;
         let symbol_count = take_u64(values, &mut at)?;
@@ -1712,12 +1755,14 @@ mod tests {
         // Fingerprint every produced byte, so before/after runs on the same exact
         // retained input compare complete output, not merely counts or identity.
         eprintln!(
-            "analysis_resource input={} manifest={} values={} metadata={} shape_count={}",
+            "analysis_resource input={} manifest={} values={} metadata={} shape_count={} values_bytes={} shape_bytes={}",
             digest(&input_bytes),
             digest(&encoded.manifest),
             encoded.values_hash,
             encoded.metadata_hash,
-            encoded.shapes.len()
+            encoded.shapes.len(),
+            encoded.values.len(),
+            encoded.shapes.iter().map(|(_, bytes)| bytes.len()).sum::<usize>()
         );
         let output = temporary.path().join("roundtrip");
         std::fs::create_dir_all(output.join("blobs"))?;
@@ -1789,6 +1834,45 @@ mod tests {
             input_bytes,
             "retained input must remain immutable"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn change_basis_is_equal_with_and_without_cache_and_refuses_damaged_graph_blobs(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use volicord_repository_intelligence::RepositoryChangeView;
+        let home = tempfile::tempdir()?;
+        let repository = home.path().join("repository");
+        std::fs::create_dir(&repository)?;
+        std::fs::write(repository.join("lib.rs"), "pub fn value() -> u8 { 7 }\n")?;
+        std::fs::write(repository.join("value.py"), "def value():\n    return 7\n")?;
+        let operations =
+            crate::LocalOperations::new(crate::RuntimeLayout::new(home.path().join("runtime"))?);
+        let project = operations
+            .initialize_project("Change basis", Some(&repository))?
+            .project
+            .id;
+        let outcome = operations
+            .analyze(project, Vec::new())?
+            .value
+            .ok_or("analysis")?;
+        let expected = outcome.analysis.change_basis().into_owned();
+        let original_manifest = std::fs::read(&outcome.stored_at)?;
+        let original_canonical = operations.canonical_basis(project)?;
+        assert_eq!(read_repository_change_basis(&outcome.stored_at)?, expected);
+        std::fs::remove_dir_all(outcome.stored_at.parent().ok_or("parent")?.join("cache"))?;
+        assert_eq!(read_repository_change_basis(&outcome.stored_at)?, expected);
+        assert_eq!(read_analysis_durable(&outcome.stored_at)?, outcome.analysis);
+        assert_eq!(std::fs::read(&outcome.stored_at)?, original_manifest);
+        assert_eq!(operations.canonical_basis(project)?, original_canonical);
+        let manifest = read_manifest(&outcome.stored_at)?;
+        std::fs::write(
+            blob_dir(&outcome.stored_at)?.join(format!("{}.values", manifest.values_blob)),
+            b"damaged",
+        )?;
+        assert!(read_repository_change_basis(&outcome.stored_at).is_err());
+        assert!(read_analysis(&outcome.stored_at).is_err());
+        assert_eq!(operations.canonical_basis(project)?, original_canonical);
         Ok(())
     }
 
