@@ -86,6 +86,12 @@ impl Error {
         error
     }
 
+    pub(crate) fn attach_scoped_command_identity(&mut self, source: Option<crate::SourceId>) {
+        if let Some(diagnostic) = self.scoped_check_failure.as_mut() {
+            diagnostic.command_source_id = source.map(|id| id.to_string());
+        }
+    }
+
     pub(crate) fn attach_scoped_command_basis(&mut self, source: &crate::Source) {
         if let Some(diagnostic) = self.scoped_check_failure.as_mut() {
             diagnostic.command_source_id = Some(source.id.to_string());

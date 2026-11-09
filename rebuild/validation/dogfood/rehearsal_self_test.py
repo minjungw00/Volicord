@@ -63,11 +63,31 @@ class ProductProcessTests(unittest.TestCase):
             self.assertEqual(len(diagnostic['executable_sha256']), 64)
             self.assertNotIn('private_argument', original.decode())
             self.assertNotIn('must not enter diagnostics', original.decode())
-            with self.assertRaises((BrokenPipeError, ValueError, OSError, AttributeError)):
-                client.rpc('tools/call', {'name': 'secret-name', 'arguments': {}})
-            self.assertEqual(diagnostic_path.read_bytes(), original)
             client.close()
             self.assertEqual(len(client.logs.records), 1)
+
+    def test_tool_rejection_survives_a_later_fast_success(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = self.child(root,
+                'request = json.loads(sys.stdin.readline())\n'
+                'print(json.dumps({"id": request["id"], "result": {"isError": True, "content": "SECRET failure body"}}), flush=True)\n'
+                'request = json.loads(sys.stdin.readline())\n'
+                'print(json.dumps({"id": request["id"], "result": {"isError": False, "structuredContent": {"ok": True}}}), flush=True)\n'
+                'sys.stdin.read()\n')
+            with rehearsal.product_session(client):
+                with self.assertRaisesRegex(ValueError, 'Product tool rejected'):
+                    client.tool('repository_analyze', {'SECRET argument': 'SECRET body'})
+                path = client.logs.root / (client.label + '.request-failure.json')
+                original = path.read_bytes()
+                self.assertEqual(client.first_request_failure['stage'], 'tool_result')
+                self.assertEqual(client.first_request_failure['outcome'], 'failed')
+                self.assertEqual(client.tool('status', {}), {'ok': True})
+                self.assertEqual(path.read_bytes(), original)
+                self.assertNotIn('SECRET', original.decode())
+            self.assert_reaped(client)
+            self.assertEqual(client.logs.records[0]['exit_code'], 0)
 
     def test_request_diagnostic_write_failure_cannot_mask_timeout(self):
         import tempfile

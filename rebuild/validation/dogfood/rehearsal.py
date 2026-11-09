@@ -353,36 +353,39 @@ class Product:
         try:
             return self._rpc(method, params)
         except BaseException as error:
-            # Keep the first request outcome before cleanup can fail or a later
-            # call can succeed. No exception text, RPC arguments or body bytes.
-            if self.first_request_failure is None:
-                operation = ("repository_analyze" if method == "tools/call"
-                    and params.get("name") == "repository_analyze" else
-                    "other_tool" if method == "tools/call" else
-                    "initialize" if method == "initialize" else "other_method")
-                self.first_request_failure = {
-                    "request_id": self.counter, "operation": operation,
-                    "stage": self.request_stage,
-                    "outcome": "interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else
-                        "timeout" if self.request_stage == "response_wait" and
-                            time.monotonic_ns() - started >= self.response_timeout * 1e9 else "failed",
-                    "duration_ns": time.monotonic_ns() - started,
-                    "response_limit_seconds": self.response_timeout,
-                    "process_lifetime_ns": time.monotonic_ns() - self.started,
-                    "pid": self.process.pid, "process_exit_code": self.process.poll(),
-                    "executable_sha256": self.executable_sha256,
-                    "response_bytes_received": len(self.stdout),
-                    "host_load_average": list(os.getloadavg()),
-                    "server_internal_stage": "unobserved",
-                }
-                try:
-                    c.write_json(self.logs.root / (self.label + ".request-failure.json"),
-                        self.first_request_failure)
-                except OSError:
-                    # Diagnostic persistence has no authority to replace the
-                    # request failure; the in-memory first observation survives.
-                    self.logs.teardown_errors.append(self.label + ":request_diagnostic_unavailable")
+            self._retain_request_failure(method, params, started, error)
             raise
+
+    def _retain_request_failure(self, method, params, started, error):
+        # Keep the first request outcome before cleanup can fail or a later
+        # call can succeed. No exception text, RPC arguments or body bytes.
+        if self.first_request_failure is None:
+            operation = ("repository_analyze" if method == "tools/call"
+                and params.get("name") == "repository_analyze" else
+                "other_tool" if method == "tools/call" else
+                "initialize" if method == "initialize" else "other_method")
+            self.first_request_failure = {
+                "request_id": self.counter, "operation": operation,
+                "stage": self.request_stage,
+                "outcome": "interrupted" if isinstance(error, (KeyboardInterrupt, SystemExit)) else
+                    "timeout" if self.request_stage == "response_wait" and
+                        time.monotonic_ns() - started >= self.response_timeout * 1e9 else "failed",
+                "duration_ns": time.monotonic_ns() - started,
+                "response_limit_seconds": self.response_timeout,
+                "process_lifetime_ns": time.monotonic_ns() - self.started,
+                "pid": self.process.pid, "process_exit_code": self.process.poll(),
+                "executable_sha256": self.executable_sha256,
+                "response_bytes_received": len(self.stdout),
+                "host_load_average": list(os.getloadavg()),
+                "server_internal_stage": "unobserved",
+            }
+            try:
+                c.write_json(self.logs.root / (self.label + ".request-failure.json"),
+                    self.first_request_failure)
+            except OSError:
+                # Diagnostic persistence has no authority to replace the
+                # request failure; the in-memory first observation survives.
+                self.logs.teardown_errors.append(self.label + ":request_diagnostic_unavailable")
 
     def _rpc(self, method, params):
         self.request_stage = "request_write"
@@ -412,9 +415,16 @@ class Product:
         return response["result"]
 
     def tool(self, name, arguments):
-        response = self.rpc("tools/call", {"name": name, "arguments": arguments})
-        require(response.get("isError") is False, "Product tool rejected support input")
-        return response["structuredContent"]
+        started = time.monotonic_ns()
+        params = {"name": name, "arguments": arguments}
+        response = self.rpc("tools/call", params)
+        self.request_stage = "tool_result"
+        try:
+            require(response.get("isError") is False, "Product tool rejected support input")
+            return response["structuredContent"]
+        except (ValueError, KeyError) as error:
+            self._retain_request_failure("tools/call", params, started, error)
+            raise
 
     def close(self):
         if self.closed:

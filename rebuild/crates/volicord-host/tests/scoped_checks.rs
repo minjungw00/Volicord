@@ -71,6 +71,7 @@ fn scoped_rejection_reports_predicate_and_bounded_basis_without_recording(
     assert!(text.contains("assertion_evidence_presence"), "{denied}");
     assert!(text.contains("scoped_check_basis_rejected"), "{denied}");
     assert!(text.contains(&f.work.to_string()), "{denied}");
+    assert!(text.contains(&f.passed.source_id.to_string()), "{denied}");
     assert!(!text.contains("SECRET"));
     assert!(!text.contains("main.py"));
     assert_eq!(baseline, f.ops.canonical_basis(f.project)?);

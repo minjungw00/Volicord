@@ -106,13 +106,16 @@ Scoped Checkpoint admission preserves the existing predicates and records the
 failed fixed predicate names in a bounded typed error. The diagnostic includes
 Work identity/revision, verification/assertion states, execution window, artifact
 and target counts, repository Source identity and digests of supplied operation,
-invocation and snapshot identifiers. Command-binding failures additionally name
-the Command Source and its recorded time. Declarations, target paths, assertion
+invocation and snapshot identifiers. Draft admission includes the supplied Command
+Source identity even if a run predicate fails before loading it; this is a claimed
+binding, not proof of a valid Source. Command-binding failures additionally include
+its observed recorded time. Declarations, target paths, assertion
 text, environment descriptions, output and raw invocations are excluded. CLI and
 MCP expose this safe cause without exposing generic storage error chains. Rejection
 commits no Checkpoint; a later valid capture does not explain a historical rejection.
 
-The local rehearsal preserves the first failed RPC separately before teardown:
+The local rehearsal preserves the first failed RPC or rejected tool result separately
+before teardown:
 request number, closed operation/stage/outcome, monotonic request/process durations,
 response limit, process identity/executable digest, observed numeric process outcome,
 received-byte count and host load. It never retains arguments or arbitrary exception

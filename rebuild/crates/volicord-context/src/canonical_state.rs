@@ -352,7 +352,12 @@ fn validate_checkpoint_draft_with_missing(
             .ok()
             .is_some_and(|position| missing.verification.contains_key(&position));
         if let Some(run) = &verification.scoped_run {
-            crate::validate_scoped_check(run, draft.work_item_id, verification.state)?;
+            crate::validate_scoped_check(run, draft.work_item_id, verification.state).map_err(
+                |mut error| {
+                    error.attach_scoped_command_identity(verification.source_id);
+                    error
+                },
+            )?;
         }
         match verification.state {
             VerificationState::NotRun => {
