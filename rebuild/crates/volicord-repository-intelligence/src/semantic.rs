@@ -19,7 +19,7 @@ use std::fs;
 use std::path::Path;
 
 const SEMANTIC_ANALYZER_NAME: &str = "volicord-source-semantic-index";
-const SEMANTIC_ANALYZER_VERSION: &str = "4";
+const SEMANTIC_ANALYZER_VERSION: &str = "5";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CanonicalLinkSelector {
@@ -210,23 +210,66 @@ fn analyze_repository_semantics_inner(
             .into_iter()
             .filter(|fact| source_text.contains_key(&fact.entity.area.path))
             .collect::<Vec<_>>();
-        let source_lines = index_source_lines(&source_text);
+        let mut facts_by_file: BTreeMap<&str, Vec<_>> = BTreeMap::new();
+        for fact in &language_facts {
+            facts_by_file
+                .entry(&fact.entity.area.path)
+                .or_default()
+                .push(*fact);
+        }
+        let bindings = source_text
+            .iter()
+            .filter_map(|(path, text)| {
+                let file_facts = facts_by_file.get(path.as_str())?;
+                crate::bindings::BindingFile::new(text, &language, file_facts)
+                    .map(|file| (path.as_str(), file))
+            })
+            .collect::<BTreeMap<_, _>>();
         add_definition_relations(&language_facts, &mut language_results, &analysis);
         add_structural_semantics(
             &language_facts,
             &by_identity,
-            &source_lines,
-            &mut language_results,
-            &mut language_diagnostics,
-            &analysis,
-        );
-        add_type_relations(
-            &language_facts,
-            &by_identity,
-            &source_lines,
+            &bindings,
             &mut language_results,
             &analysis,
         );
+        add_type_relations(&language_facts, &bindings, &mut language_results, &analysis);
+        let imports = language_facts
+            .iter()
+            .flat_map(|f| &f.relations)
+            .filter(|r| r.kind == StructuralRelationKind::Imports)
+            .filter_map(|r| r.supporting_range.as_ref())
+            .map(|r| (r.locator.as_str(), r.start.line, r.start.column))
+            .collect::<BTreeSet<_>>();
+        for result in &mut language_results {
+            if let RelationTarget::Unresolved(target) = &result.relation.target {
+                let area = by_identity
+                    .get(&result.relation.source_entity)
+                    .map(|e| e.area.clone())
+                    .unwrap_or_else(repository_area);
+                let is_dependency = result.relation.supporting_range.as_ref().is_some_and(|r| {
+                    imports.contains(&(r.locator.as_str(), r.start.line, r.start.column))
+                });
+                let code = if is_dependency {
+                    "semantic.unresolved_dependency"
+                } else {
+                    "semantic.unresolved_symbol"
+                };
+                let diagnostic = diagnostic(
+                    &language,
+                    area,
+                    code,
+                    &format!("unresolved symbol `{}`: {}", target.display, target.reason),
+                    DiagnosticSeverity::Warning,
+                    Some("other resolved semantic relations remain usable"),
+                );
+                result
+                    .relation
+                    .diagnostics
+                    .push(diagnostic.identity.clone());
+                language_diagnostics.push(diagnostic);
+            }
+        }
         language_results
             .sort_by(|left, right| left.relation.identity.cmp(&right.relation.identity));
         language_results.dedup_by(|left, right| left.relation.identity == right.relation.identity);
@@ -341,18 +384,6 @@ fn is_selected_ecosystem(language: &Language) -> bool {
     )
 }
 
-fn index_source_lines(sources: &BTreeMap<String, String>) -> BTreeMap<&str, Vec<&str>> {
-    sources
-        .iter()
-        .map(|(path, text)| (path.as_str(), text.lines().collect()))
-        .collect()
-}
-
-#[cfg(test)]
-thread_local! {
-    static DECLARED_ARITY_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
 fn read_sources(
     root: &Path,
     bases: &[FileAnalysisBasis],
@@ -413,32 +444,21 @@ fn add_definition_relations(
 fn add_structural_semantics(
     facts: &[&crate::StructuralFact],
     entities: &BTreeMap<String, &CodeEntity>,
-    sources: &BTreeMap<&str, Vec<&str>>,
+    bindings: &BTreeMap<&str, crate::bindings::BindingFile<'_>>,
     results: &mut Vec<SemanticAnalysisResult>,
-    diagnostics: &mut Vec<AnalysisDiagnostic>,
     analysis: &AnalysisSnapshot,
 ) {
-    let mut names: BTreeMap<&str, Vec<&crate::StructuralFact>> = BTreeMap::new();
-    for fact in facts {
-        if let Some(name) = fact.entity.display_name.as_deref() {
-            names.entry(name).or_default().push(fact);
-        }
-    }
-    let arities = facts
-        .iter()
-        .map(|fact| {
-            (
-                fact.entity.identity.as_str(),
-                declared_arity(&fact.entity, sources),
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
     for fact in facts {
         for relation in &fact.relations {
             match relation.kind {
                 StructuralRelationKind::Implements | StructuralRelationKind::Inherits => {
-                    let target =
-                        resolve_target(&fact.entity, &relation.target, &names, None, &arities);
+                    let target = bound_target(
+                        &fact.entity,
+                        &relation.target,
+                        relation.supporting_range.as_ref(),
+                        false,
+                        bindings,
+                    );
                     let semantic_target = target.clone();
                     results.push(make_result(
                         analysis,
@@ -454,30 +474,20 @@ fn add_structural_semantics(
                             &target_identity,
                             facts,
                             entities,
-                            &arities,
+                            bindings,
                             results,
                             analysis,
                         );
                     }
                 }
                 StructuralRelationKind::CallsSyntactically => {
-                    let arity =
-                        call_arity(&fact.entity, relation.supporting_range.as_ref(), sources);
-                    let target =
-                        resolve_target(&fact.entity, &relation.target, &names, arity, &arities);
-                    if let RelationTarget::Unresolved(unresolved) = &target {
-                        diagnostics.push(diagnostic(
-                            &fact.entity.language,
-                            fact.entity.area.clone(),
-                            "semantic.unresolved_symbol",
-                            &format!(
-                                "unresolved symbol `{}`: {}",
-                                unresolved.display, unresolved.reason
-                            ),
-                            DiagnosticSeverity::Warning,
-                            Some("other resolved semantic relations remain usable"),
-                        ));
-                    }
+                    let target = bound_target(
+                        &fact.entity,
+                        &relation.target,
+                        relation.supporting_range.as_ref(),
+                        true,
+                        bindings,
+                    );
                     let range =
                         semantic_range(relation.supporting_range.as_ref(), &fact.entity.language);
                     results.push(make_result(
@@ -500,21 +510,7 @@ fn add_structural_semantics(
                     }
                 }
                 StructuralRelationKind::Imports => {
-                    let target = resolve_import(&fact.entity, &relation.target, facts);
-                    if let RelationTarget::Unresolved(unresolved) = &target {
-                        if unresolved.display.starts_with('.')
-                            || unresolved.display.starts_with("missing")
-                        {
-                            diagnostics.push(diagnostic(
-                                &fact.entity.language,
-                                fact.entity.area.clone(),
-                                "semantic.unresolved_dependency",
-                                &format!("unresolved dependency `{}`", unresolved.display),
-                                DiagnosticSeverity::Warning,
-                                Some("locally resolved symbols remain usable"),
-                            ));
-                        }
-                    }
+                    let target = resolve_import(&fact.entity, &relation.target, facts, analysis);
                     results.push(make_result(
                         analysis,
                         &fact.entity,
@@ -535,26 +531,29 @@ fn add_overrides(
     target_identity: &str,
     facts: &[&crate::StructuralFact],
     entities: &BTreeMap<String, &CodeEntity>,
-    arities: &BTreeMap<&str, Option<usize>>,
+    bindings: &BTreeMap<&str, crate::bindings::BindingFile<'_>>,
     results: &mut Vec<SemanticAnalysisResult>,
     analysis: &AnalysisSnapshot,
 ) {
     let Some(target_type) = entities.get(target_identity) else {
         return;
     };
-    let implementing_name = implementing.qualified_name.as_deref().unwrap_or_default();
-    let target_name = target_type.qualified_name.as_deref().unwrap_or_default();
+    let Some(binding) = bindings.get(implementing.area.path.as_str()) else {
+        return;
+    };
+    if implementing.area != target_type.area {
+        return;
+    }
     let implementing_methods = facts.iter().filter(|fact| {
-        fact.entity.kind == CodeEntityKind::Method
-            && qualified_parent(&fact.entity) == implementing_name
+        fact.entity.kind == CodeEntityKind::Method && binding.member_of(&fact.entity, implementing)
     });
     for method in implementing_methods {
         let Some(target_method) = unique_match(facts.iter().filter(|candidate| {
             candidate.entity.kind == CodeEntityKind::Method
                 && candidate.entity.display_name == method.entity.display_name
-                && qualified_parent(&candidate.entity) == target_name
-                && arities.get(candidate.entity.identity.as_str())
-                    == arities.get(method.entity.identity.as_str())
+                && binding.member_of(&candidate.entity, target_type)
+                && binding.signature(&method.entity).is_some()
+                && binding.signature(&candidate.entity) == binding.signature(&method.entity)
         })) else {
             continue;
         };
@@ -571,94 +570,52 @@ fn add_overrides(
 
 fn add_type_relations(
     facts: &[&crate::StructuralFact],
-    entities: &BTreeMap<String, &CodeEntity>,
-    sources: &BTreeMap<&str, Vec<&str>>,
+    bindings: &BTreeMap<&str, crate::bindings::BindingFile<'_>>,
     results: &mut Vec<SemanticAnalysisResult>,
     analysis: &AnalysisSnapshot,
 ) {
-    let mut type_names: BTreeMap<(&Language, &str), Vec<&CodeEntity>> = BTreeMap::new();
-    for entity in entities.values() {
-        if let Some(name) = entity.display_name.as_deref() {
-            type_names
-                .entry((&entity.language, name))
-                .or_default()
-                .push(entity);
-        }
-    }
-    for fact in facts.iter().filter(|fact| {
-        matches!(
-            fact.entity.kind,
-            CodeEntityKind::Function
-                | CodeEntityKind::Method
-                | CodeEntityKind::Field
-                | CodeEntityKind::Type
-        )
-    }) {
-        let Some(range) = fact.entity.source_range.as_ref() else {
+    for fact in facts {
+        let Some(binding) = bindings.get(fact.entity.area.path.as_str()) else {
             continue;
         };
-        let Some(source) = sources.get(fact.entity.area.path.as_str()) else {
+        let Some(type_name) = binding.declared_type(&fact.entity) else {
             continue;
         };
-        let Some(line) = source.get(range.start.line as usize) else {
-            continue;
-        };
-        let Some(type_name) = declared_type(&fact.entity, line) else {
-            continue;
-        };
-        let target = unique_match(type_names.get(&(&fact.entity.language, type_name.as_str()))
-            .into_iter().flatten())
-            .map(|entity| RelationTarget::ResolvedEntity(entity.identity.clone()))
-            .unwrap_or_else(|| {
-                RelationTarget::Unresolved(UnresolvedTarget {
-                    display: type_name,
-                    language: Some(fact.entity.language.clone()),
-                    locator_hint: None,
-                    reason:
-                        "declared type is builtin, external, absent, or ambiguous in this source snapshot"
-                            .to_owned(),
-                })
-            });
+        let target = binding.type_target(&fact.entity, &type_name);
         results.push(make_result(
             analysis,
             &fact.entity,
             target.clone(),
             SemanticRelationKind::TypeOf,
-            semantic_range(Some(range), &fact.entity.language),
-            if is_builtin_target(&target) {
-                Uncertainty::none()
-            } else {
-                uncertainty_for_target(&target)
-            },
+            semantic_range(fact.entity.source_range.as_ref(), &fact.entity.language),
+            uncertainty_for_target(&target),
         ));
     }
 }
 
-fn declared_type(entity: &CodeEntity, line: &str) -> Option<String> {
-    let name = entity.display_name.as_deref()?;
-    match entity.language {
-        Language::Java => line
-            .split(name)
-            .next()
-            .and_then(|prefix| prefix.split_whitespace().next_back())
-            .filter(|value| !matches!(*value, "class" | "interface"))
-            .map(str::to_owned),
-        Language::TypeScript => line
-            .rsplit_once(':')
-            .map(|(_, suffix)| suffix)
-            .and_then(|suffix| suffix.split(['{', ';']).next())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned),
-        Language::Rust => line
-            .split_once("->")
-            .map(|(_, suffix)| suffix)
-            .and_then(|suffix| suffix.split(['{', ';']).next())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned),
-        _ => None,
-    }
+fn bound_target(
+    source: &CodeEntity,
+    target: &RelationTarget,
+    range: Option<&SourceRange>,
+    call: bool,
+    bindings: &BTreeMap<&str, crate::bindings::BindingFile<'_>>,
+) -> RelationTarget {
+    bindings
+        .get(source.area.path.as_str())
+        .map(|binding| binding.target(source, target, range, call))
+        .unwrap_or_else(|| {
+            let display = match target {
+                RelationTarget::Unresolved(u) => u.display.clone(),
+                RelationTarget::ResolvedEntity(id) => id.clone(),
+            };
+            RelationTarget::Unresolved(UnresolvedTarget {
+                display,
+                language: Some(source.language.clone()),
+                locator_hint: Some(source.area.path.clone()),
+                reason: "source binding unavailable because syntax is unsupported or incomplete"
+                    .to_owned(),
+            })
+        })
 }
 
 fn unique_match<T>(mut candidates: impl Iterator<Item = T>) -> Option<T> {
@@ -666,126 +623,11 @@ fn unique_match<T>(mut candidates: impl Iterator<Item = T>) -> Option<T> {
     candidates.next().is_none().then_some(first)
 }
 
-fn resolve_target(
-    source: &CodeEntity,
-    target: &RelationTarget,
-    names: &BTreeMap<&str, Vec<&crate::StructuralFact>>,
-    requested_arity: Option<usize>,
-    arities: &BTreeMap<&str, Option<usize>>,
-) -> RelationTarget {
-    let RelationTarget::Unresolved(unresolved) = target else {
-        return target.clone();
-    };
-    let display = unresolved.display.trim();
-    let simple = display
-        .split(['.', ':'])
-        .rfind(|part| !part.is_empty())
-        .unwrap_or(display);
-    let mut candidates = names.get(simple).cloned().unwrap_or_default();
-    if let Some(arity) = requested_arity {
-        let arity_matches = candidates
-            .iter()
-            .filter(|candidate| {
-                arities.get(candidate.entity.identity.as_str()) == Some(&Some(arity))
-            })
-            .copied()
-            .collect::<Vec<_>>();
-        if !arity_matches.is_empty() {
-            candidates = arity_matches;
-        }
-    }
-    if candidates.is_empty() {
-        return RelationTarget::Unresolved(UnresolvedTarget {
-            display: display.to_owned(),
-            language: Some(source.language.clone()),
-            locator_hint: Some(source.area.path.clone()),
-            reason: "no matching declaration exists in the analyzed source snapshot".to_owned(),
-        });
-    }
-    let parent = qualified_parent(source);
-    let scoped = candidates
-        .iter()
-        .filter(|candidate| qualified_parent(&candidate.entity) == parent)
-        .copied()
-        .collect::<Vec<_>>();
-    let selected = if scoped.len() == 1 {
-        Some(scoped[0])
-    } else if candidates.len() == 1 {
-        Some(candidates[0])
-    } else {
-        unique_match(candidates.iter().filter(|candidate| {
-            candidate
-                .entity
-                .qualified_name
-                .as_deref()
-                .is_some_and(|qualified| {
-                    qualified
-                        .replace('.', "::")
-                        .ends_with(&display.replace('.', "::"))
-                })
-        }))
-        .copied()
-    };
-    selected.map_or_else(
-        || {
-            RelationTarget::Unresolved(UnresolvedTarget {
-                display: display.to_owned(),
-                language: Some(source.language.clone()),
-                locator_hint: Some(source.area.path.clone()),
-                reason: format!(
-                    "{} same-name declarations remain ambiguous without compiler context",
-                    candidates.len()
-                ),
-            })
-        },
-        |fact| RelationTarget::ResolvedEntity(fact.entity.identity.clone()),
-    )
-}
-
-fn declared_arity(entity: &CodeEntity, sources: &BTreeMap<&str, Vec<&str>>) -> Option<usize> {
-    #[cfg(test)]
-    DECLARED_ARITY_READS.with(|reads| reads.set(reads.get() + 1));
-    let range = entity.source_range.as_ref()?;
-    let source = sources.get(entity.area.path.as_str())?;
-    let line = source.get(range.start.line as usize)?;
-    parameter_arity(line.split_once('(')?.1.split_once(')')?.0)
-}
-
-fn call_arity(
-    source: &CodeEntity,
-    range: Option<&SourceRange>,
-    sources: &BTreeMap<&str, Vec<&str>>,
-) -> Option<usize> {
-    let range = range?;
-    let text = sources.get(source.area.path.as_str())?;
-    let line = text.get(range.start.line as usize)?;
-    let start = usize::try_from(range.start.column).ok()?.min(line.len());
-    let call = line.get(start..).unwrap_or(line);
-    parameter_arity(call.split_once('(')?.1.split_once(')')?.0)
-}
-
-fn parameter_arity(parameters: &str) -> Option<usize> {
-    let parameters = parameters.trim();
-    if parameters.is_empty() {
-        return Some(0);
-    }
-    let mut depth = 0_usize;
-    let mut commas = 0_usize;
-    for character in parameters.chars() {
-        match character {
-            '<' | '(' | '[' | '{' => depth += 1,
-            '>' | ')' | ']' | '}' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => commas += 1,
-            _ => {}
-        }
-    }
-    Some(commas + 1)
-}
-
 fn resolve_import(
     source: &CodeEntity,
     target: &RelationTarget,
     facts: &[&crate::StructuralFact],
+    analysis: &AnalysisSnapshot,
 ) -> RelationTarget {
     let RelationTarget::Unresolved(unresolved) = target else {
         return target.clone();
@@ -795,16 +637,35 @@ fn resolve_import(
         let parent = Path::new(&source.area.path)
             .parent()
             .unwrap_or_else(|| Path::new(""));
-        let joined = parent.join(display).to_string_lossy().replace('\\', "/");
-        let candidate = joined
-            .trim_end_matches(".js")
-            .trim_end_matches(".ts")
-            .to_owned()
-            + ".ts";
-        if let Some(file) = facts.iter().find(|fact| {
-            fact.entity.kind == CodeEntityKind::File && fact.entity.area.path == candidate
-        }) {
-            return RelationTarget::ResolvedEntity(file.entity.identity.clone());
+        let mut normalized = std::path::PathBuf::new();
+        for component in parent.join(display).components() {
+            match component {
+                std::path::Component::Normal(part) => normalized.push(part),
+                std::path::Component::CurDir => {}
+                std::path::Component::ParentDir if normalized.pop() => {}
+                _ => return target.clone(),
+            }
+        }
+        let joined = normalized.to_string_lossy().replace('\\', "/");
+        let stem = joined
+            .strip_suffix(".js")
+            .or_else(|| joined.strip_suffix(".ts"))
+            .unwrap_or(&joined);
+        let candidate = format!("{stem}.ts");
+        // Local .js specifier substitution is supported only for a sole .ts
+        // source. A competing runtime file/TSX target requires module context.
+        let competing = [format!("{stem}.js"), format!("{stem}.tsx")];
+        if !analysis
+            .inventory
+            .entries
+            .iter()
+            .any(|entry| competing.contains(&entry.area.path))
+        {
+            if let Some(file) = unique_match(facts.iter().filter(|fact| {
+                fact.entity.kind == CodeEntityKind::File && fact.entity.area.path == candidate
+            })) {
+                return RelationTarget::ResolvedEntity(file.entity.identity.clone());
+            }
         }
     }
     RelationTarget::Unresolved(UnresolvedTarget {
@@ -828,14 +689,28 @@ fn make_result(
     let analyzer = semantic_analyzer();
     let target_label = target_label(&target);
     let kind_label = semantic_kind_label(&kind);
+    let range_basis = supporting_range
+        .as_ref()
+        .map(|r| {
+            format!(
+                "{}:{}:{}:{}",
+                r.start.line, r.start.column, r.end.line, r.end.column
+            )
+        })
+        .unwrap_or_default();
     let identity = digest_string(&[
-        b"volicord.semantic_relation.v1",
+        b"volicord.semantic_relation.v2",
         analysis.repository_snapshot.as_bytes(),
         analysis.identity.as_bytes(),
         source.identity.as_bytes(),
         kind_label.as_bytes(),
         target_label.as_bytes(),
+        range_basis.as_bytes(),
     ]);
+    let resolution_basis = match &target {
+        RelationTarget::Unresolved(target) => format!("unresolved: {}", target.reason),
+        RelationTarget::ResolvedEntity(_) => "same-file declaration identity supported by lexical namespace/owner binding, explicit implementation signature, or exact relative module path; no repository-wide name fallback".to_owned(),
+    };
     SemanticAnalysisResult {
         relation: SemanticRelation {
             identity,
@@ -854,8 +729,7 @@ fn make_result(
             adapter: adapter.clone(),
             analyzer: analyzer.clone(),
             build_context: Some("local manifest plus source snapshot".to_owned()),
-            resolution_basis: "qualified local declarations, lexical scope, explicit implementation, declared types, and local module paths"
-                .to_owned(),
+            resolution_basis,
             analysis: AnalysisProvenance {
                 class: ProvenanceClass::SemanticResult,
                 repository_snapshot: analysis.repository_snapshot,
@@ -886,6 +760,10 @@ fn semantic_adapter(language: &Language) -> AdapterIdentity {
         name: format!("{}-source-semantic", language_label(language)),
         version: env!("CARGO_PKG_VERSION").to_owned(),
     }
+}
+
+pub(crate) fn current_analyzer(analyzer: &AnalyzerIdentity) -> bool {
+    analyzer.name == SEMANTIC_ANALYZER_NAME && analyzer.version == SEMANTIC_ANALYZER_VERSION
 }
 
 fn semantic_analyzer() -> AnalyzerIdentity {
@@ -1185,24 +1063,6 @@ fn uncertainty_for_target(target: &RelationTarget) -> Uncertainty {
     }
 }
 
-fn is_builtin_target(target: &RelationTarget) -> bool {
-    match target {
-        RelationTarget::Unresolved(target) => matches!(
-            target.display.trim_matches('&'),
-            "String" | "str" | "string" | "void" | "None" | "Self"
-        ),
-        RelationTarget::ResolvedEntity(_) => false,
-    }
-}
-
-fn qualified_parent(entity: &CodeEntity) -> &str {
-    entity
-        .qualified_name
-        .as_deref()
-        .and_then(|qualified| qualified.rsplit_once('.').map(|(parent, _)| parent))
-        .unwrap_or_default()
-}
-
 fn target_label(target: &RelationTarget) -> &str {
     match target {
         RelationTarget::ResolvedEntity(identity) => identity,
@@ -1326,25 +1186,7 @@ mod tests {
     }
 
     #[test]
-    fn indexed_source_lines_preserve_text_line_boundaries() {
-        let cases = ["", "\n", "\r", "a\n", "a\r\n\r\n", "한글\nnext\r"];
-        for text in cases {
-            let sources = [("source".to_owned(), text.to_owned())]
-                .into_iter()
-                .collect();
-            let lines = super::index_source_lines(&sources);
-            for position in 0..=text.lines().count() {
-                assert_eq!(
-                    lines["source"].get(position).copied(),
-                    text.lines().nth(position)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn declaration_arity_is_read_once_per_fact_despite_repeated_calls() -> Result<(), Box<dyn Error>>
-    {
+    fn indexed_bindings_preserve_a_thousand_independent_calls() -> Result<(), Box<dyn Error>> {
         let root = tempfile::tempdir()?;
         let calls = (0..1000)
             .map(|index| format!("fn caller_{index}() {{ target(); }}\n"))
@@ -1358,14 +1200,9 @@ mod tests {
         let grounding = crate::canonical::test_repository_grounding(project, source)?;
         let inventory =
             InventoryRequest::new(root.path(), &grounding, source, 1_725_000_000_000_000)?;
-        super::DECLARED_ARITY_READS.with(|reads| reads.set(0));
         let (_, analysis) = super::analyze_repository_semantics(SemanticAnalysisRequest::new(
             StructuralAnalysisRequest::new(inventory),
         ))?;
-        assert_eq!(
-            super::DECLARED_ARITY_READS.with(|reads| reads.get()),
-            analysis.structural_facts.len()
-        );
         let target = analysis
             .structural_facts
             .iter()

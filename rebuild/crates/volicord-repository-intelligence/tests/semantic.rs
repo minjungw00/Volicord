@@ -20,6 +20,41 @@ use volicord_repository_intelligence::{
 
 const OBSERVED_AT: i64 = 1_725_000_000_000_000;
 
+#[test]
+fn external_receiver_does_not_bind_to_a_sole_local_declaration() -> Result<(), Box<dyn Error>> {
+    let root = tempdir()?;
+    fs::copy(
+        repository_root()
+            .join("rebuild/validation/repository-intelligence/semantic-binding/receiver.ts"),
+        root.path().join("receiver.ts"),
+    )?;
+    let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(inventory(root.path())?),
+    ))?;
+    for (caller, resolved) in [("demo", false), ("local", true)] {
+        let source = analysis
+            .structural_facts
+            .iter()
+            .find(|f| f.entity.display_name.as_deref() == Some(caller))
+            .ok_or("caller missing")?;
+        let reference = analysis
+            .semantic_results
+            .iter()
+            .find(|r| {
+                r.relation.source_entity == source.entity.identity
+                    && r.relation.kind == SemanticRelationKind::References
+            })
+            .ok_or("reference missing")?;
+        assert_eq!(
+            matches!(reference.relation.target, RelationTarget::ResolvedEntity(_)),
+            resolved,
+            "{caller}: {:?}",
+            reference.relation.target
+        );
+    }
+    Ok(())
+}
+
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
@@ -144,7 +179,7 @@ fn three_production_ecosystems_publish_normalized_semantic_relations() -> Result
                 CapabilityState::Available | CapabilityState::Partial
             ) && report.coverage.covered_relation_count > 0
                 && report.analyzer.as_ref().is_some_and(|analyzer| {
-                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "4"
+                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "5"
                 })
                 && report.provenance_class == ProvenanceClass::SemanticResult
         }));
@@ -368,7 +403,7 @@ class Greeter implements Named {
 }
 
 #[test]
-fn same_arity_overrides_require_a_unique_declaration() -> Result<(), Box<dyn Error>> {
+fn overrides_require_matching_signatures_within_the_bound_owner() -> Result<(), Box<dyn Error>> {
     let root = tempdir()?;
     fs::write(
         root.path().join("Example.java"),
@@ -399,7 +434,7 @@ class Derived extends Base {
                 .and_then(|fact| fact.entity.display_name.as_deref())
         })
         .collect::<Vec<_>>();
-    assert_eq!(overrides, vec![Some("unique")]);
+    assert_eq!(overrides, vec![Some("duplicated"), Some("unique")]);
     Ok(())
 }
 
@@ -838,5 +873,398 @@ fn metadata_reads_preserve_full_snapshot_freshness_and_reject_noncurrent_formats
     value["format_version"] = serde_json::json!(ANALYSIS_SNAPSHOT_FORMAT_VERSION);
     value["format_kind"] = serde_json::json!("another-format");
     assert!(serde_json::from_value::<AnalysisMetadata>(value).is_err());
+    Ok(())
+}
+
+// These expectations are language/scope facts, not snapshots of analyzer output.
+#[test]
+fn language_bindings_preserve_local_and_qualified_calls_without_global_name_fallback(
+) -> Result<(), Box<dyn Error>> {
+    type BindingExpectation<'a> = (&'a str, &'a str, Option<&'a str>);
+    type LanguageCase<'a> = (&'a str, &'a str, &'a str, &'a [BindingExpectation<'a>]);
+    let cases: &[LanguageCase<'_>] = &[
+        ("ts", r#"
+import { other as imported } from "./elsewhere";
+function log(value: string) {}
+function local() { log("ok"); }
+function external() { console.log("external"); }
+function shadow(log: (s: string) => void) { log("shadow"); }
+function outer() { function hidden() {} }
+function sibling() { hidden(); }
+function otherFile() { remote(); }
+function alias() { imported(); }
+class Owner {
+  run(value: string) {}
+  static make() {}
+  caller() { this.run("ok"); }
+}
+function qualified() { Owner.make(); }
+function wrongReceiver(Owner: { make(): void }) { Owner.make(); }
+function arrow() { ((log) => log("shadow"))((x) => {}); }
+function enclosing() { const log = (s: string) => {}; function nested() { log("shadow"); } }
+"#, "export function remote() {}\nexport function imported() {}\nexport function other() {}\n", &[
+            ("local", "log", Some("log")), ("external", "console.log", None), ("shadow", "log", None),
+            ("sibling", "hidden", None), ("otherFile", "remote", None), ("alias", "imported", None),
+            ("caller", "this.run", Some("Owner.run")), ("qualified", "Owner.make", Some("Owner.make")),
+            ("wrongReceiver", "Owner.make", None), ("arrow", "log", None), ("nested", "log", None),
+        ]),
+        ("java", r#"
+class Unrelated { static void log(String value) {} }
+class Owner {
+  void helper(String value) {}
+  void local() { helper("ok"); }
+  void external(External receiver) { receiver.helper("external"); }
+  void wrongOwner() { log("external"); }
+  void qualified() { Unrelated.log("ok"); }
+  void wrongReceiver(External Unrelated) { Unrelated.log("external"); }
+  void otherFile() { remote(); }
+}
+"#, "package other; class Elsewhere { static void remote() {} }\n", &[
+            ("local", "helper", Some("Owner.helper")), ("external", "receiver.helper", None),
+            ("wrongOwner", "log", None), ("qualified", "Unrelated.log", Some("Unrelated.log")),
+            ("wrongReceiver", "Unrelated.log", None), ("otherFile", "remote", None),
+        ]),
+        ("rs", r#"
+use elsewhere::other as imported;
+fn log(value: &str) {}
+fn local() { log("ok"); }
+fn external(receiver: External) { receiver.log("external"); }
+fn shadow(log: fn(&str)) { log("shadow"); }
+mod hidden { pub fn remote() {} }
+mod visible { pub fn run() {} }
+fn wrongModule() { remote(); }
+fn qualified() { visible::run(); }
+fn otherFile() { elsewhere_only(); }
+fn alias() { imported(); }
+fn closure() { let f = |log| { log("shadow"); }; }
+struct Owner;
+impl Owner {
+    fn helper(&self) {}
+    fn make() {}
+    fn caller(&self) { self.helper(); }
+}
+fn associated() { Owner::make(); }
+"#, "pub fn elsewhere_only() {}\npub fn imported() {}\npub fn other() {}\n", &[
+            ("local", "log", Some("log")), ("external", "receiver.log", None), ("shadow", "log", None),
+            ("wrongModule", "remote", None), ("qualified", "visible::run", Some("visible.run")),
+            ("otherFile", "elsewhere_only", None), ("alias", "imported", None), ("closure", "log", None),
+            ("caller", "self.helper", Some("Owner.helper")), ("associated", "Owner::make", Some("Owner.make")),
+        ]),
+    ];
+    for (extension, body, other, expectations) in cases {
+        let root = tempdir()?;
+        fs::write(root.path().join(format!("main.{extension}")), body)?;
+        fs::write(root.path().join(format!("elsewhere.{extension}")), other)?;
+        let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+            StructuralAnalysisRequest::new(inventory(root.path())?),
+        ))?;
+        for (caller, spelling, expected) in *expectations {
+            let source = analysis
+                .structural_facts
+                .iter()
+                .find(|f| f.entity.display_name.as_deref() == Some(caller))
+                .ok_or_else(|| format!("{extension}: missing caller {caller}"))?;
+            let references = analysis
+                .semantic_results
+                .iter()
+                .filter(|r| {
+                    r.relation.source_entity == source.entity.identity
+                        && r.relation.kind == SemanticRelationKind::References
+                        && match &r.relation.target {
+                            RelationTarget::Unresolved(t) => t.display == *spelling,
+                            RelationTarget::ResolvedEntity(_) => {
+                                r.relation.supporting_range.as_ref().is_some_and(|range| {
+                                    let line = body
+                                        .lines()
+                                        .nth(range.start.line as usize)
+                                        .unwrap_or_default();
+                                    line.get(range.start.column as usize..)
+                                        .is_some_and(|s| s.starts_with(spelling))
+                                })
+                            }
+                        }
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                references.len(),
+                1,
+                "{extension}:{caller}:{spelling} missing/duplicated occurrence"
+            );
+            let r = references[0];
+            match (&r.relation.target, expected) {
+                (RelationTarget::ResolvedEntity(id), Some(name)) => {
+                    let target = entity(&analysis, id).ok_or("target missing")?;
+                    assert_eq!(
+                        target.qualified_name.as_deref(),
+                        Some(*name),
+                        "{extension}:{caller}"
+                    );
+                    assert_eq!(target.area.path, format!("main.{extension}"));
+                    assert_eq!(r.relation.uncertainty.level, UncertaintyLevel::None);
+                }
+                (RelationTarget::Unresolved(target), None) => {
+                    assert!(!target.reason.is_empty());
+                    assert_eq!(r.relation.uncertainty.level, UncertaintyLevel::High);
+                    assert!(!r.relation.diagnostics.is_empty());
+                }
+                _ => panic!(
+                    "{extension}:{caller}:{spelling}: wrong binding {:?}, expected {expected:?}",
+                    r.relation.target
+                ),
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn types_and_implementations_cannot_bind_to_an_unimported_other_file_or_owner(
+) -> Result<(), Box<dyn Error>> {
+    for (extension, main, other) in [
+        ("ts", "class Local {}\nfunction good(): Local { return new Local(); }\nfunction bad(): Remote { return null; }\nclass Example implements Remote {}\n", "export interface Remote {}\n"),
+        ("java", "class Local {}\nclass Example implements Remote {\nLocal good() { return null; }\nRemote bad() { return null; }\n}\n", "package different; interface Remote {}\n"),
+        ("rs", "struct Local;\nfn good() -> Local { Local }\nfn bad() -> Remote { todo!() }\nstruct Example;\nimpl Remote for Example {}\n", "pub trait Remote {}\n"),
+    ] {
+        let root = tempdir()?;
+        fs::write(root.path().join(format!("main.{extension}")), main)?;
+        fs::write(root.path().join(format!("other.{extension}")), other)?;
+        let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(StructuralAnalysisRequest::new(inventory(root.path())?)))?;
+        let mut positive = false;
+        let mut negative = 0;
+        for r in &analysis.semantic_results {
+            if !matches!(r.relation.kind, SemanticRelationKind::TypeOf | SemanticRelationKind::Implements) { continue; }
+            match &r.relation.target {
+                RelationTarget::ResolvedEntity(id) => {
+                    let target = entity(&analysis, id).ok_or("type target missing")?;
+                    assert_ne!(target.display_name.as_deref(), Some("Remote"), "{extension}: crossed unbound module/package");
+                    positive |= target.display_name.as_deref() == Some("Local");
+                }
+                RelationTarget::Unresolved(t) if t.display == "Remote" => { negative += 1; assert!(!r.relation.diagnostics.is_empty()); }
+                _ => {}
+            }
+        }
+        assert!(positive && negative >= 2, "{extension}: missing type/implementation controls");
+    }
+    Ok(())
+}
+
+#[test]
+fn superseded_semantic_producers_remain_historical_and_reanalysis_reuses_only_structure(
+) -> Result<(), Box<dyn Error>> {
+    let root = tempdir()?;
+    let body =
+        include_str!("../../../validation/repository-intelligence/semantic-binding/receiver.ts");
+    fs::write(root.path().join("receiver.ts"), body)?;
+    let (repository, current) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(inventory(root.path())?),
+    ))?;
+    let grounding = support::repository_grounding(0x71, 0x72)?;
+    // Synthetic obsolete-producer fault injection, not a claimed historical run.
+    let mut obsolete = current.clone();
+    for report in &mut obsolete.capabilities {
+        if let Some(analyzer) = report
+            .analyzer
+            .as_mut()
+            .filter(|a| a.name == "volicord-source-semantic-index")
+        {
+            analyzer.version = "4".into();
+        }
+    }
+    for basis in &mut obsolete.semantic_bases {
+        basis.analyzer.version = "4".into();
+    }
+    let log = obsolete
+        .structural_facts
+        .iter()
+        .find(|f| f.entity.display_name.as_deref() == Some("log"))
+        .ok_or("log")?
+        .entity
+        .identity
+        .clone();
+    let demo = obsolete
+        .structural_facts
+        .iter()
+        .find(|f| f.entity.display_name.as_deref() == Some("demo"))
+        .ok_or("demo")?
+        .entity
+        .identity
+        .clone();
+    for result in &mut obsolete.semantic_results {
+        result.provenance.analyzer.version = "4".into();
+        if let Some(analyzer) = &mut result.provenance.analysis.analyzer {
+            analyzer.version = "4".into();
+        }
+        if result.relation.source_entity == demo
+            && result.relation.kind == SemanticRelationKind::References
+        {
+            result.relation.target = RelationTarget::ResolvedEntity(log.clone());
+            result.relation.uncertainty = Uncertainty::none();
+        }
+    }
+    let preserved = canonical_json(&obsolete)?;
+    let decoded: volicord_repository_intelligence::AnalysisSnapshot =
+        serde_json::from_slice(&preserved)?;
+    assert_eq!(
+        canonical_json(&decoded)?,
+        preserved,
+        "decoding rewrote an obsolete producer's original basis"
+    );
+    let hits = search_local(
+        &decoded,
+        "references",
+        repository.identity,
+        100,
+        &grounding.grounding,
+    )?;
+    assert!(hits
+        .iter()
+        .filter(|h| h.result_kind == SearchResultKind::SemanticRelation)
+        .all(|h| h.freshness.state == FreshnessState::Stale && !h.navigation_is_current));
+    let basis = grounded_explanation_basis(&decoded, repository.identity, &grounding.grounding)?;
+    assert!(basis
+        .evidence
+        .iter()
+        .filter(|e| e.statement_class == GroundingStatementClass::SemanticResult)
+        .all(|e| e.freshness.state == FreshnessState::Stale
+            && e.semantic_provenance
+                .as_ref()
+                .is_some_and(|p| p.analyzer.version == "4")));
+    let mut full_read = decoded.clone();
+    let mut metadata_read = volicord_repository_intelligence::AnalysisMetadata::from(&decoded);
+    full_read.observe_repository_freshness(Some(&repository));
+    metadata_read.observe_repository_freshness(Some(&repository));
+    assert_eq!(
+        metadata_read,
+        volicord_repository_intelligence::AnalysisMetadata::from(&full_read)
+    );
+    assert_eq!(metadata_read.freshness.state, FreshnessState::Stale);
+    let (_, refreshed) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(inventory(root.path())?).with_previous(&decoded),
+    ))?;
+    assert!(refreshed.refresh.reused_file_count > 0);
+    assert_eq!(refreshed.identity, current.identity);
+    assert_eq!(refreshed.semantic_results, current.semantic_results);
+    assert!(refreshed.semantic_contract_is_current());
+    assert_eq!(canonical_json(&decoded)?, preserved);
+    assert_eq!(decoded.identity, full_read.identity);
+    Ok(())
+}
+
+#[test]
+fn public_search_and_grounding_keep_binding_identity_uncertainty_and_occurrence_ranges(
+) -> Result<(), Box<dyn Error>> {
+    let root = tempdir()?;
+    fs::write(root.path().join("main.ts"), "function log(value: string) {}\nfunction demo() { console.log('one'); console.log('two'); }\nfunction local() { log('ok'); }\n")?;
+    let (repository, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(inventory(root.path())?),
+    ))?;
+    let grounding = support::repository_grounding(0x71, 0x72)?;
+    let basis = grounded_explanation_basis(&analysis, repository.identity, &grounding.grounding)?;
+    let hits = search_local(
+        &analysis,
+        "references",
+        repository.identity,
+        100,
+        &grounding.grounding,
+    )?;
+    let references = hits
+        .iter()
+        .filter(|h| h.result_kind == SearchResultKind::SemanticRelation)
+        .collect::<Vec<_>>();
+    assert_eq!(references.len(), 3, "distinct call sites were collapsed");
+    for hit in references {
+        let range = hit.source_range.as_ref().ok_or("Source range")?;
+        let evidence = basis
+            .evidence
+            .iter()
+            .find(|e| {
+                e.source_range.as_ref() == Some(range)
+                    && e.statement_class == GroundingStatementClass::SemanticResult
+                    && e.relation_target == hit.relation_target
+            })
+            .ok_or("grounded relation")?;
+        assert_eq!(evidence.uncertainty, hit.uncertainty);
+        assert_eq!(evidence.semantic_provenance, hit.semantic_provenance);
+        assert_eq!(evidence.source, hit.source);
+        assert_eq!(evidence.freshness, hit.freshness);
+        assert_eq!(hit.analysis_snapshot, analysis.identity);
+        assert_eq!(range.repository_snapshot, repository.identity);
+        if range.start.line == 1 {
+            let Some(RelationTarget::Unresolved(target)) = &hit.relation_target else {
+                return Err("external receiver became a confirmed target".into());
+            };
+            assert_eq!(target.display, "console.log");
+            assert!(!target.reason.is_empty());
+            assert_eq!(hit.uncertainty.level, UncertaintyLevel::High);
+            assert!(!hit.diagnostics.is_empty());
+        } else {
+            let Some(RelationTarget::ResolvedEntity(id)) = &hit.relation_target else {
+                return Err("local binding missing".into());
+            };
+            assert_eq!(
+                entity(&analysis, id)
+                    .ok_or("local target")?
+                    .display_name
+                    .as_deref(),
+                Some("log")
+            );
+            assert_eq!(hit.uncertainty.level, UncertaintyLevel::None);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn unsupported_conditional_and_pattern_bindings_are_not_certified() -> Result<(), Box<dyn Error>> {
+    let root = tempdir()?;
+    fs::write(
+        root.path().join("lib.rs"),
+        r#"
+fn log(value: &str) {}
+#[cfg(any())]
+fn disabled() {}
+fn conditional() { disabled(); }
+fn pattern() { if let Some(log) = None::<fn(&str)> { log("shadow"); } }
+fn unknown_macro() { binds_local!(); log("shadow"); }
+fn supported() { log("local"); }
+"#,
+    )?;
+    let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(inventory(root.path())?),
+    ))?;
+    for result in analysis
+        .semantic_results
+        .iter()
+        .filter(|r| r.relation.kind == SemanticRelationKind::References)
+    {
+        let source = entity(&analysis, &result.relation.source_entity).ok_or("source")?;
+        let expected = source.display_name.as_deref() == Some("supported");
+        assert_eq!(
+            matches!(result.relation.target, RelationTarget::ResolvedEntity(_)),
+            expected,
+            "{:?}: {:?}",
+            source.display_name,
+            result.relation.target
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn parent_binding_requires_a_native_heritage_clause_not_a_token_in_the_body(
+) -> Result<(), Box<dyn Error>> {
+    for (extension, body) in [
+        ("ts", "interface Marker {}\nclass Actual implements Marker {}\nclass Decoy { note() { return 'extends Marker'; } }\nclass SelfDecoy { note() { return 'extends SelfDecoy'; } }\n"),
+        ("java", "interface Marker {}\nclass Actual implements Marker {}\nclass Decoy { String note() { return \"extends Marker\"; } }\nclass SelfDecoy { String note() { return \"extends SelfDecoy\"; } }\n"),
+    ] {
+        let root = tempdir()?;
+        fs::write(root.path().join(format!("main.{extension}")), body)?;
+        let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(StructuralAnalysisRequest::new(inventory(root.path())?)))?;
+        let mut confirmed = Vec::new();
+        for result in analysis.semantic_results.iter().filter(|r| r.relation.kind == SemanticRelationKind::Implements && matches!(r.relation.target, RelationTarget::ResolvedEntity(_))) {
+            confirmed.push(entity(&analysis, &result.relation.source_entity).ok_or("source")?.display_name.as_deref());
+        }
+        assert_eq!(confirmed, vec![Some("Actual")], "{extension}: token text became heritage evidence");
+    }
     Ok(())
 }

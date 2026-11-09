@@ -203,6 +203,7 @@ pub enum MapRelationClass {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MapRelation {
+    pub semantic_provenance: Option<volicord_repository_intelligence::SemanticProvenance>,
     pub identity: String,
     pub class: MapRelationClass,
     pub kind: String,
@@ -401,7 +402,7 @@ enum RelationRef<'a> {
         SourceId,
     ),
     Semantic(
-        &'a volicord_repository_intelligence::SemanticRelation,
+        &'a volicord_repository_intelligence::SemanticAnalysisResult,
         SourceId,
     ),
 }
@@ -438,7 +439,7 @@ fn projection_graph<'a>(
                 .map_or(analysis.repository_source.identity(), |range| {
                     range.source.identity()
                 });
-            RelationRef::Semantic(&result.relation, source_id)
+            RelationRef::Semantic(result, source_id)
         }));
     }
     entities.sort_by(|left, right| left.identity.cmp(&right.identity));
@@ -455,19 +456,19 @@ impl RelationView for RelationRef<'_> {
     fn identity(&self) -> &str {
         match self {
             Self::Structural(r, _) => &r.identity,
-            Self::Semantic(r, _) => &r.identity,
+            Self::Semantic(r, _) => &r.relation.identity,
         }
     }
     fn source(&self) -> &str {
         match self {
             Self::Structural(r, _) => &r.source_entity,
-            Self::Semantic(r, _) => &r.source_entity,
+            Self::Semantic(r, _) => &r.relation.source_entity,
         }
     }
     fn target(&self) -> Option<&str> {
         let target = match self {
             Self::Structural(r, _) => &r.target,
-            Self::Semantic(r, _) => &r.target,
+            Self::Semantic(r, _) => &r.relation.target,
         };
         match target {
             RelationTarget::ResolvedEntity(id) => Some(id),
@@ -476,12 +477,12 @@ impl RelationView for RelationRef<'_> {
     }
     fn unresolved(&self) -> bool {
         matches!(self, Self::Structural(r, _) if matches!(r.target, RelationTarget::Unresolved(_)))
-            || matches!(self, Self::Semantic(r, _) if matches!(r.target, RelationTarget::Unresolved(_)))
+            || matches!(self, Self::Semantic(r, _) if matches!(r.relation.target, RelationTarget::Unresolved(_)))
     }
     fn rank(&self) -> usize {
         let kind = match self {
             Self::Structural(r, _) => format!("{:?}", r.kind),
-            Self::Semantic(r, _) => format!("{:?}", r.kind),
+            Self::Semantic(r, _) => format!("{:?}", r.relation.kind),
         };
         relation_kind_rank_name(&kind)
     }
@@ -1878,6 +1879,7 @@ fn materialize_relation(reference: RelationRef<'_>) -> MapRelation {
     });
     match reference {
         RelationRef::Structural(relation, fallback) => MapRelation {
+            semantic_provenance: None,
             identity: relation.identity.clone(),
             class: MapRelationClass::StructuralFact,
             kind: format!("{:?}", relation.kind),
@@ -1895,21 +1897,25 @@ fn materialize_relation(reference: RelationRef<'_>) -> MapRelation {
             uncertainty: relation.uncertainty.clone(),
             diagnostics: relation.diagnostics.clone(),
         },
-        RelationRef::Semantic(relation, source_id) => MapRelation {
-            identity: relation.identity.clone(),
-            class: MapRelationClass::SemanticResult,
-            kind: format!("{:?}", relation.kind),
-            source_entity: relation.source_entity.clone(),
-            target_entity: resolved_target(&relation.target),
-            unresolved_target: unresolved_target(&relation.target),
-            source_id,
-            supporting_range: relation.supporting_range.clone(),
-            analysis_snapshot: relation.analysis_snapshot,
-            repository_snapshot: relation.repository_snapshot,
-            freshness: relation.freshness.clone(),
-            uncertainty: relation.uncertainty.clone(),
-            diagnostics: relation.diagnostics.clone(),
-        },
+        RelationRef::Semantic(result, source_id) => {
+            let relation = &result.relation;
+            MapRelation {
+                semantic_provenance: Some(result.provenance.clone()),
+                identity: relation.identity.clone(),
+                class: MapRelationClass::SemanticResult,
+                kind: format!("{:?}", relation.kind),
+                source_entity: relation.source_entity.clone(),
+                target_entity: resolved_target(&relation.target),
+                unresolved_target: unresolved_target(&relation.target),
+                source_id,
+                supporting_range: relation.supporting_range.clone(),
+                analysis_snapshot: relation.analysis_snapshot,
+                repository_snapshot: relation.repository_snapshot,
+                freshness: result.read_freshness(),
+                uncertainty: relation.uncertainty.clone(),
+                diagnostics: relation.diagnostics.clone(),
+            }
+        }
     }
 }
 
@@ -3371,6 +3377,7 @@ mod tests {
     fn map_relation(identity: String, source_entity: String, target_entity: String) -> MapRelation {
         let repository_snapshot = snapshot_id();
         MapRelation {
+            semantic_provenance: None,
             identity,
             class: MapRelationClass::StructuralFact,
             kind: "Imports".to_owned(),

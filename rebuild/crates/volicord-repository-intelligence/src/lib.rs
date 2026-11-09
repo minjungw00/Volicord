@@ -9,6 +9,7 @@ pub use behavior::{
     BodyControl, BodyObservation, BodyObservationKind, BodyObservations, BodyValue, BodyValueKind,
     BODY_EXPRESSION_BYTE_LIMIT, BODY_OBSERVATIONS_KEY, BODY_OBSERVATIONS_LIMIT,
 };
+mod bindings;
 mod canonical;
 mod freshness;
 mod grounding;

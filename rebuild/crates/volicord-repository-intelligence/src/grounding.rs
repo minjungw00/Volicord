@@ -10,6 +10,14 @@ pub fn grounded_explanation_basis(
     canonical_grounding: &crate::CanonicalGrounding,
 ) -> Result<GroundedExplanationBasis, crate::CanonicalGroundingError> {
     canonical_grounding.validate_analysis_snapshot(analysis)?;
+    let mut historical_read;
+    let analysis = if analysis.semantic_contract_is_current() {
+        analysis
+    } else {
+        historical_read = analysis.clone();
+        historical_read.observe_producer_contract();
+        &historical_read
+    };
     let current = analysis.repository_snapshot == current_repository_snapshot;
     let freshness = if current {
         analysis.freshness.clone()
@@ -26,6 +34,8 @@ pub fn grounded_explanation_basis(
     let mut evidence = Vec::new();
     for entry in &analysis.inventory.entries {
         evidence.push(GroundingEvidence {
+            relation_target: None,
+            semantic_provenance: None,
             identity: format!("inventory:{}", entry.area.path),
             statement_class: GroundingStatementClass::RepositoryObservation,
             source: analysis.repository_source.clone(),
@@ -42,6 +52,8 @@ pub fn grounded_explanation_basis(
     }
     for fact in &analysis.structural_facts {
         evidence.push(GroundingEvidence {
+            relation_target: None,
+            semantic_provenance: None,
             identity: fact.entity.identity.clone(),
             statement_class: GroundingStatementClass::StructuralFact,
             source: fact.entity.source.clone(),
@@ -73,6 +85,8 @@ pub fn grounded_explanation_basis(
             .find(|fact| fact.entity.identity == result.relation.source_entity)
             .map_or_else(Vec::new, |fact| fact.entity.canonical_links.clone());
         evidence.push(GroundingEvidence {
+            relation_target: Some(result.relation.target.clone()),
+            semantic_provenance: Some(result.provenance.clone()),
             identity: result.relation.identity.clone(),
             statement_class: GroundingStatementClass::SemanticResult,
             source,
@@ -91,6 +105,8 @@ pub fn grounded_explanation_basis(
     }
     for interpretation in &analysis.agent_interpretations {
         evidence.push(GroundingEvidence {
+            relation_target: None,
+            semantic_provenance: None,
             identity: interpretation.identity.clone(),
             statement_class: GroundingStatementClass::AgentInterpretation,
             source: interpretation
@@ -147,6 +163,8 @@ pub fn grounded_explanation_basis(
     }
     if evidence.is_empty() {
         evidence.push(GroundingEvidence {
+            relation_target: None,
+            semantic_provenance: None,
             identity: "analysis:no-evidence".to_owned(),
             statement_class: GroundingStatementClass::RepositoryObservation,
             source: analysis.repository_source.clone(),

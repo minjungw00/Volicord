@@ -43,6 +43,8 @@ struct InterpretationRelation<'a> {
     analysis: AnalysisSnapshotId,
     freshness: FreshnessState,
     capability: Capability,
+    uncertainty: &'a volicord_repository_intelligence::Uncertainty,
+    unresolved_reason: Option<&'a str>,
 }
 
 impl<'a> CodeEvidenceIndex<'a> {
@@ -91,6 +93,8 @@ impl<'a> CodeEvidenceIndex<'a> {
                         analysis: relation.analysis_snapshot,
                         freshness: relation.freshness.state,
                         capability: Capability::Structural,
+                        uncertainty: &relation.uncertainty,
+                        unresolved_reason: unresolved_reason(&relation.target),
                     },
                 );
             }
@@ -105,8 +109,10 @@ impl<'a> CodeEvidenceIndex<'a> {
                         range: relation.supporting_range.as_ref(),
                         repository: relation.repository_snapshot,
                         analysis: relation.analysis_snapshot,
-                        freshness: relation.freshness.state,
+                        freshness: result.read_freshness().state,
                         capability: Capability::Semantic,
+                        uncertainty: &relation.uncertainty,
+                        unresolved_reason: unresolved_reason(&relation.target),
                     },
                 );
             }
@@ -170,6 +176,18 @@ impl<'a> CodeEvidenceIndex<'a> {
                 output.known_gaps.extend(reason);
             } else if let Some(relation) = self.relations.get(&key) {
                 output.relation_basis.push(basis.clone());
+                if let Some(reason) = relation.unresolved_reason {
+                    states.push(CodeExplanationState::Partial);
+                    output
+                        .known_gaps
+                        .push(format!("Unresolved relation: {reason}"));
+                    output.uncertainty.level =
+                        volicord_repository_intelligence::UncertaintyLevel::High;
+                }
+                output
+                    .uncertainty
+                    .reasons
+                    .extend(relation.uncertainty.reasons.clone());
                 output.entity_basis.push(relation.source.to_owned());
                 output.source_ranges.extend(relation.range.cloned());
                 invalid |= self.ambiguous_relations.contains(&key)
@@ -793,5 +811,12 @@ impl CodeBehaviorReading {
         }
         sentences.push(if korean { "이 설명은 소스가 지정한 동작이며 분기 실행, 호출 결과와 외부 효과는 관찰되지 않았습니다. 호출 대상의 효과와 지원 범위 밖의 제어 흐름은 확인되지 않았습니다." } else { "These source operations do not establish branch execution, call outcomes or external effects. Callee effects and control flow outside the supported structure remain unknown." }.into());
         sentences.join(" ")
+    }
+}
+
+fn unresolved_reason(target: &volicord_repository_intelligence::RelationTarget) -> Option<&str> {
+    match target {
+        volicord_repository_intelligence::RelationTarget::Unresolved(u) => Some(&u.reason),
+        _ => None,
     }
 }

@@ -851,6 +851,26 @@
       "content_sha256": "54279f90a9c717ac5d9f9f1606a93137581979e9f81bdc0679b8bde8ca866fa2",
       "origin": "Independently authored synthetic source, canonical row, chronology and rejection expectations; no generated responses or inferred observation times.",
       "license": "CC0-1.0"
+    },
+    {
+      "id": "semantic-binding-receiver",
+      "validation_id": "V02",
+      "path": "rebuild/validation/repository-intelligence/semantic-binding",
+      "purpose": "Independently distinguish a host receiver property from a sole same-arity local declaration while preserving a local call.",
+      "expected_entities": [
+        "typescript|receiver.ts|function|log|3",
+        "typescript|receiver.ts|function|demo|6",
+        "typescript|receiver.ts|function|local|9"
+      ],
+      "expected_relations": [
+        "references|local|log"
+      ],
+      "expected_unsupported": [
+        "external receiver binding for console.log"
+      ],
+      "content_sha256": "8971347852e553264f45276f30a26296335a8dbccf207b01f6f95f5311baf583",
+      "origin": "Self-authored deterministic binding regression; Node counter is an independent runtime oracle.",
+      "license": "CC0-1.0"
     }
   ]
 }

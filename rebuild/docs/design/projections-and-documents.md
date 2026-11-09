@@ -950,6 +950,17 @@ canonical Decision/Context relation에 연결된다.
 - Unsupported, unavailable, failed 또는 stale scope에서 없는 edge를 채우지 않고
   gap으로 보여 준다.
 
+Semantic relationship reads preserve the exact resolved target or unresolved reason,
+Source/range, Analysis/Repository Snapshot, producing semantic provenance, diagnostic,
+freshness and uncertainty. Search and grounded explanation evidence expose target and
+producer explicitly; Projection maps and MCP resolved/unresolved relationship reads retain
+the same basis. An unresolved relationship has no Code Entity target and supplies no
+confirmed diagram edge. Generated interpretations using that relation retain its uncertainty
+and unresolved limitation. Superseded semantic producers remain historical/stale even when
+source bytes match. Existing retained prose and authored Source-cited figures retain their
+original publication identity and basis; renderer admission or a valid citation alone never
+certifies symbol binding or claim entailment. No automatic generation occurs during reading.
+
 ## 7. Initial generated documents
 
 첫 generated-document contract는 다음 네 유형을 포함한다.

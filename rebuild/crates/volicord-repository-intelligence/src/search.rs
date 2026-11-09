@@ -13,6 +13,14 @@ pub fn search_local(
     canonical_grounding: &crate::CanonicalGrounding,
 ) -> Result<Vec<SearchHit>, crate::CanonicalGroundingError> {
     canonical_grounding.validate_analysis_snapshot(analysis)?;
+    let mut historical_read;
+    let analysis = if analysis.semantic_contract_is_current() {
+        analysis
+    } else {
+        historical_read = analysis.clone();
+        historical_read.observe_producer_contract();
+        &historical_read
+    };
     let query = query.trim().to_lowercase();
     if query.is_empty() || limit == 0 {
         return Ok(Vec::new());
@@ -45,6 +53,9 @@ pub fn search_local(
                 score,
                 format!("inventory:{}", entry.area.path),
                 SearchHit {
+                    relation_target: None,
+                    uncertainty: crate::Uncertainty::none(),
+                    semantic_provenance: None,
                     analysis_snapshot: analysis.identity,
                     repository_snapshot: analysis.repository_snapshot,
                     source: analysis.repository_source.clone(),
@@ -75,6 +86,9 @@ pub fn search_local(
                 score + 100,
                 format!("entity:{}", entity.identity),
                 SearchHit {
+                    relation_target: None,
+                    uncertainty: crate::Uncertainty::none(),
+                    semantic_provenance: None,
                     analysis_snapshot: analysis.identity,
                     repository_snapshot: analysis.repository_snapshot,
                     source: entity.source.clone(),
@@ -125,6 +139,9 @@ pub fn search_local(
                     score + 50,
                     format!("relation:{}", relation.identity),
                     SearchHit {
+                        relation_target: Some(relation.target.clone()),
+                        uncertainty: relation.uncertainty.clone(),
+                        semantic_provenance: None,
                         analysis_snapshot: analysis.identity,
                         repository_snapshot: analysis.repository_snapshot,
                         source: entity.source.clone(),
@@ -189,6 +206,9 @@ pub fn search_local(
                 score + 75,
                 format!("semantic_relation:{}", relation.identity),
                 SearchHit {
+                    relation_target: Some(relation.target.clone()),
+                    uncertainty: relation.uncertainty.clone(),
+                    semantic_provenance: Some(result.provenance.clone()),
                     analysis_snapshot: analysis.identity,
                     repository_snapshot: analysis.repository_snapshot,
                     source: source.map_or_else(

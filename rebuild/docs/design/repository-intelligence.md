@@ -407,6 +407,19 @@ in-process source-semantic symbol index를 둔다. 이 선택은 compiler/LSP co
   Source-semantic analyzer version `2`는 이름/type/override 후보의 첫 항목을
   임의로 선택하지 않는다. Observation-bound identity의 정렬 순서는 해석 근거가
   아니며, 중복 override 후보로는 확정된 override relation을 만들지 않는다.
+- Source-semantic analyzer version `5`는 같은 파일의 parser-owned lexical namespace,
+  receiver owner와 exact declaration identity를 binding 근거로 확인한다. 이름·유일성·
+  arity·existing entity·valid envelope만으로 다른 scope/module/package target을 확정하지 않는다.
+  TypeScript의 bare lexical function, instance `this`/class-static member, Java의
+  class method namespace와 explicit local static owner, Rust의 lexical item, inline
+  public module member와 bound local impl receiver/associated function을 구분한다.
+  Import alias, external receiver, inferred receiver type, cross-file symbol lookup,
+  wildcard와 지원하지 않는 pattern은 unresolved reason/diagnostic/uncertainty로 남는다.
+  Relative TypeScript module edge는 정규화된 유일 `.ts` file basis와 competing runtime/
+  TSX file 부재를 요구하며, module edge가 imported symbol binding을 증명하지 않는다.
+  Override는 bound owner의 supported parameter/return signature가 일치할 때만 publish한다.
+  동일 target을 부르는 서로 다른 call site는 각각 Source range/identity를 보존한다.
+  Parser-recovered declaration은 유지하되 잘못된 syntax의 binding을 추측하지 않는다.
 - Source-semantic analyzer version `3`의 file basis는 해당 파일의 structural 및
   semantic diagnostic ID만 보유한다. 언어/repository 전체 진단은 shared diagnostic
   catalog와 capability report가 보존하며, 다른 파일의 진단을 모든 file basis에

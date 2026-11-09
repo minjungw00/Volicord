@@ -2608,6 +2608,8 @@ fn project_understanding_json(
                 "freshness":format!("{:?}",relation.freshness.state).to_lowercase(),
                 "uncertainty":{"level":format!("{:?}",relation.uncertainty.level).to_lowercase(),"reasons":relation.uncertainty.reasons},
                 "diagnostics":relation.diagnostics,
+                "source_range":relation.supporting_range,
+                "semantic_provenance":relation.semantic_provenance,
             })).collect::<Vec<_>>(),
             "selection_basis":understanding.architecture.selection_basis.iter().map(|selection| json!({
                 "entity_identity":selection.entity_identity,
@@ -2673,6 +2675,10 @@ fn project_understanding_json(
                 "analysis_snapshot_id":relation.analysis_snapshot.to_string(),
                 "repository_snapshot_id":relation.repository_snapshot.to_string(),
                 "diagnostics":relation.diagnostics,
+                "source_range":relation.supporting_range,
+                "semantic_provenance":relation.semantic_provenance,
+                "freshness":relation.freshness,
+                "uncertainty":relation.uncertainty,
             })).collect::<Vec<_>>(),
             "source_status":{
                 "current":understanding.evidence.source_status.current,

@@ -568,6 +568,20 @@ SemanticRelation
 - semantic capability가 없는 언어도 inventory, agent_assisted와 structural mode를 유지한다.
 - 최소 세 ecosystem gate가 여러 접근에서 불가능할 때만 Q2 revisit trigger를 제기한다.
 
+Focused semantic-binding controls use the production Rust `semantic` tests and the
+self-authored `semantic-binding/receiver.ts` runtime oracle. Keep top-level `log` and
+`demo` on separate lines with matching arity: Node execution independently establishes
+that `console.log` does not call the local declaration. Rust controls separately cover
+Java/TypeScript/Rust lexical/member/module ownership, import aliases, shadowing, ambiguity,
+unsupported binding, types/implementations/overrides, and valid local/qualified targets.
+Search/grounding controls inspect real target, producer, uncertainty, diagnostics and exact
+occurrence ranges. Superseded-producer fault injection is labelled synthetic; it verifies
+unchanged historical bytes/identity, metadata/full-read stale state and fresh semantics
+with structurally reused inputs. Public consumer controls must use normal analysis and
+reading entry points with independent positive/negative expectations. Run only these affected
+checks through `validate focused`; their numeric outcomes are supporting evidence, never
+a rerun or replacement of historical V02, aggregate qualification or user acceptance.
+
 ## 7. V03 — Canonical Context와 portable bundle
 
 ### 목표

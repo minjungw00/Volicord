@@ -1488,6 +1488,7 @@ fn explanation_from_entity_and_relations(
                     .iter()
                     .cloned()
                     .chain(relation.diagnostics.iter().cloned())
+                    .chain(relation.freshness.reason.iter().cloned())
             }))
             .collect(),
     };
@@ -1538,6 +1539,10 @@ fn relation_narrative(
 ) -> (String, String) {
     let source_name = &source.display_name;
     let target_name = &target.display_name;
+    if relation.freshness.state != volicord_repository_intelligence::FreshnessState::Current {
+        return (format!("Historical analysis recorded `{source_name}` {} `{target_name}`; current binding is unverified. {}", relation.kind, relation.freshness.reason.as_deref().unwrap_or("Refresh analysis before using this relation.")),
+            format!("과거 분석에는 `{source_name}`에서 `{target_name}`으로 `{}` 관계가 기록되어 있습니다. 현재 binding은 확인되지 않았습니다. {}", relation.kind, relation.freshness.reason.as_deref().unwrap_or("분석을 새로 실행해야 합니다.")));
+    }
     match relation.kind.as_str() {
         "Imports" => (
             format!("`{source_name}` imports `{target_name}` through a parser-observed dependency edge."),
@@ -2318,6 +2323,7 @@ mod tests {
 
     fn relation(identity: &str, source: &str, target: &str, kind: &str) -> MapRelation {
         MapRelation {
+            semantic_provenance: None,
             identity: identity.into(),
             class: MapRelationClass::StructuralFact,
             kind: kind.into(),

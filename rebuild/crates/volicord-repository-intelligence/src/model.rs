@@ -1050,6 +1050,9 @@ pub struct StructuralFact {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SearchHit {
+    pub relation_target: Option<RelationTarget>,
+    pub uncertainty: Uncertainty,
+    pub semantic_provenance: Option<SemanticProvenance>,
     pub analysis_snapshot: AnalysisSnapshotId,
     pub repository_snapshot: RepositorySnapshotId,
     pub source: CanonicalSourceRef,
@@ -1122,6 +1125,8 @@ pub enum GroundingStatementClass {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct GroundingEvidence {
+    pub relation_target: Option<RelationTarget>,
+    pub semantic_provenance: Option<SemanticProvenance>,
     pub identity: String,
     pub statement_class: GroundingStatementClass,
     pub source: CanonicalSourceRef,

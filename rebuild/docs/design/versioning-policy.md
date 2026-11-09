@@ -158,6 +158,17 @@ request-owned scratch이고 durable cache나 새 body retention이 아니다. Pr
 path는 하나이며 bulk/stream JSON reconstruction은 differential test oracle에만 남는다.
 Publisher bytes, canonical/Analysis version, cache header와 history disposition은 바뀌지 않는다.
 
+Source-semantic analyzer `5` changes binding selection and per-occurrence relation identity,
+not the Analysis Snapshot format `5` representation. Producer identity participates in new
+Analysis identity and repository-observation equivalence. Structural incremental reuse does
+not reuse semantic targets: semantics is recomputed against current verified source and the
+current binder. No numeric old/new decoder or format conversion is added. Exact original
+snapshots remain decodable with their original producer, identity, target and range; current
+read-side Search/grounding/Projection and full/metadata repository comparison mark superseded
+semantic producers stale and require explicit reanalysis. Persisted historical bytes,
+canonical records, and independently retained publications are never relabelled or rewritten.
+Read-model target/provenance/uncertainty fields add no new durable format or publication seal.
+
 ## 6. Derived Index version
 
 Derived Index version은 full-text/semantic index, graph, embedding, fingerprint cache,
