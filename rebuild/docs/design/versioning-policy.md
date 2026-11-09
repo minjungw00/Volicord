@@ -917,3 +917,10 @@ engine/config/metrics identity, renderer, resolved runtime package checksums,
 embedded engine digest, installed Viewer identity and exact upstream notices.
 This package metadata is neither canonical meaning nor a retained/publication
 geometry cache and cannot grant Source authority or alter a document version.
+
+The graph engine execution identity adds `worker/1` for its bounded local process
+supervisor and strict transient pipe. It participates in existing layout keys and
+installed dependency receipts. Geometry algorithm/metrics, renderer 23, admitted
+semantic format 9 and all canonical/Source/retained formats remain unchanged.
+No old worker protocol decoder, persisted geometry cache or historical relabelling
+is introduced. The rquickjs family and its reviewed native license bytes stay pinned.

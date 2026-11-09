@@ -11,6 +11,9 @@ use volicord_operations::{LocalOperations, RuntimeLayout};
 use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerRequest, ViewerServer, ViewerView};
 
 fn main() {
+    if env::args_os().skip(1).collect::<Vec<_>>() == [OsString::from("--local-layout-worker")] {
+        std::process::exit(volicord_viewer::run_layout_worker());
+    }
     if let Err(error) = run(env::args_os().skip(1).collect()) {
         eprintln!("{error}");
         std::process::exit(1);

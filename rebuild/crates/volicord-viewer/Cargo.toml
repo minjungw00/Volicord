@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 rquickjs = "=0.11.0"
+rustix = { version = "1.1.4", features = ["event", "fs", "process"] }
 serde = { version = "1.0", features = ["derive"] }
 sha2 = "0.10.9"
 serde_json = "1.0"
@@ -24,10 +25,10 @@ volicord-projections = { path = "../volicord-projections" }
 volicord-repository-intelligence = { path = "../volicord-repository-intelligence" }
 
 [dev-dependencies]
+rustix = { version = "1.1.4", features = ["net"] }
 volicord-inquiry = { path = "../volicord-inquiry" }
 volicord-privacy = { path = "../volicord-privacy" }
 volicord-host = { path = "../volicord-host" }
-rustix = { version = "1.1.4", features = ["net"] }
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 tempfile = "3.20.0"
 

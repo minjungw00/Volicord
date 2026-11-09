@@ -3727,10 +3727,21 @@ The 256 KiB SVG bound and semantic format 9 are unchanged.
 
 The engine exposes no network, filesystem, process, module loader or browser Worker
 host. Its local asynchronous shim only queues trusted callbacks as microtasks.
-Thread-local reuse retains engine code, not geometry or Source authority; results
-are consumed and garbage-collected, and a failed execution discards the runtime.
-Pending-job failure handling must respect the pinned binding's Context and Runtime
-ownership rules during error propagation and disposal. Job errors, including
+A thread-local supervisor reuses a local native child owned by the same installed
+Viewer executable. Only bounded graph identities and measured rectangles enter its
+versioned transient pipe; authored prose, Source bodies, Runtime Home paths and
+inherited credentials do not. The child runs the same trusted engine with the same
+heap/stack/time/job bounds. Parent pipe I/O and initialization/execution each have
+the existing three-second bound; EOF, signal, partial/malformed/oversized response
+and timeout reject geometry. The parent kills/reaps a failed child and reports the
+primary operation stage separately from observed exit/signal and cleanup outcome.
+There is no automatic same-request retry. A subsequent supported layout starts a
+fresh child. Process exit reclaims failed VM state without executing native cleanup
+inside the reader. No geometry or Source authority is reused. This contains native
+faults, without claiming a repair of an unidentified engine memory defect or an OS
+security sandbox. Normal engine reuse still consumes and garbage-collects results.
+Pending-job failure handling inside the child must respect the pinned binding's
+Context and Runtime ownership rules during error propagation and disposal. Job errors, including
 null/undefined throws and VM interruption, must reject partial geometry and discard
 the failed runtime without corrupting another local read. A proposed ownership
 repair requires evidence for those properties; a passing scoped control alone

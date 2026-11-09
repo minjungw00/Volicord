@@ -1374,6 +1374,17 @@ Preserve the Cargo-selected executable/hash before execution and stop repetition
 at the declared failure boundary. Distinguish Rust/C ASan instrumentation from a
 signal-handler preload, and record unavailable leak detection independently.
 
+The local native supervisor is covered by focused Viewer `--lib worker::tests` and
+`--test diagram_worker`. Child-entry tests are intentionally ignored as standalone
+tests and invoked explicitly by supervisor controls. Those controls exercise an
+actual SIGSEGV, numeric nonzero exit, partial response, timeout, actual native
+Promise failure, reaping and fresh supported recovery. `--lib` keeps ordinary
+default parallelism; it is not serialized to hide native failure. The executable
+controls use Cargo's actual Viewer binary and assert that geometry execution does
+not create a Runtime Home. Existing citation/publication tests and fresh installed
+live/native checks remain required for the shared SVG consumer. ASan/LSan controls
+must distinguish parent and native-child coverage and their process-exit limits.
+
 ## Scoped checks and comparable reruns
 
 Run `validate focused scoped-checks -- cargo test --manifest-path rebuild/Cargo.toml

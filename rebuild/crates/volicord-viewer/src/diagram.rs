@@ -279,6 +279,10 @@ pub(crate) fn element_caption(
         .unwrap_or_default()
 }
 
+pub(crate) fn run_layout_worker() -> i32 {
+    overview::run_layout_worker()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

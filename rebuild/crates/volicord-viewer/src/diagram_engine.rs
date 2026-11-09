@@ -2,7 +2,6 @@
 //! argument. There are no filesystem, network, process, module or timer hosts.
 use rquickjs::{Context, Function, Runtime};
 use std::{
-    cell::RefCell,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -11,11 +10,11 @@ use std::{
 };
 
 pub(super) const ENGINE_ID: &str =
-    "elkjs/0.11.1;quickjs-ng/rquickjs-0.11.0;layered-polyline/1;metrics/1";
+    "elkjs/0.11.1;quickjs-ng/rquickjs-0.11.0;layered-polyline/1;metrics/1;worker/1";
 const SOURCE: &str = include_str!("../vendor/elkjs/elk.bundled.js");
 const HEAP_LIMIT: usize = 64 * 1024 * 1024;
-const OUTPUT_LIMIT: usize = 262_144;
-const DEADLINE: Duration = Duration::from_secs(3);
+pub(super) const OUTPUT_LIMIT: usize = 262_144;
+pub(super) const DEADLINE: Duration = Duration::from_secs(3);
 const HOST: &str = r#"var global=globalThis;
 var setTimeout=function(callback){Promise.resolve().then(callback);};
 var console={log:function(){},warn:function(){},error:function(){},err:function(){}};
@@ -37,7 +36,7 @@ function takeLocalLayout(){
 }
 "#;
 
-struct Engine {
+pub(super) struct Engine {
     context: Context,
     runtime: Runtime,
     // The deadline is replaced before every entry, including initialization.
@@ -48,7 +47,7 @@ struct Engine {
     unhandled_rejections: Arc<AtomicUsize>,
 }
 impl Engine {
-    fn new() -> Result<Self, String> {
+    pub(super) fn new() -> Result<Self, String> {
         let runtime = Runtime::new().map_err(|_| "local layout runtime unavailable")?;
         runtime.set_memory_limit(HEAP_LIMIT);
         runtime.set_max_stack_size(1024 * 1024);
@@ -82,7 +81,7 @@ impl Engine {
         })
     }
 
-    fn layout(&self, input: &str) -> Result<String, String> {
+    pub(super) fn layout(&self, input: &str) -> Result<String, String> {
         *self
             .deadline
             .lock()
@@ -126,6 +125,13 @@ impl Engine {
         Ok(output)
     }
 
+    #[cfg(test)]
+    pub(super) fn enqueue_test_callback(&self) -> Result<(), String> {
+        self.context
+            .with(|ctx| ctx.eval::<(), _>("setTimeout(function(){throw undefined;});"))
+            .map_err(|_| "cannot enqueue controlled native callback".into())
+    }
+
     fn execute_job(&self) -> Result<bool, &'static str> {
         self.runtime.execute_pending_job().map_err(|error| {
             // rquickjs 0.11.0 wraps JS_ExecutePendingJob's borrowed
@@ -139,11 +145,16 @@ impl Engine {
     }
 }
 
-// Reuse trusted engine code, never geometry or authority. Each request supplies
-// its whole current graph; result objects are released before returning. A failed
-// execution discards the entire runtime so partial jobs cannot affect a later read.
-thread_local! { static LOCAL: RefCell<Option<Engine>> = const { RefCell::new(None) }; }
+// Geometry and authority never cross this boundary as retained state. The
+// supervisor discards a failed native process before another request can use it.
 pub(super) fn layout(input: &str) -> Result<String, String> {
+    super::worker::layout(input)
+}
+
+#[cfg(test)]
+thread_local! { static LOCAL: std::cell::RefCell<Option<Engine>> = const { std::cell::RefCell::new(None) }; }
+#[cfg(test)]
+fn local_layout(input: &str) -> Result<String, String> {
     if input.len() > 65_536 {
         return Err("local layout input budget exceeded".into());
     }
@@ -167,6 +178,7 @@ pub(super) fn layout(input: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    use super::local_layout as layout;
     use super::*;
     const GRAPH: &str = r#"{"id":"root","layoutOptions":{"elk.algorithm":"layered"},"children":[{"id":"a","width":20,"height":20}]}"#;
 
@@ -205,15 +217,9 @@ mod tests {
                 }],
             },
         };
-        LOCAL.with(|slot| -> Result<(), String> {
-            let engine = Engine::new()?;
-            engine
-                .context
-                .with(|ctx| ctx.eval::<(), _>("setTimeout(function(){throw undefined;});"))
-                .map_err(|_| "cannot enqueue actual callback failure")?;
-            *slot.borrow_mut() = Some(engine);
-            Ok(())
-        })?;
+        super::super::worker::select_test_worker(
+            "diagram::overview::worker::tests::callback_failure_child",
+        );
         let render = || {
             crate::diagram::svg(
                 &diagram,

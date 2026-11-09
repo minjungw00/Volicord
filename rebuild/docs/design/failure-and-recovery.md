@@ -135,8 +135,17 @@ that stage remains explicitly unobserved without corresponding evidence.
   handled before drain completion is not an unhandled failure. The tracker retains
   only a count, never JS values, exception content or context ownership. Recovery
   must respect the existing time, memory, stack, job and output bounds. A scoped
-  cleanup check does not establish safe disposal across the complete Viewer;
-  broader failures remain unresolved until covered by corresponding evidence.
+  cleanup check does not establish safe disposal across the complete Viewer.
+  Native execution is therefore owned by a local child process: signal, EOF,
+  protocol/size rejection or timeout discards that process and rejects its geometry.
+  The reader retains its own state; the next request may create a fresh child.
+  Primary stage/error, observed process outcome and forced cleanup outcome remain
+  distinct. The parent retains one bounded, content-free first native-worker
+  diagnostic on stderr (engine identity, operation stage, worker PID and numeric
+  outcomes); a broken diagnostic sink cannot replace the primary failure. Worker
+  death-on-parent-exit and ordinary kill/reap cleanup prevent orphan native work.
+  This is native-fault containment, not a claim that an unidentified engine/binding
+  memory defect was causally repaired.
 
 - Retained repository Source identity/binding rejection identifies the failed fixed
   predicate names without disclosing body bytes, identities or stored values. All

@@ -4,6 +4,11 @@ use super::{elements, esc, open, RENDERER_ID};
 use std::collections::BTreeMap;
 #[path = "diagram_engine.rs"]
 mod engine;
+#[path = "diagram_worker.rs"]
+mod worker;
+pub(super) fn run_layout_worker() -> i32 {
+    worker::run()
+}
 #[path = "diagram_geometry.rs"]
 mod geometry;
 #[path = "diagram_sequence.rs"]

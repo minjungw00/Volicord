@@ -19,3 +19,10 @@ pub use render::{
 };
 
 mod observation;
+
+/// Internal child-process entry only; uses process exit to dispose native state.
+/// Bounded local geometry transport; no Project or Source authority.
+#[doc(hidden)]
+pub fn run_layout_worker() -> i32 {
+    diagram::run_layout_worker()
+}

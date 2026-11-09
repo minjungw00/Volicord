@@ -3433,3 +3433,50 @@ fn seed_retained_browser_runtime() -> Result<(), Box<dyn Error>> {
     let _ = f.temp.keep();
     Ok(())
 }
+
+#[test]
+#[ignore = "explicit fresh controlled diagram publication for installed consumer checks"]
+fn seed_fresh_diagram_consumer_control() -> Result<(), Box<dyn Error>> {
+    let root = std::path::PathBuf::from(
+        std::env::var_os("VOLICORD_DIAGRAM_JOURNEY_CAPTURE")
+            .ok_or("capture destination required")?,
+    );
+    fs::create_dir(&root)?;
+    let mut cases = Vec::new();
+    for sequence in [false, true] {
+        let f = Fixture::new_in(Some(&root))?;
+        let realization = diagram_control(&f, sequence)?;
+        let receipt = f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            realization.clone(),
+        )?;
+        let answers = f.answers()?;
+        let publication = answers
+            .provenance
+            .as_ref()
+            .and_then(|p| p.publication_id.as_deref())
+            .ok_or("publication")?;
+        let key = if sequence {
+            "controlled-sequence-en"
+        } else {
+            "controlled-graph-en"
+        };
+        let public = root.join(format!("{key}-public.json"));
+        fs::write(&public, serde_json::to_vec(&answers)?)?;
+        let authored = root.join(format!("{key}-realization.json"));
+        fs::write(&authored, serde_json::to_vec(&realization)?)?;
+        let recording = root.join(format!("{key}-recording.json"));
+        fs::write(&recording, serde_json::to_vec(&receipt)?)?;
+        cases.push(serde_json::json!({"key":key,"label":key,"runtime":f.ops.layout().root(),
+            "repository":f.temp.path().join("repo"),"project":f.project.to_string(),"work":null,
+            "language":"en","locale":"en","publication":publication,"public":public,
+            "offline":root.join(format!("{key}.html")),"subject_kind":"repository","subject_id":f.analysis.to_string(),
+            "realization":authored,"recording_receipt":recording,
+            "classification":"fresh authored fixture; no ordinary Work or human acceptance claim"}));
+        let _retained = f.temp.keep();
+    }
+    fs::write(root.join("cases.json"), serde_json::to_vec_pretty(&cases)?)?;
+    Ok(())
+}
