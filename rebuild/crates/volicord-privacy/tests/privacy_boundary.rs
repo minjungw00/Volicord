@@ -945,6 +945,81 @@ fn local_and_provider_deletion_truth_are_separate_and_raw_bodies_are_not_portabl
 }
 
 #[test]
+fn read_dependencies_preserve_order_lifetimes_and_forgetting_without_bodies(
+) -> Result<(), Box<dyn Error>> {
+    let mut fixture = canonical_fixture()?;
+    let root = tempdir()?;
+    let path = root.path().join("privacy.sqlite3");
+    let mut privacy = PrivacyStore::open(&path)?;
+    let mut originals = Vec::new();
+    for kind in [
+        ManagedDerivedKind::CachedSummary,
+        ManagedDerivedKind::SourceObservation,
+        ManagedDerivedKind::CodeOrigin,
+    ] {
+        originals.push(privacy.record_managed_derived(ManagedDerivedDraft {
+            project_id: fixture.project.id,
+            kind,
+            provider: None,
+            model: None,
+            purpose: format!("synthetic metadata control {kind:?}"),
+            analysis_snapshot: None,
+            included_sources: vec![fixture.source_refs[0].clone()],
+            canonical_links: vec![ManagedCanonicalLink::Source(fixture.source_ids[0])],
+            content: "retained body sentinel".repeat(4096),
+            uncertainty: None,
+            retained_until: Some(TimestampMicros::from_unix_micros(NOW + 1)),
+            retention_basis: "synthetic deadline".into(),
+        })?);
+    }
+    let forgotten = fixture.store.forget_source(
+        operation(121),
+        fixture.project.id,
+        fixture.source_ids[0],
+        fixture.user_source,
+    )?;
+    for invalidations in [vec![], vec![forgotten.value.invalidation]] {
+        let mut expected =
+            privacy.inspect_project_with_invalidations(fixture.project.id, &invalidations)?;
+        expected.authority_observations.clear();
+        expected.requests.clear();
+        for record in &mut expected.managed_derived {
+            record.content = None;
+        }
+        assert_eq!(
+            privacy
+                .inspect_read_dependencies_with_invalidations(fixture.project.id, &invalidations)?,
+            expected
+        );
+        assert_eq!(
+            PrivacyStore::open(&path)?
+                .inspect_read_dependencies_with_invalidations(fixture.project.id, &invalidations)?,
+            expected
+        );
+    }
+    // Metadata inspection must neither erase nor renew bodies. Full historical
+    // inspection retains its separate contract and reads every original value.
+    for original in &originals {
+        assert_eq!(
+            &privacy.get_derived(fixture.project.id, original.id)?,
+            original
+        );
+    }
+    assert_eq!(
+        privacy.inspect_project(fixture.project.id)?.managed_derived,
+        originals
+    );
+    assert!(privacy
+        .inspect_read_dependencies_with_invalidations(
+            volicord_context::ProjectId::from_bytes([0xfe; 16]),
+            &[]
+        )?
+        .managed_derived
+        .is_empty());
+    Ok(())
+}
+
+#[test]
 fn managed_content_has_its_own_byte_bound_and_short_fields_stay_bounded(
 ) -> Result<(), Box<dyn Error>> {
     use volicord_privacy::MANAGED_DERIVED_CONTENT_BYTE_LIMIT;

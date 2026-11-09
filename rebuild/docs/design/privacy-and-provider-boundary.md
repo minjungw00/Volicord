@@ -96,6 +96,15 @@ Host가 제공하지 않는 권한을 Volicord가 발명하지 않는다. Curren
 
 ### Explicit local explanation retention
 
+Explanation and exact Source readers may inspect complete managed dependency
+metadata without loading retained bodies or provider request/authority history.
+This is a purpose-specific read view, not general privacy inspection. It preserves
+insertion order, links, independent deadlines, deletion and pending canonical
+forgetting barriers. After selection, an exact managed identity supplies the body;
+a metadata change during publication selection rejects the read. No older-record
+fallback, retention renewal or persistent authority cache is introduced. Full
+privacy inspection and explicit historical inspection retain their own contracts.
+
 The active host may explicitly prepare canonical Work or Decision evidence and submit its
 interpretation through `work explain record`, `decision explain record`, or MCP
 `work_explanation` generate → scoped read_source → record. This operation expresses local

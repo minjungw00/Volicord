@@ -79,7 +79,7 @@ impl LocalOperations {
         work: ContextItemId,
         source: SourceId,
     ) -> Result<Value, Error> {
-        let inspection = self.privacy_status(basis.project.id)?;
+        let inspection = self.explanation_dependencies(basis.project.id)?;
         self.explanation_source_with_inspection(basis, work, source, &inspection)
     }
 
@@ -195,7 +195,7 @@ impl LocalOperations {
         let inspection = response
             .citations()
             .next()
-            .map(|_| self.privacy_status(basis.project.id))
+            .map(|_| self.explanation_dependencies(basis.project.id))
             .transpose()?;
         let repository_metadata = match subject {
             ExplanationSubject::Repository(id) if inspection.is_some() && repository.is_none() => {

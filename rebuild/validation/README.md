@@ -1,5 +1,17 @@
 # Reconstruction validation assets
 
+Accumulated reading uses Operations `--test accumulated_reading`, alongside
+`--test analysis_storage_footprint`, Privacy `--test privacy_boundary`, Host
+`--test work_explanation` and Viewer `--test citation_reading`. The new controls
+separate retained-body growth from canonical Work/Checkpoint growth, compare
+complete results and independently retained bodies across restart, and preserve
+all dependency metadata. Optional absolute `VOLICORD_ACCUMULATED_PROOF_DIR` retains
+a create-only 0/32/256-body proof with separate CLI streams, `/usr/bin/time -v`,
+numeric exits and complete publication values; default tests use 0/24 bodies.
+They invoke no provider or optional Naturalistic resource observer. Inputs,
+measurements, memory improvement and unresolved linear scan costs are documented
+in [runtime read costs](end-to-end/multi-repository/runtime-read-costs.md).
+
 This directory contains maintained inputs, assertions, report summaries, and
 small disposable experiment implementations. It is an internal validation
 surface, not a Volicord product command or production architecture.

@@ -112,3 +112,65 @@ rejects both compose and record without replacing prior publications. No graph,
 manifest, history or storage format is altered. Explicit Work file/command capture
 still restores its complete recorded worktree basis: the observed roughly 2.7-second
 capture cost is separate and has not been removed or relabelled as model cost.
+
+## Selected reads with accumulated retained bodies
+
+The new bounded workload separates three axes before observation:
+
+- Seven small structural-language files, one Work, one Analysis Snapshot and one
+  exact file Source; 0/32/256 additional synthetic managed bodies, each 164,864
+  bytes. These additional records are explicitly labelled synthetic, unselected
+  retained-content controls, not authored articles or genuine Works.
+- 1/8/32 selected synthetic Works plus the shared fixture's one distractor Goal,
+  with eight Checkpoints per selected Work. Complete canonical values and every
+  selected Work's eight records must survive process reconstruction.
+- The existing `analysis_storage_footprint` inputs independently exercise 48-file
+  graph storage, shared blobs, cleanup/restart, and eight repeated polyglot
+  observations followed by a changed input. They preserve immutable manifests,
+  complete historical graphs and Source-bound identities.
+
+The evaluation criterion for these additional conditions is complete-result and
+durable-history equivalence, explicit lifecycle failure, and observed memory/time
+variation. No additional capacity ceiling or Product limit is established. V11's
+4 GiB RSS and 512 MiB post-warmup budget remain exclusive to their named official
+workload. None of the smaller controls qualifies those budgets.
+
+The original exact Source reader called general Project privacy inspection, which
+deserialized every managed body and all provider history before discarding Source
+content. The corrected reader loads dependency metadata without bodies or provider
+history. Publication selection fetches only the selected body after lifecycle
+checks, rejects changed metadata and retains insertion-order replacement without
+older-publication fallback. Source and code-origin readers retain their existing
+exact identity, association, permission, expiry and integrity checks. No durable
+format, index, cache, analyzer identity, graph, retention or history is changed.
+
+Baseline release binaries were built from `98d8bbdb8`; corrected binaries use the
+same compiler/profile/lock. The same retained 256-body Runtime and seven-file
+repository were read alternately in three independent processes per binary, with
+no competing task build/profile. Complete stdout bytes were identical in all six
+reads, SHA-256 `eb7e6615a9aa40be852fc29daddc64f935cfa6af706c9f096596a5264c623342`.
+Every pre-existing non-journal Runtime file retained its hash. Independent typed
+reads also compared every original added record, including its full body.
+
+| Same-input exact Source read | Wall ms, three attempts | Peak RSS KiB, three attempts |
+| --- | --- | --- |
+| Baseline | 31.316 / 25.197 / 27.243 | 53,020 / 53,168 / 53,064 |
+| Corrected | 30.041 / 28.567 / 28.593 | 13,020 / 13,008 / 13,108 |
+
+This supports reduced body materialization memory, not improved latency. SQLite
+still scans JSON records and complete dependency metadata grows with history.
+New-process, repeated and reconstructed Operations reads are separate observations;
+OS caches are uncontrolled, so none is labelled cold-disk I/O. Build/setup is
+outside per-read measurements. API complete-publication controls compare whole
+page values before/after growth and after Operations reconstruction. The CLI
+Source read is a full-result comparison, not a transport prefix or count check.
+
+Raw declarations, commands, stdout/stderr, numeric exits, binary hashes, resource
+observations and preserved inputs are in ignored
+`rebuild/.local/accumulated-use-20261109/{baseline,corrected,same-input}/`.
+The first compile failure (incorrect test field names) and canonical-axis assertion
+failure (the fixture's declared distractor Goal) remain preserved under validation
+receipts; both were control-authoring errors, not Product failures. These checks
+are focused support, not the authoritative gate, naturalistic evidence, independent
+quality review or human comprehension. The complete original gate still requires
+current explicit transmission authority on the clean committed candidate.

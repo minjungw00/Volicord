@@ -837,6 +837,42 @@ impl PrivacyStore {
         ))
     }
 
+    /// Read dependency identity/lifetime metadata without materializing any
+    /// retained bodies or provider history. Exact body readers must separately
+    /// select and validate a managed identity; this view grants no body access.
+    pub fn inspect_read_dependencies_with_invalidations(
+        &self,
+        project_id: ProjectId,
+        invalidations: &[CanonicalInvalidation],
+    ) -> Result<ProjectPrivacyInspection, Error> {
+        let current_opt_in = self.current_opt_in(project_id)?;
+        let configuration_state = match current_opt_in.as_ref().map(|event| event.state) {
+            None => ProviderConfigurationState::NeverEnabled,
+            Some(ProviderOptInState::Enabled) => ProviderConfigurationState::Enabled,
+            Some(ProviderOptInState::Disabled) => ProviderConfigurationState::Disabled,
+            Some(ProviderOptInState::Revoked) => ProviderConfigurationState::Revoked,
+        };
+        let managed_derived = read_json_rows(
+            &self.connection,
+            "SELECT json_set(record_json, '$.content', NULL)
+             FROM managed_derived WHERE project_id = ?1 ORDER BY rowid",
+            project_id,
+        )?;
+        Ok(apply_read_invalidations(
+            ProjectPrivacyInspection {
+                project_id,
+                configuration_state,
+                current_opt_in,
+                authority_observations: Vec::new(),
+                requests: Vec::new(),
+                managed_derived,
+                withheld_for_canonical_forgetting: Vec::new(),
+            },
+            project_id,
+            invalidations,
+        ))
+    }
+
     /// Work catalogue authority view: read all dependency metadata, but only
     /// name/summary payloads. SQLite removes article/Source bodies before they
     /// cross the storage boundary. No persistent cache or format change.

@@ -26,6 +26,20 @@ fn purpose(subject: ExplanationSubject, language: &str) -> String {
     format!("explanation:{}:{language}", subject.key())
 }
 impl LocalOperations {
+    /// Request-local dependency view. All lifecycle metadata is retained, while
+    /// unrelated article/Source/provider bodies stay behind the storage boundary.
+    pub(crate) fn explanation_dependencies(
+        &self,
+        project: ProjectId,
+    ) -> Result<volicord_privacy::ProjectPrivacyInspection, Error> {
+        let invalidations = self.incomplete_committed_invalidations(project)?;
+        PrivacyStore::open(self.layout().privacy_store())
+            .and_then(|store| {
+                store.inspect_read_dependencies_with_invalidations(project, &invalidations)
+            })
+            .map_err(|error| Error::with_source("explanation dependency inspection failed", error))
+    }
+
     /// Bounded lossless reading of one exact admitted publication. Every page
     /// revalidates all dependencies, including dependencies outside that page.
     /// Offsets are UTF-8 bytes of compact JSON, not paragraph or file offsets.
@@ -86,7 +100,7 @@ impl LocalOperations {
         language: &str,
     ) -> Result<(CanonicalReadBasis, RetainedExplanation, String), Error> {
         let canonical = self.canonical_basis(project)?;
-        let records = self.privacy_status(project)?;
+        let records = self.explanation_dependencies(project)?;
         let (retained, publication) =
             self.permitted_publication_from(&canonical, &records, subject, language)?;
         Ok((canonical, retained, publication))
@@ -135,14 +149,32 @@ impl LocalOperations {
                 Error::new("publication is not current or permitted").with_reading_failure(failure)
             );
         }
-        let mut retained =
-            decode_explanation(record.content.as_deref()).map_err(|(state, reason)| {
-                Error::new(reason).with_reading_failure(
-                    ExplanationApplicability::unavailable(state)
-                        .limitation
-                        .unwrap_or(ExplanationFailureReason::Unavailable),
-                )
-            })?;
+        // Select by insertion order and check lifecycle before fetching the exact
+        // body. Never fall back to an older publication, including after deletion.
+        let stored;
+        let content = if let Some(content) = record.content.as_deref() {
+            Some(content)
+        } else {
+            stored = PrivacyStore::open(self.layout().privacy_store())
+                .and_then(|store| store.get_derived(project, record.id))
+                .map_err(|error| Error::with_source("selected publication unavailable", error))?;
+            let mut metadata = stored.clone();
+            metadata.content = None;
+            if &metadata != record {
+                return Err(
+                    Error::new("publication dependencies changed during selection")
+                        .with_reading_failure(ExplanationFailureReason::Changed),
+                );
+            }
+            stored.content.as_deref()
+        };
+        let mut retained = decode_explanation(content).map_err(|(state, reason)| {
+            Error::new(reason).with_reading_failure(
+                ExplanationApplicability::unavailable(state)
+                    .limitation
+                    .unwrap_or(ExplanationFailureReason::Unavailable),
+            )
+        })?;
         retained.publication_id = Some(record.id.to_string());
         if retained.project_id != project.to_string()
             || retained.subject != subject
@@ -543,7 +575,7 @@ impl LocalOperations {
         canonical: &CanonicalReadBasis,
         projection: &mut ProjectProjection,
     ) -> usize {
-        let records = self.privacy_status(canonical.project.id);
+        let records = self.explanation_dependencies(canonical.project.id);
         let mut latest = std::collections::BTreeMap::new();
         if let Ok(records) = &records {
             for record in records.managed_derived.iter().filter(|r| {

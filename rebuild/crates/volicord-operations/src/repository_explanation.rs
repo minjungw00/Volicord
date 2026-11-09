@@ -553,7 +553,7 @@ impl LocalOperations {
     ) -> Result<Value, Error> {
         let canonical = self.canonical_basis(project)?;
         let analysis = self.repository_source_metadata(project, analysis_id)?;
-        let inspection = self.privacy_status(project)?;
+        let inspection = self.explanation_dependencies(project)?;
         self.read_repository_explanation_source_with_basis(
             &canonical,
             &analysis,

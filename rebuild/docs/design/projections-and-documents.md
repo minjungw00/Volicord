@@ -1369,6 +1369,15 @@ compatibility도 정의하지 않는다. Production failure matrix는
 
 ### Projection materialization resource boundary
 
+Retained explanation selection and scoped Source reading consume complete lifetime
+and dependency metadata before selecting bodies. Unselected retained article,
+Source and provider bodies do not cross this storage read boundary. Exact selected
+publications still validate canonical evidence and every dependency, including
+dependencies outside the requested page. History remains independently readable;
+this materialization choice changes no format, analysis identity, output bound or
+availability meaning. SQLite scanning and complete dependency metadata can still
+grow with history; this is not a constant-time or universal capacity guarantee.
+
 Repository map의 topology 선택은 borrowed entity/relation identity, kind와 endpoint를
 사용한다. Canonical-linked importance, connected endpoint retention, deterministic ordering과
 omission accounting을 먼저 확정하고, 선택된 항목의 Source/range/freshness/uncertainty/

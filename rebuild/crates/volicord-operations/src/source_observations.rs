@@ -127,7 +127,7 @@ impl LocalOperations {
         source: SourceId,
     ) -> Result<ObservationRead, Error> {
         work_revision(basis, work)?;
-        let inspection = self.privacy_status(basis.project.id)?;
+        let inspection = self.explanation_dependencies(basis.project.id)?;
         self.source_observation_read_with_inspection(basis, work, source, &inspection)
     }
 
@@ -252,7 +252,7 @@ impl LocalOperations {
         work: ContextItemId,
     ) -> Result<Value, Error> {
         let revision = work_revision(basis, work)?;
-        let records = self.privacy_status(basis.project.id)?;
+        let records = self.explanation_dependencies(basis.project.id)?;
         let prefix = format!("work-source:{work}:");
         let now = now_micros()?;
         let entries = records.managed_derived.iter().filter(|r|r.kind==ManagedDerivedKind::SourceObservation)
