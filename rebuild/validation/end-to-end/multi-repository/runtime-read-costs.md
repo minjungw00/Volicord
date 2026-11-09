@@ -293,6 +293,56 @@ independent full-history oracles. These changed-input observations are not a
 same-input speed comparison with the earlier Work control or a new capacity
 limit. The exact clean candidate still needs the unchanged official gate.
 
+### Complete publication encoding after the elapsed-time failure
+
+The `22f243b89` candidate passed Final (847 passed, 12 ignored), rehearsal,
+bounded live-provider qualification and all 55 functional V11 checks. Its peak
+MCP RSS was 3,495,182,336 bytes and post-warmup storage growth 488,268,426 bytes;
+both passed. Total wall time alone failed: 986,732.167 ms versus 900,000 ms.
+This original failure and all earlier failures remain preserved.
+
+The correction has three physical, request-local parts: reuse verified packed
+chunks from the latest retained shape layout after exact current-byte comparison,
+classify immutable interned scalar tokens once, and compress complete metadata
+at level 3 with bounded 8 MiB long-distance matching. Fresh/invalid shape chunks
+still use level 9; latest shape layout and complete values base are selected
+independently. No graph fact, coverage field, provenance, snapshot, history root,
+decoder, schema, limit or lifecycle changes. There is no process-wide cache.
+
+On the declared original latest snapshot (38,292 entities / 583,428 relations),
+the complete two-graph encoding and three durable-read comparison took 36,232 ms
+before and 30,374 ms after. Values and all 5,057 ordered shape hashes matched;
+only metadata's physical hash changed in the manifest. Complete reconstructed
+graph/metadata equality and corruption rejection passed, and input bytes stayed
+unchanged. Whole-process peaks were 4,293,056 / 4,293,344 KiB, including both
+retained graphs; these are separate from the official MCP process ceiling.
+
+The same original complete metadata encoded in 4,000 ms at level 19 versus
+39 ms with bounded-window level 3, growing 3,203,953 to 3,563,304 bytes. Across
+all fifteen original snapshots metadata grew by 5,391,252 bytes in total,
+with every decompressed byte equal; bounded-window level-3 encoding took
+578 ms in total. Default-window lower levels were substantially larger and
+were rejected. This explicit size/time tradeoff must still pass the unchanged
+official storage and elapsed-time criteria; fixed-input results cannot substitute
+for full fresh publication, complete retained-history checks or the new gate.
+Ignored `encoding-physical-*`, `metadata-*`, `shape-reuse-*` and focused receipts
+preserve declarations, identities, original failures and full outcomes.
+
+Two separate copies of the same original fifteen-snapshot Runtime and the same
+full frozen repository each produced three complete fresh observations. The
+immutable `22f243b89` baseline took 36,221 / 36,311 / 36,143 ms for analysis and
+publication; the corrected source took 30,761 / 30,179 / 29,975 ms. Each retained
+all fifteen original manifest bytes and complete graph/provenance fingerprints,
+and independently reopened every new complete graph (38,292 entities / 583,428
+relations). Fresh observation identities/times naturally differ, so these are
+matched-workload timings, not a bitwise comparison of separately generated
+observations. Full-history oracle costs are explicitly timed before/after and
+included in whole-process peaks; the corrected control peaked at 3,289,464 KiB.
+Both copies ended with eighteen retained snapshots. Their value/metadata sizes,
+source/executable identities and full receipts remain in `encoding-*-work*` and
+`encoding-work-storage-comparison.json`. They are supporting measurements,
+not an official elapsed-time or capacity result.
+
 ### Native failure controls at the reader's process boundary
 
 The `ccee86644` gate passed admission, metadata, format and Clippy, but its

@@ -5048,6 +5048,53 @@ in an instrumented or separate test execution cannot turn a failed Final into a
 pass or attribute its cause to a clock. Preserve each outcome and original failure;
 any later authoritative gate still belongs to its own exact clean candidate.
 
+### Accumulated publication encoding cost — 2026-11-10
+
+Candidate `22f243b891a1e414ec40b9aabe8119bf6a553c68` passed ordered Final
+(847 passed, 12 ignored), rehearsal, bounded live-provider qualification and
+all 55 functional V11 checks. Peak MCP RSS was 3,495,182,336 bytes and
+post-warmup storage growth 488,268,426 bytes, within their unchanged ceilings.
+Only V11 wall time failed: 986,732.167 ms against 900,000 ms. Preserve that
+original gate/capsule and its numeric failure; these supporting corrections do
+not qualify the failed candidate.
+
+Request-local publication encoding now reuses the latest layout's packed shape
+chunks only after packed-hash and exact current raw-byte comparison. Its latest
+layout is independent of the potentially older complete value base. New, corrupt
+or unequal chunks use fresh level-9 encoding. Interned scalar field/category
+classification is computed once per immutable token, with the original container
+and first-occurrence tracking. Positive latest-layout/older-base and poisoned
+identity/wrong-body/invalid-envelope controls must retain exact full reads.
+
+Complete metadata uses level 3 with bounded 8 MiB long-distance matching in the
+same envelope/decoder. The original latest 14,759,327-byte metadata took about
+4,000 ms at level 19 and 39 ms in this configuration; packed size increased
+3,203,953 to 3,563,304 bytes. Across all fifteen original metadata payloads,
+every decompressed byte matched, total packed size increased 48,049,170 to
+53,440,422 bytes and level-3 encoding took 578 ms. Default small-window lower
+levels produced much larger blobs and were not selected. All original files,
+full coverage/provenance, histories, limits and observation boundaries remain.
+
+The declared original latest snapshot's two-graph/full-encoding/three-durable-read
+control took 36,232 ms before and 30,374 ms after. All 5,057 ordered shape hashes,
+values and every manifest field except the physical metadata hash matched.
+Complete graph and restored metadata equality, original input preservation and
+corruption rejection passed. Its whole-process peak of approximately 4.09 GiB
+includes the deliberately retained two complete graphs and is not an official
+MCP capacity result. A separate full-history/three-fresh-analysis control and a
+new exact clean candidate's unchanged gate are required for downstream claims.
+The separate same-repository fifteen-history controls each preserved every
+original complete graph/provenance fingerprint and produced three complete new
+observations. Baseline analysis/publication took 36,221 / 36,311 / 36,143 ms;
+corrected source took 30,761 / 30,179 / 29,975 ms. Full-history oracles are
+separately timed and included in process peaks; both copies retained eighteen
+snapshots. These matched-workload controls have distinct fresh observation times
+and identities, not a normalized/partial result-equality claim.
+Declarations, source/executable identities, stage traces, rejected compression
+alternatives and raw numeric outcomes remain in ignored `encoding-physical-*`,
+`metadata-*`, `shape-reuse-*` and focused validation artifacts. No workload or
+graph/history reduction, format branch, lifecycle renewal or new authority follows.
+
 ### Resource observation cost after the CE1 correction — 2026-11-06
 
 Candidate `4c87480297816a690877b7e0d7a179ef270c9f43` passed the complete

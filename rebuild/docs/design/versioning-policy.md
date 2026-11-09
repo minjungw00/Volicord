@@ -191,6 +191,15 @@ symbol orders remain readable without rewriting retained manifests, blobs or his
 without a numeric compatibility branch. A damaged optional base shape disables slot planning;
 verified byte-base reuse remains independent. Test-only encoders retain ordering controls.
 
+Request-local shape reuse verifies both the packed content identity and every restored
+byte against the complete current chunk. The latest retained shape layout is independent
+of the selected complete value base. Missing, corrupt or unequal cached chunks use the
+same fresh writer; no cross-request cache or graph authority is introduced. Interned
+scalar classification is memoized only within the request and preserves the exact slot
+plan. Metadata now uses level 3 with bounded 8 MiB long-distance matching inside the
+same raw/zstd blob envelope. Compression hashes and sizes may change, but complete
+restored JSON, bindings, schema, the single decoder and historical roots do not.
+
 ## 6. Derived Index version
 
 Derived Index version은 full-text/semantic index, graph, embedding, fingerprint cache,

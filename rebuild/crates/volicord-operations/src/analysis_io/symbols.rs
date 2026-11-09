@@ -14,6 +14,21 @@ pub(super) struct Position {
     category: u8,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct ScalarClass {
+    field: u64,
+    category: u8,
+}
+
+impl ScalarClass {
+    pub(super) fn new(bytes: &[u8]) -> Self {
+        Self {
+            field: key_tag(bytes),
+            category: category(bytes),
+        }
+    }
+}
+
 enum Frame {
     Object { owner: u64, field: u64, key: bool },
     Array { owner: u64 },
@@ -81,7 +96,7 @@ impl Tracker {
         }
     }
 
-    pub(super) fn scalar(&mut self, bytes: &[u8]) -> Position {
+    pub(super) fn scalar(&mut self, class: ScalarClass) -> Position {
         match self.frames.last_mut() {
             Some(Frame::Object { owner, field, key }) if *key => {
                 let result = Position {
@@ -89,24 +104,24 @@ impl Tracker {
                     field: 0,
                     category: 0,
                 };
-                *field = key_tag(bytes);
+                *field = class.field;
                 *key = false;
                 result
             }
             Some(Frame::Object { owner, field, .. }) => Position {
                 owner: *owner,
                 field: *field,
-                category: category(bytes),
+                category: class.category,
             },
             Some(Frame::Array { owner }) => Position {
                 owner: *owner,
                 field: 0,
-                category: category(bytes),
+                category: class.category,
             },
             None => Position {
                 owner: 0,
                 field: 0,
-                category: category(bytes),
+                category: class.category,
             },
         }
     }
@@ -122,6 +137,13 @@ impl Dictionary {
     pub(super) fn from_reader(reader: DenormalizingReader) -> Result<Self, Error> {
         let mut tracker = Tracker::default();
         let mut positions = vec![None; reader.symbols.len()];
+        // Classify each immutable interned token once, rather than hashing
+        // repeated field names and scanning repeated identities at every use.
+        let classes = reader
+            .symbols
+            .iter()
+            .map(|range| ScalarClass::new(&reader.values[range.clone()]))
+            .collect::<Vec<_>>();
         let mut at = reader.reference_at;
         for &byte in &reader.shape[reader.shape_at..] {
             if byte == b'$' {
@@ -131,11 +153,10 @@ impl Dictionary {
                     .ok_or_else(|| Error::new("Analysis symbol position reference is truncated"))?;
                 let index = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as usize;
                 at += 4;
-                let range = reader
-                    .symbols
+                let class = classes
                     .get(index)
                     .ok_or_else(|| Error::new("Analysis symbol position is invalid"))?;
-                let position = tracker.scalar(&reader.values[range.clone()]);
+                let position = tracker.scalar(*class);
                 if positions[index].is_none() {
                     positions[index] = Some(position);
                 }
@@ -148,6 +169,7 @@ impl Dictionary {
                 "Analysis symbol positions have trailing references",
             ));
         }
+        drop(classes);
         let mut symbols = Vec::with_capacity(reader.symbols.len());
         let mut index = HashMap::with_capacity(reader.symbols.len());
         for range in reader.symbols {

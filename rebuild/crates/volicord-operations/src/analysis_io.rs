@@ -72,6 +72,7 @@ pub(crate) struct PackedAnalysisValues {
     hash: String,
     packed: Vec<u8>,
     dictionary: Option<symbols::Dictionary>,
+    shapes: HashMap<String, (String, Vec<u8>)>,
 }
 
 pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Error> {
@@ -108,14 +109,10 @@ pub(crate) fn encode_analysis(
     let normalized = encoder.finish_parts()?;
     #[cfg(test)]
     trace_analysis_memory("normalized_parts_finished");
+    let reusable_shapes = base_values.as_ref().map(|base| &base.shapes);
     let shapes = content_defined_chunks(&normalized.shape)
         .into_iter()
-        .map(|chunk| {
-            // Stronger matching is cheap for bounded 32 KiB shape chunks.
-            // Keep the hundreds-of-megabytes value/delta streams at level 1.
-            let packed = pack_blob_at_level(chunk, SHAPE_COMPRESSION_LEVEL)?;
-            Ok((digest(&packed), packed))
-        })
+        .map(|chunk| pack_shape(chunk, reusable_shapes))
         .collect::<Result<Vec<_>, Error>>()?;
     // Only packed chunks are used from here. Do not retain the full shape
     // allocation while expanding the base and building the value delta.
@@ -132,13 +129,9 @@ pub(crate) fn encode_analysis(
     let (values, values_base_blob) = pack_analysis_values(&uncompressed_values, base_values)?;
     drop(uncompressed_values);
     let values_hash = digest(&values);
-    let metadata = pack_blob_at_level(
+    let metadata = pack_metadata(
         &serde_json::to_vec(&AnalysisMetadata::from(analysis))
             .map_err(|error| Error::with_source("cannot encode Analysis metadata", error))?,
-        // Repeated capability coverage benefits from stronger compression.
-        // Run it after releasing graph-normalization scratch; the full value
-        // stream keeps its low-cost codec and exact delta plan.
-        19,
     )?;
     let metadata_hash = digest(&metadata);
     let manifest = AnalysisManifest {
@@ -172,6 +165,23 @@ pub(crate) fn encode_analysis(
         metadata,
         metadata_hash,
     })
+}
+
+fn pack_shape(
+    chunk: &[u8],
+    reusable: Option<&HashMap<String, (String, Vec<u8>)>>,
+) -> Result<(String, Vec<u8>), Error> {
+    if let Some((hash, packed)) = reusable.and_then(|shapes| shapes.get(&digest(chunk))) {
+        // This is a request-local physical shortcut, not graph reuse. Recheck
+        // packed identity and every current raw byte before publication.
+        if digest(packed) == *hash && unpack_blob(packed).is_ok_and(|raw| raw == chunk) {
+            return Ok((hash.clone(), packed.clone()));
+        }
+    }
+    // Stronger matching remains bounded to at most 32 KiB shape chunks.
+    // Keep the hundreds-of-megabytes value/delta streams at level 1.
+    let packed = pack_blob_at_level(chunk, SHAPE_COMPRESSION_LEVEL)?;
+    Ok((digest(&packed), packed))
 }
 
 fn pack_analysis_values(
@@ -585,6 +595,7 @@ pub(crate) fn reusable_base_values(
         return Ok(None);
     }
     let mut complete_bases = Vec::<(i64, String, String, PathBuf)>::new();
+    let mut shape_bases = Vec::<(i64, String, PathBuf)>::new();
     for entry in std::fs::read_dir(project_directory)
         .map_err(|error| Error::with_source("cannot inspect Analysis values bases", error))?
     {
@@ -598,6 +609,11 @@ pub(crate) fn reusable_base_values(
             Ok(value) => value,
             Err(_) => continue,
         };
+        shape_bases.push((
+            manifest.generated_at_unix_micros,
+            manifest.identity.to_string(),
+            path.clone(),
+        ));
         if manifest.values_base_blob.is_none() {
             complete_bases.push((
                 manifest.generated_at_unix_micros,
@@ -608,6 +624,7 @@ pub(crate) fn reusable_base_values(
         }
     }
     complete_bases.sort_unstable_by(|left, right| right.cmp(left));
+    shape_bases.sort_unstable_by(|left, right| right.cmp(left));
     let blobs = project_directory.join("blobs");
     for (_, _, values_hash, path) in complete_bases {
         let Ok(bytes) =
@@ -635,10 +652,32 @@ pub(crate) fn reusable_base_values(
             )?)
         })()
         .ok();
+        // Shape chunks do not depend on the scalar dictionary or values delta.
+        // The latest verified layout gives locality after inventory changes;
+        // the complete values base can legitimately be an older observation.
+        let shapes = shape_bases
+            .first()
+            .and_then(|(_, _, path)| {
+                let manifest = read_manifest(path).ok()?;
+                let mut shapes = HashMap::new();
+                let mut verified = HashSet::new();
+                for hash in manifest.shape_blobs {
+                    if !verified.insert(hash.clone()) {
+                        continue;
+                    }
+                    let packed =
+                        read_verified_blob(&blobs.join(format!("{hash}.shape")), &hash).ok()?;
+                    let raw = unpack_blob(&packed).ok()?;
+                    shapes.insert(digest(&raw), (hash, packed));
+                }
+                Some(shapes)
+            })
+            .unwrap_or_default();
         return Ok(Some(PackedAnalysisValues {
             hash: values_hash,
             packed: bytes,
             dictionary,
+            shapes,
         }));
     }
     Ok(None)
@@ -651,12 +690,34 @@ fn pack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
 fn pack_blob_at_level(input: &[u8], level: i32) -> Result<Vec<u8>, Error> {
     let compressed = zstd::stream::encode_all(input, level)
         .map_err(|error| Error::with_source("cannot compress Analysis blob", error))?;
+    Ok(wrap_blob(input, compressed))
+}
+
+fn pack_metadata(input: &[u8]) -> Result<Vec<u8>, Error> {
+    let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 3)
+        .map_err(|error| Error::with_source("cannot create Analysis metadata encoder", error))?;
+    // Complete inventory/capability sections repeat farther apart than the
+    // default small window. Bound matching to 8 MiB without level-19 CPU cost.
+    encoder
+        .window_log(23)
+        .and_then(|_| encoder.long_distance_matching(true))
+        .map_err(|error| Error::with_source("cannot configure Analysis metadata encoder", error))?;
+    encoder
+        .write_all(input)
+        .map_err(|error| Error::with_source("cannot encode Analysis metadata", error))?;
+    let compressed = encoder
+        .finish()
+        .map_err(|error| Error::with_source("cannot finish Analysis metadata", error))?;
+    Ok(wrap_blob(input, compressed))
+}
+
+fn wrap_blob(input: &[u8], compressed: Vec<u8>) -> Vec<u8> {
     if BLOB_ZSTD_MAGIC.len() + 8 + compressed.len() < BLOB_RAW_MAGIC.len() + input.len() {
         let mut packed = Vec::with_capacity(BLOB_ZSTD_MAGIC.len() + 8 + compressed.len());
         packed.extend_from_slice(BLOB_ZSTD_MAGIC);
         put_u64(&mut packed, input.len() as u64);
         packed.extend_from_slice(&compressed);
-        return Ok(packed);
+        return packed;
     }
     // Large value streams normally compress. Do not allocate their full raw
     // copy merely to compare lengths; release the rejected representation first.
@@ -664,7 +725,7 @@ fn pack_blob_at_level(input: &[u8], level: i32) -> Result<Vec<u8>, Error> {
     let mut raw = Vec::with_capacity(BLOB_RAW_MAGIC.len() + input.len());
     raw.extend_from_slice(BLOB_RAW_MAGIC);
     raw.extend_from_slice(input);
-    Ok(raw)
+    raw
 }
 
 fn unpack_blob(input: &[u8]) -> Result<Vec<u8>, Error> {
@@ -1139,6 +1200,7 @@ struct NormalizingWriter {
     shape: Vec<u8>,
     symbols: Vec<Rc<[u8]>>,
     symbol_index: HashMap<Rc<[u8]>, u32>,
+    classes: Vec<symbols::ScalarClass>,
     positions: Vec<Option<symbols::Position>>,
     tracker: symbols::Tracker,
     references: Option<BufWriter<zstd::stream::write::Encoder<'static, Vec<u8>>>>,
@@ -1238,6 +1300,10 @@ impl NormalizingWriter {
         debug_assert_eq!(reference_bytes, values.len());
         Ok(Self {
             positions: vec![None; symbols.len()],
+            classes: symbols
+                .iter()
+                .map(|symbol| symbols::ScalarClass::new(symbol))
+                .collect(),
             symbols,
             symbol_index,
             ..Self::default()
@@ -1253,9 +1319,14 @@ impl NormalizingWriter {
             self.symbol_index.insert(Rc::clone(&symbol), index);
             self.symbols.push(symbol);
             self.positions.push(None);
+            self.classes.push(symbols::ScalarClass::new(&self.token));
             index
         };
-        let position = self.tracker.scalar(&self.token);
+        let class = self
+            .classes
+            .get(index as usize)
+            .ok_or_else(|| std::io::Error::other("Analysis symbol class is missing"))?;
+        let position = self.tracker.scalar(*class);
         let saved = self
             .positions
             .get_mut(index as usize)
@@ -1296,6 +1367,7 @@ impl NormalizingWriter {
         // release the symbol table before expanding references into the final
         // unchanged value stream; both graphs remain available throughout.
         drop(self.symbol_index);
+        drop(self.classes);
         let scalar_count = self.scalar_count;
         let packed_references = self
             .references
@@ -1558,6 +1630,104 @@ mod tests {
     use std::{cell::Cell, rc::Rc};
 
     #[test]
+    fn shape_reuse_requires_exact_current_bytes_and_packed_identity() -> Result<(), Error> {
+        let chunk = br#"[{"field":$},{"other":[$,$]}]"#.repeat(512);
+        // A raw envelope is valid in the same current representation. Its
+        // different bytes make actual reuse observable without a timing oracle.
+        let retained = [BLOB_RAW_MAGIC, chunk.as_slice()].concat();
+        let raw_hash = digest(&chunk);
+        let mut shapes = HashMap::from([(raw_hash.clone(), (digest(&retained), retained.clone()))]);
+        assert_eq!(pack_shape(&chunk, Some(&shapes))?.1, retained);
+        let fresh = pack_shape(&chunk, None)?;
+        assert_ne!(fresh.1, retained);
+        assert_eq!(unpack_blob(&fresh.1)?, chunk);
+        for invalid in [
+            ("wrong packed identity".into(), retained),
+            {
+                let wrong = pack_blob(b"different current shape")?;
+                (digest(&wrong), wrong)
+            },
+            {
+                let corrupt = b"corrupt packed envelope".to_vec();
+                (digest(&corrupt), corrupt)
+            },
+        ] {
+            shapes.insert(raw_hash.clone(), invalid);
+            assert_eq!(pack_shape(&chunk, Some(&shapes))?, fresh);
+        }
+        assert_eq!(
+            pack_shape(b"new shape", Some(&shapes))?,
+            pack_shape(b"new shape", None)?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn shape_reuse_selects_latest_layout_independent_of_complete_values_base(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let home = tempfile::tempdir()?;
+        let repository = home.path().join("repository");
+        std::fs::create_dir(&repository)?;
+        std::fs::write(repository.join("lib.rs"), "pub fn value() -> u8 { 7 }\n")?;
+        let operations =
+            crate::LocalOperations::new(crate::RuntimeLayout::new(home.path().join("runtime"))?);
+        let project = operations
+            .initialize_project("Shape reuse", Some(&repository))?
+            .project
+            .id;
+        let first = operations
+            .analyze(project, Vec::new())?
+            .value
+            .ok_or("first")?;
+        std::fs::write(repository.join("extra.py"), "def extra():\n    return 8\n")?;
+        let latest = operations
+            .analyze(project, Vec::new())?
+            .value
+            .ok_or("latest")?;
+        let first_manifest = read_manifest(&first.stored_at)?;
+        let mut latest_manifest = read_manifest(&latest.stored_at)?;
+        assert_ne!(first_manifest.shape_blobs, latest_manifest.shape_blobs);
+        // Select only the first snapshot as a complete value base. This manifest
+        // control changes no payload or production schema, and is restored before
+        // independently checking both complete historical graphs below.
+        let original_latest = std::fs::read(&latest.stored_at)?;
+        latest_manifest.values_base_blob = Some(first_manifest.values_blob.clone());
+        std::fs::write(&latest.stored_at, serde_json::to_vec(&latest_manifest)?)?;
+        let directory = latest.stored_at.parent().ok_or("parent")?;
+        let base = reusable_base_values(directory)?.ok_or("base")?;
+        assert_eq!(base.hash, first_manifest.values_blob);
+        let expected = latest_manifest
+            .shape_blobs
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        assert_eq!(
+            base.shapes
+                .values()
+                .map(|(hash, _)| hash.clone())
+                .collect::<HashSet<_>>(),
+            expected
+        );
+        for (raw_hash, (packed_hash, packed)) in &base.shapes {
+            assert_eq!(digest(packed), *packed_hash);
+            assert_eq!(digest(&unpack_blob(packed)?), *raw_hash);
+        }
+        let damaged_path =
+            blob_dir(&latest.stored_at)?.join(format!("{}.shape", latest_manifest.shape_blobs[0]));
+        let original_shape = std::fs::read(&damaged_path)?;
+        std::fs::write(&damaged_path, b"damaged optional shape")?;
+        assert!(reusable_base_values(directory)?
+            .ok_or("base")?
+            .shapes
+            .is_empty());
+        std::fs::write(damaged_path, original_shape)?;
+        std::fs::write(&latest.stored_at, original_latest)?;
+        assert_eq!(read_analysis_durable(&first.stored_at)?, first.analysis);
+        assert_eq!(read_analysis_durable(&latest.stored_at)?, latest.analysis);
+        Ok(())
+    }
+
+    #[test]
     fn compressed_reference_scratch_preserves_wire_bytes() -> Result<(), Error> {
         for (input, symbols, references) in [
             (b"[]".as_slice(), Vec::new(), Vec::new()),
@@ -1670,6 +1840,7 @@ mod tests {
                 hash: hash.clone(),
                 packed,
                 dictionary: None,
+                shapes: HashMap::new(),
             }),
         )?;
         assert!(complete.len() > 8 * 1024 * 1024);
@@ -1687,6 +1858,7 @@ mod tests {
                 hash,
                 packed: pack_blob(&base)?,
                 dictionary: None,
+                shapes: HashMap::new(),
             }),
         )?;
         assert!(selected_base.is_none());
@@ -2703,6 +2875,19 @@ mod tests {
             metadata,
             volicord_repository_intelligence::AnalysisMetadata::from(&outcome.analysis)
         );
+        // Every prior current-format compression level uses the sole decoder;
+        // complete metadata and history are never migrated or relabelled.
+        let metadata_bytes = serde_json::to_vec(&metadata)?;
+        assert_eq!(
+            unpack_blob(&pack_metadata(&metadata_bytes)?)?,
+            metadata_bytes
+        );
+        for level in [1, 19] {
+            assert_eq!(
+                unpack_blob(&pack_blob_at_level(&metadata_bytes, level)?)?,
+                metadata_bytes
+            );
+        }
         let durable = read_analysis_durable(&outcome.stored_at)?;
         assert_eq!(
             serde_json::to_value(&durable)?,

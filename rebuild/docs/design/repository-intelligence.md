@@ -621,11 +621,21 @@ value reconstruction은 packed input과 complete-base scratch를 JSON/typed grap
 exact current Analysis Snapshot schema를 검사한다. 이는 별도 old/new decoder가 아니다.
 Pretty-printing과 physical blob partition은 durable domain meaning의 일부가 아니다.
 Metadata는 full graph/value보다 작은 별도 payload이며, normalization scratch를 해제한
-뒤 압축 수준 19로 전체 inventory/capability coverage의 반복을 재사용한다. 최대 32 KiB인
+뒤 압축 수준 3과 bounded 8 MiB 긴 거리 매칭으로 전체 inventory/capability coverage의
+반복을 재사용한다. 최대 32 KiB인
 shape 조각은 수준 9로 압축하고, 큰 complete value/delta stream은 수준 1과 같은 delta
 계산을 유지한다. 작은 조각의 압축 비용과 큰 stream의 CPU/메모리 비용을 구분한다.
 Metadata의 필드, 복원 bytes, blob envelope,
 content 검증과 historical root는 줄이거나 바꾸지 않는다.
+
+새 게시의 shape chunk는 요청 안에서 최신 retained manifest의 검증된 packed chunk와
+대조할 수 있다. Complete value base가 더 오래되었어도 최신 shape layout을 별도로
+선택한다. Packed hash와 복원된 모든 raw bytes가 현재 chunk와 같을 때만 기존 packed
+bytes를 재사용한다. 손상·불일치·새 chunk는 기존 수준 9로 새로 압축한다. 요청 간 cache나
+semantic/graph 재사용이 아니며, 전체 새 graph의 계산·직렬화와 모든 history root를 유지한다.
+Scalar-slot 계획의 field tag/category도 immutable interned token별로 요청 안에서 한 번
+계산할 수 있다. Container 위치와 첫 occurrence는 매번 추적하며 exact reference mapping은
+변하지 않는다. 이 분류는 domain identity나 capability를 추론하지 않는다.
 
 Graph collection의 직렬화 순서는 새 observation의 hashed identity로 전체 graph를
 재배열하지 않는다. Structural facts는 area/language와 source 위치, kind, 이름을,
