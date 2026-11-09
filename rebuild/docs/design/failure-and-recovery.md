@@ -128,7 +128,12 @@ that stage remains explicitly unobserved without corresponding evidence.
 
 - Local diagram pending-job errors must preserve the original failure, reject
   geometry and release the failed runtime without damaging another local read.
-  Error/null/undefined/numeric throws and VM interruption remain failures. Recovery
+  Error/null/undefined/numeric throws and VM interruption remain failures. A successful
+  native job return alone is insufficient: Promise callbacks convert throws into
+  rejections. Geometry admission checks unhandled rejections after the bounded job
+  queue drains, including callbacks from the installed asynchronous shim. A rejection
+  handled before drain completion is not an unhandled failure. The tracker retains
+  only a count, never JS values, exception content or context ownership. Recovery
   must respect the existing time, memory, stack, job and output bounds. A scoped
   cleanup check does not establish safe disposal across the complete Viewer;
   broader failures remain unresolved until covered by corresponding evidence.

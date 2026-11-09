@@ -1364,6 +1364,16 @@ contains closed request metadata, never RPC arguments or arbitrary exception tex
 Final process streams and numeric exit/signal remain in the separate process
 manifest. Successful later execution cannot replace the first diagnostic.
 
+For native diagram error propagation, run focused `cargo test --manifest-path
+rebuild/Cargo.toml -p volicord-viewer --lib engine::tests`. Actual native deferred
+jobs and asynchronous-shim callbacks throw Error/null/undefined/numeric values;
+controls also cover handled rejections, native deadline/heap/stack/job/output
+bounds, failed-runtime disposal, fresh recovery and the shared SVG consumer.
+Successful scoped controls do not supersede a default-parallel Viewer failure.
+Preserve the Cargo-selected executable/hash before execution and stop repetitions
+at the declared failure boundary. Distinguish Rust/C ASan instrumentation from a
+signal-handler preload, and record unavailable leak detection independently.
+
 ## Scoped checks and comparable reruns
 
 Run `validate focused scoped-checks -- cargo test --manifest-path rebuild/Cargo.toml

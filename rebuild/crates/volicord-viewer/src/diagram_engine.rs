@@ -3,7 +3,10 @@
 use rquickjs::{Context, Function, Runtime};
 use std::{
     cell::RefCell,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 
@@ -39,12 +42,25 @@ struct Engine {
     runtime: Runtime,
     // The deadline is replaced before every entry, including initialization.
     deadline: Arc<std::sync::Mutex<Instant>>,
+    // Only a count crosses the native callback: never retain JS values, reasons
+    // or contexts past their callback lifetime. QuickJS reports a matching
+    // handled notification if a handler is attached after rejection.
+    unhandled_rejections: Arc<AtomicUsize>,
 }
 impl Engine {
     fn new() -> Result<Self, String> {
         let runtime = Runtime::new().map_err(|_| "local layout runtime unavailable")?;
         runtime.set_memory_limit(HEAP_LIMIT);
         runtime.set_max_stack_size(1024 * 1024);
+        let unhandled_rejections = Arc::new(AtomicUsize::new(0));
+        let pending = unhandled_rejections.clone();
+        runtime.set_host_promise_rejection_tracker(Some(Box::new(move |_, _, _, handled| {
+            if handled {
+                pending.fetch_sub(1, Ordering::Relaxed);
+            } else {
+                pending.fetch_add(1, Ordering::Relaxed);
+            }
+        })));
         let deadline = Arc::new(std::sync::Mutex::new(Instant::now() + DEADLINE));
         let bound = deadline.clone();
         runtime.set_interrupt_handler(Some(Box::new(move || {
@@ -62,6 +78,7 @@ impl Engine {
             context,
             runtime,
             deadline,
+            unhandled_rejections,
         })
     }
 
@@ -88,6 +105,12 @@ impl Engine {
                 return Err("local layout time/job budget exceeded".into());
             }
             self.execute_job()?;
+        }
+        // Promise callbacks (including the actual asynchronous host shim) turn
+        // throws into rejected promises. JS_ExecutePendingJob returns success
+        // for those jobs, so its Result alone cannot admit complete geometry.
+        if self.unhandled_rejections.load(Ordering::Relaxed) != 0 {
+            return Err("local layout asynchronous execution failed".into());
         }
         let output: String = self
             .context
@@ -145,6 +168,146 @@ pub(super) fn layout(input: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    const GRAPH: &str = r#"{"id":"root","layoutOptions":{"elk.algorithm":"layered"},"children":[{"id":"a","width":20,"height":20}]}"#;
+
+    #[test]
+    fn actual_callback_failure_reaches_the_shared_svg_consumer() -> Result<(), String> {
+        use volicord_projections::*;
+        let claim = "Two components exchange an admitted request.";
+        let label = |text: &str| DiagramLabel {
+            text: text.into(),
+            unit: 0,
+            start_byte: 0,
+            end_byte: claim.len(),
+        };
+        let diagram = GroundedDiagram {
+            id: "request".into(),
+            title: label("Request"),
+            caption_unit: 0,
+            semantic_fingerprint: String::new(),
+            meaning: DiagramMeaning::Component {
+                nodes: ["a", "b"]
+                    .into_iter()
+                    .map(|id| DiagramNode {
+                        id: id.into(),
+                        kind: DiagramNodeKind::Component,
+                        label: label(id),
+                        identifier: None,
+                    })
+                    .collect(),
+                relations: vec![DiagramRelation {
+                    id: "edge".into(),
+                    from: "a".into(),
+                    to: "b".into(),
+                    kind: DiagramRelationKind::ControlFlow,
+                    label: label("request"),
+                    condition: None,
+                }],
+            },
+        };
+        LOCAL.with(|slot| -> Result<(), String> {
+            let engine = Engine::new()?;
+            engine
+                .context
+                .with(|ctx| ctx.eval::<(), _>("setTimeout(function(){throw undefined;});"))
+                .map_err(|_| "cannot enqueue actual callback failure")?;
+            *slot.borrow_mut() = Some(engine);
+            Ok(())
+        })?;
+        let render = || {
+            crate::diagram::svg(
+                &diagram,
+                &[claim],
+                "publication",
+                &|_, _| "claim-origin".into(),
+                FixedLocale::English,
+            )
+        };
+        assert!(
+            render().is_err(),
+            "shared renderer cannot publish partial SVG as success"
+        );
+        let recovered = render()?;
+        assert!(recovered.contains("claim-origin"));
+        assert!(recovered.contains("request"));
+        Ok(())
+    }
+
+    #[test]
+    fn handled_rejections_are_not_unhandled_execution_failures() -> Result<(), String> {
+        LOCAL.with(|slot| -> Result<(), String> {
+            let engine = Engine::new()?;
+            engine.context.with(|ctx| ctx.eval::<(), _>(
+                "var rejected = Promise.reject(null); Promise.resolve().then(function(){rejected.catch(function(){});});"
+            )).map_err(|_| "cannot enqueue handled rejection")?;
+            *slot.borrow_mut() = Some(engine);
+            Ok(())
+        })?;
+        assert!(layout(GRAPH).is_ok());
+        assert!(
+            layout(GRAPH).is_ok(),
+            "successful reuse retains no rejected state"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn native_budget_failures_discard_partial_work_and_recover() -> Result<(), String> {
+        for script in [
+            "setTimeout(function(){while(true){}});",
+            "setTimeout(function again(){setTimeout(again);});",
+            "setTimeout(function(){new ArrayBuffer(128*1024*1024);});",
+            "setTimeout(function recurse(){recurse();});",
+            "takeLocalLayout=function(){return 'x'.repeat(262145);};",
+        ] {
+            LOCAL.with(|slot| -> Result<(), String> {
+                let engine = Engine::new()?;
+                engine
+                    .context
+                    .with(|ctx| ctx.eval::<(), _>(script))
+                    .map_err(|_| "cannot prepare bounded failure control")?;
+                *slot.borrow_mut() = Some(engine);
+                Ok(())
+            })?;
+            assert!(
+                layout(GRAPH).is_err(),
+                "bounded failure cannot admit geometry"
+            );
+            assert!(LOCAL.with(|slot| slot.borrow().is_none()));
+            assert!(
+                layout(GRAPH).is_ok(),
+                "fresh engine recovers after each bound"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn asynchronous_shim_failure_rejects_geometry_and_recovers() -> Result<(), String> {
+        for thrown in [
+            "new Error('private diagnostic must not escape')",
+            "null",
+            "undefined",
+            "7",
+        ] {
+            LOCAL.with(|slot| -> Result<(), String> {
+                let engine = Engine::new()?;
+                engine
+                    .context
+                    .with(|ctx| {
+                        ctx.eval::<(), _>(format!("setTimeout(function() {{ throw {thrown}; }});"))
+                    })
+                    .map_err(|_| "cannot enqueue asynchronous shim failure")?;
+                *slot.borrow_mut() = Some(engine);
+                Ok(())
+            })?;
+            let failure = layout(GRAPH).expect_err("a failed shim callback cannot supply geometry");
+            assert!(!failure.contains("private diagnostic"));
+            assert!(LOCAL.with(|slot| slot.borrow().is_none()));
+            assert!(layout(GRAPH).is_ok(), "a fresh engine recovers");
+        }
+        Ok(())
+    }
     #[test]
     fn interrupted_job_releases_context_and_runtime_without_leaking() -> Result<(), String> {
         let engine = Engine::new()?;
@@ -174,7 +337,6 @@ mod tests {
     #[test]
     fn pending_job_errors_discard_runtime_without_releasing_a_borrowed_context(
     ) -> Result<(), String> {
-        const GRAPH: &str = r#"{"id":"root","layoutOptions":{"elk.algorithm":"layered"},"children":[{"id":"a","width":20,"height":20}]}"#;
         for thrown in [
             "new Error('controlled job failure')",
             "null",
