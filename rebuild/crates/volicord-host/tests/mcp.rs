@@ -7378,6 +7378,7 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                 &["project_id", "action", "basis"],
             ),
         ],
+        "expiry_cleanup" => vec![shape(&["project_id", "limit"], &["project_id", "limit"])],
         "privacy_status" => vec![shape(&["project_id"], &["project_id"])],
         "canonical_inspect" => vec![
             shape(&["project_id"], &["project_id"]),

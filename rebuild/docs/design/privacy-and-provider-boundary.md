@@ -321,6 +321,30 @@ generated document와 Viewer는 fingerprint와 별도의 human-readable label/ex
 사용하며 raw command/argv를 long-term content로 보존하지 않는다. Caller-supplied digest는
 이 derivation을 대신하지 않는다.
 
+### Explicit bounded expiry maintenance
+
+CLI `privacy cleanup --limit N` (default 64) and MCP `expiry_cleanup`
+(`project_id`, required `limit`) explicitly remove expired Candidate and managed
+content, at most 1..256 eligible records **per store** per invocation. Cleanup is
+never triggered by inspection, reading, rendering or export. Existing per-record
+cleanup/deletion receipts persist; repeated invocations continue remaining work.
+The two owner outcomes are independent: `completed` means that batch completed,
+not that all history was cleaned; `remaining_eligible` reports the current backlog.
+An incomplete batch can have committed a prefix, so `removed_ids: null` means
+unknown, not zero. Inspect lifecycle metadata and retry. Process interruption has
+no success receipt and does not restore already removed content. Promoted canonical
+records, Candidate promotion targets, policy-at-collection evidence and independently
+retained articles are preserved. A recorded Source-computed explanation deadline
+continues to use its existing exact receipt exception; arbitrary deadlines are not
+renewed. Public privacy status now exposes managed lifecycle metadata, expiry and
+local/provider deletion receipts without body access.
+
+Expiry maintenance certifies **logical content removal** in owner stores only.
+It does not certify synchronous physical DB/WAL erasure, provider-side deletion,
+or removal of previously exported copies. Canonical forgetting and explicit
+Source/explanation deletion keep their existing stronger sanitization boundaries.
+No provider invocation, retention-policy expansion or durable format change is added.
+
 ## 7. Raw source와 portable context 분리
 
 Raw source body는 repository binding을 통해 접근하는 Source content이며 portable

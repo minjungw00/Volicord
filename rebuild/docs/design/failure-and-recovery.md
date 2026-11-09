@@ -321,6 +321,18 @@ repository resolution을 사용할 수 없는 source-independent recovery에서�
 missing owner cleanup/post-check만 reconcile한다. Caller가 새 user fact나
 provider deletion success를 제공했다고 추론하지 않는다.
 
+### Expiry maintenance recovery
+
+`privacy cleanup` / MCP `expiry_cleanup` is bounded logical maintenance, with
+separate Candidate and managed owner receipts. Store failure preserves committed
+per-record cleanup; unknown removed identity sets are reported as unknown rather
+than empty success. An independent owner may finish while the other is incomplete.
+After process interruption, inspect lifecycle receipts and repeat the same bounded
+operation; it neither restores content nor recreates canonical records. A completed
+batch with remaining eligible records requires another batch. Physical sanitization
+and provider erasure are outside this expiry receipt. Pure reads still withhold
+expired bodies before any maintenance. Canonical forgetting repair remains separate.
+
 ## 6. Retry ownership
 
 Retry에는 original operation identity, input/source version, idempotency/commit state,

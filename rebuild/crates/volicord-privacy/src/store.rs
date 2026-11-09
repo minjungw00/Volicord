@@ -601,10 +601,23 @@ impl PrivacyStore {
         &mut self,
         project_id: ProjectId,
     ) -> Result<Vec<ManagedDerivedId>, Error> {
+        self.cleanup_expired_bounded(project_id, usize::MAX)
+    }
+
+    /// Explicit logical cleanup; independent publications do not inherit Source TTL.
+    /// This operation does not certify physical DB/WAL or provider erasure.
+    pub fn cleanup_expired_bounded(
+        &mut self,
+        project_id: ProjectId,
+        limit: usize,
+    ) -> Result<Vec<ManagedDerivedId>, Error> {
         let now = self.clock.now().map_err(clock_error)?;
         let mut deleted = Vec::new();
         let records = self.read_derived(project_id)?;
         for mut record in records.clone() {
+            if deleted.len() == limit {
+                break;
+            }
             if record.state != ManagedDerivedState::Deleted
                 && record.retained_until.is_some_and(|expiry| expiry <= now)
                 && !record.source_computed_explanation_deadline(&records)

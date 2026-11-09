@@ -856,10 +856,23 @@ impl CandidateStore {
     }
 
     pub fn cleanup_expired(&mut self, project_id: ProjectId) -> Result<Vec<CandidateId>, Error> {
+        self.cleanup_expired_bounded(project_id, usize::MAX)
+    }
+
+    /// Explicit logical cleanup; no DB/WAL sanitization guarantee. Repeated
+    /// batches resume from persisted per-record cleanup receipts.
+    pub fn cleanup_expired_bounded(
+        &mut self,
+        project_id: ProjectId,
+        limit: usize,
+    ) -> Result<Vec<CandidateId>, Error> {
         let now = self.clock.now().map_err(clock_error)?;
         let basis = self.read_basis(project_id)?;
         let mut cleaned = Vec::new();
         for candidate in basis.candidates {
+            if cleaned.len() == limit {
+                break;
+            }
             if candidate.content.is_some()
                 && candidate.cleanup.is_none()
                 && candidate

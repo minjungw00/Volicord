@@ -724,6 +724,8 @@ fn context_command() -> Command {
 fn privacy_command() -> Command {
     Command::new("privacy")
         .about("Inspect or change collection, retention and provider controls")
+        .subcommand(Command::new("cleanup").about("Remove expired Candidate and managed bodies in explicit bounded batches; logical removal only, no provider deletion. Repeat while remaining_eligible is nonzero; incomplete partitions require inspection and retry.")
+            .arg(Arg::new("limit").long("limit").default_value("64").value_parser(clap::value_parser!(u16).range(1..=256))))
         .subcommand(Command::new("collection").about("Control automatic Candidate collection; omitted filters match all values, combined filters must all match. Enabling resets only the exact scope; other opt-outs still apply. Explicit user-directed collection is independent.")
             .subcommand_required(true)
             .subcommand(Command::new("inspect").about("Inspect current collection policies"))
@@ -1263,6 +1265,17 @@ fn dispatch_privacy(
         .subcommand()
         .ok_or_else(|| Error::new("a privacy action is required"))?;
     let project = resolve_project(operations, selection)?;
+    if action == "cleanup" {
+        let result = operations.cleanup_expired(
+            project,
+            usize::from(
+                *args
+                    .get_one::<u16>("limit")
+                    .ok_or_else(|| Error::new("cleanup limit required"))?,
+            ),
+        )?;
+        return Ok(json!({"operation":"expiry_cleanup","result":result}));
+    }
     if action == "collection" {
         let (action, scope) = args
             .subcommand()
@@ -2987,7 +3000,7 @@ fn privacy(operations: &LocalOperations, cursor: &mut Cursor) -> Result<Value, E
             let project = project_id(&cursor.next("Project ID")?)?;
             let status = operations.privacy_status(project)?;
             Ok(
-                json!({"operation":"privacy_status","project_id":project.to_string(),"configuration_state":debug_name(status.configuration_state),"policy_revision":status.current_opt_in.as_ref().map(|value| value.revision),"policy_state":status.current_opt_in.as_ref().map(|value| debug_name(value.state)),"provider":status.current_opt_in.as_ref().map(|value| value.policy.provider.clone()),"model":status.current_opt_in.as_ref().map(|value| value.policy.model.clone()),"purpose":status.current_opt_in.as_ref().map(|value| value.policy.purpose.clone()),"requested_capability":status.current_opt_in.as_ref().map(|value| value.policy.requested_capability.clone()),"allowed_source_scopes":status.current_opt_in.as_ref().map(|value| value.policy.allowed_source_scopes.clone()),"exclusions":status.current_opt_in.as_ref().map(|value| json!({"path_prefixes":value.policy.exclusions.path_prefixes,"file_classes":value.policy.exclusions.file_classes.iter().map(|class| debug_name(*class)).collect::<Vec<_>>(),"basis":value.policy.exclusions.basis})),"filtering":status.current_opt_in.as_ref().map(|value| json!({"enabled":value.policy.filtering.enabled,"known_limits":value.policy.filtering.known_limits})),"provider_retention":status.current_opt_in.as_ref().map(|value| json!({"expectation":value.policy.retention.provider_expectation,"known_limits":value.policy.retention.provider_known_limits,"local_basis":value.policy.retention.local_basis})),"request_count":status.requests.len(),"requests":status.requests.iter().map(|request| json!({"request_id":request.id.to_string(),"provider":request.provider,"model":request.model,"purpose":request.purpose,"repository_snapshot":request.repository_snapshot.to_string(),"analysis_snapshot":request.analysis_snapshot.to_string(),"outcome":debug_name(request.outcome),"diagnostic":request.diagnostic,"manifest":request.manifest.iter().map(|entry| json!({"source_id":entry.source.identity().to_string(),"locator":entry.locator,"scope_outcome":debug_name(entry.scope_outcome),"filter_outcome":debug_name(entry.filter_outcome),"transmission_outcome":debug_name(entry.transmission_outcome),"transmitted_bytes":entry.transmitted_bytes})).collect::<Vec<_>>()})).collect::<Vec<_>>(),"managed_derived_count":status.managed_derived.len()}),
+                json!({"operation":"privacy_status","project_id":project.to_string(),"configuration_state":debug_name(status.configuration_state),"policy_revision":status.current_opt_in.as_ref().map(|value| value.revision),"policy_state":status.current_opt_in.as_ref().map(|value| debug_name(value.state)),"provider":status.current_opt_in.as_ref().map(|value| value.policy.provider.clone()),"model":status.current_opt_in.as_ref().map(|value| value.policy.model.clone()),"purpose":status.current_opt_in.as_ref().map(|value| value.policy.purpose.clone()),"requested_capability":status.current_opt_in.as_ref().map(|value| value.policy.requested_capability.clone()),"allowed_source_scopes":status.current_opt_in.as_ref().map(|value| value.policy.allowed_source_scopes.clone()),"exclusions":status.current_opt_in.as_ref().map(|value| json!({"path_prefixes":value.policy.exclusions.path_prefixes,"file_classes":value.policy.exclusions.file_classes.iter().map(|class| debug_name(*class)).collect::<Vec<_>>(),"basis":value.policy.exclusions.basis})),"filtering":status.current_opt_in.as_ref().map(|value| json!({"enabled":value.policy.filtering.enabled,"known_limits":value.policy.filtering.known_limits})),"provider_retention":status.current_opt_in.as_ref().map(|value| json!({"expectation":value.policy.retention.provider_expectation,"known_limits":value.policy.retention.provider_known_limits,"local_basis":value.policy.retention.local_basis})),"request_count":status.requests.len(),"requests":status.requests.iter().map(|request| json!({"request_id":request.id.to_string(),"provider":request.provider,"model":request.model,"purpose":request.purpose,"repository_snapshot":request.repository_snapshot.to_string(),"analysis_snapshot":request.analysis_snapshot.to_string(),"outcome":debug_name(request.outcome),"diagnostic":request.diagnostic,"manifest":request.manifest.iter().map(|entry| json!({"source_id":entry.source.identity().to_string(),"locator":entry.locator,"scope_outcome":debug_name(entry.scope_outcome),"filter_outcome":debug_name(entry.filter_outcome),"transmission_outcome":debug_name(entry.transmission_outcome),"transmitted_bytes":entry.transmitted_bytes})).collect::<Vec<_>>()})).collect::<Vec<_>>(),"managed_derived_count":status.managed_derived.len(),"managed_records":status.managed_derived.iter().map(crate::managed_lifecycle_json).collect::<Vec<_>>()}),
             )
         }
         "enable" => {

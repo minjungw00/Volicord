@@ -1860,3 +1860,17 @@ origin/range/return; it does not assess prose entailment or human comprehension.
 For actual live HTTP, paging, history, keyboard and late-response negatives, use
 `grounded_diagrams_browser.cjs` with `document_reader:true`, alongside the installed
 CLI and complete MCP reader. The document journey file itself exports a module.
+
+
+## Scoped collection and expiry controls
+
+Use `validate focused` with Operations `lifecycle_controls` and `candidate_lifecycle`,
+Host `privacy_controls` and `mcp`, and Viewer `citation_reading
+admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart`.
+These exercise actual CLI processes, MCP stdio restart, negative scope/limit
+admission, prefix failure, killed cleanup, retry, promoted target reconciliation,
+and live HTTP/native export reading after real UTC expiry and public cleanup.
+The Viewer control waits for its recorded ten-second Source deadline; it does not
+alter publication/source metadata or submit a future maintenance clock. Expiry
+receipts promise logical removal only; no physical-erasure assertion is inferred.
+These are focused supporting checks, not the aggregate gate or external acceptance.

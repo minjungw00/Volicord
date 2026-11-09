@@ -76,6 +76,29 @@ fn local_operations_orchestrate_candidate_lifecycle_without_owning_domain_semant
         .active_decisions
         .is_empty());
 
+    // Expiry cleanup preserves the promotion receipt and canonical target. A
+    // public retry after restart reconciles without reconstructing cleaned text.
+    let connection = rusqlite::Connection::open(operations.layout().candidate_store())?;
+    connection.execute("UPDATE candidates SET record_json=json_set(record_json,'$.retention.retained_until',2) WHERE id=?1",
+        [candidate.id.as_bytes().as_slice()])?;
+    drop(connection);
+    let cleaned = operations.cleanup_expired(project.id, 1)?;
+    assert_eq!(
+        cleaned.candidates.removed_ids,
+        Some(vec![candidate.id.to_string()])
+    );
+    let restarted = LocalOperations::new(operations.layout().clone());
+    let replayed = restarted.promote_question_candidate(project.id, candidate.id)?;
+    assert_eq!(replayed.question_id, promoted.question_id);
+    assert!(replayed.canonical_replayed);
+    assert_eq!(
+        restarted
+            .canonical_basis(project.id)?
+            .active_questions
+            .len(),
+        1
+    );
+
     let second = match operations.submit_candidate(question_candidate(project.id, source.id, 2))? {
         SubmissionOutcome::Stored(candidate) => candidate,
         SubmissionOutcome::CollectionDisabled { .. } => {

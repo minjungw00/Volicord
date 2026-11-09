@@ -68,6 +68,14 @@ impl Fixture {
         custom: Option<Vec<(String, String)>>,
         short_mechanism: bool,
     ) -> Result<Self, Box<dyn Error>> {
+        Self::new_retention_seconds(parent, production, custom, short_mechanism.then_some(60))
+    }
+    fn new_retention_seconds(
+        parent: Option<&std::path::Path>,
+        production: bool,
+        custom: Option<Vec<(String, String)>>,
+        short_seconds: Option<u64>,
+    ) -> Result<Self, Box<dyn Error>> {
         let mut temp = match parent {
             Some(path) => tempfile::tempdir_in(path)?,
             None => tempfile::tempdir()?,
@@ -176,7 +184,11 @@ impl Fixture {
                     start_byte: intervals[i].0,
                     end_byte: intervals[i].1,
                 }),
-                retain_seconds: if short_mechanism && i == 8 { 60 } else { 3600 },
+                retain_seconds: if i == 8 {
+                    short_seconds.unwrap_or(3600)
+                } else {
+                    3600
+                },
             })?;
             let id = receipt["source_id"].as_str().ok_or("source")?;
             let mut bytes = [0; 16];
@@ -3206,10 +3218,10 @@ fn publication_expiry_refuses_the_article_without_promising_retained_reading(
 #[test]
 fn admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart(
 ) -> Result<(), Box<dyn Error>> {
-    use volicord_context::{FixedClock, SystemIdGenerator, TimestampMicros};
-    use volicord_privacy::{ManagedDerivedKind, PrivacyStore};
+    use volicord_context::{Clock, SystemClock, TimestampMicros};
+    use volicord_privacy::ManagedDerivedKind;
     for sequence in [false, true] {
-        let f = Fixture::new_retention(None, false, None, true)?;
+        let f = Fixture::new_retention_seconds(None, false, None, Some(10))?;
         let realization = diagram_control(&f, sequence)?;
         let retained = f.ops.record_explanation(
             f.project,
@@ -3233,15 +3245,20 @@ fn admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart(
             .filter_map(|r| r.retained_until)
             .min()
             .ok_or("deadline")?;
-        let mut privacy = PrivacyStore::open_with(
-            f.ops.layout().privacy_store(),
-            SystemIdGenerator,
-            FixedClock::new(TimestampMicros::from_unix_micros(
-                deadline.as_unix_micros() + 1,
-            )),
-        )?;
-        assert_eq!(privacy.cleanup_expired(f.project)?.len(), 1);
-        drop(privacy);
+        // Real UTC expiry, then the maintained public operation. No future clock
+        // or metadata rewrite is allowed to create this lifecycle evidence.
+        let wait_limit = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while SystemClock.now()? <= deadline && std::time::Instant::now() < wait_limit {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(SystemClock.now()? > deadline);
+        let cleaned = f.ops.cleanup_expired(f.project, 64)?;
+        assert_eq!(cleaned.managed.state, "completed");
+        assert_eq!(
+            cleaned.managed.removed_ids.as_ref().ok_or("removed")?.len(),
+            1
+        );
+        assert_eq!(cleaned.managed.remaining_eligible, Some(0));
         // Actual cleanup erased only one Source body. Reopen the runtime through
         // new Operations, HTTP and export consumers; do not re-record the article.
         let restarted = LocalOperations::new(f.ops.layout().clone());

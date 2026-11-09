@@ -52,7 +52,7 @@ use volicord_projections::{
     UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingWork,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 26] = [
+pub const HOST_TOOL_NAMES: [&str; 27] = [
     "project_resolve",
     "project_initialize",
     "project_health",
@@ -76,6 +76,7 @@ pub const HOST_TOOL_NAMES: [&str; 26] = [
     "candidate_manage",
     "candidate_collection",
     "privacy_status",
+    "expiry_cleanup",
     "background_semantic_operation",
     "document_preview",
     "guarded_interaction",
@@ -230,6 +231,15 @@ impl HostAdapter {
                 "candidate_manage" => self.candidate_manage(&arguments),
                 "candidate_collection" => self.candidate_collection(&arguments),
                 "privacy_status" => self.privacy_status(&arguments),
+                "expiry_cleanup" => self
+                    .operations
+                    .cleanup_expired(
+                        project(&arguments)?,
+                        usize::try_from(required_u64(&arguments, "limit")?)
+                            .map_err(|_| HostError::new("cleanup limit out of range"))?,
+                    )
+                    .map(|result| json!(result))
+                    .map_err(operation_error),
                 "background_semantic_operation" => self.background_semantic_operation(&arguments),
                 "document_preview" => self.document_preview(&arguments),
                 "guarded_interaction" => self.guarded_interaction(&arguments),
@@ -2319,7 +2329,7 @@ impl HostAdapter {
             .privacy_status(project(args)?)
             .map_err(operation_error)?;
         Ok(
-            json!({"configuration_state":format!("{:?}",status.configuration_state).to_lowercase(),"policy":status.current_opt_in.as_ref().map(|event| json!({"state":format!("{:?}",event.state).to_lowercase(),"provider":event.policy.provider,"model":event.policy.model,"scope":event.policy.allowed_source_scopes})),"requests":status.requests.len(),"managed_derived":status.managed_derived.len(),"local_only":status.current_opt_in.is_none()}),
+            json!({"configuration_state":format!("{:?}",status.configuration_state).to_lowercase(),"policy":status.current_opt_in.as_ref().map(|event| json!({"state":format!("{:?}",event.state).to_lowercase(),"provider":event.policy.provider,"model":event.policy.model,"scope":event.policy.allowed_source_scopes})),"requests":status.requests.len(),"managed_derived":status.managed_derived.len(),"managed_records":status.managed_derived.iter().map(volicord_operations::managed_lifecycle_json).collect::<Vec<_>>(),"local_only":status.current_opt_in.is_none()}),
         )
     }
 
@@ -3690,6 +3700,11 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
                 ("candidate_kind",enum_schema("Candidate kind",volicord_operations::COLLECTION_KINDS)),
                 ("basis",text_schema("Current explicit collection policy intent",1,4096))],
                 &["project_id","action","basis"])]}),
+            ToolBehavior::DestructiveClosed,
+        ),
+        "expiry_cleanup" => (
+            "Explicitly remove expired Candidate and managed content, at most limit records per store (1..256). Reports each owner independently, remaining eligible counts and incomplete retry outcomes. Completion guarantees logical body removal only; physical DB/WAL and provider erasure are not certified. No canonical mutation or retention renewal. Repeat until remaining_eligible is zero; inspect and retry incomplete partitions.",
+            object_schema(vec![("project_id",identity_schema("Project identity")),("limit",json!({"type":"integer","minimum":1,"maximum":256,"description":"Maximum expired records to remove per owner store"}))], &["project_id","limit"]),
             ToolBehavior::DestructiveClosed,
         ),
         "privacy_status" => (
@@ -6032,6 +6047,11 @@ fn validate_integer(schema: &Value, value: &Value, path: &str) -> Result<(), Vec
     if let Some(minimum) = schema.get("minimum").and_then(Value::as_u64) {
         if number < minimum {
             return Err(vec![format!("{path} must be at least {minimum}")]);
+        }
+    }
+    if let Some(maximum) = schema.get("maximum").and_then(Value::as_u64) {
+        if number > maximum {
+            return Err(vec![format!("{path} must be at most {maximum}")]);
         }
     }
     Ok(())
