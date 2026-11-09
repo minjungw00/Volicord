@@ -1377,7 +1377,7 @@ signal-handler preload, and record unavailable leak detection independently.
 The local native supervisor is covered by focused Viewer `--lib worker::tests` and
 `--test diagram_worker`. Child-entry tests are intentionally ignored as standalone
 tests and invoked explicitly by supervisor controls. Those controls exercise an
-actual SIGSEGV, numeric nonzero exit, partial response, timeout, actual native
+actual SIGABRT, numeric nonzero exit, partial response, timeout, actual native
 Promise failure, reaping and fresh supported recovery. `--lib` keeps ordinary
 default parallelism; it is not serialized to hide native failure. The executable
 controls use Cargo's actual Viewer binary and assert that geometry execution does

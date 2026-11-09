@@ -23,6 +23,7 @@ struct Worker {
     input: ChildStdin,
     output: ChildStderr,
     stopped: bool,
+    native_startup_diagnostic: Vec<u8>,
 }
 
 fn nonblocking(fd: &impl AsFd) -> Result<(), String> {
@@ -153,6 +154,7 @@ impl Worker {
             input,
             output,
             stopped: false,
+            native_startup_diagnostic: Vec::new(),
         };
         let result: Result<(), String> = (|| {
             nonblocking(&worker.input)?;
@@ -160,6 +162,15 @@ impl Worker {
             let mut hello = [0; HELLO.len()];
             read_exact(&mut worker.output, &mut hello, end)?;
             if hello != HELLO {
+                // No graph has been sent during initialization. Retain a bounded
+                // native startup line, not arbitrary request or Source content.
+                worker.native_startup_diagnostic.extend_from_slice(&hello);
+                let mut more = [0; 1006];
+                if let Ok(count) = worker.output.read(&mut more) {
+                    worker
+                        .native_startup_diagnostic
+                        .extend_from_slice(&more[..count]);
+                }
                 return Err("local layout worker protocol rejected".into());
             }
             let ready = worker.response(end)?;
@@ -210,10 +221,11 @@ impl Worker {
             .map(outcome)
             .unwrap_or_else(|| "running_or_unobserved".into());
         let cleanup = self.stop();
-        format!(
-            "{primary}; stage={stage}; worker_pid={}; observed={observed}; cleanup={cleanup}",
-            self.child.id()
-        )
+        let native = String::from_utf8_lossy(&self.native_startup_diagnostic)
+            .escape_debug()
+            .take(1024)
+            .collect::<String>();
+        format!("{primary}; stage={stage}; worker_pid={}; observed={observed}; cleanup={cleanup}; native_startup={native}",self.child.id())
     }
     fn stop(&mut self) -> String {
         if self.stopped {
@@ -375,14 +387,7 @@ mod tests {
     #[ignore = "internal child entry, exercised by supervisor controls"]
     fn abrupt_child() {
         if child() {
-            let pid = rustix::process::Pid::from_raw(std::process::id() as i32).unwrap();
-            // Rust's stack-overflow handler resets SIGSEGV to default on the
-            // first user-generated signal. A synchronous fault retraps; make
-            // this control actually terminate rather than merely signal once.
-            rustix::process::kill_process(pid, rustix::process::Signal::SEGV).unwrap();
-            std::thread::sleep(std::time::Duration::from_millis(20));
-            rustix::process::kill_process(pid, rustix::process::Signal::SEGV).unwrap();
-            std::process::exit(99);
+            std::process::abort();
         }
     }
     #[test]
@@ -412,25 +417,40 @@ mod tests {
         std::process::exit(8);
     }
     #[test]
+    #[ignore = "internal child entry, exercised by supervisor controls"]
+    fn startup_diagnostic_child() {
+        if !child() {
+            return;
+        }
+        let _ = io::stderr().write_all(
+            format!("controlled native startup diagnostic {}", "x".repeat(2048)).as_bytes(),
+        );
+        std::process::exit(12);
+    }
+    #[test]
     fn faults_partial_frames_and_timeouts_discard_the_process_and_recover() -> Result<(), String> {
         for test in [
             "abrupt_child",
             "partial_child",
             "stalled_child",
             "callback_failure_child",
+            "startup_diagnostic_child",
         ] {
             let name = match test {
                 "abrupt_child" => "diagram::overview::worker::tests::abrupt_child",
                 "partial_child" => "diagram::overview::worker::tests::partial_child",
                 "stalled_child" => "diagram::overview::worker::tests::stalled_child",
-                _ => "diagram::overview::worker::tests::callback_failure_child",
+                "callback_failure_child" => {
+                    "diagram::overview::worker::tests::callback_failure_child"
+                }
+                _ => "diagram::overview::worker::tests::startup_diagnostic_child",
             };
             select_test_worker(name);
             let failure = layout(GRAPH).expect_err("failed child cannot admit geometry");
             assert!(failure.contains("stage="), "{failure}");
             assert!(failure.contains("cleanup="), "{failure}");
             if test == "abrupt_child" {
-                assert!(failure.contains("signal:11"), "{failure}");
+                assert!(failure.contains("signal:6"), "{failure}");
             }
             if test == "partial_child" {
                 assert!(failure.contains("exit:7"), "{failure}");
@@ -438,6 +458,13 @@ mod tests {
             if test == "stalled_child" {
                 assert!(failure.contains("deadline exceeded"), "{failure}");
                 assert!(failure.contains("signal:9"), "{failure}");
+            }
+            if test == "startup_diagnostic_child" {
+                assert!(
+                    failure.contains("native_startup=controlled native startup diagnostic"),
+                    "{failure}"
+                );
+                assert!(failure.len() < 1400, "native startup evidence is bounded");
             }
             if test == "callback_failure_child" {
                 assert!(

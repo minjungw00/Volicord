@@ -140,9 +140,12 @@ that stage remains explicitly unobserved without corresponding evidence.
   protocol/size rejection or timeout discards that process and rejects its geometry.
   The reader retains its own state; the next request may create a fresh child.
   Primary stage/error, observed process outcome and forced cleanup outcome remain
-  distinct. The parent retains one bounded, content-free first native-worker
+  distinct. The parent retains one bounded first native-worker
   diagnostic on stderr (engine identity, operation stage, worker PID and numeric
-  outcomes); a broken diagnostic sink cannot replace the primary failure. Worker
+  outcomes). A rejected startup preamble can retain at most 1,024 native diagnostic
+  bytes before any graph has been transmitted; no request/Source body or inherited
+  credential is available to that child. A broken diagnostic sink cannot replace
+  the primary failure. Worker
   death-on-parent-exit and ordinary kill/reap cleanup prevent orphan native work.
   This is native-fault containment, not a claim that an unidentified engine/binding
   memory defect was causally repaired.
