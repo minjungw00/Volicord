@@ -132,6 +132,72 @@ impl Engine {
             .map_err(|_| "cannot enqueue controlled native callback".into())
     }
 
+    // Closed fixtures run inside the same disposable process as production
+    // native execution. Never dispose a deliberately damaged VM in the reader.
+    #[cfg(test)]
+    pub(super) fn controlled(control: &str) -> Result<Self, String> {
+        let engine = Self::new()?;
+        if control == "interrupted-job" {
+            engine
+                .context
+                .with(|ctx| -> rquickjs::Result<()> {
+                    let job: Function = ctx.eval("() => { while (true) {} }")?;
+                    job.defer(())
+                })
+                .map_err(|_| "cannot enqueue interrupted control")?;
+            let probe = Arc::new(());
+            let released = Arc::downgrade(&probe);
+            engine
+                .runtime
+                .set_interrupt_handler(Some(Box::new(move || Arc::strong_count(&probe) > 0)));
+            let outcome = engine.execute_job();
+            drop(engine);
+            if released.upgrade().is_some() {
+                return Err("native control retained a Rust runtime handle".into());
+            }
+            return match outcome {
+                Err(error) => Err(error.into()),
+                Ok(_) => Err("interrupted control unexpectedly completed".into()),
+            };
+        }
+        let job = match control {
+            "job-error" => Some("() => { throw new Error('controlled job failure'); }"),
+            "job-null" => Some("() => { throw null; }"),
+            "job-undefined" => Some("() => { throw undefined; }"),
+            "job-number" => Some("() => { throw 7; }"),
+            _ => None,
+        };
+        if let Some(job) = job {
+            engine
+                .context
+                .with(|ctx| -> rquickjs::Result<()> {
+                    let job: Function = ctx.eval(job)?;
+                    job.defer(())
+                })
+                .map_err(|_| "cannot enqueue failed-job control")?;
+            return Ok(engine);
+        }
+        let script = match control {
+            "async-error" => "setTimeout(function(){throw new Error('private diagnostic must not escape');});",
+            "async-null" => "setTimeout(function(){throw null;});",
+            "async-undefined" => "setTimeout(function(){throw undefined;});",
+            "async-number" => "setTimeout(function(){throw 7;});",
+            "time" => "setTimeout(function(){while(true){}});",
+            "jobs" => "setTimeout(function again(){setTimeout(again);});",
+            "memory" => "setTimeout(function(){new ArrayBuffer(128*1024*1024);});",
+            "stack" => "setTimeout(function recurse(){recurse();});",
+            "output" => "takeLocalLayout=function(){return 'x'.repeat(262145);};",
+            "handled" => "var rejected=Promise.reject(null);Promise.resolve().then(function(){rejected.catch(function(){});});",
+            "restricted-hosts" => "if(!(typeof fetch==='undefined'&&typeof require==='undefined'&&typeof process==='undefined'&&typeof std==='undefined'&&typeof Worker==='undefined'))throw new Error('unexpected external host');",
+            _ => return Err("unknown native test control".into()),
+        };
+        engine
+            .context
+            .with(|ctx| ctx.eval::<(), _>(script))
+            .map_err(|_| "cannot prepare native control")?;
+        Ok(engine)
+    }
+
     fn execute_job(&self) -> Result<bool, &'static str> {
         self.runtime.execute_pending_job().map_err(|error| {
             // rquickjs 0.11.0 wraps JS_ExecutePendingJob's borrowed
@@ -152,34 +218,8 @@ pub(super) fn layout(input: &str) -> Result<String, String> {
 }
 
 #[cfg(test)]
-thread_local! { static LOCAL: std::cell::RefCell<Option<Engine>> = const { std::cell::RefCell::new(None) }; }
-#[cfg(test)]
-fn local_layout(input: &str) -> Result<String, String> {
-    if input.len() > 65_536 {
-        return Err("local layout input budget exceeded".into());
-    }
-    LOCAL.with(|slot| {
-        let mut slot = slot
-            .try_borrow_mut()
-            .map_err(|_| "local layout already active")?;
-        if slot.is_none() {
-            *slot = Some(Engine::new()?);
-        }
-        let result = slot
-            .as_ref()
-            .ok_or("local layout unavailable")?
-            .layout(input);
-        if result.is_err() {
-            *slot = None;
-        }
-        result
-    })
-}
-
-#[cfg(test)]
 mod tests {
-    use super::local_layout as layout;
-    use super::*;
+    use super::super::worker::{layout, select_test_engine, test_worker_pid};
     const GRAPH: &str = r#"{"id":"root","layoutOptions":{"elk.algorithm":"layered"},"children":[{"id":"a","width":20,"height":20}]}"#;
 
     #[test]
@@ -239,19 +279,52 @@ mod tests {
         Ok(())
     }
 
+    fn reject_and_recover(control: &'static str, expected: &[&str]) -> Result<(), String> {
+        select_test_engine(control);
+        let failure = layout(GRAPH).expect_err("failed native control cannot admit geometry");
+        // A framed engine error or an observed native fault is a failure. A
+        // native fault is contained, never relabelled as a successful VM drop.
+        assert!(
+            expected.iter().any(|reason| failure.contains(reason)) || failure.contains("signal:"),
+            "{control}: {failure}"
+        );
+        assert!(!failure.contains("private diagnostic"));
+        assert!(
+            test_worker_pid().is_none(),
+            "failed child must be discarded"
+        );
+        let pid = failure
+            .split("worker_pid=")
+            .nth(1)
+            .and_then(|part| part.split(';').next())
+            .and_then(|value| value.parse::<i32>().ok())
+            .and_then(rustix::process::Pid::from_raw)
+            .ok_or("native failure process identity")?;
+        assert!(
+            matches!(
+                rustix::process::waitpid(Some(pid), rustix::process::WaitOptions::NOHANG),
+                Err(rustix::io::Errno::CHILD)
+            ),
+            "failed native process must be reaped"
+        );
+        let recovered = layout(GRAPH)?;
+        assert!(recovered.contains("root") && recovered.contains("a"));
+        assert!(
+            test_worker_pid().is_some(),
+            "fresh child serves the next request"
+        );
+        Ok(())
+    }
+
     #[test]
     fn handled_rejections_are_not_unhandled_execution_failures() -> Result<(), String> {
-        LOCAL.with(|slot| -> Result<(), String> {
-            let engine = Engine::new()?;
-            engine.context.with(|ctx| ctx.eval::<(), _>(
-                "var rejected = Promise.reject(null); Promise.resolve().then(function(){rejected.catch(function(){});});"
-            )).map_err(|_| "cannot enqueue handled rejection")?;
-            *slot.borrow_mut() = Some(engine);
-            Ok(())
-        })?;
-        assert!(layout(GRAPH).is_ok());
-        assert!(
-            layout(GRAPH).is_ok(),
+        select_test_engine("handled");
+        layout(GRAPH)?;
+        let original = test_worker_pid().ok_or("successful worker")?;
+        layout(GRAPH)?;
+        assert_eq!(
+            test_worker_pid(),
+            Some(original),
             "successful reuse retains no rejected state"
         );
         Ok(())
@@ -259,143 +332,61 @@ mod tests {
 
     #[test]
     fn native_budget_failures_discard_partial_work_and_recover() -> Result<(), String> {
-        for script in [
-            "setTimeout(function(){while(true){}});",
-            "setTimeout(function again(){setTimeout(again);});",
-            "setTimeout(function(){new ArrayBuffer(128*1024*1024);});",
-            "setTimeout(function recurse(){recurse();});",
-            "takeLocalLayout=function(){return 'x'.repeat(262145);};",
-        ] {
-            LOCAL.with(|slot| -> Result<(), String> {
-                let engine = Engine::new()?;
-                engine
-                    .context
-                    .with(|ctx| ctx.eval::<(), _>(script))
-                    .map_err(|_| "cannot prepare bounded failure control")?;
-                *slot.borrow_mut() = Some(engine);
-                Ok(())
-            })?;
-            assert!(
-                layout(GRAPH).is_err(),
-                "bounded failure cannot admit geometry"
-            );
-            assert!(LOCAL.with(|slot| slot.borrow().is_none()));
-            assert!(
-                layout(GRAPH).is_ok(),
-                "fresh engine recovers after each bound"
-            );
+        for control in ["time", "jobs", "memory", "stack", "output"] {
+            let reasons: &[&str] = if control == "time" {
+                &["execution failed", "budget exceeded", "deadline exceeded"]
+            } else {
+                &["execution failed", "budget exceeded"]
+            };
+            reject_and_recover(control, reasons)?;
         }
         Ok(())
     }
 
     #[test]
     fn asynchronous_shim_failure_rejects_geometry_and_recovers() -> Result<(), String> {
-        for thrown in [
-            "new Error('private diagnostic must not escape')",
-            "null",
-            "undefined",
-            "7",
+        for control in [
+            "async-error",
+            "async-null",
+            "async-undefined",
+            "async-number",
         ] {
-            LOCAL.with(|slot| -> Result<(), String> {
-                let engine = Engine::new()?;
-                engine
-                    .context
-                    .with(|ctx| {
-                        ctx.eval::<(), _>(format!("setTimeout(function() {{ throw {thrown}; }});"))
-                    })
-                    .map_err(|_| "cannot enqueue asynchronous shim failure")?;
-                *slot.borrow_mut() = Some(engine);
-                Ok(())
-            })?;
-            let failure = layout(GRAPH).expect_err("a failed shim callback cannot supply geometry");
-            assert!(!failure.contains("private diagnostic"));
-            assert!(LOCAL.with(|slot| slot.borrow().is_none()));
-            assert!(layout(GRAPH).is_ok(), "a fresh engine recovers");
+            reject_and_recover(control, &["asynchronous execution failed"])?;
         }
         Ok(())
     }
+
     #[test]
-    fn interrupted_job_releases_context_and_runtime_without_leaking() -> Result<(), String> {
-        let engine = Engine::new()?;
-        engine
-            .context
-            .with(|ctx| -> rquickjs::Result<()> {
-                let job: Function = ctx.eval("() => { while (true) {} }")?;
-                job.defer(())
-            })
-            .map_err(|_| "cannot enqueue interrupted job".to_owned())?;
-        let probe = Arc::new(());
-        let released = Arc::downgrade(&probe);
-        engine
-            .runtime
-            .set_interrupt_handler(Some(Box::new(move || Arc::strong_count(&probe) > 0)));
-        assert!(
-            engine.execute_job().is_err(),
-            "actual native job is interrupted"
-        );
-        drop(engine);
-        assert!(
-            released.upgrade().is_none(),
-            "failure does not retain a Rust runtime handle"
-        );
-        Ok(())
+    fn interrupted_job_discards_child_and_allows_fresh_geometry() -> Result<(), String> {
+        reject_and_recover("interrupted-job", &["execution failed"])
     }
+
     #[test]
-    fn pending_job_errors_discard_runtime_without_releasing_a_borrowed_context(
-    ) -> Result<(), String> {
-        for thrown in [
-            "new Error('controlled job failure')",
-            "null",
-            "undefined",
-            "7",
-        ] {
-            LOCAL.with(|slot| -> Result<(), String> {
-                let engine = Engine::new()?;
-                engine
-                    .context
-                    .with(|ctx| -> rquickjs::Result<()> {
-                        let fail: Function = ctx.eval(format!("() => {{ throw {thrown}; }}"))?;
-                        fail.defer(())
-                    })
-                    .map_err(|_| "cannot enqueue controlled failure".to_owned())?;
-                *slot.borrow_mut() = Some(engine);
-                Ok(())
-            })?;
-            let failure = layout(GRAPH).expect_err("a failed job cannot supply geometry");
-            assert!(failure.contains("execution failed"), "{failure}");
-            assert!(
-                LOCAL.with(|slot| slot.borrow().is_none()),
-                "failed runtime is discarded"
-            );
-            assert!(
-                layout(GRAPH).is_ok(),
-                "a fresh runtime recovers without stale jobs"
-            );
+    fn pending_job_errors_discard_process_without_reusing_a_failed_context() -> Result<(), String> {
+        for control in ["job-error", "job-null", "job-undefined", "job-number"] {
+            reject_and_recover(control, &["execution failed"])?;
         }
         Ok(())
     }
+
     #[test]
-    fn embedded_runtime_has_no_external_hosts_and_interrupts_work() -> Result<(), String> {
-        let engine = Engine::new()?;
-        engine.context.with(|ctx| -> rquickjs::Result<()> {
-            assert!(ctx.eval::<bool,_>("typeof fetch==='undefined' && typeof require==='undefined' && typeof process==='undefined' && typeof std==='undefined' && typeof Worker==='undefined'")?);
-            Ok(())
-        }).map_err(|e|e.to_string())?;
-        assert!(engine
-            .context
-            .with(|ctx| ctx.eval::<(), _>("new ArrayBuffer(128 * 1024 * 1024);"))
-            .is_err());
-        *engine.deadline.lock().map_err(|e| e.to_string())? = Instant::now();
-        assert!(engine
-            .context
-            .with(|ctx| ctx.eval::<(), _>("while(true){}"))
-            .is_err());
+    fn embedded_runtime_has_no_external_hosts() -> Result<(), String> {
+        select_test_engine("restricted-hosts");
+        layout(GRAPH)?;
         Ok(())
     }
+
     #[test]
-    fn execution_errors_and_oversize_are_not_empty_success() {
+    fn execution_errors_and_oversize_are_not_empty_success() -> Result<(), String> {
+        select_test_engine("restricted-hosts");
         assert!(layout(&" ".repeat(65_537)).is_err());
+        assert!(
+            test_worker_pid().is_none(),
+            "input bound is checked before native execution"
+        );
         assert!(layout("not JSON").is_err());
-        assert!(layout("{\"id\":\"root\",\"layoutOptions\":{\"elk.algorithm\":\"layered\"},\"children\":[{\"id\":\"a\",\"width\":20,\"height\":20}]}").is_ok());
+        assert!(test_worker_pid().is_none());
+        layout(GRAPH)?;
+        Ok(())
     }
 }

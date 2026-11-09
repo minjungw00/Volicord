@@ -19,3 +19,8 @@ version = "0.1.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+
+# Keep the bounded native layout engine optimized in development and tests;
+# its input, memory, stack, job, output and deadline limits stay unchanged.
+[profile.dev.package.rquickjs-sys]
+opt-level = 2

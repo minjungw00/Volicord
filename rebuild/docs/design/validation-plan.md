@@ -5501,13 +5501,34 @@ verdict. Use focused logs and numeric exits; no aggregate or official V11 is imp
 
 ### User-activated Viewer entry
 
-Viewer's local-engine ownership controls
+Viewer's earlier scoped controls
 `pending_job_errors_discard_runtime_without_releasing_a_borrowed_context` and
-`interrupted_job_releases_context_and_runtime_without_leaking` use actual deferred
-native jobs and an actual VM interrupt. They require failure, disposal, a released
-Rust runtime handle and fresh successful layout; throwing null/undefined cannot
-be treated as absent failure. Run the complete Viewer library in default parallel
-mode as well as these scoped controls. Native sanitizer diagnostics have separate
+`interrupted_job_releases_context_and_runtime_without_leaking` directly exercised
+deferred native jobs, interruption and Rust-handle release. Those historical
+observations did not establish safe native disposal across the complete Viewer:
+the `ccee86644` Final reproduced an in-process `SIGSEGV`, also reproduced by a
+bounded debugger run. The native defect is not claimed repaired.
+
+The maintained controls now follow the already accepted failure owner's disposable
+worker boundary. Closed test-only fixtures submit the same Error/null/undefined/
+number throws, deferred jobs, actual interrupt, memory/stack/time/job/output bounds
+and positive handled-rejection/host-restriction controls through that worker.
+Every failure must reject geometry, discard and reap the child, then admit complete
+geometry from a fresh child. A framed negative outcome must match its expected
+reason; an observed native signal remains a contained failure, never a successful
+VM-disposal assertion. The interrupted-job fixture retains the Rust-handle release
+probe inside the child when native execution returns normally; a signal cannot
+supply that probe's result. Successful handled-rejection reuse must retain the same
+worker. No renderer, failure bound or production native ownership changes.
+Development/test builds optimize only the pinned `rquickjs-sys` package at level
+2; the remaining Rust development profile is unchanged. This retains Rust 1.85,
+the exact native dependency/license family and every existing engine bound.
+Before promotion, compare complete ordered geometry responses, including GWT's
+request-varying internal fields, and repeat the complete default-parallel Viewer.
+Compiler/source identity and all costs belong to the measured build; this profile
+choice cannot qualify unrelated workloads or assert a causal native-memory repair.
+Run the complete Viewer library in default parallel mode as well as these scoped
+controls. Native sanitizer diagnostics have separate
 build/exit records and never replace the ordinary gate or justify changed limits.
 Passing scoped controls or one complete execution does not resolve a failure in
 a broader or repeated execution. Preserve every numeric exit and signal with its

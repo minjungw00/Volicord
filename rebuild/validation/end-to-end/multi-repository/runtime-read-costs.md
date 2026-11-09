@@ -292,3 +292,48 @@ was not edited. Whole-process high-water RSS was 3,299,540 KiB, including the
 independent full-history oracles. These changed-input observations are not a
 same-input speed comparison with the earlier Work control or a new capacity
 limit. The exact clean candidate still needs the unchanged official gate.
+
+### Native failure controls at the reader's process boundary
+
+The `ccee86644` gate passed admission, metadata, format and Clippy, but its
+Viewer test process terminated with `SIGSEGV` (execution receipt `-11`, outer
+exit 245). Final failed; rehearsal/provider/V11 did not run. The first native
+worker `signal:6` log was an intentional fault fixture, not this root outcome.
+All original streams, compiler/execution identity and the failed capsule remain.
+
+Three bounded ordinary exact-binary runs and three address-sanitized runs passed.
+A later default-parallel debugger run reproduced the native fault with a damaged
+stack in string processing; the underlying native defect remains unidentified.
+LeakSanitizer's unsupported sandbox run and the debugger's initial SIGPIPE stop
+are preserved as unsuitable diagnostic attempts, not successful memory evidence.
+
+The failure controls previously constructed and disposed damaged native VMs
+inside the reader test process. They now exercise the already maintained
+disposable-worker contract: actual throws/jobs/interrupt and all original bounds,
+geometry rejection, explicit child reaping and fresh successful geometry. Positive
+handled-rejection reuse and host restrictions remain required. The Rust-handle
+probe remains inside the interrupt child when native execution returns; a native
+signal cannot claim that probe passed. The renderer and production process
+ownership are unchanged. This corrects the fixture's execution boundary; it does
+not claim a causal native-memory repair, raise a ceiling or erase the Final failure.
+
+Further controls rejected two dependency-update alternatives: the 0.14.0 copy
+failed a valid mixed-script layout after three complete passing repeats, and a
+0.12.0/core-sys-0.12.2 copy failed recovery with protocol rejection. Neither was
+promoted; the maintained Rust 1.85 and exact 0.11.0 family/notices remain unchanged.
+One hundred fresh initializations each in the original 2 MiB test thread, an
+8 MiB diagnostic test thread and the installed release main all passed. This did
+not explain the broader failure and justified no host-stack override.
+
+The isolated same-source development profile with only `rquickjs-sys` optimized
+at level 2 passed ten complete default-parallel Viewer runs (39 active controls
+each). The selected correction keeps that package optimized in dev/test while
+retaining all original native bounds and the rest of the Rust development
+profile. Four declared synthetic inputs (chain, cycle/parallel, 12-node/20-edge
+maximum and isolate/self) each produced eight complete ordered responses in
+both original and optimized binaries. Every JSON field matched, including GWT
+`$H` counters. An earlier private oracle incorrectly required warm counters to
+equal the first request; its failure and the corrected full-sequence oracle are
+retained. No field was normalized or omitted. These are bounded controls, not
+proof of the unidentified native defect's causal repair or a replacement for
+the new exact candidate's gate and installed-reader checks.

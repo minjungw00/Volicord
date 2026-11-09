@@ -105,6 +105,9 @@ impl Worker {
                 .with(|slot| slot.replace("diagram::overview::worker::tests::worker_child"));
             command.args(["--ignored", "--exact", test, "--nocapture"]);
             command.env_clear().env("VOLICORD_LAYOUT_TEST_CHILD", "1");
+            if let Some(control) = TEST_ENGINE_CONTROL.with(|slot| slot.take()) {
+                command.env("VOLICORD_LAYOUT_TEST_ENGINE", control);
+            }
             if let Some(value) = std::env::var_os("ASAN_OPTIONS") {
                 command.env("ASAN_OPTIONS", value);
             }
@@ -302,6 +305,10 @@ pub(super) fn run() -> i32 {
     {
         return 2;
     }
+    #[cfg(test)]
+    if let Ok(control) = std::env::var("VOLICORD_LAYOUT_TEST_ENGINE") {
+        return serve(Engine::controlled(&control));
+    }
     serve(Engine::new())
 }
 fn serve(engine: Result<Engine, String>) -> i32 {
@@ -353,9 +360,21 @@ fn serve(engine: Result<Engine, String>) -> i32 {
 #[cfg(test)]
 thread_local! {static TEST_WORKER: std::cell::Cell<&'static str> = const {std::cell::Cell::new("diagram::overview::worker::tests::worker_child")};}
 #[cfg(test)]
+thread_local! {static TEST_ENGINE_CONTROL: std::cell::Cell<Option<&'static str>> = const {std::cell::Cell::new(None)};}
+#[cfg(test)]
 pub(super) fn select_test_worker(test: &'static str) {
     WORKER.with(|slot| *slot.borrow_mut() = None);
     TEST_WORKER.with(|slot| slot.set(test));
+    TEST_ENGINE_CONTROL.with(|slot| slot.set(None));
+}
+#[cfg(test)]
+pub(super) fn select_test_engine(control: &'static str) {
+    select_test_worker("diagram::overview::worker::tests::worker_child");
+    TEST_ENGINE_CONTROL.with(|slot| slot.set(Some(control)));
+}
+#[cfg(test)]
+pub(super) fn test_worker_pid() -> Option<u32> {
+    WORKER.with(|slot| slot.borrow().as_ref().map(|worker| worker.child.id()))
 }
 #[cfg(test)]
 mod tests {
