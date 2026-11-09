@@ -174,8 +174,16 @@ impl Fixture {
             .ok_or("analysis")?
             .analysis
             .identity;
-        let mut sources = Vec::new();
-        for (i, name) in names.iter().enumerate() {
+        let mut sources = vec![None; names.len()];
+        let mut capture_order: Vec<_> = (0..names.len()).collect();
+        if short_seconds.is_some() {
+            // Begin the real short lifetime after unrelated observation setup,
+            // without extending or renewing any existing Source permission.
+            capture_order.retain(|&i| i != 8);
+            capture_order.push(8);
+        }
+        for i in capture_order {
+            let name = &names[i];
             let receipt = ops.observe_repository_file(RepositoryFileObservationRequest {
                 project_id: project,
                 analysis_snapshot_id: analysis,
@@ -195,8 +203,12 @@ impl Fixture {
             for (n, byte) in bytes.iter_mut().enumerate() {
                 *byte = u8::from_str_radix(&id[n * 2..n * 2 + 2], 16)?;
             }
-            sources.push(volicord_context::SourceId::from_bytes(bytes));
+            sources[i] = Some(volicord_context::SourceId::from_bytes(bytes));
         }
+        let sources = sources
+            .into_iter()
+            .collect::<Option<Vec<_>>>()
+            .ok_or("fixture Source observations")?;
         let plan =
             ops.prepare_explanation(project, ExplanationSubject::Repository(analysis), "en")?;
         let ranges = |indices: &[usize]| {
@@ -3230,13 +3242,19 @@ fn admitted_diagram_and_public_ranges_survive_expiry_cleanup_and_restart(
             realization.clone(),
         )?;
         let frozen = explanation_text_hash(&serde_json::to_string(&realization)?);
+        let adapter = ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()));
+        let rendered_before =
+            adapter.render_snapshot(&f.request(), TimestampMicros::from_unix_micros(1))?;
+        assert!(
+            code_texts(&rendered_before.html)
+                .iter()
+                .any(|text| text == &f.originals[8]),
+            "expiry control requires an actually available original before the real deadline"
+        );
         let before = f.answers()?;
         let page = f
             .ops
             .read_explanation_page(f.project, retained.subject, "en", 0, None)?;
-        let adapter = ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()));
-        let rendered_before =
-            adapter.render_snapshot(&f.request(), TimestampMicros::from_unix_micros(1))?;
         let inspection = f.ops.privacy_status(f.project)?;
         let deadline = inspection
             .managed_derived

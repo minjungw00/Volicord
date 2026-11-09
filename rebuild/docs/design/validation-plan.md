@@ -5537,6 +5537,15 @@ A proposed repair remains unqualified while covering evidence is missing or
 failures remain unresolved. Qualification from an earlier candidate cannot be
 assigned to a changed worktree.
 
+The real-expiry Viewer control must first observe the complete available original
+in its pre-expiry snapshot. Capture the same short-lived Source once, after the
+other fixture observations, and render this baseline before unrelated read or
+page checks. Keep the original ten-second lifetime, eleven observations, retained
+publications and full post-expiry cleanup/restart/stale-publication assertions.
+An already expired baseline cannot establish a stale-publication rejection, and
+must not silently count as that positive-to-negative transition. No future clock,
+deadline rewrite, Source renewal or old-body fallback may supply this evidence.
+
 For command-code origin, run the scoped Host `work_explanation` regression
 `pinned_command_origin_preserves_observation_and_does_not_color_labels_or_mixed_logs`
 and Viewer syntax/reader checks through `validate focused`. Normal MCP preparation,
