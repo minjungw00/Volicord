@@ -723,7 +723,15 @@ fn context_command() -> Command {
 
 fn privacy_command() -> Command {
     Command::new("privacy")
-        .about("Inspect or change background provider authorization")
+        .about("Inspect or change collection, retention and provider controls")
+        .subcommand(Command::new("collection").about("Control automatic Candidate collection; omitted filters match all values, combined filters must all match. Enabling resets only the exact scope; other opt-outs still apply. Explicit user-directed collection is independent.")
+            .subcommand_required(true)
+            .subcommand(Command::new("inspect").about("Inspect current collection policies"))
+            .subcommands(["disable", "enable"].map(|action| Command::new(action)
+                .arg(Arg::new("session").long("session"))
+                .arg(Arg::new("source_operation").long("source-operation"))
+                .arg(Arg::new("kind").long("kind").value_parser(crate::COLLECTION_KINDS.to_vec()))
+                .arg(Arg::new("basis").long("basis").required(true)))))
         .subcommand_required(true)
         .subcommand(
             Command::new("status")
@@ -1255,6 +1263,30 @@ fn dispatch_privacy(
         .subcommand()
         .ok_or_else(|| Error::new("a privacy action is required"))?;
     let project = resolve_project(operations, selection)?;
+    if action == "collection" {
+        let (action, scope) = args
+            .subcommand()
+            .ok_or_else(|| Error::new("collection action required"))?;
+        let policies = if action == "inspect" {
+            operations.collection_policies(project)?
+        } else {
+            vec![operations.set_collection_opt_out(
+                volicord_inquiry::CollectionOptOutScope {
+                    project_id: project,
+                    session: scope.get_one::<String>("session").cloned(),
+                    source_operation: scope.get_one::<String>("source_operation").cloned(),
+                    candidate_kind: scope
+                        .get_one::<String>("kind")
+                        .map(|kind| crate::parse_collection_kind(kind))
+                        .transpose()?,
+                },
+                action == "disable",
+                required(scope, "basis")?,
+            )?]
+        };
+        return Ok(json!({"operation":"candidate_collection", "action":action,
+            "policies":policies.into_iter().map(crate::collection_policy_json).collect::<Vec<_>>()}));
+    }
     let mut values = vec![action.to_owned(), project.to_string()];
     match action {
         "status" => {}

@@ -758,7 +758,7 @@ impl CandidateStore {
         for row in rows {
             candidates.push(decode_record(&row.map_err(read_error)?)?);
         }
-        let policies = self.read_policies(project_id)?;
+        let policies = self.collection_policies(project_id)?;
         Ok(CandidateReadBasis {
             project_id,
             candidates,
@@ -1299,7 +1299,10 @@ impl CandidateStore {
         Ok((record, true))
     }
 
-    fn read_policies(&self, project_id: ProjectId) -> Result<Vec<CollectionOptOut>, Error> {
+    pub fn collection_policies(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<CollectionOptOut>, Error> {
         let mut statement = self
             .connection
             .prepare(
@@ -1324,7 +1327,7 @@ impl CandidateStore {
         scope: &crate::CandidateCollectionScope,
     ) -> Result<Vec<CollectionOptOut>, Error> {
         Ok(self
-            .read_policies(scope.project_id)?
+            .collection_policies(scope.project_id)?
             .into_iter()
             .filter(|policy| scope_matches(&policy.scope, scope))
             .collect())

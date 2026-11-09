@@ -254,6 +254,20 @@ background provider opt-in을 만들거나 artifact를 upload/transmit하지 않
 다른 사람 또는 external service와 공유하는 행위는 별도의 user-controlled effect이며 snapshot
 command의 authority나 결과에서 추론하지 않는다.
 
+### Maintained collection operations
+
+CLI `privacy collection inspect|disable|enable` and MCP `candidate_collection`
+(`inspect|disable|enable`) expose Project-scoped automatic collection policy. Optional
+`session`, `source_operation` (CLI `--source-operation`) and `candidate_kind` (CLI
+`--kind`) are exact conjunctive filters; omitted filters match any value. Mutation
+requires a nonempty explicit intent `basis` (CLI `--basis`). Project existence and
+supported nonempty filters are validated before policy persistence under the runtime
+mutation lock. Inspection includes enabled and disabled policies and effective times,
+even if no Candidate exists. Enable changes only the exact selected policy; another
+matching opt-out still blocks automatic collection. Explicit user-directed collection
+is independent. Existing Candidate revisions, visibility, lifecycle and recorded
+policy-at-collection evidence are unchanged. No durable format change is needed.
+
 ### Candidate collection opt-out and retention contract
 
 Privacy and Provider Boundary는 automatic Candidate collection의 scope별 opt-out과

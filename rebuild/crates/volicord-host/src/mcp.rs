@@ -52,7 +52,7 @@ use volicord_projections::{
     UnderstandingArchitectureSelectionBasis, UnderstandingBound, UnderstandingWork,
 };
 
-pub const HOST_TOOL_NAMES: [&str; 25] = [
+pub const HOST_TOOL_NAMES: [&str; 26] = [
     "project_resolve",
     "project_initialize",
     "project_health",
@@ -74,6 +74,7 @@ pub const HOST_TOOL_NAMES: [&str; 25] = [
     "canonical_mutate",
     "candidate_inspect",
     "candidate_manage",
+    "candidate_collection",
     "privacy_status",
     "background_semantic_operation",
     "document_preview",
@@ -227,6 +228,7 @@ impl HostAdapter {
                 "canonical_mutate" => self.canonical_mutate(&arguments),
                 "candidate_inspect" => self.candidate_inspect(&arguments),
                 "candidate_manage" => self.candidate_manage(&arguments),
+                "candidate_collection" => self.candidate_collection(&arguments),
                 "privacy_status" => self.privacy_status(&arguments),
                 "background_semantic_operation" => self.background_semantic_operation(&arguments),
                 "document_preview" => self.document_preview(&arguments),
@@ -2269,6 +2271,48 @@ impl HostAdapter {
         }
     }
 
+    fn candidate_collection(&self, args: &Value) -> Result<Value, HostError> {
+        let project_id = project(args)?;
+        let action = required_str(args, "action")?;
+        let policies = match action {
+            "inspect" => self
+                .operations
+                .collection_policies(project_id)
+                .map_err(operation_error)?,
+            "enable" | "disable" => vec![self
+                .operations
+                .set_collection_opt_out(
+                    volicord_inquiry::CollectionOptOutScope {
+                        project_id,
+                        session: args
+                            .get("session")
+                            .map(|_| required_str(args, "session").map(str::to_owned))
+                            .transpose()?,
+                        source_operation: args
+                            .get("source_operation")
+                            .map(|_| required_str(args, "source_operation").map(str::to_owned))
+                            .transpose()?,
+                        candidate_kind: args
+                            .get("candidate_kind")
+                            .map(|_| {
+                                required_str(args, "candidate_kind").and_then(|kind| {
+                                    volicord_operations::parse_collection_kind(kind)
+                                        .map_err(operation_error)
+                                })
+                            })
+                            .transpose()?,
+                    },
+                    action == "disable",
+                    required_str(args, "basis")?,
+                )
+                .map_err(operation_error)?],
+            _ => return Err(HostError::new("unsupported collection action")),
+        };
+        Ok(
+            json!({"action":action,"policies":policies.into_iter().map(volicord_operations::collection_policy_json).collect::<Vec<_>>()}),
+        )
+    }
+
     fn privacy_status(&self, args: &Value) -> Result<Value, HostError> {
         let status = self
             .operations
@@ -3634,6 +3678,18 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
         "candidate_manage" => (
             "Own the Question Candidate lifecycle when material user authority remains unresolved: submit a Candidate, attach source-grounded repository research when required, mark sufficient research ready, explicitly promote a reviewed ready Candidate to a Question, or disposition Candidate-local content without creating a user Decision. A rejected or unavailable required transition leaves question_required blocking; retry/report that canonical path rather than substituting ordinary prose. Never use a Question Candidate to ask for a repository fact or to add ceremony to delegated, exploratory, or trivial choices.",
             json!({"oneOf": candidate_management_schemas()}),
+            ToolBehavior::DestructiveClosed,
+        ),
+        "candidate_collection" => (
+            "Inspect or enable/disable scoped automatic Candidate collection. Omitted filters match all values; combined filters must all match. Enable resets only that exact policy; other opt-outs still apply. Existing Candidates and policy-at-collection evidence are unchanged; explicit user-directed collection is independent.",
+            json!({"oneOf":[object_schema(vec![("project_id",identity_schema("Project identity")),("action",enum_schema("Inspect collection policy", &["inspect"]))], &["project_id","action"]), object_schema(vec![
+                ("project_id",identity_schema("Project identity")),
+                ("action",enum_schema("Automatic collection control", &["enable","disable"])),
+                ("session",text_schema("Exact collection session",1,4096)),
+                ("source_operation",text_schema("Exact source/operation area",1,4096)),
+                ("candidate_kind",enum_schema("Candidate kind",volicord_operations::COLLECTION_KINDS)),
+                ("basis",text_schema("Current explicit collection policy intent",1,4096))],
+                &["project_id","action","basis"])]}),
             ToolBehavior::DestructiveClosed,
         ),
         "privacy_status" => (

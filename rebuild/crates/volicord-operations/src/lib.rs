@@ -24,6 +24,8 @@ pub use inspection::{
 mod check_capture;
 mod code_origin;
 pub use code_origin::CodeOriginRequest;
+mod lifecycle;
+pub use lifecycle::{collection_policy_json, parse_collection_kind, COLLECTION_KINDS};
 mod layout;
 mod model;
 mod operations;
