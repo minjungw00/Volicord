@@ -1,5 +1,39 @@
 use std::{error::Error as StdError, fmt};
 
+/// Analysis publication and its diagnostic receipt have separate outcomes.
+/// Only closed identities/states cross CLI/MCP; the storage chain stays private.
+#[derive(Debug)]
+pub struct AnalysisReceiptFailure {
+    pub project_id: volicord_context::ProjectId,
+    pub operation_id: volicord_context::OperationId,
+    pub primary_failed: bool,
+    pub published_analysis_snapshot: Option<volicord_repository_intelligence::AnalysisSnapshotId>,
+    pub published_operation_state: Option<crate::OperationState>,
+    recording_error: Box<Error>,
+}
+impl AnalysisReceiptFailure {
+    pub fn recording_error(&self) -> &Error {
+        &self.recording_error
+    }
+    pub(crate) fn new(
+        project_id: volicord_context::ProjectId,
+        operation_id: volicord_context::OperationId,
+        primary_failed: bool,
+        published_analysis_snapshot: Option<volicord_repository_intelligence::AnalysisSnapshotId>,
+        published_operation_state: Option<crate::OperationState>,
+        recording_error: Error,
+    ) -> Self {
+        Self {
+            project_id,
+            operation_id,
+            primary_failed,
+            published_analysis_snapshot,
+            published_operation_state,
+            recording_error: Box::new(recording_error),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Error {
     message: String,
@@ -7,6 +41,7 @@ pub struct Error {
     checkpoint_scope_violation: Option<Box<crate::CheckpointScopeViolation>>,
     reading_failure: Option<volicord_projections::ExplanationFailureReason>,
     publication_readable: bool,
+    analysis_receipt_failure: Option<Box<AnalysisReceiptFailure>>,
 }
 
 impl Error {
@@ -28,6 +63,7 @@ impl Error {
             checkpoint_scope_violation: None,
             reading_failure: None,
             publication_readable: false,
+            analysis_receipt_failure: None,
         }
     }
 
@@ -41,6 +77,7 @@ impl Error {
             checkpoint_scope_violation: None,
             reading_failure: None,
             publication_readable: false,
+            analysis_receipt_failure: None,
         }
     }
 
@@ -73,6 +110,14 @@ impl Error {
         self.source
             .as_deref()?
             .downcast_ref::<volicord_projections::WorkSelectionError>()
+    }
+
+    pub(crate) fn with_analysis_receipt_failure(mut self, failure: AnalysisReceiptFailure) -> Self {
+        self.analysis_receipt_failure = Some(Box::new(failure));
+        self
+    }
+    pub fn analysis_receipt_failure(&self) -> Option<&AnalysisReceiptFailure> {
+        self.analysis_receipt_failure.as_deref()
     }
 
     pub fn message(&self) -> &str {
@@ -119,6 +164,7 @@ impl Error {
             checkpoint_scope_violation: Some(Box::new(violation)),
             reading_failure: None,
             publication_readable: false,
+            analysis_receipt_failure: None,
         }
     }
 }

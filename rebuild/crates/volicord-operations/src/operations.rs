@@ -535,8 +535,7 @@ impl LocalOperations {
                 previous,
             )
         })();
-        self.record_analysis_attempt(project_id, operation_id, &result)?;
-        result
+        self.finish_analysis_attempt(project_id, operation_id, result)
     }
 
     fn observe_repository_worktree(

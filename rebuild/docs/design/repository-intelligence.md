@@ -700,6 +700,14 @@ an unrecorded attempt. `refresh_command` exposes existing `volicord analyze` (or
 background transmission authority. Read paths compare repository observations and
 read receipts but never run analyzers, record Sources or mutate canonical state.
 
+Analysis publication and attempt-receipt recording have separate outcomes. A receipt
+storage failure cannot replace the original analysis error or erase a published
+snapshot. The response distinguishes primary failure from a published result with a
+missing receipt, preserves operation/snapshot identity and publication state when
+available, and directs read-only inspection before retry. No receipt-format,
+analyzer identity, capability meaning or historical snapshot is changed by this
+diagnostic distinction.
+
 CLI analysis receipts distinguish the analyzer's unchanged operation state from the
 human summary's relevant observed source-language coverage. Human limits retain
 representative affected areas, reason, consequence, usable remainder and exact

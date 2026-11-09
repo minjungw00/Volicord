@@ -94,6 +94,15 @@ where
                     let _ = writeln!(stderr, "Scoped check basis: {detail}");
                 }
             }
+            if let Some(diagnostic) = error.analysis_receipt_failure() {
+                let detail = serde_json::json!({"diagnostic":"analysis_attempt_receipt_unavailable",
+                    "project_id":diagnostic.project_id.to_string(),"operation_id":diagnostic.operation_id.to_string(),
+                    "primary_failed":diagnostic.primary_failed,
+                    "published_analysis_snapshot":diagnostic.published_analysis_snapshot.map(|id|id.to_string()),
+                    "published_operation_state":diagnostic.published_operation_state.map(|state|format!("{state:?}").to_lowercase()),
+                    "next_supported_action":"inspect status before retrying analysis"});
+                let _ = writeln!(stderr, "Analysis outcome: {detail}");
+            }
             if !explanation_operation {
                 let _ = writeln!(
                     stderr,

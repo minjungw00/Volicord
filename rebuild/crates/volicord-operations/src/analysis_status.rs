@@ -22,6 +22,37 @@ impl LocalOperations {
             .join(project.to_string())
     }
 
+    pub(crate) fn finish_analysis_attempt(
+        &self,
+        project: ProjectId,
+        operation: OperationId,
+        result: Result<LongOperationResult<AnalysisOutcome>, Error>,
+    ) -> Result<LongOperationResult<AnalysisOutcome>, Error> {
+        let recording = self.record_analysis_attempt(project, operation, &result);
+        match (result, recording) {
+            (Err(primary), Err(secondary)) => Err(primary.with_analysis_receipt_failure(
+                crate::AnalysisReceiptFailure::new(project, operation, true, None, None, secondary),
+            )),
+            (Ok(published), Err(secondary)) => {
+                let snapshot = published
+                    .value
+                    .as_ref()
+                    .map(|value| value.analysis.identity);
+                let failure = crate::AnalysisReceiptFailure::new(
+                    project,
+                    operation,
+                    false,
+                    snapshot,
+                    Some(published.state),
+                    secondary,
+                );
+                Err(Error::new("repository analysis was published but its attempt receipt is unavailable; inspect stored analysis before retrying")
+                    .with_analysis_receipt_failure(failure))
+            }
+            (result, Ok(())) => result,
+        }
+    }
+
     pub(crate) fn record_analysis_attempt(
         &self,
         project: ProjectId,

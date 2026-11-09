@@ -1919,3 +1919,11 @@ forces incomplete local cleanup; a local adapter independently returns provider
 failure. These adapter outcomes are controls, not evidence of remote erasure. The
 production Codex deletion capability is unsupported and sends no request. Existing
 Source/explanation and canonical forgetting tests cover the shared WAL post-check.
+
+Analysis failure propagation uses focused Operations `analysis_failure` and
+`read_freshness`, and Host `analysis_failure`. A blocked attempt-receipt directory
+independently controls unavailable-repository failure and successful partial
+publication. API/CLI/MCP preserve the primary outcome, safe operation/snapshot
+identities, hidden storage chains, unchanged canonical state on pre-observation
+failure, and retained published bytes across a later successful retry. These
+controls do not reproduce or explain historical analysis latency.

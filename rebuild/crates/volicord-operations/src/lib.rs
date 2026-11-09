@@ -53,7 +53,7 @@ pub use analysis_storage::{
     AnalysisStorageFootprint,
 };
 pub use cli::{run_cli, run_cli_with_input, CliExit};
-pub use error::Error;
+pub use error::{AnalysisReceiptFailure, Error};
 pub use evidence::EvidenceDetailRequest;
 pub use forgetting::ForgettingState;
 pub use guarded::{

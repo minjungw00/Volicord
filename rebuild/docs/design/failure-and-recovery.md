@@ -571,8 +571,14 @@ a failed newest attempt can coexist with a retained prior Analysis Snapshot. Rea
 status retains the prior snapshot's actual coverage/freshness rather than presenting
 it as the failed attempt's successful result. Receipt publication failure is itself
 an operation-observation failure; it does not roll back published analysis or claim
-canonical work failed. Missing/corrupt/non-current receipts cannot prove a latest
-attempt. The safe action remains explicit `volicord analyze` after restoring the
+canonical work failed. If analysis and receipt recording both fail, the analysis
+error and its source chain remain primary and the receipt failure is separately
+inspectable. If analysis was published, the failed response retains its operation
+and snapshot identities and completed/partial state; it never implies the published
+result is absent. CLI/MCP expose only these closed identities/states and an explicit
+receipt-unavailable diagnostic, not the storage error chain. Inspect stored analysis
+before retrying after a receipt failure. Missing/corrupt/non-current receipts cannot
+prove a latest attempt. The safe action remains explicit `volicord analyze` after restoring the
 reported repository/analyzer prerequisite, or `volicord doctor repair` for unreadable
 stored analysis. Ordinary reading performs neither action.
 

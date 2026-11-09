@@ -8861,6 +8861,19 @@ fn canonical_cause_json(error: &volicord_operations::Error) -> Value {
 }
 
 fn operation_error(error: volicord_operations::Error) -> HostError {
+    if let Some(diagnostic) = error.analysis_receipt_failure() {
+        return HostError::with_details(
+            error.to_string(),
+            json!({
+                "diagnostic":"analysis_attempt_receipt_unavailable",
+                "project_id":diagnostic.project_id.to_string(),"operation_id":diagnostic.operation_id.to_string(),
+                "primary_failed":diagnostic.primary_failed,
+                "published_analysis_snapshot":diagnostic.published_analysis_snapshot.map(|id|id.to_string()),
+                "published_operation_state":diagnostic.published_operation_state.map(|state|format!("{state:?}").to_lowercase()),
+                "next_supported_action":{"tool":"repository_understanding","reason":"inspect published analysis and its retained basis before retrying"},
+            }),
+        );
+    }
     if error
         .canonical_cause()
         .is_some_and(|cause| cause.scoped_check_failure().is_some())
