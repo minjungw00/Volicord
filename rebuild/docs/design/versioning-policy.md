@@ -158,7 +158,7 @@ request-owned scratch이고 durable cache나 새 body retention이 아니다. Pr
 path는 하나이며 bulk/stream JSON reconstruction은 differential test oracle에만 남는다.
 Publisher bytes, canonical/Analysis version, cache header와 history disposition은 바뀌지 않는다.
 
-Source-semantic analyzer `5` changes binding selection and per-occurrence relation identity,
+Source-semantic analyzer `6` changes binding selection and per-occurrence relation identity,
 not the Analysis Snapshot format `5` representation. Producer identity participates in new
 Analysis identity and repository-observation equivalence. Structural incremental reuse does
 not reuse semantic targets: semantics is recomputed against current verified source and the

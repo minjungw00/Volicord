@@ -16,3 +16,9 @@ and negative expectations. Imported symbols and inferred external receivers
 remain explicitly unsupported; a resolved relative module edge grants neither
 symbol nor alias binding. Synthetic obsolete-producer injection is labelled in
 the test and must never be presented as captured historical output.
+
+`object_scope.ts` independently executes object-method, object `this`, named
+function-expression and named class-expression scope controls. Object receivers
+and expression-owned declarations absent from the structural model stay
+unresolved; neither may fall back to an enclosing class or same-spelled outer
+function. Run it with Node through the same focused runner.

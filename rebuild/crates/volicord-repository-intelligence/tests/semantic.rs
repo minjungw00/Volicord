@@ -179,7 +179,7 @@ fn three_production_ecosystems_publish_normalized_semantic_relations() -> Result
                 CapabilityState::Available | CapabilityState::Partial
             ) && report.coverage.covered_relation_count > 0
                 && report.analyzer.as_ref().is_some_and(|analyzer| {
-                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "5"
+                    analyzer.name == "volicord-source-semantic-index" && analyzer.version == "6"
                 })
                 && report.provenance_class == ProvenanceClass::SemanticResult
         }));
@@ -1060,93 +1060,96 @@ fn superseded_semantic_producers_remain_historical_and_reanalysis_reuses_only_st
     ))?;
     let grounding = support::repository_grounding(0x71, 0x72)?;
     // Synthetic obsolete-producer fault injection, not a claimed historical run.
-    let mut obsolete = current.clone();
-    for report in &mut obsolete.capabilities {
-        if let Some(analyzer) = report
-            .analyzer
-            .as_mut()
-            .filter(|a| a.name == "volicord-source-semantic-index")
-        {
-            analyzer.version = "4".into();
+    for obsolete_version in ["4", "5"] {
+        let mut obsolete = current.clone();
+        for report in &mut obsolete.capabilities {
+            if let Some(analyzer) = report
+                .analyzer
+                .as_mut()
+                .filter(|a| a.name == "volicord-source-semantic-index")
+            {
+                analyzer.version = obsolete_version.into();
+            }
         }
-    }
-    for basis in &mut obsolete.semantic_bases {
-        basis.analyzer.version = "4".into();
-    }
-    let log = obsolete
-        .structural_facts
-        .iter()
-        .find(|f| f.entity.display_name.as_deref() == Some("log"))
-        .ok_or("log")?
-        .entity
-        .identity
-        .clone();
-    let demo = obsolete
-        .structural_facts
-        .iter()
-        .find(|f| f.entity.display_name.as_deref() == Some("demo"))
-        .ok_or("demo")?
-        .entity
-        .identity
-        .clone();
-    for result in &mut obsolete.semantic_results {
-        result.provenance.analyzer.version = "4".into();
-        if let Some(analyzer) = &mut result.provenance.analysis.analyzer {
-            analyzer.version = "4".into();
+        for basis in &mut obsolete.semantic_bases {
+            basis.analyzer.version = obsolete_version.into();
         }
-        if result.relation.source_entity == demo
-            && result.relation.kind == SemanticRelationKind::References
-        {
-            result.relation.target = RelationTarget::ResolvedEntity(log.clone());
-            result.relation.uncertainty = Uncertainty::none();
+        let log = obsolete
+            .structural_facts
+            .iter()
+            .find(|f| f.entity.display_name.as_deref() == Some("log"))
+            .ok_or("log")?
+            .entity
+            .identity
+            .clone();
+        let demo = obsolete
+            .structural_facts
+            .iter()
+            .find(|f| f.entity.display_name.as_deref() == Some("demo"))
+            .ok_or("demo")?
+            .entity
+            .identity
+            .clone();
+        for result in &mut obsolete.semantic_results {
+            result.provenance.analyzer.version = obsolete_version.into();
+            if let Some(analyzer) = &mut result.provenance.analysis.analyzer {
+                analyzer.version = obsolete_version.into();
+            }
+            if result.relation.source_entity == demo
+                && result.relation.kind == SemanticRelationKind::References
+            {
+                result.relation.target = RelationTarget::ResolvedEntity(log.clone());
+                result.relation.uncertainty = Uncertainty::none();
+            }
         }
+        let preserved = canonical_json(&obsolete)?;
+        let decoded: volicord_repository_intelligence::AnalysisSnapshot =
+            serde_json::from_slice(&preserved)?;
+        assert_eq!(
+            canonical_json(&decoded)?,
+            preserved,
+            "decoding rewrote an obsolete producer's original basis"
+        );
+        let hits = search_local(
+            &decoded,
+            "references",
+            repository.identity,
+            100,
+            &grounding.grounding,
+        )?;
+        assert!(hits
+            .iter()
+            .filter(|h| h.result_kind == SearchResultKind::SemanticRelation)
+            .all(|h| h.freshness.state == FreshnessState::Stale && !h.navigation_is_current));
+        let basis =
+            grounded_explanation_basis(&decoded, repository.identity, &grounding.grounding)?;
+        assert!(basis
+            .evidence
+            .iter()
+            .filter(|e| e.statement_class == GroundingStatementClass::SemanticResult)
+            .all(|e| e.freshness.state == FreshnessState::Stale
+                && e.semantic_provenance
+                    .as_ref()
+                    .is_some_and(|p| p.analyzer.version == obsolete_version)));
+        let mut full_read = decoded.clone();
+        let mut metadata_read = volicord_repository_intelligence::AnalysisMetadata::from(&decoded);
+        full_read.observe_repository_freshness(Some(&repository));
+        metadata_read.observe_repository_freshness(Some(&repository));
+        assert_eq!(
+            metadata_read,
+            volicord_repository_intelligence::AnalysisMetadata::from(&full_read)
+        );
+        assert_eq!(metadata_read.freshness.state, FreshnessState::Stale);
+        let (_, refreshed) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+            StructuralAnalysisRequest::new(inventory(root.path())?).with_previous(&decoded),
+        ))?;
+        assert!(refreshed.refresh.reused_file_count > 0);
+        assert_eq!(refreshed.identity, current.identity);
+        assert_eq!(refreshed.semantic_results, current.semantic_results);
+        assert!(refreshed.semantic_contract_is_current());
+        assert_eq!(canonical_json(&decoded)?, preserved);
+        assert_eq!(decoded.identity, full_read.identity);
     }
-    let preserved = canonical_json(&obsolete)?;
-    let decoded: volicord_repository_intelligence::AnalysisSnapshot =
-        serde_json::from_slice(&preserved)?;
-    assert_eq!(
-        canonical_json(&decoded)?,
-        preserved,
-        "decoding rewrote an obsolete producer's original basis"
-    );
-    let hits = search_local(
-        &decoded,
-        "references",
-        repository.identity,
-        100,
-        &grounding.grounding,
-    )?;
-    assert!(hits
-        .iter()
-        .filter(|h| h.result_kind == SearchResultKind::SemanticRelation)
-        .all(|h| h.freshness.state == FreshnessState::Stale && !h.navigation_is_current));
-    let basis = grounded_explanation_basis(&decoded, repository.identity, &grounding.grounding)?;
-    assert!(basis
-        .evidence
-        .iter()
-        .filter(|e| e.statement_class == GroundingStatementClass::SemanticResult)
-        .all(|e| e.freshness.state == FreshnessState::Stale
-            && e.semantic_provenance
-                .as_ref()
-                .is_some_and(|p| p.analyzer.version == "4")));
-    let mut full_read = decoded.clone();
-    let mut metadata_read = volicord_repository_intelligence::AnalysisMetadata::from(&decoded);
-    full_read.observe_repository_freshness(Some(&repository));
-    metadata_read.observe_repository_freshness(Some(&repository));
-    assert_eq!(
-        metadata_read,
-        volicord_repository_intelligence::AnalysisMetadata::from(&full_read)
-    );
-    assert_eq!(metadata_read.freshness.state, FreshnessState::Stale);
-    let (_, refreshed) = analyze_repository_semantics(SemanticAnalysisRequest::new(
-        StructuralAnalysisRequest::new(inventory(root.path())?).with_previous(&decoded),
-    ))?;
-    assert!(refreshed.refresh.reused_file_count > 0);
-    assert_eq!(refreshed.identity, current.identity);
-    assert_eq!(refreshed.semantic_results, current.semantic_results);
-    assert!(refreshed.semantic_contract_is_current());
-    assert_eq!(canonical_json(&decoded)?, preserved);
-    assert_eq!(decoded.identity, full_read.identity);
     Ok(())
 }
 
@@ -1266,5 +1269,41 @@ fn parent_binding_requires_a_native_heritage_clause_not_a_token_in_the_body(
         }
         assert_eq!(confirmed, vec![Some("Actual")], "{extension}: token text became heritage evidence");
     }
+    Ok(())
+}
+
+#[test]
+fn object_methods_are_not_lexical_bindings_or_enclosing_class_receivers(
+) -> Result<(), Box<dyn Error>> {
+    let root = tempdir()?;
+    fs::write(
+        root.path().join("objects.ts"),
+        include_str!(
+            "../../../validation/repository-intelligence/semantic-binding/object_scope.ts"
+        ),
+    )?;
+    let (_, analysis) = analyze_repository_semantics(SemanticAnalysisRequest::new(
+        StructuralAnalysisRequest::new(inventory(root.path())?),
+    ))?;
+    let mut incorrectly_bound = Vec::new();
+    for caller in ["orphan", "nested", "expression", "classNested"] {
+        let source = analysis
+            .structural_facts
+            .iter()
+            .find(|f| f.entity.display_name.as_deref() == Some(caller))
+            .ok_or("caller")?;
+        let reference = analysis
+            .semantic_results
+            .iter()
+            .find(|r| {
+                r.relation.source_entity == source.entity.identity
+                    && r.relation.kind == SemanticRelationKind::References
+            })
+            .ok_or("reference")?;
+        if !matches!(reference.relation.target, RelationTarget::Unresolved(_)) {
+            incorrectly_bound.push(format!("{caller}: {:?}", reference.relation.target));
+        }
+    }
+    assert!(incorrectly_bound.is_empty(), "{incorrectly_bound:?}");
     Ok(())
 }

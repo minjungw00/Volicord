@@ -19,7 +19,7 @@ use std::fs;
 use std::path::Path;
 
 const SEMANTIC_ANALYZER_NAME: &str = "volicord-source-semantic-index";
-const SEMANTIC_ANALYZER_VERSION: &str = "5";
+const SEMANTIC_ANALYZER_VERSION: &str = "6";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CanonicalLinkSelector {

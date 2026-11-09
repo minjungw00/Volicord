@@ -868,7 +868,7 @@
       "expected_unsupported": [
         "external receiver binding for console.log"
       ],
-      "content_sha256": "8971347852e553264f45276f30a26296335a8dbccf207b01f6f95f5311baf583",
+      "content_sha256": "a599b7515820986315d424e716530b1fe479b07031809c418a7f5436d35babe2",
       "origin": "Self-authored deterministic binding regression; Node counter is an independent runtime oracle.",
       "license": "CC0-1.0"
     }

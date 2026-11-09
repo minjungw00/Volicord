@@ -103,8 +103,14 @@ impl<'a> BindingFile<'a> {
                 .copied();
             let named = node.child_by_field_name("name");
             let kind = node.kind();
-            let declaration = entity
-                .filter(|e| !matches!(e.kind, CodeEntityKind::File | CodeEntityKind::Package));
+            let declaration = entity.filter(|e| {
+                !matches!(e.kind, CodeEntityKind::File | CodeEntityKind::Package)
+                    && !(*self.language == Language::TypeScript
+                        && e.kind == CodeEntityKind::Method
+                        && node.parent().is_none_or(|parent| {
+                            !matches!(parent.kind(), "class_body" | "interface_body")
+                        }))
+            });
             if let (Some(entity), Some(name)) = (declaration, named) {
                 let (value, ty) = match entity.kind {
                     CodeEntityKind::Interface | CodeEntityKind::Trait | CodeEntityKind::Type => {
@@ -220,6 +226,23 @@ impl<'a> BindingFile<'a> {
                     }
                 }
                 _ => {}
+            }
+        }
+        if *self.language == Language::TypeScript
+            && matches!(node.kind(), "function_expression" | "class")
+        {
+            if let Some(name) = node.child_by_field_name("name") {
+                // Named expressions bind only inside the expression. The
+                // structural adapter does not publish their own declaration.
+                self.insert(
+                    scopes,
+                    node.id(),
+                    name,
+                    true,
+                    node.kind() == "class",
+                    None,
+                    node,
+                );
             }
         }
         if is_function(node) || matches!(node.kind(), "closure_expression" | "lambda_expression") {
@@ -610,7 +633,11 @@ impl<'a> BindingFile<'a> {
                 return self.rust_associated(self.entity_node(&id)?, member, arity, call, false);
             }
             let method = self.enclosing_method(at);
-            if *self.language == Language::TypeScript && method.is_none() {
+            if *self.language == Language::TypeScript
+                && method.is_none_or(|method| {
+                    method.parent().and_then(|body| body.parent()) != Some(owner)
+                })
+            {
                 return None;
             }
             if let Some(method) = method {
@@ -981,6 +1008,7 @@ fn is_scope(node: Node<'_>) -> bool {
             "statement_block"
                 | "block"
                 | "class_body"
+                | "class"
                 | "interface_body"
                 | "declaration_list"
                 | "impl_item"

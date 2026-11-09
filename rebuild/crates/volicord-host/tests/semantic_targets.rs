@@ -19,10 +19,11 @@ use volicord_repository_intelligence::{
 #[test]
 fn ordinary_analysis_preserves_binding_meaning_through_restart_and_public_readers(
 ) -> Result<(), Box<dyn Error>> {
-    for (filename, text, expected_name) in [
-        ("receiver.ts", include_str!("../../../validation/repository-intelligence/semantic-binding/receiver.ts"), "log"),
-        ("Owner.java", "class Owner {\nstatic void println(String value) {}\nstatic void demo() { System.out.println(\"host\"); }\nstatic void local() { println(\"local\"); }\n}\n", "println"),
-        ("lib.rs", "fn len() {}\nfn demo(value: &str) { value.len(); }\nfn local() { len(); }\n", "len"),
+    for (filename, text, expected_name, negative_caller) in [
+        ("receiver.ts", include_str!("../../../validation/repository-intelligence/semantic-binding/receiver.ts"), "log", "demo"),
+        ("Owner.java", "class Owner {\nstatic void println(String value) {}\nstatic void demo() { System.out.println(\"host\"); }\nstatic void local() { println(\"local\"); }\n}\n", "println", "demo"),
+        ("lib.rs", "fn len() {}\nfn demo(value: &str) { value.len(); }\nfn local() { len(); }\n", "len", "demo"),
+        ("objects.ts", "function real(value: number) {}\nfunction orphan() { const object = { run() {} }; run(); }\nfunction local() { real(1); }\n", "real", "orphan"),
     ] {
         let home = tempfile::tempdir()?;
         let repository = home.path().join("repository");
@@ -50,7 +51,7 @@ fn ordinary_analysis_preserves_binding_meaning_through_restart_and_public_reader
         let manifest = fs::read(&produced.stored_at)?;
         let analysis = produced.analysis;
         let mut expected_relations = Vec::new();
-        for (caller, resolved) in [("demo", false), ("local", true)] {
+        for (caller, resolved) in [(negative_caller, false), ("local", true)] {
             let caller = analysis.structural_facts.iter().find(|f| f.entity.display_name.as_deref() == Some(caller)).ok_or("caller missing")?;
             let relation = analysis.semantic_results.iter().find(|r| r.relation.source_entity == caller.entity.identity && r.relation.kind == SemanticRelationKind::References).ok_or("reference missing")?;
             match (&relation.relation.target, resolved) {
