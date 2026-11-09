@@ -179,12 +179,17 @@ Source, inventory, worktree, time and freshness. Graph readers retain full typed
 change readers do not certify graph meaning. Canonical, Candidate, Source, explanation and
 Analysis/cache formats are unchanged.
 
-The sole production normalizer now assigns symbols in the current snapshot's first-seen order
-instead of preloading a prior dictionary. Existing byte-delta storage can still reuse a verified
-complete base. Physical blob hashes/distribution can change; the complete reconstructed JSON,
-identity and provenance cannot. Earlier current-format symbol orders remain readable by the
-same decoder, without rewriting retained manifests, blobs or history and without a numeric
-compatibility branch. Test-only encoders preserve those original ordering controls.
+The sole production normalizer initially assigns symbols in current first-seen order. Before
+the existing byte-delta encoding, an optional verified complete base can plan scalar slots:
+exact still-used tokens keep their slots; new tokens can occupy obsolete slots with the same
+first lexical owner/field and scalar category. Remaining tokens append. These lexical groups
+only affect physical locality, never entity identity or fact meaning. Every current reference
+is remapped to its exact token; no graph, inventory, provenance or historical record is omitted.
+The plan is transient and uses the existing symbol/reference format and decoder. Physical blob
+hashes/distribution can change; complete reconstructed JSON cannot. Earlier current-format
+symbol orders remain readable without rewriting retained manifests, blobs or history and
+without a numeric compatibility branch. A damaged optional base shape disables slot planning;
+verified byte-base reuse remains independent. Test-only encoders retain ordering controls.
 
 ## 6. Derived Index version
 

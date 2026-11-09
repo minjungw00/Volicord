@@ -254,3 +254,41 @@ have normal Rust coverage. These observations justify scoped materialization and
 symbol-order changes; the new exact clean candidate still requires its own gate.
 Naturalistic conversations, independent quality review and human comprehension
 are separate evidence and are not supplied by these controls.
+
+### Changed-inventory scalar-slot locality
+
+The next exact candidate `1939caf9e` passed all 55 functional V11 checks and the
+4 GiB MCP ceiling (3,326,300,160 bytes), but failed the unchanged 512 MiB
+post-warmup storage-growth ceiling: 629,613,201 bytes. Its total V11 wall time
+was 852,647 ms against 900,000 ms. This original failure is retained; a fixed
+snapshot encoding gain did not establish growth behavior after inventory changes.
+
+The normalizer now optionally plans existing scalar slots using the verified
+complete base's first lexical owner/field and scalar category. Exact current
+tokens retain their slots; fresh tokens reuse obsolete slots in the same group,
+then append. This prevents a new file hash from displacing observation-identity
+references through a large graph. The lexical groups infer no semantic identity.
+All references are checked and remapped to the exact current scalar. The same
+persisted representation and single decoder read every earlier ordering. Original
+manifests, blobs, inventories, complete graphs and history remain unchanged.
+
+A declared changed-inventory snapshot from the disposable 15-history control
+used 40,583,485 values bytes before this correction and 26,622,611 after it.
+Complete JSON and metadata matched, three independent durable readbacks matched,
+and corruption was rejected. That encoder control deliberately retained two
+complete graphs; its 4,275,456 KiB whole-process peak is reported separately and
+does not claim the official MCP ceiling. Input declarations, failed alternatives,
+timings and raw outcomes remain under ignored `symbol-plan-*` artifacts and
+focused validation receipts. Full Work-refresh and exact-candidate gate results
+remain separate evidence; no universal capacity or time guarantee follows.
+
+The subsequent disposable copy of that failed candidate's complete 15-snapshot
+Runtime produced three new complete observations (38,260 entities / 582,917
+relations each). Analysis/publication took 31,991 / 32,604 / 32,521 ms, with
+26,623,982 / 26,625,632 / 26,616,635 values bytes. Current full-graph readbacks
+matched their scoped views. All original manifest bytes and complete serialized
+graph/provenance fingerprints matched before and after; the original Runtime
+was not edited. Whole-process high-water RSS was 3,299,540 KiB, including the
+independent full-history oracles. These changed-input observations are not a
+same-input speed comparison with the earlier Work control or a new capacity
+limit. The exact clean candidate still needs the unchanged official gate.

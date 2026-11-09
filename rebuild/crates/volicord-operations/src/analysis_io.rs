@@ -1,5 +1,6 @@
 //! Current-only, structurally shared Analysis Snapshot persistence.
 mod normalized;
+mod symbols;
 use crate::Error;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -70,6 +71,7 @@ pub(crate) struct EncodedAnalysis {
 pub(crate) struct PackedAnalysisValues {
     hash: String,
     packed: Vec<u8>,
+    dictionary: Option<symbols::Dictionary>,
 }
 
 pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Error> {
@@ -88,7 +90,7 @@ pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T
 
 pub(crate) fn encode_analysis(
     analysis: &AnalysisSnapshot,
-    base_values: Option<PackedAnalysisValues>,
+    mut base_values: Option<PackedAnalysisValues>,
 ) -> Result<EncodedAnalysis, Error> {
     #[cfg(test)]
     trace_analysis_memory("encode_start");
@@ -120,7 +122,11 @@ pub(crate) fn encode_analysis(
     drop(normalized.shape);
     #[cfg(test)]
     trace_analysis_memory("shapes_packed");
-    let uncompressed_values = normalized.values.finish()?;
+    let pending = match base_values.as_mut().and_then(|base| base.dictionary.take()) {
+        Some(dictionary) => dictionary.apply(normalized.values)?,
+        None => normalized.values,
+    };
+    let uncompressed_values = pending.finish()?;
     #[cfg(test)]
     trace_analysis_memory("values_expanded_after_shape_release");
     let (values, values_base_blob) = pack_analysis_values(&uncompressed_values, base_values)?;
@@ -578,7 +584,7 @@ pub(crate) fn reusable_base_values(
     if !project_directory.exists() {
         return Ok(None);
     }
-    let mut complete_bases = Vec::<(i64, String, String)>::new();
+    let mut complete_bases = Vec::<(i64, String, String, PathBuf)>::new();
     for entry in std::fs::read_dir(project_directory)
         .map_err(|error| Error::with_source("cannot inspect Analysis values bases", error))?
     {
@@ -597,23 +603,42 @@ pub(crate) fn reusable_base_values(
                 manifest.generated_at_unix_micros,
                 manifest.identity.to_string(),
                 manifest.values_blob,
+                path,
             ));
         }
     }
     complete_bases.sort_unstable_by(|left, right| right.cmp(left));
     let blobs = project_directory.join("blobs");
-    for (_, _, values_hash) in complete_bases {
+    for (_, _, values_hash, path) in complete_bases {
         let Ok(bytes) =
             read_verified_blob(&blobs.join(format!("{values_hash}.values")), &values_hash)
         else {
             continue;
         };
-        if unpack_blob(&bytes).is_err() {
+        let Ok(values) = unpack_blob(&bytes) else {
             continue;
-        }
+        };
+        // This is an optional physical plan, never graph authority. A damaged
+        // shape prevents slot reuse, while the verified value base can still
+        // supply exact byte matches for the complete current representation.
+        let dictionary = (|| {
+            let manifest = read_manifest(&path)?;
+            let mut shape = Vec::new();
+            for hash in &manifest.shape_blobs {
+                let packed = read_verified_blob(&blobs.join(format!("{hash}.shape")), hash)?;
+                shape.extend_from_slice(&unpack_blob(&packed)?);
+            }
+            symbols::Dictionary::from_reader(DenormalizingReader::new(
+                shape,
+                values,
+                manifest.scalar_count,
+            )?)
+        })()
+        .ok();
         return Ok(Some(PackedAnalysisValues {
             hash: values_hash,
             packed: bytes,
+            dictionary,
         }));
     }
     Ok(None)
@@ -1114,6 +1139,8 @@ struct NormalizingWriter {
     shape: Vec<u8>,
     symbols: Vec<Rc<[u8]>>,
     symbol_index: HashMap<Rc<[u8]>, u32>,
+    positions: Vec<Option<symbols::Position>>,
+    tracker: symbols::Tracker,
     references: Option<BufWriter<zstd::stream::write::Encoder<'static, Vec<u8>>>>,
     scalar_count: u64,
     token: Vec<u8>,
@@ -1161,7 +1188,10 @@ impl Write for NormalizingWriter {
                     self.in_string = true;
                     self.token.push(byte);
                 }
-                b'{' | b'}' | b'[' | b']' | b',' | b':' => self.shape.push(byte),
+                b'{' | b'}' | b'[' | b']' | b',' | b':' => {
+                    self.tracker.punctuation(byte);
+                    self.shape.push(byte);
+                }
                 value if value.is_ascii_whitespace() => {}
                 value => self.token.push(value),
             }
@@ -1207,6 +1237,7 @@ impl NormalizingWriter {
             .ok_or_else(|| Error::new("Analysis base references are corrupt"))?;
         debug_assert_eq!(reference_bytes, values.len());
         Ok(Self {
+            positions: vec![None; symbols.len()],
             symbols,
             symbol_index,
             ..Self::default()
@@ -1221,8 +1252,17 @@ impl NormalizingWriter {
             let symbol = Rc::<[u8]>::from(self.token.as_slice());
             self.symbol_index.insert(Rc::clone(&symbol), index);
             self.symbols.push(symbol);
+            self.positions.push(None);
             index
         };
+        let position = self.tracker.scalar(&self.token);
+        let saved = self
+            .positions
+            .get_mut(index as usize)
+            .ok_or_else(|| std::io::Error::other("Analysis symbol position is missing"))?;
+        if saved.is_none() {
+            *saved = Some(position);
+        }
         // Repeated field names and values dominate large graphs. Keep the
         // scratch capacity instead of reallocating it for every scalar; interned
         // symbols own independent bytes and retain the same first-seen indices.
@@ -1284,6 +1324,7 @@ impl NormalizingWriter {
             shape,
             values: PendingValues {
                 symbols: self.symbols,
+                positions: self.positions,
                 packed_references,
                 scalar_count,
             },
@@ -1313,6 +1354,7 @@ struct NormalizedParts {
 
 struct PendingValues {
     symbols: Vec<Rc<[u8]>>,
+    positions: Vec<Option<symbols::Position>>,
     packed_references: Option<Vec<u8>>,
     scalar_count: u64,
 }
@@ -1627,6 +1669,7 @@ mod tests {
             Some(PackedAnalysisValues {
                 hash: hash.clone(),
                 packed,
+                dictionary: None,
             }),
         )?;
         assert!(complete.len() > 8 * 1024 * 1024);
@@ -1643,6 +1686,7 @@ mod tests {
             Some(PackedAnalysisValues {
                 hash,
                 packed: pack_blob(&base)?,
+                dictionary: None,
             }),
         )?;
         assert!(selected_base.is_none());
