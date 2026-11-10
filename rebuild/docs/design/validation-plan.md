@@ -5700,3 +5700,13 @@ complete-publication controls retain claim/role/condition/linear-reading checks.
 These controls establish admission, not semantic sufficiency. Current-host actual
 figures require independently inspected permitted originals, exact original drafts,
 failed/edited attempts, assess/compose/record receipts and complete public readback.
+
+The real ten-second citation expiry window is scheduled exclusively against other
+fixtures in the same citation-reader test process. Ordinary fixtures may overlap
+and acquire nested setup permits; waiting for the short exclusive interval occurs
+before its Sources are observed. The input remains exactly eleven observations,
+one original ten-second deadline, the existing twenty-second wait guard, and all
+pre-expiry/cleanup/restart/stale-publication assertions. No TTL, clock, deadline,
+Source authority, output bound or qualification budget is extended. A dedicated
+scheduling control checks nested shared setup and exclusive handoff. Preserve the
+original aggregate expiry failure separately from the repaired fixture's results.

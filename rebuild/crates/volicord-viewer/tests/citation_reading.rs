@@ -11,6 +11,60 @@ use volicord_viewer::*;
 mod code_text;
 use code_text::code_texts;
 
+/// Only the real ten-second observation window excludes sibling fixtures.
+/// Other fixtures may overlap, including nested setup in the same test. Waiting
+/// happens before observation; no deadline, clock or Source is renewed.
+struct FixtureSchedule {
+    state: std::sync::Mutex<(usize, bool)>,
+    changed: std::sync::Condvar,
+}
+impl FixtureSchedule {
+    const fn new() -> Self {
+        Self {
+            state: std::sync::Mutex::new((0, false)),
+            changed: std::sync::Condvar::new(),
+        }
+    }
+    fn enter(&self, exclusive: bool) -> Result<FixtureActivity<'_>, Box<dyn Error>> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "fixture scheduling lock poisoned")?;
+        while state.1 || exclusive && state.0 != 0 {
+            state = self
+                .changed
+                .wait(state)
+                .map_err(|_| "fixture scheduling wait poisoned")?;
+        }
+        if exclusive {
+            state.1 = true;
+        } else {
+            state.0 += 1;
+        }
+        Ok(FixtureActivity {
+            schedule: self,
+            exclusive,
+        })
+    }
+}
+struct FixtureActivity<'a> {
+    schedule: &'a FixtureSchedule,
+    exclusive: bool,
+}
+impl Drop for FixtureActivity<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.schedule.state.lock() {
+            if self.exclusive {
+                state.1 = false;
+            } else {
+                state.0 -= 1;
+            }
+        }
+        self.schedule.changed.notify_all();
+    }
+}
+static FIXTURE_SCHEDULE: FixtureSchedule = FixtureSchedule::new();
+
 /// A failed setup must leave its exact stores available for diagnosis. Normal
 /// fixtures retain TempDir's cleanup and existing explicit keep behavior.
 struct FixtureSetup<'a> {
@@ -41,6 +95,7 @@ struct Fixture {
     analysis: AnalysisSnapshotId,
     realization: ExplanationRealization,
     originals: Vec<String>,
+    _activity: FixtureActivity<'static>,
 }
 impl Fixture {
     fn new() -> Result<Self, Box<dyn Error>> {
@@ -76,6 +131,7 @@ impl Fixture {
         custom: Option<Vec<(String, String)>>,
         short_seconds: Option<u64>,
     ) -> Result<Self, Box<dyn Error>> {
+        let activity = FIXTURE_SCHEDULE.enter(short_seconds == Some(10))?;
         let mut temp = match parent {
             Some(path) => tempfile::tempdir_in(path)?,
             None => tempfile::tempdir()?,
@@ -244,6 +300,7 @@ impl Fixture {
             analysis,
             realization,
             originals,
+            _activity: activity,
         })
     }
     fn answers(&self) -> Result<QuestionAnswers, Box<dyn Error>> {
@@ -283,6 +340,50 @@ impl Fixture {
         Ok(String::from_utf8(output)?)
     }
 }
+#[test]
+fn fixture_schedule_allows_nested_setup_and_excludes_the_short_expiry_window(
+) -> Result<(), Box<dyn Error>> {
+    let schedule = FixtureSchedule::new();
+    std::thread::scope(|scope| -> Result<(), Box<dyn Error>> {
+        let first = schedule.enter(false)?;
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (acquired_tx, acquired_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let schedule_ref = &schedule;
+        let writer = scope.spawn(move || -> Result<(), String> {
+            started_tx.send(()).map_err(|e| e.to_string())?;
+            let _activity = schedule_ref.enter(true).map_err(|e| e.to_string())?;
+            acquired_tx.send(()).map_err(|e| e.to_string())?;
+            release_rx.recv().map_err(|e| e.to_string())?;
+            Ok(())
+        });
+        started_rx.recv_timeout(std::time::Duration::from_secs(5))?;
+        let nested = schedule.enter(false)?;
+        assert!(matches!(
+            acquired_rx.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        ));
+        drop(nested);
+        drop(first);
+        acquired_rx.recv_timeout(std::time::Duration::from_secs(5))?;
+        let (read_tx, read_rx) = std::sync::mpsc::channel();
+        let reader = scope.spawn(move || -> Result<(), String> {
+            let _activity = schedule_ref.enter(false).map_err(|e| e.to_string())?;
+            read_tx.send(()).map_err(|e| e.to_string())?;
+            Ok(())
+        });
+        assert!(matches!(
+            read_rx.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        ));
+        release_tx.send(())?;
+        read_rx.recv_timeout(std::time::Duration::from_secs(5))?;
+        writer.join().map_err(|_| "fixture writer panicked")??;
+        reader.join().map_err(|_| "fixture reader panicked")??;
+        Ok(())
+    })
+}
+
 #[test]
 fn failed_fixture_setup_preserves_files_and_successful_setup_cleans_up(
 ) -> Result<(), Box<dyn Error>> {
