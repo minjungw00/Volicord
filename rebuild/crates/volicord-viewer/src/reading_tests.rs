@@ -626,6 +626,19 @@ fn related_decisions_share_work_outline_and_keep_canonical_meaning(
                     "each Decision is independently closed using the shared disclosure control"
                 );
                 assert_eq!(html.matches("data-toc-target=").count(), seen.len());
+                for summary in html
+                    .split("<details class=\"record-box related-decision\"><summary")
+                    .skip(1)
+                    .filter_map(|body| body.split("</summary>").next())
+                {
+                    assert!(!summary.split('>').next().ok_or("summary")?.contains("data-reader-publication"),
+                        "publication withdrawal cannot replace the canonical disclosure control/state");
+                    assert!(summary.contains("class=\"record-strip\""));
+                }
+                assert!(
+                    !html.contains("data-toc-label"),
+                    "no hidden prose copy outside its publication scope"
+                );
                 for target in html
                     .split("data-toc-target=\"")
                     .skip(1)

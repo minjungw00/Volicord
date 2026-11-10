@@ -1674,12 +1674,18 @@ fn insert_contents(
             cursor = end + close.len();
             continue;
         }
-        let title = heading_attributes
-            .split("data-toc-label=\"")
-            .nth(1)
-            .and_then(|value| value.split('"').next())
-            .unwrap_or(&article[open_end + 1..end])
-            .to_owned();
+        let heading_body = &article[open_end + 1..end];
+        // Related Decision summaries start with their scoped title span. Reuse
+        // that complete span so denial also clears its copy in the Work outline;
+        // the separately recorded state is not part of the generated label.
+        let title = if explicit_target.is_some() {
+            heading_body.find("</span>").map_or_else(
+                || heading_body.to_owned(),
+                |end| heading_body[..end + "</span>".len()].to_owned(),
+            )
+        } else {
+            heading_body.to_owned()
+        };
         let id = explicit_target.clone().unwrap_or_else(|| {
             format!(
                 "{}-heading-{}",
@@ -3018,8 +3024,8 @@ fn decision_detail(
     let body_id = document_anchor(&reader, "reading");
     // The outline targets the hidden body, so native fragment navigation also
     // opens this exact Decision. Its summary retains the compact title/state.
-    html.push_str(&format!("<details class=\"record-box related-decision\"><summary id=\"{heading_id}\"{}><h3 data-toc-entry data-toc-target=\"{body_id}\" data-toc-label=\"{}\"><span class=\"decision-title\" lang=\"{}\">{}</span><span class=\"record-strip\">{}</span></h3></summary><div class=\"related-decision-body\" id=\"{body_id}\" tabindex=\"-1\">",
-        publication_scope(&reader),escape(&title),escape(&content_language_tag(&r.requested_language)),escape(&title),brief_decision_state_label(d.decision.state,r.locale)));
+    html.push_str(&format!("<details class=\"record-box related-decision\"><summary id=\"{heading_id}\"><h3 data-toc-entry data-toc-target=\"{body_id}\"><span class=\"decision-title\" lang=\"{}\"{}>{}</span><span class=\"record-strip\">{}</span></h3></summary><div class=\"related-decision-body\" id=\"{body_id}\" tabindex=\"-1\">",
+        escape(&content_language_tag(&r.requested_language)),publication_scope(&reader),escape(&title),brief_decision_state_label(d.decision.state,r.locale)));
     if let Some((index, _)) = heading {
         reader_inline_citations(html, r, &reader, index);
     }

@@ -78,6 +78,7 @@
       if(region.matches('.source-point'))region.setAttribute('aria-label',ko?'출판물을 이용할 수 없습니다':'Publication unavailable');
       region.dataset.unavailable='true';
     }
+    outline.updateCue();
   }
   function updateComparison(publication, basis) {
     const labels = {
