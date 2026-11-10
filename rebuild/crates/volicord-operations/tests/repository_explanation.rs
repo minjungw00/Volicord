@@ -1956,3 +1956,107 @@ fn independent_publication_expiry_and_damaged_admission_links_remain_blocking(
     }
     Ok(())
 }
+
+#[test]
+fn architecture_documents_consume_complete_repository_reading_without_a_work(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let subject = ExplanationSubject::Repository(f.analysis);
+    let mut realization = response(&f, id)?;
+    // More units than the per-section claim bound: the admitted article remains
+    // one complete document claim, without increasing any output/resource limit.
+    for n in 1..20 {
+        let mut unit = realization.paragraphs[0].clone();
+        unit.text =
+            format!("Authored paragraph {n}: greet builds a greeting from the supplied name.");
+        unit.citations[0].claim_end_byte = unit.text.len();
+        unit.citations[0].claim_sha256 = explanation_text_hash(&unit.text);
+        realization.paragraphs.push(unit);
+    }
+    f.ops
+        .record_explanation(f.project, subject, "en", realization.clone())?;
+    let request = DocumentRequest {
+        requested_language: "en".into(),
+        fixed_locale: FixedLocale::English,
+        generated_at: volicord_context::TimestampMicros::from_unix_micros(1),
+        generator: GeneratorIdentity {
+            generator: "document-consumer-control".into(),
+            agent: None,
+            model: None,
+        },
+        requested_destinations: vec![],
+    };
+    let mut projection = f.ops.project_projection(f.project)?;
+    assert!(projection.resume.project_purpose.is_empty());
+    assert!(projection.work_history.is_empty());
+    assert!(projection
+        .repository_explanation_sources
+        .iter()
+        .any(|s| s.source_id == id));
+    projection.source_catalog.retain(|s| s.source.id != id);
+    let bound = projection.source_catalog.len();
+    let documents = f.ops.documents_from_projection(&projection, &request)?;
+    let guide = documents.project_architecture_guide;
+    let repository = guide
+        .body
+        .sections
+        .iter()
+        .find(|s| s.key == "repository-explanation")
+        .ok_or("repository section")?;
+    assert_eq!(repository.role, DocumentSectionRole::Reading);
+    assert_eq!(repository.claims.len(), 1);
+    for unit in &realization.paragraphs {
+        assert!(repository.claims[0].text.contains(&unit.text));
+        assert!(guide.markdown.content.contains(&unit.text));
+        assert!(guide.html.content.contains(&format!("<p>{}", unit.text)));
+    }
+    assert!(guide
+        .markdown
+        .content
+        .contains("Project purpose is not recorded"));
+    assert!(guide
+        .html
+        .content
+        .contains("<details class=\"supporting-evidence\""));
+    assert_eq!(guide.metadata.explanations.len(), 1);
+    assert_eq!(guide.metadata.explanations[0].subject, subject);
+    assert_eq!(guide.metadata.explanations[0].citations.len(), 20);
+    assert!(guide
+        .metadata
+        .used_sources
+        .iter()
+        .any(|s| s.source_id == id));
+    assert_eq!(projection.source_catalog.len(), bound);
+    assert!(
+        documents.handoff_resume.metadata.explanations.is_empty(),
+        "unused Repository prose is not document provenance"
+    );
+    projection
+        .repository_explanation_sources
+        .retain(|s| s.source_id != id);
+    assert!(
+        generate_documents(&projection, &request).is_err(),
+        "citation IDs cannot replace canonical Source witnesses"
+    );
+    let reading = &mut projection.repository_explanations[0];
+    reading.state = ExplanationState::Withheld;
+    // Retained bytes cannot override the read owner's denied state.
+    let denied = f.ops.documents_from_projection(&projection, &request)?;
+    assert!(!denied
+        .project_architecture_guide
+        .markdown
+        .content
+        .contains("Authored paragraph 19"));
+    assert!(denied
+        .project_architecture_guide
+        .metadata
+        .explanations
+        .is_empty());
+    assert!(denied
+        .project_architecture_guide
+        .markdown
+        .content
+        .contains("withheld"));
+    Ok(())
+}

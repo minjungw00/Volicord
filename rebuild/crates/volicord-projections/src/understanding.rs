@@ -2173,6 +2173,7 @@ mod tests {
         ProjectProjection {
             work_catalogue: None,
             repository_explanations: Vec::new(),
+            repository_explanation_sources: Vec::new(),
             repository_scope_metadata: crate::RepositoryScopeMetadata::default(),
             repository_analysis: crate::RepositoryAnalysisReading::absent(false),
             answer_capability_gaps: Vec::new(),

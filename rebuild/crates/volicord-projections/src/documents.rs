@@ -726,6 +726,7 @@ fn architecture_body(
                 fixed(locale, "Project overview", "프로젝트 개요"),
                 overview_claims,
             ),
+            repository_explanation_section(projection, locale, language),
             work_summary_section(projection, locale, language),
             decision_evidence_section(projection, locale),
             section(
@@ -734,18 +735,72 @@ fn architecture_body(
                 decision_claims,
             ),
             timeline_section(projection, locale),
-            section(
-                "architecture",
-                fixed(
-                    locale,
-                    "Repository architecture evidence",
-                    "저장소 아키텍처 근거",
-                ),
-                architecture_claims,
-            ),
+            DocumentSection {
+                role: DocumentSectionRole::Evidence,
+                ..section(
+                    "architecture",
+                    fixed(
+                        locale,
+                        "Repository architecture evidence",
+                        "저장소 아키텍처 근거",
+                    ),
+                    architecture_claims,
+                )
+            },
             gap_section(projection, locale),
         ],
     }
+}
+
+fn repository_explanation_section(
+    projection: &ProjectProjection,
+    locale: FixedLocale,
+    language: &str,
+) -> DocumentSection {
+    let answers = crate::explanation_answers(&projection.repository_explanations, language, locale);
+    let source_basis = answers
+        .prose
+        .iter()
+        .flat_map(|unit| &unit.citations)
+        .flat_map(|citation| [&citation.source_id, &citation.repository_source_id])
+        .filter(|id| id.len() == 32)
+        .filter_map(|id| u128::from_str_radix(id, 16).ok())
+        .map(|id| SourceId::from_bytes(id.to_be_bytes()))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let analysis_basis = answers
+        .provenance
+        .as_ref()
+        .and_then(|provenance| match provenance.subject {
+            crate::ExplanationSubject::Repository(id) => Some(id),
+            _ => None,
+        })
+        .into_iter()
+        .collect();
+    section(
+        "repository-explanation",
+        fixed(
+            locale,
+            "Repository responsibilities and flow",
+            "저장소 책임과 흐름",
+        ),
+        vec![GeneratedDocumentClaim {
+            identity: "repository-explanation".into(),
+            class: if answers.provenance.is_some() {
+                ClaimClass::AgentInterpretation
+            } else {
+                ClaimClass::DeterministicDerived
+            },
+            text: answers.text(),
+            source_basis,
+            decision_basis: Vec::new(),
+            analysis_basis,
+            explicit_inference: true,
+            historical_uncertainty: Vec::new(),
+            uncertainty: Vec::new(),
+        }],
+    )
 }
 
 fn decision_body(
@@ -1645,6 +1700,7 @@ fn document_source_freshness(
     });
     for source in work_sources
         .chain(decision_sources)
+        .chain(&projection.repository_explanation_sources)
         .filter(|source| source.availability.is_some())
     {
         known
@@ -1877,6 +1933,18 @@ fn build_metadata(
                 crate::decision_answers(d, &request.requested_language, request.fixed_locale)
                     .provenance
             }))
+            .chain(
+                (kind == DocumentKind::ProjectArchitectureGuide)
+                    .then(|| {
+                        crate::explanation_answers(
+                            &projection.repository_explanations,
+                            &request.requested_language,
+                            request.fixed_locale,
+                        )
+                        .provenance
+                    })
+                    .flatten(),
+            )
             .fold(Vec::new(), |mut values, e| {
                 if !values
                     .iter()
@@ -2140,11 +2208,10 @@ fn render_markdown(
                 output.push_str(fixed(locale, "Inference", "추론"));
                 output.push_str("]** ");
             }
-            output.push_str(&escape_markdown(&bounded_rendered_field(
-                &claim.text,
-                "claim text",
-                locale,
-            )));
+            output.push_str(
+                &escape_markdown(&bounded_rendered_field(&claim.text, "claim text", locale))
+                    .replace('\n', "\n  "),
+            );
             if !claim.uncertainty.is_empty() {
                 output.push_str("  \n  ");
                 output.push_str(fixed(
@@ -2222,11 +2289,11 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
                 output.push_str(&escape_html(fixed(locale, "Inference", "추론")));
                 output.push_str("]</span> ");
             }
-            output.push_str(&escape_html(&bounded_rendered_field(
-                &claim.text,
-                "claim text",
-                locale,
-            )));
+            for paragraph in claim.text.split("\n\n") {
+                output.push_str("<p>");
+                output.push_str(&escape_html(paragraph));
+                output.push_str("</p>");
+            }
             if !claim.uncertainty.is_empty() {
                 output.push_str("<div class=\"uncertainty\"><strong>");
                 output.push_str(&escape_html(fixed(

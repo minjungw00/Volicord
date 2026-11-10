@@ -942,6 +942,9 @@ pub struct RepositoryScopeMetadata {
 pub struct ProjectProjection {
     pub work_catalogue: Option<crate::WorkCataloguePage>,
     pub repository_explanations: Vec<crate::ExplanationReading>,
+    /// Exact canonical witnesses for the materialized Repository publications,
+    /// independent of the bounded display catalogue and retained body bytes.
+    pub repository_explanation_sources: Vec<crate::ReadingSourceStatus>,
     pub repository_analysis: crate::RepositoryAnalysisReading,
     pub repository_scope_metadata: RepositoryScopeMetadata,
     /// Contextual answer limits, selected before capability/list bounds. Raw
@@ -1731,6 +1734,7 @@ pub fn build_project_projection(
     let mut projection = ProjectProjection {
         work_catalogue: None,
         repository_explanations: Vec::new(),
+        repository_explanation_sources: Vec::new(),
         repository_analysis,
         repository_scope_metadata,
         answer_capability_gaps,

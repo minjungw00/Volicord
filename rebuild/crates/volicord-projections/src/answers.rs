@@ -228,7 +228,7 @@ impl QuestionAnswers {
                 }
             })
             .collect::<Vec<_>>()
-            .join(" ");
+            .join("\n\n");
         let texts = self
             .prose
             .iter()

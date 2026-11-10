@@ -750,6 +750,33 @@ impl LocalOperations {
                     .filter(|r| r.language == language),
             );
         }
+        let repository_sources = projection
+            .repository_explanations
+            .iter()
+            .filter(|reading| reading.state == ExplanationState::Current)
+            .filter_map(|reading| reading.content.as_ref())
+            .flat_map(|content| content.realization.citations())
+            .flat_map(|citation| {
+                [
+                    citation.source_id.clone(),
+                    citation.repository_source_id.clone(),
+                ]
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        projection.repository_explanation_sources = canonical
+            .sources
+            .iter()
+            .filter(|source| repository_sources.contains(&source.source.id.to_string()))
+            .map(|source| volicord_projections::ReadingSourceStatus {
+                source_id: source.source.id,
+                availability: Some(source.availability),
+                freshness: source.freshness,
+                snapshot_basis: source.snapshot_basis.clone(),
+                actor: Some(source.source.actor.clone()),
+                observer: source.source.observer.clone(),
+                recorded_at: Some(source.source.recorded_at),
+            })
+            .collect();
         if let Err(error) = &records {
             projection.repository_explanations = vec![ExplanationReading {
                 language: "*".into(),

@@ -3911,3 +3911,24 @@ Completed production IDs are consumed across CLI/Operations restart as well as
 the live MCP request. They cannot record another edition or retroactively report
 failure. Read the admitted publication or explicitly produce refinement; rejected
 replay preserves complete managed state and all original attempts.
+
+### Generated architecture-guide Repository content
+
+The Project & Architecture Guide consumes the same language-matched current
+Repository explanation as the ordinary reader, independently of selected Work.
+Its complete admitted prose, diagram linear meaning and scope/coverage facts
+precede Work material; canonical Project Purpose remains separate, including
+its explicit absence. Structural records remain inspectable supporting evidence.
+Generated Markdown and HTML preserve paragraph boundaries within complete claims.
+No read authors, transmits, captures Sources or renews a publication.
+
+Operations supplies exact canonical Source-status witnesses for the materialized
+Repository publications, separately from the bounded display catalogue. Document
+claims and metadata use those witnesses with the existing Work/Decision witnesses;
+unknown IDs remain rejected and conflicting freshness remains unknown. This
+read-only metadata grants no Source-body access. The guide retains the exact
+Repository publication provenance in its existing metadata and final read barrier;
+other document kinds do not claim to use a Repository publication they omit.
+Stale, withheld, expired or unavailable publications supply only their actual
+availability message, with no older-publication fallback. Existing field, claim,
+publication and output-byte bounds and durable formats are unchanged.
