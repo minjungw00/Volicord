@@ -350,6 +350,9 @@ impl LocalOperations {
         )?;
         intent.failure = Some(failure);
         self.store_production_intent(&plan, &intent)?;
-        self.explanation_production_status(project, subject, language)
+        let mut status = self.explanation_production_status(project, subject, language)?;
+        status["read_only"] = json!(false);
+        status["metadata_written"] = json!(true);
+        Ok(status)
     }
 }

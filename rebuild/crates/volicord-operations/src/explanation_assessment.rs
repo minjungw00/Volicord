@@ -1,6 +1,7 @@
 //! Authored diagram applicability is separate from omitted or failed authorship.
 use crate::{Error, LocalOperations};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use volicord_context::ProjectId;
 use volicord_privacy::{ManagedDerivedKind, ManagedDerivedState, PrivacyStore};
 use volicord_projections::{ExplanationRealization, ExplanationSubject};
@@ -117,7 +118,10 @@ impl LocalOperations {
                 .map_err(|e| Error::with_source("assessment encoding failed", e))?,
             &sources,
         )?;
-        self.explanation_production_status(project, subject, language)
+        let mut status = self.explanation_production_status(project, subject, language)?;
+        status["read_only"] = json!(false);
+        status["metadata_written"] = json!(true);
+        Ok(status)
     }
 
     pub(crate) fn explanation_diagram_assessment(

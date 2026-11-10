@@ -2738,7 +2738,11 @@ fn ordinary_production_skips_unchanged_recovers_restart_and_keeps_scope_language
     fail["scope"] = json!("name");
     fail["generation_id"] = refined["generation_id"].clone();
     fail["failure"] = json!("interrupted");
-    assert_eq!(success(&mut f.host, fail)?["state"], "failed");
+    let failed = success(&mut f.host, fail)?;
+    assert_eq!(failed["state"], "failed");
+    assert_eq!(failed["read_only"], false);
+    assert_eq!(failed["metadata_written"], true);
+    assert_eq!(production_status(&mut f, "name", "ko")?["read_only"], true);
     // A failed refinement leaves the previous independent publication readable.
     let page = f.host.operations().read_explanation_page(
         f.project,
@@ -2876,7 +2880,9 @@ fn normal_article_production_requires_an_actual_diagram_assessment_and_preserves
     let mut assess = f.args("assess");
     assess["generation_id"] = generation["generation_id"].clone();
     assess["assessment"] = json!({"outcome":"authored","rationale":"The intended illustration compares the function with its returned constant."});
-    success(&mut f.host, assess.clone())?;
+    let assessed = success(&mut f.host, assess.clone())?;
+    assert_eq!(assessed["read_only"], false);
+    assert_eq!(assessed["metadata_written"], true);
     // A declared authored outcome cannot hide an empty figure list.
     assert_eq!(call(&mut f.host, args.clone())["result"]["isError"], true);
     assess["assessment"] = json!({"outcome":"not_needed","rationale":"The reader question is only whether this one expression returns a constant. The exact single return statement and concise prose answer it; there is no relational or temporal explanation requiring a figure."});
