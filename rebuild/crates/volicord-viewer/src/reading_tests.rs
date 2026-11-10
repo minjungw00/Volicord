@@ -686,7 +686,27 @@ fn related_decisions_share_work_outline_and_keep_canonical_meaning(
                         "missing native target {target}"
                     );
                 }
-                assert_eq!(html.matches("data-toc-entry").count(), seen.len());
+                assert!(html.matches("data-toc-entry").count() >= seen.len());
+                for group in ["checks", "records"] {
+                    assert_eq!(
+                        html.matches(&format!("data-reading-group=\"{group}\""))
+                            .count(),
+                        1
+                    );
+                    assert_eq!(
+                        html.matches(&format!("data-toc-group=\"{group}\"")).count(),
+                        1
+                    );
+                }
+                assert_eq!(
+                    html.matches("data-reading-group=\"decisions\"").count(),
+                    usize::from(!seen.is_empty())
+                );
+                assert_eq!(
+                    html.matches("data-toc-group=\"decisions\"").count(),
+                    usize::from(!seen.is_empty())
+                );
+                assert!(html.contains("class=\"reading-group-heading\" data-toc-group-heading"));
                 assert_eq!(
                     html.matches("<details class=\"record-box related-decision\"><summary")
                         .count(),

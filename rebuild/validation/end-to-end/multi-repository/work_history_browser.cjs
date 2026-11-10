@@ -46,6 +46,13 @@ async function inspect(page,c,url,width,mode,language){
  assert.equal(await doc.locator('.document-nav').count(),1,'one page-level Work TOC');
  assert.equal(await doc.locator('article.doc').count(),0,'no appended/nested Decision page');
  if(c.decisions!==undefined)assert.equal(await doc.locator('.decision-reading').count(),c.decisions);
+ const groups=await doc.locator(':scope > .work-reading-group').evaluateAll(ns=>ns.map(n=>n.dataset.readingGroup));
+ assert.deepEqual(groups,await doc.locator('.decision-reading').count()?['work','decisions','checks','records']:['work','checks','records'],'Work explanation, related Decisions, checks and originals are sibling groups');
+ for(const group of ['checks','records']){
+  const section=doc.locator(`:scope > .work-reading-group[data-reading-group="${group}"]`);
+  assert.equal(await section.locator(':scope > h2.reading-group-heading').count(),1,'explicit Work-level section heading');
+  assert.ok((await section.innerText()).trim().length>(await section.locator(':scope > h2').innerText()).trim().length,'section has content or an honest empty-state message');
+ }
  const decisionFolds=doc.locator('.decision-reading > details.related-decision');
  assert.equal(await decisionFolds.count(),await doc.locator('.decision-reading').count(),'one shared disclosure per Decision');
  assert.equal(await decisionFolds.evaluateAll(ns=>ns.every(n=>!n.open)),true,'each Decision starts closed');
@@ -104,7 +111,7 @@ async function inspect(page,c,url,width,mode,language){
   await summary.press('Enter');assert.equal(await fold.evaluate(n=>n.open),false,'keyboard folds this Decision');
   const toc=doc.locator('.document-nav'),link=toc.locator('a').filter({hasText:await decision.locator('.decision-title').textContent()}).first();
   assert.equal(await link.count(),1,'related Decision participates in the Work outline');
-  const parent=toc.locator('li[data-level="2"] > a').filter({hasText:language==='ko'?'관련 결정':'Related Decisions'}).first();
+  const parent=toc.locator('[data-toc-group="decisions"] > .toc-caption > a');
   assert.ok(await link.evaluate(n=>parseFloat(getComputedStyle(n).paddingLeft))>await parent.evaluate(n=>parseFloat(getComputedStyle(n).paddingLeft)),'Decision is visibly a child in the one Work outline');
   assert.equal(await fold.evaluate(n=>getComputedStyle(n).borderTopStyle),'solid','individual Decision uses the bordered child disclosure');
   assert.ok(await fold.evaluate(n=>parseFloat(getComputedStyle(n).borderTopWidth))>=1);

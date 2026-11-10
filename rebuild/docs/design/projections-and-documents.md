@@ -3965,3 +3965,14 @@ existing reading-text character bound applies only to that raw quote; any omitte
 character count is stated and the exact report target retains the whole original.
 The quote is neither a synthesized check name nor an authored semantic summary.
 This distinguishes actual same-time unnamed reports without global list ordinals.
+
+Work reading has four peer scopes when actual related Decisions exist: Work
+explanation, related Decisions, verification and limits, and originals/evidence.
+The one page outline projects those same groups. Related Decisions are not nested
+under the Work-explanation outline group, and following Work-wide checks/originals
+are not children of a Decision. Checks and originals have visible Work-level
+headings. Missing separate verification/limits prose retains an explicit, truthful
+availability message and never implies checks passed or limitations are absent.
+Group headings keep consistent vertical rhythm; original records remain deliberate
+disclosures. A Decision interpretation explains the actual question/issue as well
+as the selected outcome; its canonical Question remains separately inspectable.

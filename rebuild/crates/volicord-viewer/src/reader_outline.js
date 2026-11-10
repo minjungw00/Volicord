@@ -3,7 +3,7 @@ function createReaderOutline({lifetime,navigate,closeDrawer}) {
   const ko=document.documentElement.lang==='ko',outlineScroll=new WeakMap();
   function updateCue() {
     document.querySelectorAll('.document-nav').forEach(toc => {
-      const links=[...toc.querySelectorAll('.toc-primary a,.toc-records a')];
+      const links=[...toc.querySelectorAll('.toc-caption a,.toc-primary a,.toc-records a')];
       if(!toc.getClientRects().length)return;
       const clearance=toc.getBoundingClientRect().bottom+32;
       let current=links[0];

@@ -1342,21 +1342,23 @@ fn render_document_body(
     );
     html.push_str("</div>");
     if !related.is_empty() {
+        if grouped {
+            html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"decisions\" id=\"{}\" tabindex=\"-1\" aria-label=\"{}\">",document_anchor(answers,"decisions"),text(r.locale,"Related Decisions","관련 결정")));
+        }
         html.push_str("<section class=\"reading-section related-decisions\">");
-        heading(
-            html,
-            2,
+        html.push_str(&format!(
+            "<h2 class=\"reading-group-heading\" data-toc-group-heading>{}</h2>",
             if decision.is_some() {
                 text(r.locale, "Related Work", "관련 작업")
             } else {
                 text(r.locale, "Related Decisions", "관련 결정")
-            },
-        );
+            }
+        ));
         html.push_str(related);
         html.push_str("</section>");
     }
     if grouped {
-        html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"checks\" aria-label=\"{}\">",text(r.locale,"Verification and limits","검증과 설명 한계")));
+        html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"checks\" id=\"{}\" tabindex=\"-1\" aria-label=\"{}\"><h2 class=\"reading-group-heading\" data-toc-group-heading>{}</h2>",document_anchor(answers,"checks"),text(r.locale,"Verification and limits","검증과 한계"),text(r.locale,"Verification and limits","검증과 한계")));
     }
     if let Some(d) = decision {
         render_recorded_choice(html, r, answers, d);
@@ -1407,7 +1409,8 @@ fn render_document_body(
         } else {
             format!("{anchor}-{count}")
         };
-        html.push_str(&format!("<section class=\"reading-section {class}\" id=\"{}\" tabindex=\"-1\"><h2 class=\"reading-layer-heading\">{title}</h2>", document_anchor(answers,&anchor)));
+        let level = if grouped { 3 } else { 2 };
+        html.push_str(&format!("<section class=\"reading-section {class}\" id=\"{}\" tabindex=\"-1\"><h{level} class=\"reading-layer-heading\"{}>{title}</h{level}>", document_anchor(answers,&anchor),if grouped{" data-toc-entry"}else{""}));
         render_article_sections(
             html,
             r,
@@ -1420,15 +1423,22 @@ fn render_document_body(
         offset = end;
     }
     if has_verification && !authored_verification {
-        html.push_str(&format!("<section class=\"reading-section verification-reading\" id=\"{}\" tabindex=\"-1\"><h2 class=\"reading-layer-heading\">{}</h2>", document_anchor(answers,"verification"), text(r.locale,"Verification report","검증 보고")));
+        let level = if grouped { 3 } else { 2 };
+        html.push_str(&format!("<section class=\"reading-section verification-reading\" id=\"{}\" tabindex=\"-1\"><h{level} class=\"reading-layer-heading\"{}>{}</h{level}>", document_anchor(answers,"verification"),if grouped{" data-toc-entry"}else{""},text(r.locale,"Verification report","검증 보고")));
         if let Some(w) = work {
             verification::render_digest(html, r, answers, &w.reading.verification_report);
             html.push_str(&format!("<p class=\"verification-records-return\"><a class=\"evidence-link paragraph-evidence-action\" href=\"#{}\">{}</a></p>",document_anchor(answers,"verification-originals"),text(r.locale,"Inspect original verification records","검증 원문에서 개별 기록 확인")));
         }
         html.push_str("</section>");
     }
+    if grouped && !has_verification && !authored_verification {
+        html.push_str(&format!("<p class=\"reading-group-empty\">{}</p>",text(r.locale,"No verification explanation or report is recorded for this reading. This does not establish that checks ran or passed.","이 읽기에 별도의 검증 설명이나 보고가 기록되지 않았습니다. 검사를 실행했거나 통과했다는 뜻은 아닙니다.")));
+    }
+    if grouped && limit_groups == 0 {
+        html.push_str(&format!("<p class=\"reading-group-empty\">{}</p>",text(r.locale,"No separate explanation of limits is recorded in this section. This does not establish an absence of limitations; inspect the retained records and evidence for their actual scope and gaps.","이 영역에 별도로 작성된 한계 설명이 없습니다. 한계가 없다는 뜻은 아니며, 원문과 근거에서 기록된 범위와 공백을 확인할 수 있습니다.")));
+    }
     if grouped {
-        html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"records\" aria-label=\"{}\">",text(r.locale,"Original records and evidence","원문과 근거")));
+        html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"records\" id=\"{}\" tabindex=\"-1\" aria-label=\"{}\"><h2 class=\"reading-group-heading\" data-toc-group-heading>{}</h2>",document_anchor(answers,"records"),text(r.locale,"Original records and evidence","원문과 근거"),text(r.locale,"Original records and evidence","원문과 근거")));
     } else {
         html.push_str("<div class=\"audit\">");
     }
@@ -1646,6 +1656,10 @@ fn insert_contents(
         let Some(open_end) = article[at..].find('>').map(|n| at + n) else {
             break;
         };
+        if article[at..open_end].contains("data-toc-group-heading") {
+            cursor = open_end + 1;
+            continue;
+        }
         if grouped && level != b'2' && !article[at..open_end].contains("data-toc-entry") {
             cursor = open_end + 1;
             continue;
@@ -1693,7 +1707,15 @@ fn insert_contents(
                 entries.len() + 1
             )
         });
-        let checks = grouped && prefix.contains("data-reading-group=\"checks\"");
+        let group = if grouped {
+            prefix
+                .rsplit_once("data-reading-group=\"")
+                .and_then(|(_, value)| value.split('"').next())
+                .unwrap_or("work")
+                .to_owned()
+        } else {
+            "work".into()
+        };
         let attributes = if explicit_target.is_some() {
             String::new()
         } else {
@@ -1701,41 +1723,54 @@ fn insert_contents(
         };
         article.insert_str(at + 3, &attributes);
         cursor = end + close.len() + attributes.len();
-        entries.push((id, title, level, checks));
+        entries.push((id, title, level, group));
     }
-    if entries.is_empty() {
+    if entries.is_empty() && (!grouped || !work) {
         return;
     }
     let mut contents = format!("<details class=\"document-nav\"{}{}><summary><span class=\"toc-label\">{}</span><span class=\"toc-cue\">{}</span><span class=\"toc-position\"></span><span aria-hidden=\"true\">⌄</span></summary><nav aria-label=\"{}\">",publication_scope(answers),if grouped {" data-overflow=\"true\""} else {""},text(r.locale,"Contents","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Current document contents","현재 문서 목차"));
-    for (checks, label) in if grouped {
-        vec![
-            (
-                false,
-                if work {
-                    text(r.locale, "Work explanation", "작업 설명")
-                } else {
-                    text(r.locale, "Repository explanation", "저장소 설명")
-                },
-            ),
-            (
-                true,
-                text(r.locale, "Verification and limits", "검증과 한계"),
-            ),
-        ]
-    } else {
-        vec![(false, text(r.locale, "This document", "이 문서"))]
-    } {
-        contents.push_str(&format!(
-            "{}<span class=\"toc-caption\">{label}</span><ol class=\"toc-primary\">",
-            if grouped {
-                "<div class=\"work-toc-group\">"
+    let groups = if grouped {
+        let mut groups = vec![(
+            "work",
+            if work {
+                text(r.locale, "Work explanation", "작업 설명")
             } else {
-                ""
+                text(r.locale, "Repository explanation", "저장소 설명")
+            },
+        )];
+        if article.contains("data-reading-group=\"decisions\"") {
+            groups.push((
+                "decisions",
+                text(r.locale, "Related Decisions", "관련 결정"),
+            ));
+        }
+        if article.contains("data-reading-group=\"checks\"") {
+            groups.push((
+                "checks",
+                text(r.locale, "Verification and limits", "검증과 한계"),
+            ));
+        }
+        groups
+    } else {
+        vec![("work", text(r.locale, "This document", "이 문서"))]
+    };
+    for (group, label) in groups {
+        let target = document_anchor(answers, if group == "work" { "reading" } else { group });
+        let caption = if grouped && article.contains(&format!("id=\"{target}\"")) {
+            format!("<a href=\"#{target}\">{label}</a>")
+        } else {
+            label.to_owned()
+        };
+        contents.push_str(&format!(
+            "{}<span class=\"toc-caption\">{caption}</span><ol class=\"toc-primary\">",
+            if grouped {
+                format!("<div class=\"work-toc-group\" data-toc-group=\"{group}\">")
+            } else {
+                String::new()
             }
         ));
-        for (number, (id, title, level, _)) in entries.iter().filter(|e| e.3 == checks).enumerate()
-        {
-            let number = if !grouped || !checks {
+        for (number, (id, title, level, _)) in entries.iter().filter(|e| e.3 == group).enumerate() {
+            let number = if !grouped || group == "work" {
                 format!("<span class=\"toc-number\">{:02}</span>", number + 1)
             } else {
                 String::new()
@@ -1748,7 +1783,14 @@ fn insert_contents(
         contents.push_str(if grouped { "</ol></div>" } else { "</ol>" });
     }
     if grouped {
-        contents.push_str(&format!("<div class=\"work-toc-group\"><span class=\"toc-caption\">{}</span><ol class=\"toc-records\">",text(r.locale,"Original records and evidence","원문과 근거")));
+        let label = text(r.locale, "Original records and evidence", "원문과 근거");
+        let target = document_anchor(answers, "records");
+        let caption = if article.contains(&format!("id=\"{target}\"")) {
+            format!("<a href=\"#{target}\">{label}</a>")
+        } else {
+            label.into()
+        };
+        contents.push_str(&format!("<div class=\"work-toc-group\" data-toc-group=\"records\"><span class=\"toc-caption\">{caption}</span><ol class=\"toc-records\">"));
         for (section, label) in [
             (
                 "original",
