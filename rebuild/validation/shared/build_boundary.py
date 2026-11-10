@@ -331,6 +331,67 @@ def execute(argv):
     return code
 
 
+def cargo_profile(item):
+    """Observed Cargo code-generation settings, never inferred from a path."""
+    profile = item.get('profile')
+    if (not isinstance(profile, dict)
+            or set(profile) != {'opt_level', 'debuginfo', 'debug_assertions', 'overflow_checks', 'test'}
+            or profile.get('opt_level') not in ('0', '1', '2', '3', 's', 'z')
+            or any(type(profile.get(key)) is not bool
+                   for key in ('debug_assertions', 'overflow_checks', 'test'))
+            or profile['test']
+            or not (profile.get('debuginfo') is None
+                    or type(profile.get('debuginfo')) is int and profile['debuginfo'] in (0, 1, 2))):
+        raise ValueError('Cargo executable profile is missing or unsupported')
+    return profile
+
+
+def artifact_profile(attempt, name):
+    """Inspect a selected build's preserved profile and current executable bytes.
+
+    This is a diagnostic comparison prerequisite, not gate qualification. Missing
+    historical metadata stays unknown; familiar debug/release paths supply none.
+    """
+    attempt = Path(attempt)
+    result = json.loads((attempt / 'result.json').read_text())
+    command = json.loads((attempt / 'command.json').read_text())
+    if result.get('exit_code') != 0 or result.get('selection') != 'admitted':
+        raise ValueError('build artifact selection was not admitted')
+    artifact = result['artifacts'][name]
+    if identity(artifact['path']) != artifact:
+        raise ValueError('selected executable changed after its build')
+    observed = []
+    with (attempt / 'stdout.log').open() as stream:
+        for line in stream:
+            item = json.loads(line)
+            if (item.get('reason') == 'compiler-artifact'
+                    and item.get('executable') and item['target']['name'] == name):
+                if str(Path(item['executable']).resolve()) != artifact['path']:
+                    raise ValueError('Cargo executable path differs from selection')
+                observed.append(cargo_profile(item))
+    if len(observed) != 1 or result.get('profiles', {}).get(name) != observed[0]:
+        raise ValueError('selected executable profile is unknown or inconsistent')
+    requested = command.get('requested_profile')
+    if requested not in ('dev', 'release'):
+        raise ValueError('requested build profile is unknown')
+    if ('--release' in command['argv']) != (requested == 'release'):
+        raise ValueError('requested build profile disagrees with command')
+    compiler = command['rustc']['toolchain_binaries']['rustc']['sha256']
+    if not isinstance(compiler, str) or re.fullmatch('[0-9a-f]{64}', compiler) is None:
+        raise ValueError('selected compiler identity is unknown')
+    return {'executable_sha256': artifact['sha256'], 'requested_profile': requested,
+            'cargo_profile': observed[0], 'compiler_sha256': compiler}
+
+
+def compare_artifact_profiles(left, right, name):
+    first, second = artifact_profile(left, name), artifact_profile(right, name)
+    for field in ('requested_profile', 'cargo_profile', 'compiler_sha256'):
+        if first[field] != second[field]:
+            raise ValueError(f'runtime comparison refused: {field} mismatch')
+    return {'comparison_scope': 'compiler_and_cargo_profile_only',
+            'state': 'matching', 'left': first, 'right': second}
+
+
 def build_binaries(root, names, *, release=False):
     root = Path(root).resolve()
     local = root / 'rebuild/.local/builds'
@@ -343,6 +404,7 @@ def build_binaries(root, names, *, release=False):
     for name in names:
         command.extend(['--bin', name])
     write(attempt / 'command.json', {'argv': command, 'cwd': str(root),
+          'requested_profile': 'release' if release else 'dev',
           'context': os.environ.get(CONTEXT), 'context_sha256': os.environ.get(CONTEXT_HASH),
           'source_sha256': {str(p.relative_to(root)): digest(p) for p in
               [*(root/'rebuild').glob('Cargo.*'), *(root/'rebuild/crates').rglob('*')] if p.is_file()},
@@ -351,7 +413,7 @@ def build_binaries(root, names, *, release=False):
           'configuration': configurations(root, os.environ), 'cargo': tool('cargo'), 'rustc': tool('rustc')})
     with (attempt / 'stdout.log').open('wb') as stdout, (attempt / 'stderr.log').open('wb') as stderr:
         result = subprocess.run(command, cwd=root, stdout=stdout, stderr=stderr, check=False)
-    artifacts = {}
+    artifacts, profiles = {}, {}
     # Preserve process completion even when artifact admission subsequently refuses.
     write(attempt / 'result.json', {'exit_code': result.returncode, 'selection': 'pending' if result.returncode == 0 else 'not_run', 'artifacts': artifacts})
     print(f'Cargo build receipt: {attempt}', file=sys.stderr)
@@ -364,6 +426,7 @@ def build_binaries(root, names, *, release=False):
                     if name in artifacts:
                         raise ValueError(f'ambiguous executable: {name}')
                     artifacts[name] = identity(item['executable'])
+                    profiles[name] = cargo_profile(item)
             if set(artifacts) != set(names):
                 raise ValueError('Cargo did not produce the requested executables')
             if before:
@@ -377,13 +440,15 @@ def build_binaries(root, names, *, release=False):
                                if any(output['sha256'] == item['sha256'] for output in json.loads(p.read_text()).get('outputs', []))]
                     if not matches:
                         raise ValueError('Cargo artifact lacks a gate compiler receipt')
-                receipt(before, {'kind': 'cargo_artifact_selection', 'artifacts': artifacts, 'build_attempt': str(attempt)})
+                receipt(before, {'kind': 'cargo_artifact_selection', 'artifacts': artifacts,
+                                 'profiles': profiles, 'build_attempt': str(attempt)})
     except (OSError, ValueError, KeyError) as error:
         write(attempt / 'result.json', {'exit_code': result.returncode,
               'selection': 'refused', 'reason': str(error), 'artifacts': {}})
         raise
     write(attempt / 'result.json', {'exit_code': result.returncode,
-          'selection': 'admitted' if result.returncode == 0 else 'not_run', 'artifacts': artifacts})
+          'selection': 'admitted' if result.returncode == 0 else 'not_run',
+          'artifacts': artifacts, 'profiles': profiles})
     if result.returncode:
         sys.stderr.write((attempt / 'stderr.log').read_text())
         raise ValueError(f'Cargo build failed: exit={result.returncode}')
@@ -410,6 +475,11 @@ def install_binaries(prefix):
 
 def main():
     try:
+        if sys.argv[1] == 'compare-profiles':
+            if len(sys.argv) != 5:
+                raise ValueError('compare-profiles requires name and two build receipt directories')
+            print(json.dumps(compare_artifact_profiles(sys.argv[3], sys.argv[4], sys.argv[2])))
+            return 0
         if sys.argv[1] == 'install':
             install_binaries(sys.argv[2])
             return 0

@@ -156,6 +156,16 @@ and actual human visual acceptance remain separate conclusions.
 
 ## Current recurrence attribution
 
+Runtime comparisons additionally retain the requested profile and the executable's
+actual Cargo profile in the build receipt and gate artifact-selection observation.
+`build_boundary.py compare-profiles` refuses unknown, inconsistent or mismatched
+profiles/compiler identities and changed executable bytes. It compares the recorded
+code-generation settings even when both commands requested `dev`; profile names
+alone are insufficient. This diagnostic command does not establish equal inputs,
+dependency/native flags, host load, cache state or qualification. Old receipts
+without the metadata remain unknown to this command and are never rewritten.
+Historical compiler streams can still be inspected separately as original evidence.
+
 Scoped verification admission now reports each failed fixed predicate and bounded,
 content-free Work/revision, assertion/verification state, execution-window, count,
 Source and hashed operation/snapshot basis through CLI and MCP. The original missing

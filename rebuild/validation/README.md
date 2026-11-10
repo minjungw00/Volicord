@@ -43,6 +43,17 @@ contamination controls run inside `gate-entrypoint-self-test`, stopping before
 Final and external stages. The same record locates the original scoped-check
 failure and its bounded, unresolved investigation.
 
+Build receipts retain the explicitly requested `dev`/`release` profile and Cargo's
+observed executable profile alongside the selected output hash. Before a runtime
+timing comparison, use `python3 -B rebuild/validation/shared/build_boundary.py
+compare-profiles NAME LEFT_BUILD_RECEIPT RIGHT_BUILD_RECEIPT`. It checks the current
+executable bytes, preserved Cargo output, requested profile, code-generation
+settings and selected compiler identity; mismatch or missing evidence refuses
+with exit 2. Equality covers only compiler/profile: input, dependency/native flags,
+cache and host conditions still need their own evidence. Never infer a profile
+from a directory name or relabel old failures. `build_profile_self_test.py` exercises
+real Cargo builds and the actual comparison CLI; use it through `validate focused`.
+
 ## Commands
 
 `node end-to-end/multi-repository/code_origin_browser.cjs <private-config.json>`
