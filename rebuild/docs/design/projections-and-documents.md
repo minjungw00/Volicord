@@ -2702,6 +2702,15 @@ article, with Work-scoped DOM origins even when a Decision applies to several
 Works. Canonical question, alternatives/consequences, recommendation/reason,
 user choice/optional reason and applicability survive missing Decision prose.
 
+Generated documents distinguish bounded display catalogues from exact Source
+membership already retained in their materialized Work/Decision reading. A
+canonical Source-status witness with actual record availability may supply the
+same ID/freshness when its catalogue row was omitted; an ID or generated prose
+alone cannot. Missing witnesses still reject unknown Source references, and
+conflicting freshness is Unknown. This changes neither catalogue/output limits
+nor Source-body read permission, retention, graph/history or independent article
+lifetimes. Document metadata and grounding validation use the same witness set.
+
 ### Publication-scoped reader fragments
 
 Viewer anchor namespaces derive from a structured Project, subject, publication

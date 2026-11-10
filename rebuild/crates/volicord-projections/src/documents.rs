@@ -1616,15 +1616,54 @@ fn bound_rendered_body(body: &mut DocumentBody, locale: FixedLocale) {
     }
 }
 
+/// The display catalogue is bounded independently of already materialized Work
+/// and Decision reading. Their canonical Source-status witnesses remain exact
+/// membership/freshness evidence; neither IDs alone nor prose establish it.
+fn document_source_freshness(
+    projection: &ProjectProjection,
+) -> BTreeMap<SourceId, SourceFreshness> {
+    let mut known = projection
+        .source_catalog
+        .iter()
+        .map(|source| (source.source.id, source.freshness))
+        .collect::<BTreeMap<_, _>>();
+    let work_sources = projection
+        .work_history
+        .iter()
+        .chain(projection.selected_work.iter())
+        .chain(&projection.work_overview.current.items)
+        .chain(&projection.work_overview.completed.items)
+        .chain(&projection.work_overview.remaining.items)
+        .chain(&projection.work_overview.next_steps.items)
+        .flat_map(|work| &work.reading.evidence_source_status);
+    let decision_sources = projection.resume.decisions.iter().flat_map(|decision| {
+        decision
+            .question_source_status
+            .iter()
+            .chain(&decision.user_source_status)
+            .chain(&decision.recommendation_source_status)
+    });
+    for source in work_sources
+        .chain(decision_sources)
+        .filter(|source| source.availability.is_some())
+    {
+        known
+            .entry(source.source_id)
+            .and_modify(|freshness| {
+                if *freshness != source.freshness {
+                    *freshness = SourceFreshness::Unknown;
+                }
+            })
+            .or_insert(source.freshness);
+    }
+    known
+}
+
 fn validate_claim_grounding(
     projection: &ProjectProjection,
     body: &DocumentBody,
 ) -> Result<(), DocumentError> {
-    let valid_sources = projection
-        .source_catalog
-        .iter()
-        .map(|source| source.source.id)
-        .collect::<BTreeSet<_>>();
+    let valid_sources = document_source_freshness(projection);
     let valid_decisions = projection
         .resume
         .decisions
@@ -1658,7 +1697,7 @@ fn validate_claim_grounding(
         if let Some(source) = claim
             .source_basis
             .iter()
-            .find(|source| !valid_sources.contains(source))
+            .find(|source| !valid_sources.contains_key(source))
         {
             return Err(DocumentError::new(format!(
                 "claim {} refers to unknown Source {}",
@@ -1775,11 +1814,7 @@ fn build_metadata(
         .collect::<Vec<_>>();
     used_source_ids.sort();
     used_source_ids.dedup();
-    let source_freshness = projection
-        .source_catalog
-        .iter()
-        .map(|source| (source.source.id, source.freshness))
-        .collect::<BTreeMap<_, _>>();
+    let source_freshness = document_source_freshness(projection);
     let used_sources = used_source_ids
         .into_iter()
         .map(|source_id| DocumentSourceBasis {

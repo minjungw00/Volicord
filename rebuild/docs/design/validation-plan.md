@@ -3401,6 +3401,14 @@ focus restoration remain separate assertions. Headless geometry supplies no actu
 200% browser zoom, assistive comprehension, original-user choice understanding or
 human input/paint evidence. Preserve those missing observations independently.
 
+The bounded-catalogue document regression keeps complete Work/history/graph input,
+omits an actually known Work Source only from the display catalogue, and requires
+all four documents to preserve that exact witness and its stale/unavailable state.
+Removing every actual witness must still fail; conflicting freshness stays Unknown.
+The actual multi-Work Volicord CLI document failure is a separate integration
+reproduction, not inferred from the synthetic control. Output/resource bounds are
+unchanged and complete public publication reading remains independently checked.
+
 ### Reader evidence campaign admission
 
 [Reader AC-17–25](reader-experience-design.md) supplements AC-01–16. Use the existing
