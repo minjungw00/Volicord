@@ -494,6 +494,13 @@ unavailable publication. CLI Work/Decision/Workless Repository expose the same
 `record --production-id` operations. Existing explicit prepare/generate/compose/
 record remain available for deliberate authoring.
 
+A changed preparation reports `basis_changed` without reusing its previous
+production's diagram assessment as a current one. Preserve that original assessment;
+explicit new production and a fresh assessment remain necessary before article
+recording. Status and restart recovery must not fail merely because an intact old
+assessment belongs to the prior preparation. Foreign/corrupt current assessments
+and stale production IDs remain rejected.
+
 Normal production skips an intact publication from the identical preparation,
 without persistence, reauthoring or deadline renewal. Explicit refinement requests
 another edition on the same basis. A pending/failed refinement remains incomplete

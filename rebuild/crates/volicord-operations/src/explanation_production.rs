@@ -152,6 +152,10 @@ impl LocalOperations {
         };
         let assessment = intent
             .as_ref()
+            // An assessment belongs to its exact production preparation. A
+            // changed basis needs a new assessment, not validation of the old
+            // assessment against a plan it never claimed to evaluate.
+            .filter(|(_, intent)| intent.plan_fingerprint == plan.fingerprint)
             .map(|(id, _)| {
                 self.explanation_diagram_assessment(
                     project,

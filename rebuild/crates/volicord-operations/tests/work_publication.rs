@@ -1030,6 +1030,174 @@ fn blank_reports_select_current_progress_and_invalidate_each_material_qualificat
 }
 
 #[test]
+fn changed_article_basis_preserves_old_assessment_and_allows_explicit_cli_recovery(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = f.goals["older"];
+    let subject = ExplanationSubject::Work(id);
+    let first = f.operations.begin_explanation_production(
+        f.project,
+        subject,
+        "en",
+        ExplanationProductionReason::Boundary,
+    )?;
+    let first_id = first["production_id"].as_str().ok_or("first production")?;
+    let assessment = ExplanationDiagramAssessment {
+        outcome: DiagramAssessmentOutcome::NotNeeded,
+        rationale: "This controlled report describes one recorded investigation state, with no independently supported relationship requiring a diagram.".into(),
+        source_ids: vec![],
+    };
+    f.operations.assess_explanation_diagrams(
+        f.project,
+        subject,
+        "en",
+        first_id,
+        assessment.clone(),
+    )?;
+    let canonical = f.operations.canonical_basis(f.project)?;
+    let latest = canonical
+        .checkpoint_history
+        .iter()
+        .filter(|c| c.work_item_id == Some(id))
+        .max_by_key(|c| c.recorded_at)
+        .ok_or("Checkpoint")?;
+    Store::open(f.operations.layout().canonical_store())?.record_checkpoint(
+        OperationId::from_bytes([0xb9; 16]),
+        f.project,
+        CheckpointDraft {
+            expected_project_revision: canonical.project.revision,
+            work_item_id: Some(id),
+            kind: CheckpointKind::Handoff,
+            goal: latest.goal.clone(),
+            work_state: WorkState::InProgress,
+            state_change: Some(
+                "Resumed the same investigation; no new execution was reported.".into(),
+            ),
+            source_basis: latest.source_basis.clone(),
+            changed_source_basis: vec![],
+            changed_paths: vec![],
+            applied_decisions: vec![],
+            verification: vec![],
+            user_review: UserReviewFact {
+                state: UserReviewState::NotRequested,
+                source_id: None,
+            },
+            user_acceptance: UserAcceptanceFact {
+                state: UserAcceptanceState::NotRequested,
+                source_id: None,
+            },
+            known_limits: vec!["Caller remains unverified".into()],
+            non_goals: vec![],
+            open_questions: vec![],
+            next_step: "Inspect the caller".into(),
+            handoff_to: Some("the same investigation".into()),
+        },
+    )?;
+    let retained = f.operations.privacy_status(f.project)?;
+    let status = f
+        .operations
+        .explanation_production_status(f.project, subject, "en")?;
+    assert_eq!(status["state"], "basis_changed");
+    assert_eq!(status["content_complete"], false);
+    assert!(status["diagram_assessment"].is_null());
+    assert_eq!(
+        retained,
+        f.operations.privacy_status(f.project)?,
+        "status must not rewrite the prior assessment or renew its retention"
+    );
+    let mut out = vec![];
+    let mut err = vec![];
+    assert_eq!(
+        run_cli(
+            vec![
+                "--runtime".into(),
+                f.operations
+                    .layout()
+                    .root()
+                    .to_str()
+                    .ok_or("runtime")?
+                    .into(),
+                "--project".into(),
+                f.project.to_string(),
+                "--json".into(),
+                "work".into(),
+                "explain".into(),
+                "produce".into(),
+                "--work".into(),
+                id.to_string(),
+                "--language".into(),
+                "en".into(),
+                "--reason".into(),
+                "boundary".into()
+            ],
+            &mut out,
+            &mut err
+        ),
+        CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&err)
+    );
+    let next: serde_json::Value = serde_json::from_slice(&out)?;
+    let next_id = next["production_id"].as_str().ok_or("next production")?;
+    assert_ne!(first_id, next_id);
+    let plan: ExplanationPlan = serde_json::from_value(next["plan"].clone())?;
+    let mut next_draft = draft(
+        &plan,
+        "The investigation resumed, with caller behavior still unverified.",
+    );
+    next_draft.paragraphs.insert(
+        0,
+        WorkReaderUnit {
+            question: ExplanationQuestion::Heading,
+            text: "Resume the query inspection".into(),
+            evidence_keys: vec!["goal".into()],
+            sources: vec![],
+        },
+    );
+    let realized = f
+        .operations
+        .compose_subject_explanation(f.project, subject, next_draft)?;
+    assert!(
+        f.operations
+            .record_explanation_for_production(
+                f.project,
+                subject,
+                "en",
+                realized.clone(),
+                Some(next_id)
+            )
+            .is_err(),
+        "a new production cannot inherit the prior diagram assessment"
+    );
+    f.operations
+        .assess_explanation_diagrams(f.project, subject, "en", next_id, assessment)?;
+    f.operations.record_explanation_for_production(
+        f.project,
+        subject,
+        "en",
+        realized,
+        Some(next_id),
+    )?;
+    assert_eq!(
+        f.operations
+            .explanation_production_status(f.project, subject, "en")?["content_complete"],
+        true
+    );
+    let after = f.operations.privacy_status(f.project)?;
+    for original in retained
+        .managed_derived
+        .iter()
+        .filter(|r| r.purpose == format!("explanation-assessment:{first_id}"))
+    {
+        assert!(
+            after.managed_derived.contains(original),
+            "previous assessment metadata remains intact"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn production_tracks_meaningful_progress_and_public_cli_without_reauthoring_name(
 ) -> Result<(), Box<dyn Error>> {
     let f = fixture()?;
