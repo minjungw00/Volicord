@@ -83,8 +83,14 @@ pub const HOST_TOOL_NAMES: [&str; 28] = [
     "guarded_interaction",
 ];
 
+fn work_production_followup(project: ProjectId, work: ContextItemId, reason: &str) -> Value {
+    json!({"tool":"work_explanation","action":"produce","project_id":project.to_string(),"work_item_id":work.to_string(),"reason":reason,
+        "scopes":if reason == "boundary" {vec!["summary","article"]} else {vec!["name","summary"]},
+        "instruction":"The authorized active host authors useful independent names at initiation and summaries after meaningful progress, in the actually requested language. At switch/pause/completion assess needed Work/repository/related Decision explanations and diagrams. Invoke produce explicitly for each needed scope, inspect status after record, and preserve failures. Unchanged current bases skip; refinement explicitly requests another edition. This follow-up starts no generation or retention and is not a per-turn or per-Checkpoint quota, work blocker, Learning activation or provider grant."})
+}
+
 fn server_instructions() -> String {
-    "Project work starts with project_resolve. Follow workflow.required_next_action; never bypass a blocker. Failed required transitions stay blocking; prose is not canonical resolution. Relevant evidence is not authority: material outcomes need an exact current-Goal specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects scope. A Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes. Explicit explanations: work_explanation generate, scoped Source reads, host-authored record. Grounding is not semantic approval.".into()
+    "Project work starts with project_resolve. Follow workflow.required_next_action; never bypass a blocker. Failed required transitions stay blocking; prose is not canonical resolution. Relevant evidence is not authority: material outcomes need an exact current-Goal specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects scope. A Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes. Authorized Work: work_explanation produce; host compose/record/status. Unchanged bases skip; reads never generate. Grounding is not semantic approval.".into()
 }
 
 #[derive(Debug)]
@@ -134,6 +140,7 @@ struct HostExplanationRequest {
     fingerprint: String,
     retrieved: BTreeSet<(String, String)>,
     started: std::time::Instant,
+    production_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1595,6 +1602,7 @@ impl HostAdapter {
                 "changed_paths":result.changed_paths,
                 "applied_decision_ids":result.applied_decisions.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
                 "verification_source_ids":result.verification_source_ids.into_iter().map(|id| id.to_string()).collect::<Vec<_>>(),
+                "explanation_production":work_production_followup(project_id,result.goal_context_id,"boundary"),
             }),
             workflow,
         ))
@@ -1637,7 +1645,7 @@ impl HostAdapter {
                 self.host_session.clone(), required_str(args, "user_turn")?.to_owned(),
                 role, required_str(args, "statement")?.to_owned())
         }.map_err(operation_error)?;
-        let response = json!({
+        let mut response = json!({
             "project_id": project_id.to_string(),
             "source_id": result.source_id.to_string(),
             "context_item_id": result.context_item_id.to_string(),
@@ -1648,6 +1656,15 @@ impl HostAdapter {
             "user_turn_content_provenance": "caller_supplied_not_host_authenticated",
         });
         Ok(if result.role == ContextItemRole::Goal {
+            response["explanation_production"] = work_production_followup(
+                project_id,
+                result.context_item_id,
+                if transition == Some("continue") {
+                    "progress"
+                } else {
+                    "initiation"
+                },
+            );
             with_workflow(
                 response,
                 LocalOperations::workflow_after_goal(project_id, result.context_item_id),
@@ -1694,16 +1711,88 @@ impl HostAdapter {
                     json!({"project_id":project.to_string(),"work_item_id":work.to_string(),"verification_report":self.operations.read_work_verification(project,work).map_err(operation_error)?,"read_only":true}),
                 )
             }
-            "prepare" | "generate" => {
-                let language = required_str(args, "language")?;
-                let plan = self
+            "status" => {
+                let mut status = self
                     .operations
-                    .prepare_explanation(project, subject, language)
+                    .explanation_production_status(
+                        project,
+                        subject,
+                        required_str(args, "language")?,
+                    )
                     .map_err(operation_error)?;
+                let live = status["production_id"].is_string()
+                    && self.explanation_requests.values().any(|request| {
+                        request.production_id.as_deref() == status["production_id"].as_str()
+                            && request.project == project
+                            && request.subject == subject
+                            && request.language == args["language"]
+                    });
+                status["live_request"] = json!(live);
+                if status["state"] == "awaiting_host_interpretation" && !live {
+                    status["state"] = json!("resume_required");
+                }
+                Ok(status)
+            }
+            "fail" => {
+                let request_id = required_str(args, "generation_id")?;
+                let request = self.explanation_requests.get(request_id).ok_or_else(|| {
+                    HostError::new(
+                        "request unavailable; inspect status and explicitly produce again",
+                    )
+                })?;
+                if request.project != project || request.subject != subject {
+                    return Err(HostError::new(
+                        "explanation request Project/subject mismatch",
+                    ));
+                }
+                let id = request.production_id.as_deref().ok_or_else(|| {
+                    HostError::new("failure status requires an explicit produce request")
+                })?;
+                let failure = serde_json::from_value(args["failure"].clone())
+                    .map_err(|_| HostError::new("invalid production failure"))?;
+                let result = self
+                    .operations
+                    .fail_explanation_production(project, subject, &request.language, id, failure)
+                    .map_err(operation_error)?;
+                self.explanation_requests.remove(request_id);
+                Ok(result)
+            }
+            "prepare" | "generate" | "produce" => {
+                let language = required_str(args, "language")?;
+                let producing = args["action"] == "produce";
+                if args["action"] != "prepare" && self.explanation_requests.len() >= 32 {
+                    return Err(HostError::new("active explanation request capacity reached; finish a request or restart; no production started"));
+                }
+                let production = if producing {
+                    let reason = serde_json::from_value(args["reason"].clone())
+                        .map_err(|_| HostError::new("production reason required"))?;
+                    let result = self
+                        .operations
+                        .begin_explanation_production(project, subject, language, reason)
+                        .map_err(operation_error)?;
+                    if result["generation_status"] == "skipped_unchanged_basis" {
+                        return Ok(result);
+                    }
+                    Some(result)
+                } else {
+                    None
+                };
+                let plan = if let Some(production) = &production {
+                    serde_json::from_value(production["plan"].clone())
+                        .map_err(|_| HostError::new("production plan unavailable"))?
+                } else {
+                    self.operations
+                        .prepare_explanation(project, subject, language)
+                        .map_err(operation_error)?
+                };
                 let manifest = self.operations.explanation_source_discovery(&plan);
                 let mut result = json!({"plan":plan,"source_inventory":manifest,"generation_status":"not_requested",
-                    "read_only":true,"semantic_approval":"not_established"});
-                if args["action"] == "generate" {
+                    "read_only":!producing,"semantic_approval":"not_established"});
+                if args["action"] == "generate" || producing {
+                    result["production_id"] = production
+                        .as_ref()
+                        .map(|p| p["production_id"].clone())
+                        .unwrap_or(Value::Null);
                     if self.explanation_requests.len() >= 32 {
                         return Err(HostError::new("active explanation request capacity reached; finish a request or restart; no generation or recording completed"));
                     }
@@ -1735,6 +1824,10 @@ impl HostAdapter {
                             fingerprint: plan.fingerprint.clone(),
                             retrieved: BTreeSet::new(),
                             started: std::time::Instant::now(),
+                            production_id: production
+                                .as_ref()
+                                .and_then(|p| p["production_id"].as_str())
+                                .map(str::to_owned),
                         },
                     );
                 }
@@ -1752,6 +1845,17 @@ impl HostAdapter {
                     })?;
                 if request.project != project || request.subject != subject {
                     return Err(HostError::new("explanation request Project/Work mismatch"));
+                }
+                if let Some(id) = &request.production_id {
+                    self.operations
+                        .validate_explanation_production(
+                            project,
+                            subject,
+                            &request.language,
+                            id,
+                            &request.fingerprint,
+                        )
+                        .map_err(operation_error)?;
                 }
                 let Some(work) = subject.work() else {
                     return Err(HostError::new("Decision does not grant Work Source access"));
@@ -1779,6 +1883,17 @@ impl HostAdapter {
                 })?;
                 if request.project != project || request.subject != subject {
                     return Err(HostError::new("explanation request Project/Work mismatch"));
+                }
+                if let Some(id) = &request.production_id {
+                    self.operations
+                        .validate_explanation_production(
+                            project,
+                            subject,
+                            &request.language,
+                            id,
+                            &request.fingerprint,
+                        )
+                        .map_err(operation_error)?;
                 }
                 let composing = args["action"] == "compose";
                 let response: ExplanationRealization = if composing {
@@ -1827,7 +1942,13 @@ impl HostAdapter {
                 }
                 let retained = self
                     .operations
-                    .record_explanation(project, subject, &request.language, response)
+                    .record_explanation_for_production(
+                        project,
+                        subject,
+                        &request.language,
+                        response,
+                        request.production_id.as_deref(),
+                    )
                     .map_err(operation_error)?;
                 self.explanation_requests.remove(request_id);
                 Ok(
@@ -2892,6 +3013,49 @@ fn work_explanation_schema() -> Value {
         ),
         ("language", text_schema("Requested prose language", 1, 128)),
     ]);
+    let mut produce = scope();
+    produce.extend([
+        ("action", enum_schema("Explicit authorized host production; skips unchanged current bases", &["produce"])),
+        ("language", text_schema("Requested prose language", 1, 128)),
+        ("reason", enum_schema("Meaningful host production boundary; refinement explicitly replaces the same basis", &["initiation", "progress", "boundary", "refinement"])),
+    ]);
+    let mut status = scope();
+    status.extend([
+        (
+            "action",
+            enum_schema(
+                "Read persistent intent and exact publication status without starting generation",
+                &["status"],
+            ),
+        ),
+        ("language", text_schema("Requested prose language", 1, 128)),
+    ]);
+    let mut fail = scope();
+    fail.extend([
+        (
+            "action",
+            enum_schema(
+                "Explicitly retain a failed host attempt; preserves publications",
+                &["fail"],
+            ),
+        ),
+        (
+            "generation_id",
+            identity_schema("Current production request"),
+        ),
+        (
+            "failure",
+            enum_schema(
+                "Observed production failure; no arbitrary private logs",
+                &[
+                    "host_unavailable",
+                    "source_unavailable",
+                    "authoring_failed",
+                    "interrupted",
+                ],
+            ),
+        ),
+    ]);
     let mut read = scope();
     read.extend([
         (
@@ -2947,7 +3111,7 @@ fn work_explanation_schema() -> Value {
             &["verification"],
         ),
     ));
-    json!({"oneOf":[object_schema(verification,&["action","project_id","work_item_id"]),object_schema(prepare,&["action","project_id","work_item_id","language"]),
+    json!({"oneOf":[object_schema(produce,&["action","project_id","work_item_id","language","reason"]),object_schema(status,&["action","project_id","work_item_id","language"]),object_schema(fail,&["action","project_id","work_item_id","generation_id","failure"]),object_schema(verification,&["action","project_id","work_item_id"]),object_schema(prepare,&["action","project_id","work_item_id","language"]),
         object_schema(read,&["action","project_id","work_item_id","generation_id","source_id"]),
         object_schema(record,&["action","project_id","work_item_id","generation_id","realization"]),
         object_schema(compose,&["action","project_id","work_item_id","generation_id","draft"]),
@@ -3697,7 +3861,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::DestructiveClosed,
         ),
         "work_explanation" => (
-            "Work publications use explicit scope=name|summary|article (default article), with independent preparation, currentness, provenance and replacement for the same canonical Work. Publish name and summary from their own plans; article prose never substitutes for card identity. On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected bodies with read_source, follows plan.instructions and question_grounding to select genuinely supporting canonical evidence_keys for EVERY paragraph alongside exact Source citations, and records its prose. Source citations never replace canonical keys; goal is not generic evidence for technical claims. Host-level transmission authorization is outside canonical Work facts: missing plan data does not prove absent consent. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
+            "Work publications use explicit scope=name|summary|article (default article), with independent preparation, currentness, provenance and replacement for the same canonical Work. Publish name and summary from their own plans; article prose never substitutes for card identity. For ordinary authorized Work, produce explicitly persists host production intent and starts request-local authorship; status reads exact scope/language and restart recovery, fail records an observed interruption. Unchanged current bases skip without renewal; reason=refinement requests another edition. At initiation produce useful names and summaries; update summaries after meaningful progress and assess needed articles at switch/pause/completion. This creates no Learning, user Decision, provider authority or per-turn quota. On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected bodies with read_source, follows plan.instructions and question_grounding to select genuinely supporting canonical evidence_keys for EVERY paragraph alongside exact Source citations, and records its prose. Source citations never replace canonical keys; goal is not generic evidence for technical claims. Host-level transmission authorization is outside canonical Work facts: missing plan data does not prove absent consent. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
             work_explanation_schema(),
             ToolBehavior::DestructiveClosed,
         ),

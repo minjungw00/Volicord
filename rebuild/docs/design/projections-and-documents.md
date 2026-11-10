@@ -472,6 +472,48 @@ recording time and generator status without duplicating original evidence text.
 Canonical links cover every used record and Source. No canonical schema, Viewer
 database, provider invocation, background opt-in or adoption authority is introduced.
 
+#### Ordinary authorized host production
+
+Ordinary Work handling includes explicit active-host production, under the actual
+current interaction authority. `work_explanation produce` binds exact Project,
+Work publication scope, requested language and reason (`initiation`, `progress`,
+`boundary`, `refinement`). Name/summary are useful at initiation; meaningful
+progress updates summary; switch/pause/completion prompts assessment of needed
+articles, repository and applicable related Decision explanations. These are host
+judgments about useful content, not per-turn/per-Checkpoint quotas. Goal and
+Checkpoint responses advertise the follow-up without executing it or blocking Work.
+Learning participation, Decisions and provider authority remain independent.
+
+`produce` persists a content-minimal intent in the existing managed CachedSummary
+store under `explanation-production:SUBJECT:LANGUAGE`, then returns an ordinary
+request-local plan awaiting host interpretation. It invokes no model, collects no
+Source and creates no prose. `status` is read-only; it distinguishes missing,
+awaiting host, restart recovery, changed basis, failed, complete/current and an
+unavailable publication. CLI Work/Decision/Workless Repository expose the same
+`explain produce`, `production-status`, `production-fail` and guarded
+`record --production-id` operations. Existing explicit prepare/generate/compose/
+record remain available for deliberate authoring.
+
+Normal production skips an intact publication from the identical preparation,
+without persistence, reauthoring or deadline renewal. Explicit refinement requests
+another edition on the same basis. A pending/failed refinement remains incomplete
+even if independently valid prior prose remains readable. Exact current insertion,
+canonical dependencies, language and preparation determine recovery; article text
+never supplies a new name. Failure is explicitly recorded by the host as a typed
+cause, without private logs or inferred model execution. After restart, invoke
+produce again and retrieve cited Sources in the new live request. Superseded
+production IDs cannot record; checking intent and recording share the mutation
+lock. Success is actual retained admission, not preparation, composition or a
+claim of semantic quality. Reads, GET, canonical writes and composition never
+start/retry generation, capture, transmit or renew retention.
+
+The chosen seam resolves the former activation wording: “no automatic generation”
+means no hidden server/read/write model dispatch, not omission of authorized
+ordinary host authorship. The active host follows the explicit production handoff;
+absence/failure remains incomplete content. This introduces no daemon, queue,
+canonical entity or separate store. Requested languages are selected explicitly;
+no universal bilingual regeneration or automatic provider authorization exists.
+
 #### Independent Work progress publications
 
 `WorkName` selects only the exact Goal statement/revision/Sources. `WorkSummary`

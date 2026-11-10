@@ -432,3 +432,19 @@ responsibilities and distinct flows before writing prose. A Work explanation or
 one investigated subsystem cannot stand in for that account. Inventory, investigated
 Sources and explained/omitted topics remain different scopes; no external model is
 dispatched by these APIs.
+
+Ordinary authorized Work uses `work_explanation action=produce`, with exact
+`scope`, `language` and `reason=initiation|progress|boundary|refinement`. Publish useful
+name/summary at initiation, update summary after meaningful progress, and assess
+needed articles at switch/pause/completion. Goal/Checkpoint replies advertise the
+explicit handoff and never execute generation. `produce` skips an unchanged current
+basis without writing or renewing retention; refinement explicitly requests another
+edition. Otherwise it persists local intent and returns the usual live request for
+Source reads, host-authored compose and record. `status` reads exact persistent
+intent/publication state; `fail` records an observed `host_unavailable`,
+`source_unavailable`, `authoring_failed` or `interrupted` request. Restart needs
+produce and fresh request-local Source reads. Failed content never blocks ordinary
+Work or replaces independently valid output. This grants no Learning, Decision,
+provider authority or mandatory generation quota. CLI Work/Decision/Repository use
+`explain produce --reason ...`, `production-status`, `production-fail` and
+`record --production-id ID` with their existing scope/language selectors.

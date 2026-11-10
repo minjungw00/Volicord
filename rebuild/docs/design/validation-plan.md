@@ -5650,3 +5650,18 @@ Metadata, iframe, citation and POST boundaries without canonical mutation.
 observes final browser wire metadata and requires HTTP 200 before document/code
 navigation. Direct `goto` alone cannot cover this entry. Preserve the old Viewer's
 403 as the counterexample; do not weaken Source or mutation authorization.
+
+### Ordinary host production controls
+
+Focused Host `work_explanation::ordinary_production` and Operations
+`work_publication::production_tracks` exercise explicit produce/compose/record/status,
+Korean name/summary, exact public MCP reassembly, CLI status/skip, meaningful same-Work
+progress, independent Works, stale/superseded preparations, failed refinement and
+restart recovery. Repeated status and unchanged produce preserve complete canonical
+and privacy state. Existing Work/Repository/Decision/Source/Viewer publication tests
+remain their lifecycle and consumer owners. These authored structural controls do
+not establish actual first-result quality, live model reliability, token cost, human
+comprehension or qualification. Current-host original drafts, failures, later edits
+and Source reads are separate ignored runtime deliverables; production stage costs
+must distinguish host/model, Source, composition, persistence and reading. Unknown
+telemetry stays unknown; no arbitrary ceiling or authoritative aggregate is added.

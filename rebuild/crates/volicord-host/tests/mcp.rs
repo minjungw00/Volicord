@@ -7462,6 +7462,38 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
         ],
         "work_explanation" => vec![
             shape(
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "scope",
+                    "language",
+                    "reason",
+                ],
+                &["action", "project_id", "work_item_id", "language", "reason"],
+            ),
+            shape(
+                &["action", "project_id", "work_item_id", "scope", "language"],
+                &["action", "project_id", "work_item_id", "language"],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "scope",
+                    "generation_id",
+                    "failure",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "generation_id",
+                    "failure",
+                ],
+            ),
+            shape(
                 &["scope", "action", "project_id", "work_item_id"],
                 &["action", "project_id", "work_item_id"],
             ),
@@ -7526,6 +7558,30 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             ),
         ],
         "decision_explanation" => vec![
+            shape(
+                &["action", "project_id", "decision_id", "language", "reason"],
+                &["action", "project_id", "decision_id", "language", "reason"],
+            ),
+            shape(
+                &["action", "project_id", "decision_id", "language"],
+                &["action", "project_id", "decision_id", "language"],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "decision_id",
+                    "generation_id",
+                    "failure",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "decision_id",
+                    "generation_id",
+                    "failure",
+                ],
+            ),
             shape(
                 &["action", "project_id", "decision_id", "language"],
                 &["action", "project_id", "decision_id", "language"],

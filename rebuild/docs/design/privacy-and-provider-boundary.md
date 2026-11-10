@@ -1059,3 +1059,14 @@ withdrawal, forgetting and publication-integrity propagation. An unavailable bod
 cannot be recovered from role text, prose or a current repository during reading.
 Explicit campaign republication uses permitted evidence and fresh publication IDs;
 format replacement does not renew any Source deadline or authorize transmission.
+
+### Explicit production recovery metadata
+
+[Ordinary host production](projections-and-documents.md#ordinary-authorized-host-production)
+retains only exact scope/language, preparation fingerprint, reason, prior publication
+identity and typed failure in existing managed CachedSummary records. It links actual
+canonical evidence and Sources for correction/forgetting cleanup; it stores no Source
+bodies, user-turn text, provider authority or model tokens. Explicit produce/fail
+are writes; status and all readers are non-writing. Unchanged successful bases add
+no record and renew no lifetime. Prior valid prose remains independent of a failed
+refinement. This is local host-request metadata, not consent or a background grant.

@@ -1028,3 +1028,171 @@ fn blank_reports_select_current_progress_and_invalidate_each_material_qualificat
     assert_eq!(work(&f, id)?.reading.name_explanations, original_name);
     Ok(())
 }
+
+#[test]
+fn production_tracks_meaningful_progress_and_public_cli_without_reauthoring_name(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = f.goals["older"];
+    let name = ExplanationSubject::WorkName(id);
+    let summary = ExplanationSubject::WorkSummary(id);
+    record(&f, name, "en", "Inspect query value preservation")?;
+    let first = f.operations.begin_explanation_production(
+        f.project,
+        summary,
+        "en",
+        ExplanationProductionReason::Progress,
+    )?;
+    let plan: ExplanationPlan = serde_json::from_value(first["plan"].clone())?;
+    let realization = f.operations.compose_subject_explanation(
+        f.project,
+        summary,
+        draft(
+            &plan,
+            "The inspection paused: readQuery returns its input unchanged; no patch was made.",
+        ),
+    )?;
+    f.operations.record_explanation_for_production(
+        f.project,
+        summary,
+        "en",
+        realization,
+        first["production_id"].as_str(),
+    )?;
+    let before = f.operations.privacy_status(f.project)?;
+    for action in ["production-status", "produce"] {
+        let mut args = vec![
+            "--runtime".to_owned(),
+            f.operations
+                .layout()
+                .root()
+                .to_str()
+                .ok_or("runtime")?
+                .into(),
+            "--project".into(),
+            f.project.to_string(),
+            "--json".into(),
+            "work".into(),
+            "explain".into(),
+            action.into(),
+            "--work".into(),
+            id.to_string(),
+            "--scope".into(),
+            "summary".into(),
+            "--language".into(),
+            "en".into(),
+        ];
+        if action == "produce" {
+            args.extend(["--reason".into(), "progress".into()]);
+        }
+        let mut out = vec![];
+        let mut err = vec![];
+        assert_eq!(
+            run_cli(args, &mut out, &mut err),
+            CliExit::SUCCESS,
+            "{}",
+            String::from_utf8_lossy(&err)
+        );
+        let result: serde_json::Value = serde_json::from_slice(&out)?;
+        if action == "produce" {
+            assert_eq!(result["generation_status"], "skipped_unchanged_basis");
+        }
+    }
+    assert_eq!(before, f.operations.privacy_status(f.project)?);
+    // A same-Work report/state/direction change is a new summary basis.
+    let canonical = f.operations.canonical_basis(f.project)?;
+    let latest = canonical
+        .checkpoint_history
+        .iter()
+        .filter(|c| c.work_item_id == Some(id))
+        .max_by_key(|c| c.recorded_at)
+        .ok_or("Checkpoint")?;
+    let mut store = Store::open(f.operations.layout().canonical_store())?;
+    let mut checkpoint = CheckpointDraft {
+        expected_project_revision: canonical.project.revision,
+        work_item_id: Some(id),
+        kind: CheckpointKind::Handoff,
+        goal: latest.goal.clone(),
+        work_state: WorkState::InProgress,
+        state_change: Some("Resumed the investigation; caller behavior remains unverified.".into()),
+        source_basis: latest.source_basis.clone(),
+        changed_source_basis: vec![],
+        changed_paths: vec![],
+        applied_decisions: vec![],
+        verification: vec![],
+        user_review: UserReviewFact {
+            state: UserReviewState::NotRequested,
+            source_id: None,
+        },
+        user_acceptance: UserAcceptanceFact {
+            state: UserAcceptanceState::NotRequested,
+            source_id: None,
+        },
+        known_limits: vec!["No new execution evidence".into()],
+        non_goals: vec![],
+        open_questions: vec![],
+        next_step: "Inspect the actual caller".into(),
+        handoff_to: Some("the same investigation".into()),
+    };
+    store.record_checkpoint(
+        OperationId::from_bytes([0xa2; 16]),
+        f.project,
+        checkpoint.clone(),
+    )?;
+    assert_eq!(
+        f.operations
+            .explanation_production_status(f.project, summary, "en")?["state"],
+        "basis_changed"
+    );
+    assert_eq!(
+        f.operations.begin_explanation_production(
+            f.project,
+            name,
+            "en",
+            ExplanationProductionReason::Progress
+        )?["generation_status"],
+        "skipped_unchanged_basis"
+    );
+    let next = f.operations.begin_explanation_production(
+        f.project,
+        summary,
+        "en",
+        ExplanationProductionReason::Progress,
+    )?;
+    let plan: ExplanationPlan = serde_json::from_value(next["plan"].clone())?;
+    let realized=f.operations.compose_subject_explanation(f.project,summary,draft(&plan,"The investigation resumed, but caller behavior remains unverified; inspect the actual caller next."))?;
+    assert!(f
+        .operations
+        .record_explanation_for_production(
+            f.project,
+            summary,
+            "en",
+            realized.clone(),
+            first["production_id"].as_str()
+        )
+        .is_err());
+    f.operations.record_explanation_for_production(
+        f.project,
+        summary,
+        "en",
+        realized,
+        next["production_id"].as_str(),
+    )?;
+    // Independent Work progress changes neither publication nor the chosen basis.
+    checkpoint.expected_project_revision =
+        f.operations.canonical_basis(f.project)?.project.revision;
+    checkpoint.work_item_id = Some(f.goals["same_title"]);
+    store.record_checkpoint(OperationId::from_bytes([0xa3; 16]), f.project, checkpoint)?;
+    let retained = f.operations.privacy_status(f.project)?;
+    assert_eq!(
+        f.operations.begin_explanation_production(
+            f.project,
+            summary,
+            "en",
+            ExplanationProductionReason::Progress
+        )?["generation_status"],
+        "skipped_unchanged_basis"
+    );
+    assert_eq!(retained, f.operations.privacy_status(f.project)?);
+    Ok(())
+}

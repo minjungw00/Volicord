@@ -280,3 +280,13 @@ what a figure helps answer. Keep material conditions near claims and capture
 details in supporting provenance. Independently compose names and summaries from
 their own Goal/progress plans. A new preparation policy does not refresh an old
 publication: current explanation requires explicit investigation and new recording.
+
+Ordinary Work now has an explicit host production handoff: `work_explanation
+produce` (requested language/scope and initiation/progress/boundary/refinement),
+then Source reads, host-authored compose/record and status. Start with useful names
+and summaries, update meaningful progress and assess needed boundary articles.
+Unchanged current bases skip without renewal. Status/failure intent survives restart;
+retry produce and read Sources in the new request. This reconciles the earlier
+“no automatic generation” wording: no hidden server/read/write dispatch is permitted,
+but authorized ordinary host authorship is required. It creates no Learning/provider
+grant or per-turn/per-Checkpoint quota.

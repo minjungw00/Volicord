@@ -794,3 +794,15 @@ before writing; a changed body permission requires re-render, with no partial fi
 New authoring retains the complete current-evidence admission checks. Independent
 publication deadlines, latest-record replacement, canonical correction/forgetting,
 foreign selectors, corrupted publication and access withdrawal remain negative cases.
+
+### Ordinary production interruption
+
+Explicit host `produce` persists exact-scope intent before awaiting authorship.
+`fail` retains the observed bounded failure category, while previous independently
+valid publication and ordinary Work remain usable. Composition/admission failures
+return their existing errors without secretly persisting or retrying. The host may
+correct the current request or explicitly report failure. Read-only `status` exposes
+remaining work; after host restart it reports resume required rather than pretending
+a live request survived. Explicit produce retries current preparation and requires
+new request-local Source reads. Superseded intents reject admission under the same
+mutation lock; no background retry, automatic capture or lifetime renewal exists.

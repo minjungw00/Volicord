@@ -961,3 +961,13 @@ installed dependency receipts. Geometry algorithm/metrics, renderer 23, admitted
 semantic format 9 and all canonical/Source/retained formats remain unchanged.
 No old worker protocol decoder, persisted geometry cache or historical relabelling
 is introduced. The rquickjs family and its reviewed native license bytes stay pinned.
+
+### Host production intent format
+
+Explicit production uses `volicord_explanation_production` version 1 inside existing
+managed CachedSummary content, separate from retained explanation format 9. The
+exact-only operational envelope binds Project/subject/language, preparation, reason,
+prior publication and nullable typed failure. There is no old-shape decoder, migration,
+canonical/bundle/analysis change or rebind of historical output. Production status
+is ephemeral. Existing publication/Source lifetimes and explanation byte limits
+remain unchanged.

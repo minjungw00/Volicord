@@ -279,12 +279,59 @@ fn explanation_command(kind: &'static str) -> Command {
                         .arg(language()),
                 )
                 .subcommand(
+                    Command::new("produce")
+                        .about(
+                            "Explicit host production intent; unchanged current bases are skipped",
+                        )
+                        .arg(subject())
+                        .arg(language())
+                        .arg(
+                            Arg::new("reason")
+                                .long("reason")
+                                .required(true)
+                                .value_parser(["initiation", "progress", "boundary", "refinement"]),
+                        ),
+                )
+                .subcommand(
+                    Command::new("production-status")
+                        .about("Read exact production and recovery state; never generates")
+                        .arg(subject())
+                        .arg(language()),
+                )
+                .subcommand(
+                    Command::new("production-fail")
+                        .about("Retain an observed host production failure")
+                        .arg(subject())
+                        .arg(language())
+                        .arg(
+                            Arg::new("production-id")
+                                .long("production-id")
+                                .required(true),
+                        )
+                        .arg(
+                            Arg::new("failure")
+                                .long("failure")
+                                .required(true)
+                                .value_parser([
+                                    "host_unavailable",
+                                    "source_unavailable",
+                                    "authoring_failed",
+                                    "interrupted",
+                                ]),
+                        ),
+                )
+                .subcommand(
                     Command::new("record")
                         .about(
                             "Retain an explicitly generated host response with current grounding",
                         )
                         .arg(subject())
                         .arg(language())
+                        .arg(
+                            Arg::new("production-id").long("production-id").help(
+                                "Exact intent returned by produce; rejects superseded attempts",
+                            ),
+                        )
                         .arg(
                             path_arg("input", "input", "Host-generated realization JSON")
                                 .required(true),
@@ -309,19 +356,26 @@ fn explanation_command(kind: &'static str) -> Command {
         });
         if kind == "work" {
             command = command.mut_subcommand("explain", |explain| {
-                ["prepare", "compose", "record", "delete"].into_iter().fold(
-                    explain,
-                    |command, action| {
-                        command.mut_subcommand(action, |action| {
-                            action.arg(
-                                Arg::new("scope")
-                                    .long("scope")
-                                    .default_value("article")
-                                    .value_parser(["article", "name", "summary"]),
-                            )
-                        })
-                    },
-                )
+                [
+                    "prepare",
+                    "compose",
+                    "record",
+                    "delete",
+                    "produce",
+                    "production-status",
+                    "production-fail",
+                ]
+                .into_iter()
+                .fold(explain, |command, action| {
+                    command.mut_subcommand(action, |action| {
+                        action.arg(
+                            Arg::new("scope")
+                                .long("scope")
+                                .default_value("article")
+                                .value_parser(["article", "name", "summary"]),
+                        )
+                    })
+                })
             });
             command = command.subcommand(Command::new("check").about("Record a reported assertion from an exact retained declared local run into a same-Work Checkpoint").arg(path_arg("input", "input", "WorkCheckRecording JSON; no execution authority").required(true))).subcommand(work_source_command()).subcommand(Command::new("verification").about("Read independent typed verification and retained execution facts; never generates").arg(Arg::new("work").long("work").required(true)));
         }
@@ -1134,6 +1188,24 @@ fn dispatch_explanation_action(
         ),
     };
     match action {
+        "produce" => operations.begin_explanation_production(
+            project,
+            subject,
+            required(args, "language")?,
+            serde_json::from_value(json!(required(args, "reason")?))
+                .map_err(|_| Error::new("invalid production reason"))?,
+        ),
+        "production-status" => {
+            operations.explanation_production_status(project, subject, required(args, "language")?)
+        }
+        "production-fail" => operations.fail_explanation_production(
+            project,
+            subject,
+            required(args, "language")?,
+            required(args, "production-id")?,
+            serde_json::from_value(json!(required(args, "failure")?))
+                .map_err(|_| Error::new("invalid production failure"))?,
+        ),
         "compose" => {
             let draft = serde_json::from_value(read_explanation_input(args)?).map_err(|error| {
                 Error::explanation_input("invalid host-authored article draft", error)
@@ -1201,11 +1273,12 @@ fn dispatch_explanation_action(
                 Error::explanation_input("invalid explanation realization", error)
             })?;
             Ok({
-                let retained = operations.record_explanation(
+                let retained = operations.record_explanation_for_production(
                     project,
                     subject,
                     required(args, "language")?,
                     response,
+                    args.get_one::<String>("production-id").map(String::as_str),
                 )?;
                 json!({"operation":"explanation_record","publication_id":retained.publication_id,"explanation":retained})
             })

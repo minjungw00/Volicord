@@ -1438,12 +1438,12 @@ def main() -> int:
             require(len("\n".join(line for line in context.splitlines() if not line.startswith("CLI route:")).encode()) < 4096, "installed SessionStart context exceeded its bound")
             require("CLI route: " + shlex.join([str(cli), "--runtime", str(runtime), "--repository", str(repository)]) in context or ("CLI route:" in context and str(cli) in context and str(runtime) in context and str(repository) in context), "installed CLI route missing")
             for rule in (
-                "MCP work_explanation generate",
+                "MCP work_explanation produce",
                 "work_source for permitted relevant Sources",
                 "work_explanation read_source",
                 "then author and record with exact bindings",
                 "Prepare/read/GET never generate or transmit",
-                "no automatic generation, server-side model dispatch or generation quota",
+                "no server-side model dispatch or generation quota",
                 "Missing host access/authority is a blocker",
                 "transmit sources without separate exact provider authorization",
                 "Read-only, explanation-only or no-write continuation needs no post-mutation verification",

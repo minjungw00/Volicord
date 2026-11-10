@@ -2642,3 +2642,220 @@ fn verification_report_is_a_public_read_without_a_generation_request() -> Result
     );
     Ok(())
 }
+
+fn produce(
+    f: &mut Fixture,
+    scope: &str,
+    language: &str,
+    reason: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let mut args = f.args("produce");
+    args["scope"] = json!(scope);
+    args["language"] = json!(language);
+    args["reason"] = json!(reason);
+    success(&mut f.host, args)
+}
+fn production_status(
+    f: &mut Fixture,
+    scope: &str,
+    language: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let mut args = f.args("status");
+    args["scope"] = json!(scope);
+    args["language"] = json!(language);
+    success(&mut f.host, args)
+}
+fn production_draft(generation: &Value, scope: &str, text: &str) -> Value {
+    json!({"plan_fingerprint":generation["plan"]["fingerprint"],"language":generation["plan"]["requested_language"],
+        "generator":{"host":"authored-control","session":"production","agent":null,"model":null},
+        "paragraphs":[{"question":if scope=="name" {"heading"} else {"synopsis"},"text":text,
+        "evidence_keys":generation["plan"]["evidence"].as_array().unwrap().iter().map(|e|e["key"].clone()).collect::<Vec<_>>(),"sources":[]}]})
+}
+fn publish_production(
+    f: &mut Fixture,
+    generation: &Value,
+    scope: &str,
+    text: &str,
+) -> Result<Value, Box<dyn Error>> {
+    let mut args = f.args("compose");
+    args["scope"] = json!(scope);
+    args["generation_id"] = generation["generation_id"].clone();
+    args["draft"] = production_draft(generation, scope, text);
+    let composed = success(&mut f.host, args)?;
+    let mut args = f.args("record");
+    args["scope"] = json!(scope);
+    args["generation_id"] = generation["generation_id"].clone();
+    args["realization"] = composed["realization"].clone();
+    success(&mut f.host, args)
+}
+
+#[test]
+fn ordinary_production_skips_unchanged_recovers_restart_and_keeps_scope_language_authority(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    assert_eq!(production_status(&mut f, "name", "ko")?["state"], "needed");
+    let canonical = f.host.operations().canonical_basis(f.project)?;
+    let name = produce(&mut f, "name", "ko", "initiation")?;
+    assert_eq!(name["generation_status"], "awaiting_host_interpretation");
+    assert!(name["production_id"].is_string());
+    assert_eq!(
+        production_status(&mut f, "name", "ko")?["live_request"],
+        true
+    );
+    let layout = f.host.operations().layout().clone();
+    f.host = HostAdapter::new(LocalOperations::new(layout));
+    assert_eq!(
+        production_status(&mut f, "name", "ko")?["state"],
+        "resume_required"
+    );
+    let mut old = f.args("compose");
+    old["scope"] = json!("name");
+    old["generation_id"] = name["generation_id"].clone();
+    old["draft"] = production_draft(&name, "name", "값 보존 조사");
+    assert_eq!(call(&mut f.host, old)["result"]["isError"], true);
+    let retry = produce(&mut f, "name", "ko", "initiation")?;
+    let published = publish_production(&mut f, &retry, "name", "값 보존 조사")?;
+    assert_eq!(
+        production_status(&mut f, "name", "ko")?["state"],
+        "complete"
+    );
+    let before = f.host.operations().privacy_status(f.project)?;
+    for _ in 0..3 {
+        assert_eq!(
+            produce(&mut f, "name", "ko", "progress")?["generation_status"],
+            "skipped_unchanged_basis"
+        );
+        assert_eq!(production_status(&mut f, "name", "en")?["state"], "needed");
+        assert_eq!(
+            production_status(&mut f, "summary", "ko")?["state"],
+            "needed"
+        );
+    }
+    assert_eq!(before, f.host.operations().privacy_status(f.project)?);
+    assert_eq!(canonical, f.host.operations().canonical_basis(f.project)?);
+    let refined = produce(&mut f, "name", "ko", "refinement")?;
+    let mut fail = f.args("fail");
+    fail["scope"] = json!("name");
+    fail["generation_id"] = refined["generation_id"].clone();
+    fail["failure"] = json!("interrupted");
+    assert_eq!(success(&mut f.host, fail)?["state"], "failed");
+    // A failed refinement leaves the previous independent publication readable.
+    let page = f.host.operations().read_explanation_page(
+        f.project,
+        ExplanationSubject::WorkName(f.work),
+        "ko",
+        0,
+        None,
+    )?;
+    assert_eq!(page["publication_id"], published["publication_id"]);
+    let retry = produce(&mut f, "name", "ko", "progress")?;
+    assert_ne!(retry["generation_id"], Value::Null);
+    let published2 = publish_production(&mut f, &retry, "name", "반환 값 보존 조사")?;
+    assert_ne!(published["publication_id"], published2["publication_id"]);
+    // An old in-process attempt cannot replace a newer production intention.
+    let superseded = produce(&mut f, "summary", "ko", "initiation")?;
+    let current = produce(&mut f, "summary", "ko", "progress")?;
+    assert!(publish_production(
+        &mut f,
+        &superseded,
+        "summary",
+        "요청된 조사이며 결과는 아직 보고되지 않았습니다."
+    )
+    .is_err());
+    publish_production(
+        &mut f,
+        &current,
+        "summary",
+        "값 보존 여부를 조사할 예정이며 아직 결과는 보고되지 않았습니다.",
+    )?;
+    // Complete public MCP reassembly uses the actual publication, no write or renewal.
+    let before = f.host.operations().privacy_status(f.project)?;
+    let mut next = 0;
+    let mut fingerprint = Value::Null;
+    let mut chunks = String::new();
+    loop {
+        let mut args = json!({"action":"page","project_id":f.project.to_string(),"subject_kind":"work_name","subject_id":f.work.to_string(),"language":"ko","offset":next});
+        if next > 0 {
+            args["expected_fingerprint"] = fingerprint.clone();
+        }
+        let reply=f.host.handle(json!({"jsonrpc":"2.0","id":77,"method":"tools/call","params":{"name":"explanation_read","arguments":args}})).ok_or("reply")?;
+        assert_eq!(reply["result"]["isError"], false, "{reply}");
+        let page = &reply["result"]["structuredContent"];
+        chunks.push_str(page["chunk"].as_str().ok_or("chunk")?);
+        fingerprint = page["fingerprint"].clone();
+        if page["state"] == "complete" {
+            break;
+        }
+        next = page["next_offset"].as_u64().ok_or("next")?;
+    }
+    let document: Value = serde_json::from_str(&chunks)?;
+    assert!(document.to_string().contains("반환 값 보존 조사"));
+    assert_eq!(before, f.host.operations().privacy_status(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn ordinary_goal_handoff_keeps_same_project_works_distinct_without_hidden_production(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    let retained = f.host.operations().privacy_status(f.project)?;
+    let args = json!({"project_id":f.project.to_string(),"role":"goal","work_transition":"start_new",
+        "user_turn":"Inspect caller forwarding without altering the value function.","statement":"Inspect caller forwarding without altering the value function."});
+    let reply=f.host.handle(json!({"jsonrpc":"2.0","id":90,"method":"tools/call","params":{"name":"context_record","arguments":args}})).ok_or("reply")?;
+    assert_eq!(reply["result"]["isError"], false, "{reply}");
+    let response = &reply["result"]["structuredContent"];
+    assert_eq!(response["explanation_production"]["action"], "produce");
+    assert_eq!(response["explanation_production"]["reason"], "initiation");
+    assert_eq!(retained, f.host.operations().privacy_status(f.project)?);
+    let first = f.work;
+    let generation = produce(&mut f, "name", "en", "initiation")?;
+    publish_production(
+        &mut f,
+        &generation,
+        "name",
+        "Investigate the returned value",
+    )?;
+    f.work = f
+        .host
+        .operations()
+        .canonical_basis(f.project)?
+        .context_items
+        .iter()
+        .find(|c| c.id.to_string() == response["context_item_id"].as_str().unwrap_or_default())
+        .ok_or("Work")?
+        .id;
+    assert_ne!(first, f.work);
+    let generation = produce(&mut f, "name", "en", "initiation")?;
+    // A current request for another scope/Work/language cannot be substituted.
+    let mut wrong = f.args("compose");
+    wrong["scope"] = json!("summary");
+    wrong["generation_id"] = generation["generation_id"].clone();
+    wrong["draft"] = production_draft(&generation, "name", "Inspect caller forwarding");
+    assert_eq!(call(&mut f.host, wrong)["result"]["isError"], true);
+    let mut foreign = f.args("compose");
+    foreign["work_item_id"] = json!(first.to_string());
+    foreign["scope"] = json!("name");
+    foreign["generation_id"] = generation["generation_id"].clone();
+    foreign["draft"] = production_draft(&generation, "name", "Inspect caller forwarding");
+    assert_eq!(call(&mut f.host, foreign)["result"]["isError"], true);
+    let mut foreign = f.args("compose");
+    foreign["scope"] = json!("name");
+    foreign["generation_id"] = generation["generation_id"].clone();
+    foreign["draft"] = production_draft(&generation, "name", "Inspect caller forwarding");
+    foreign["draft"]["language"] = json!("ko");
+    assert_eq!(call(&mut f.host, foreign)["result"]["isError"], true);
+    publish_production(&mut f, &generation, "name", "Inspect caller forwarding")?;
+    let projection = f.host.operations().project_projection(f.project)?;
+    let names = projection
+        .work_history
+        .iter()
+        .filter_map(|w| {
+            work_answers(w, "en", FixedLocale::English)
+                .card_name()
+                .map(|s| s.to_owned())
+        })
+        .collect::<Vec<_>>();
+    assert!(names.contains(&"Inspect caller forwarding".to_owned()));
+    assert!(names.contains(&"Investigate the returned value".to_owned()));
+    Ok(())
+}

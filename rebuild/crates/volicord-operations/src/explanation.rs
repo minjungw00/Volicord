@@ -366,7 +366,26 @@ impl LocalOperations {
         language: &str,
         realization: ExplanationRealization,
     ) -> Result<RetainedExplanation, Error> {
+        self.record_explanation_for_production(project, subject, language, realization, None)
+    }
+    pub fn record_explanation_for_production(
+        &self,
+        project: ProjectId,
+        subject: ExplanationSubject,
+        language: &str,
+        realization: ExplanationRealization,
+        production_id: Option<&str>,
+    ) -> Result<RetainedExplanation, Error> {
         let _mutation = self.layout().acquire_mutation_lock()?;
+        if let Some(id) = production_id {
+            self.validate_explanation_production(
+                project,
+                subject,
+                language,
+                id,
+                &realization.plan_fingerprint,
+            )?;
+        }
         let canonical = self.canonical_basis(project)?;
         let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
         validate_explanation(&plan, &realization).map_err(Error::new)?;

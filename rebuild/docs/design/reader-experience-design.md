@@ -1456,3 +1456,14 @@ This repairs the reproduced record-read article's displaced verification and the
 same generic mixed-role shape. It adds no article-specific rule, heading inferred
 from code, new diagram phase, format conversion or geometry change. The selected
 CE1 shell, ELK graph layout and sequence camera continue to consume admitted meaning.
+
+### Ordinary host production handoff
+
+Normal authorized Work uses the explicit production intent/status/recovery seam in
+[Projection](projections-and-documents.md#ordinary-authorized-host-production).
+The active host authors names and summaries at useful initiation, updates summary
+after meaningful progress and assesses needed articles at switch/pause/completion.
+Unchanged current bases skip without renewal; explicit refinement requests another
+edition. Goal/Checkpoint follow-ups execute nothing and impose no quota. An
+interrupted/failed request and prior independently readable prose remain separate.
+Missing normal content is incomplete production, never normal completion.
