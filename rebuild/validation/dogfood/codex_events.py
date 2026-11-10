@@ -862,6 +862,10 @@ MCP_WRAPPER = re.compile(
     r"\((?P<argument>.*?)\)\s*;(?P<forward>.*)\Z",
     re.DOTALL,
 )
+DIRECT_MCP_WRAPPER = re.compile(
+    r"\A\s*text\s*\(\s*await\s+tools\.mcp__volicord__(?P<operation>[A-Za-z_$][A-Za-z0-9_$]*)"
+    r"\s*\((?P<argument>.*?)\)\s*\)\s*;?\s*\Z", re.DOTALL,
+)
 DIRECT_PATCH = re.compile(
     r"\A\s*text\s*\(\s*await\s+tools\.apply_patch\s*\((?P<argument>.*)\)\s*\)\s*;\s*\Z",
     re.DOTALL,
@@ -1270,7 +1274,11 @@ def parse_mcp_wrapper(value: Any) -> ParsedMcpWrapper | None:
     if not isinstance(value, str) or len(value.encode("utf-8")) > 64 * 1024:
         return None
     match = MCP_WRAPPER.fullmatch(value)
-    if match is None or "tools.mcp__" in match.group("forward"):
+    if match is not None and "tools.mcp__" in match.group("forward"):
+        return None
+    if match is None:
+        match = DIRECT_MCP_WRAPPER.fullmatch(value)
+    if match is None:
         return None
     operation = normalize_operation(match.group("operation"))
     if operation is None:

@@ -787,6 +787,10 @@ Their closed payload shapes are checked before timing classification; a tool
 invocation, foreign binding, malformed definition or unknown pre-activation event
 still leaves timing indeterminate. Setup metadata supplies no activation identity
 and cannot excuse a missing, late, malformed or conflicting SessionStart marker.
+Single static `text(await tools.mcp__volicord__operation({...}))` wrappers retain
+invocation/completion order under the same operation, arguments, turn and unique
+completion checks as assigned calls. Dynamic, conditional or multi-call wrappers
+remain unsupported; a completion mismatch does not establish an invocation.
 The Product candidate, executable hashes, tasks and eight sessions remain those
 of `SOURCE`. Repeat `--rejected-attempt` for related historical process/diagnostic
 files outside the inventoried observations. The publication is disjoint and

@@ -217,6 +217,53 @@ class McpCompletionTests(unittest.TestCase):
         self.assertEqual([call.operation for call in capture.tool_calls], ["recall", "materiality_review"])
         self.assertTrue(all(call.outcome == "succeeded" for call in capture.tool_calls))
 
+    def test_direct_static_mcp_wrapper_matches_assigned_invocation(self):
+        from codex_events import parse_mcp_wrapper
+        arguments = '{project_id:"fixture-project"}'
+        direct = f'text(await tools.mcp__volicord__recall({arguments}));'
+        assigned = f'const r=await tools.mcp__volicord__recall({arguments});text(r);'
+        self.assertEqual(parse_mcp_wrapper(direct), parse_mcp_wrapper(assigned))
+        self.assertIsNotNone(parse_mcp_wrapper(direct))
+
+    def test_direct_mcp_requires_one_literal_call(self):
+        from codex_events import parse_mcp_wrapper
+        for source in ('text(await tools.mcp__volicord__recall(load("arguments")));',
+                'text(await tools.mcp__volicord__recall({project_id:dynamic}));',
+                'text(await tools.mcp__other__recall({}));',
+                'text(await tools.mcp__volicord__recall({}));text(await tools.mcp__volicord__recall({}));',
+                'if(enabled)text(await tools.mcp__volicord__recall({}));',
+                'text(await tools.mcp__volicord__recall({}));unknown();'):
+            self.assertIsNone(parse_mcp_wrapper(source), source)
+
+    def test_direct_mcp_completion_retains_invocation_order_and_argument_binding(self):
+        original = [json.loads(line) for line in
+                    (HERE / "fixtures/legacy-content-wrapped-mcp.jsonl").read_text().splitlines()]
+        for mismatch in (False, True):
+            events, expected_sequences = [], []
+            for event in original:
+                payload = event["payload"]
+                if payload.get("type") == "mcp_tool_call_end":
+                    invocation = payload["invocation"]
+                    arguments = {} if mismatch else invocation["arguments"]
+                    expected_sequences.append(len(events))
+                    events.append({"type": "response_item", "payload": {
+                        "type": "custom_tool_call", "name": "exec", "status": "completed",
+                        "call_id": "wrapper-" + payload["call_id"],
+                        "internal_chat_message_metadata_passthrough": {"turn_id": "fixture-turn"},
+                        "input": 'text(await tools.mcp__volicord__' + invocation["tool"]
+                            + '(' + json.dumps(arguments) + '));'}})
+                events.append(event)
+            capture = CaptureProvenanceTests.load(self, events)
+            if mismatch:
+                self.assertTrue(all(call.outcome == "failed" for call in capture.tool_calls))
+                self.assertTrue(all(call.error == "mcp_wrapper_completion_mismatch"
+                                    for call in capture.tool_calls))
+                self.assertEqual(capture.observed_metadata["mcp_invocations"], {})
+            else:
+                self.assertEqual([capture.observed_metadata["mcp_invocations"][call.call_id]
+                                  for call in capture.tool_calls], expected_sequences)
+                self.assertTrue(all(call.outcome == "succeeded" for call in capture.tool_calls))
+
 
 class CurrentExecutionTests(unittest.TestCase):
     def capture(self, body):
