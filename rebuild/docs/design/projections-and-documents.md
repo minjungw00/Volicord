@@ -3976,3 +3976,17 @@ availability message and never implies checks passed or limitations are absent.
 Group headings keep consistent vertical rhythm; original records remain deliberate
 disclosures. A Decision interpretation explains the actual question/issue as well
 as the selected outcome; its canonical Question remains separately inspectable.
+
+Repository, Work and related Decision articles share compact publication metadata:
+an icon with an explicit repository-comparison state and calendar-formatted
+publication/check times. Full comparison caveats and snapshot identities remain
+inspectable behind the comparison control; matching never claims remote freshness.
+Live citation reads update the state, icon and calendar time together. Exact raw
+timestamps remain machine attributes/provenance, not a competing visible date format.
+Related Work-scoped Decisions omit redundant scope prose from their primary body;
+project-wide or unresolved scope remains explicit, and every original applicability
+statement remains in the folded original records. Actual alternatives may use the
+existing paired comparison roles for independently grounded readable comparisons.
+All outline child entries share one indentation under their peer captions.
+Top-level original instructions, evidence, timeline and verification disclosures
+share the bordered card treatment, with spacing rather than adjacent separator rules.

@@ -8,6 +8,53 @@ mod reading_fixture;
 #[path = "reading_title_tests.rs"]
 mod reading_title_tests;
 
+#[test]
+fn publication_metadata_keeps_comparison_states_and_calendar_dates_distinct() {
+    use volicord_projections::RepositoryComparisonState as C;
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let r = ViewerRequest {
+            project_id: ProjectId::from_bytes([1; 16]),
+            locale,
+            view: ViewerView::RepositoryExplanation,
+            requested_language: locale_key(locale).into(),
+            guarded_request: None,
+        };
+        for state in [C::VerifiedAtRead, C::Changed, C::Unavailable, C::NotChecked] {
+            let mut answers = volicord_projections::explanation_answers(
+                &[],
+                &r.requested_language,
+                locale.fixed(),
+            );
+            answers.applicability.generated_at_unix_micros = Some(0);
+            answers.applicability.checked_at_unix_micros = Some(60_000_000);
+            answers.applicability.repository_comparison = state;
+            for snapshot in [false, true] {
+                let reader = ReaderAnswers::new(
+                    &answers,
+                    r.project_id,
+                    "repository",
+                    &r.requested_language,
+                    "article",
+                );
+                let mut html = String::new();
+                render_applicability(&mut html, &r, &reader, snapshot);
+                assert!(html.contains("1970.01.01 00:00 UTC"));
+                assert!(html.contains("1970.01.01 00:01 UTC"));
+                assert!(html
+                    .contains("datetime=\"1970-01-01T00:01:00Z\" data-recorded-at=\"60000000\""));
+                assert!(!html.contains("Unix"));
+                assert!(html.contains("class=\"comparison-icon\""));
+                assert!(html.contains(comparison_label(locale, snapshot, state)));
+                assert!(
+                    html.find("class=\"comparison-detail\"")
+                        .is_some_and(|at| at > html.find("</summary>").unwrap_or(usize::MAX)),
+                    "full caveat belongs inside the deliberately opened comparison control"
+                );
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod learning_tests {
     use super::*;
@@ -641,6 +688,11 @@ fn related_decisions_share_work_outline_and_keep_canonical_meaning(
                         ))
                         .ok_or("related Decision")?;
                     let body = &html[start..];
+                    let primary = body
+                        .split("class=\"record-box decision-originals\"")
+                        .next()
+                        .ok_or("primary Decision reading")?;
+                    assert_eq!(primary.contains("class=\"scope-summary\""), !matches!(d.decision.work_scope, DecisionWorkScope::WorkItem(_)), "only broader or unresolved applicability is repeated in the primary reading");
                     assert!(
                         body.contains(&escape(&decision_choice_attribution(&d.decision, locale)))
                     );

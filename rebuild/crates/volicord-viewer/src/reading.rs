@@ -1298,13 +1298,7 @@ fn render_document_body(
         ));
         work_event_times(html, r, w);
     }
-    let supporting_comparison = grouped
-        && current
-        && answers.applicability.repository_comparison
-            == volicord_projections::RepositoryComparisonState::VerifiedAtRead;
-    if !supporting_comparison {
-        render_applicability(html, r, answers, snapshot);
-    }
+    render_applicability(html, r, answers, snapshot);
     if let Some(d) = decision {
         html.push_str(&format!("<p class=\"lead\" data-statement-role=\"verified-canonical\">{}</p><p class=\"record-strip\">{}</p>", escape(&decision_choice_attribution(&d.decision, r.locale)), brief_decision_state_label(d.decision.state, r.locale)));
     }
@@ -1504,14 +1498,6 @@ fn render_document_body(
     }
     render_evidence_index(html, r, answers);
     render_source_scope(html, r, answers, snapshot);
-    if supporting_comparison {
-        html.push_str(&format!(
-            "<details class=\"record-category\"><summary>{}</summary>",
-            text(r.locale, "Repository comparison basis", "저장소 비교 기준")
-        ));
-        render_applicability(html, r, answers, snapshot);
-        html.push_str("</details>");
-    }
     html.push_str(&format!(
         "<details class=\"record-category\"><summary>{}</summary>",
         text(r.locale, "Publication provenance", "발행 정보")
@@ -2312,7 +2298,7 @@ fn opening_context(
         );
         reading_notice(html, kind, severity, title, &fact.text, &actions);
     }
-    if decision.is_some() {
+    if decision.is_some_and(|d| !matches!(d.decision.work_scope, DecisionWorkScope::WorkItem(_))) {
         for fact in answers
             .facts
             .iter()
@@ -2440,16 +2426,37 @@ fn render_applicability(
     if basis.generated_at_unix_micros.is_none() && basis.explained_snapshots.is_empty() {
         return;
     }
-    let label = comparison_label(r.locale, snapshot, basis.repository_comparison);
+    use volicord_projections::RepositoryComparisonState as C;
+    let label = match basis.repository_comparison {
+        C::VerifiedAtRead => text(r.locale, "Repository matched", "저장소 일치"),
+        C::Changed => text(r.locale, "Repository changed", "저장소 변경됨"),
+        C::Unavailable => text(r.locale, "Comparison unavailable", "저장소 비교 불가"),
+        C::NotChecked => text(r.locale, "Repository not compared", "저장소 미비교"),
+    };
     html.push_str(&format!(
-        "<details class=\"applicability\"{} data-comparison-state=\"{}\"><summary>{}</summary><dl>",
+        "<div class=\"reading-metadata\"{}><details class=\"applicability\"{} data-comparison-state=\"{}\"><summary class=\"comparison-status\"><svg class=\"comparison-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M8 5V3H3v13h3M8 7h13v14H8z\"/><path data-comparison-icon=\"verified_at_read\" d=\"m11 14 2 2 5-5\"/><path data-comparison-icon=\"changed\" d=\"m12 11 5 5m0-5-5 5\"/><path data-comparison-icon=\"unavailable\" d=\"M14.5 10v5m0 2v1\"/><path data-comparison-icon=\"not_checked\" d=\"M11 14h7\"/></svg><span data-comparison-label>{}</span></summary><p class=\"comparison-detail\">{}</p><dl>",
+        publication_scope(answers),
         publication_scope(answers),
         serde_json::to_value(basis.repository_comparison)
             .ok()
             .and_then(|v| v.as_str().map(str::to_owned))
             .unwrap_or_default(),
-        label
+        label,
+        comparison_label(r.locale, snapshot, basis.repository_comparison)
     ));
+    for source in &basis.explained_snapshots {
+        html.push_str(&format!(
+            "<dt>{}</dt><dd><code>{}</code></dd><dt>Analysis</dt><dd><code>{}</code></dd>",
+            text(
+                r.locale,
+                "Explained repository snapshot",
+                "설명한 저장소 스냅샷"
+            ),
+            escape(&source.repository_snapshot_id),
+            escape(&source.analysis_snapshot_id)
+        ));
+    }
+    html.push_str("</dl></details><div class=\"work-dates reading-dates\">");
     for (index, (label, value)) in [
         (
             text(r.locale, "Explanation recorded at", "설명 기록 시각"),
@@ -2476,30 +2483,17 @@ fn render_applicability(
     .enumerate()
     {
         html.push_str(&format!(
-            "<dt>{label}</dt><dd{}>{}</dd>",
+            "<span class=\"work-date\"><span>{label}</span><span{}>{}</span></span>",
             if index == 1 {
                 " data-comparison-time"
             } else {
                 ""
             },
-            value
-                .map(|value| timestamp_label(TimestampMicros::from_unix_micros(value), r.locale))
+            value.and_then(|value| observation_time(TimestampMicros::from_unix_micros(value)).map(|(instant, calendar)| format!("<time datetime=\"{instant}\" data-recorded-at=\"{value}\">{calendar}</time>")))
                 .unwrap_or_else(|| text(r.locale, "Date unavailable", "날짜 확인 불가").into())
         ));
     }
-    for source in &basis.explained_snapshots {
-        html.push_str(&format!(
-            "<dt>{}</dt><dd><code>{}</code></dd><dt>Analysis</dt><dd><code>{}</code></dd>",
-            text(
-                r.locale,
-                "Explained repository snapshot",
-                "설명한 저장소 스냅샷"
-            ),
-            escape(&source.repository_snapshot_id),
-            escape(&source.analysis_snapshot_id)
-        ));
-    }
-    html.push_str("</dl></details>");
+    html.push_str("</div></div>");
 }
 
 fn explanation_diagnostic(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>) {

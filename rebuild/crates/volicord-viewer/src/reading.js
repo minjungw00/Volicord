@@ -81,6 +81,12 @@
     outline.updateCue();
   }
   function updateComparison(publication, basis) {
+    const statuses = {
+      verified_at_read: ko ? '저장소 일치' : 'Repository matched',
+      changed: ko ? '저장소 변경됨' : 'Repository changed',
+      unavailable: ko ? '저장소 비교 불가' : 'Comparison unavailable',
+      not_checked: ko ? '저장소 미비교' : 'Repository not compared'
+    };
     const labels = {
       verified_at_read: ko ? '이번 비교에서 로컬 저장소가 작성 당시 스냅샷과 일치했습니다. 원격 최신성은 확인하지 않았습니다.' : 'This local comparison matched the original snapshot. Remote freshness was not checked.',
       changed: ko ? '저장소가 변경되었습니다. 설명은 작성 당시 근거로 보존되며 의미상 영향은 알 수 없습니다.' : 'Repository changed. The explanation retains its original basis; semantic impact is unknown.',
@@ -95,13 +101,21 @@
     for (const region of document.querySelectorAll('.applicability')) {
       if (region.dataset.readerPublication !== publication) continue;
       region.dataset.comparisonState = basis.repository_comparison;
-      region.querySelector('summary').textContent = labels[basis.repository_comparison];
-      const time = region.querySelector('[data-comparison-time]');
+      region.querySelector('[data-comparison-label]').textContent = statuses[basis.repository_comparison];
+      region.querySelector('.comparison-detail').textContent = labels[basis.repository_comparison];
+      const time = region.closest('.reading-metadata').querySelector('[data-comparison-time]');
       if (time) {
         const raw=basis.checked_at_unix_micros;
         const exact=Number.isSafeInteger(raw),date=exact?new Date(Math.floor(raw/1000)):null;
         const valid=date&&Number.isFinite(date.getTime())&&date.getUTCFullYear()>=1&&date.getUTCFullYear()<=9999;
-        time.textContent=(valid?date.toISOString().slice(0,16).replaceAll('-','.').replace('T',' ')+' UTC':(ko?'날짜 확인 불가':'Date unavailable'))+(exact?` · Unix µs: ${raw}`:'');
+        time.replaceChildren();
+        if(valid){
+          const value=document.createElement('time');
+          value.dateTime=date.toISOString().slice(0,19)+'Z';
+          value.dataset.recordedAt=String(raw);
+          value.textContent=date.toISOString().slice(0,16).replaceAll('-','.').replace('T',' ')+' UTC';
+          time.append(value);
+        } else time.textContent=ko?'날짜 확인 불가':'Date unavailable';
       }
     }
   }

@@ -48,7 +48,8 @@
 .doc[data-reading-layout="grouped"] :is([data-reading-group="records"],.related-decisions,.decision-reading) details > summary h3{font:inherit;color:inherit}
 .doc[data-reading-layout="grouped"] :is([data-reading-group="records"],.related-decisions,.decision-reading) details > summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 .doc[data-reading-layout="grouped"] :is([data-reading-group="records"],.related-decisions,.decision-reading) details[open] > :not(summary){margin-top:12px}
-.doc[data-reading-layout="grouped"] .work-reading-group:is([data-reading-group="records"],.related-decisions,.decision-reading) > details{margin:0;border-bottom:1px solid var(--line)}
+.doc[data-reading-layout="grouped"] .work-reading-group[data-reading-group="records"] > details{margin:12px 0 0;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.doc[data-reading-layout="grouped"] .work-reading-group[data-reading-group="records"] > details:first-of-type{margin-top:0}
 .doc[data-reading-layout="grouped"] :is([data-reading-group="records"],.related-decisions,.decision-reading) > details > summary{min-height:56px;padding:16px 0;font-size:13px;font-weight:600;color:var(--body)}
 .doc[data-reading-layout="grouped"] :is([data-reading-group="records"],.related-decisions,.decision-reading) > details[open]{padding-bottom:20px}
 .doc[data-reading-layout="grouped"] :is([data-reading-group="records"],.related-decisions,.decision-reading) details details{margin:12px 0 0;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:white}
@@ -104,7 +105,7 @@
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{min-height:48px;padding:12px 0}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision[open]{padding-bottom:14px}
 .doc[data-reading-layout="grouped"] .related-decision-body > .article-section .unit-text,.doc[data-reading-layout="grouped"] .related-decision-body > .unit > .unit-text{font-size:14px;line-height:1.9;color:var(--body)}
-.doc[data-reading-layout="grouped"] .document-nav [data-level="3"] > a{padding-left:28px}
+.doc[data-reading-layout="grouped"] .document-nav nav ol a{padding-left:28px}
 .notice-report-options q{display:block;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--body);font-size:12px;line-height:1.8}
 /* The Work's explanation, related choices, checks and originals are peers. */
 .doc[data-reading-layout="grouped"] .reading-group-heading{font-size:18px;line-height:1.6;font-weight:700;color:var(--ink);letter-spacing:-.3px;margin:0 0 20px;padding:0}
@@ -115,3 +116,21 @@
 .doc[data-reading-layout="grouped"] .document-nav .toc-caption > a{min-height:28px;padding:4px 12px;font-size:11px;font-weight:600;color:#8299aa}
 
 .doc[data-reading-layout="grouped"] [data-reading-group="checks"] > .reading-section > .reading-layer-heading{font-size:15px;margin:0 0 16px}
+
+/* One publication metadata treatment across repository, Work and Decision. */
+.doc[data-reading-layout="grouped"] .reading-metadata{display:grid;gap:8px;margin:12px 0 20px;color:var(--muted)}
+.doc[data-reading-layout="grouped"] .reading-metadata > details.applicability{margin:0;padding:0;border:0;border-radius:0;background:none;color:inherit}
+.doc[data-reading-layout="grouped"] .reading-metadata .applicability > summary.comparison-status{display:flex;align-items:center;gap:6px;width:fit-content;min-height:28px;padding:3px 8px;border:0;border-radius:5px;background:var(--wash);color:var(--muted);font-size:10px;font-weight:500;line-height:1.6;list-style:none}
+.doc[data-reading-layout="grouped"] .reading-metadata .applicability > summary.comparison-status::before,.doc[data-reading-layout="grouped"] .reading-metadata .applicability > summary.comparison-status::after{content:none}
+.doc[data-reading-layout="grouped"] .comparison-status::-webkit-details-marker{display:none}
+.comparison-icon{width:15px;height:15px;flex:none}
+.comparison-icon [data-comparison-icon]{display:none}
+[data-comparison-state="verified_at_read"] [data-comparison-icon="verified_at_read"],[data-comparison-state="changed"] [data-comparison-icon="changed"],[data-comparison-state="unavailable"] [data-comparison-icon="unavailable"],[data-comparison-state="not_checked"] [data-comparison-icon="not_checked"]{display:block}
+.doc[data-reading-layout="grouped"] .reading-metadata .applicability:is([data-comparison-state="changed"],[data-comparison-state="unavailable"]) > summary.comparison-status{background:#fff7e8;color:#805a1f}
+.doc[data-reading-layout="grouped"] .reading-metadata .applicability > :not(summary){margin:10px 0 0;font-size:11px;line-height:1.8}
+.doc[data-reading-layout="grouped"] .reading-dates{font-size:10px;line-height:1.8}
+.doc[data-reading-layout="grouped"] .related-decision-body > .scope-summary{margin:0 0 16px;font-size:11px;color:var(--muted)}
+.doc[data-reading-layout="grouped"] .related-decision-body .comparison-card{padding:12px 14px;border:1px solid var(--line);border-radius:8px;margin:12px 0 0}
+.doc[data-reading-layout="grouped"] .related-decision-body .comparison-card > .unit{margin:0}
+.doc[data-reading-layout="grouped"] .related-decision-body .comparison-card > dt .unit-text{font-weight:600}
+.doc[data-reading-layout="grouped"] .related-decision-body .comparison-card > dd{margin:8px 0 0}

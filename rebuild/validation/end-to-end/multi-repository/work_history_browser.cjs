@@ -57,6 +57,18 @@ async function inspect(page,c,url,width,mode,language){
  assert.equal(await decisionFolds.count(),await doc.locator('.decision-reading').count(),'one shared disclosure per Decision');
  assert.equal(await decisionFolds.evaluateAll(ns=>ns.every(n=>!n.open)),true,'each Decision starts closed');
  const style=n=>{const s=getComputedStyle(n);return Object.fromEntries(['borderTopWidth','borderTopStyle','borderRadius','backgroundColor','paddingTop','paddingRight','fontSize','minHeight','textDecorationLine'].map(k=>[k,s[k]]));};
+ const indents=await doc.locator('.document-nav nav ol a').evaluateAll(ns=>ns.map(n=>getComputedStyle(n).paddingLeft));
+ assert.ok(new Set(indents).size<=1,'all outline child entries share the same indentation');
+ for(const card of await doc.locator(':scope > [data-reading-group="records"] > details').all()){
+  assert.equal(await card.evaluate(n=>getComputedStyle(n).borderTopStyle),'solid','original-record sections share bordered cards');
+  assert.ok(await card.evaluate(n=>parseFloat(getComputedStyle(n).borderTopWidth))>=1);
+ }
+ for(const metadata of await doc.locator('.reading-metadata').all()){
+  assert.equal(await metadata.locator('.comparison-icon').count(),1,'shared comparison status icon');
+  assert.ok((await metadata.locator('[data-comparison-label]').textContent()).trim().length>0,'state has explicit non-color wording');
+  assert.ok(!(await metadata.locator('.reading-dates').textContent()).includes('Unix'),'calendar format matches Work dates');
+  for(const time of await metadata.locator('.reading-dates time').all())assert.match(await time.textContent(),/^\d{4}\.\d{2}\.\d{2} \d{2}:\d{2} UTC$/);
+ }
  const evidenceStyle=doc.locator('a.evidence-link:not(.admitted-diagram a)').first();
  if(await evidenceStyle.count())for(const action of await doc.locator('.notice-actions > a,.notice-report-picker > summary').all())
   assert.deepEqual(await action.evaluate(style),await evidenceStyle.evaluate(style),'notice actions share actual evidence-control styling');
@@ -102,6 +114,8 @@ async function inspect(page,c,url,width,mode,language){
   assert.equal(await decision.locator('.recorded-choice').count(),1,'canonical choice survives prose availability');
   const fold=decision.locator(':scope > details.related-decision'),summary=fold.locator(':scope > summary');
   await summary.press('Enter');assert.equal(await fold.evaluate(n=>n.open),true,'keyboard opens this Decision');
+  if(await decision.getAttribute('data-decision-scope')==='work-item')assert.equal(await decision.locator('.related-decision-body > .scope-summary').count(),0,'Work association is not repeated as primary prose');
+  await decision.screenshot({path:path.join(C.output,`${c.key}-${language}-${mode}-${width}-decision-explanation.png`)});
   const originals=decision.locator('details.decision-originals');
   assert.equal(await originals.evaluate(n=>n.open),false,'original reports stay folded beneath authored explanation');
   assert.equal(await decision.locator('.recorded-choice').isVisible(),false,'opening explanation does not expand raw choice reports');

@@ -135,9 +135,9 @@ fn independent_record_basis_keeps_missing_comparison_time_explicit(
             let mut html = String::new();
             render_applicability(&mut html, &r, &answers, snapshot);
             assert!(html.contains(if locale == ViewerLocale::English {
-                "<dd data-comparison-time>Date unavailable</dd>"
+                "<span data-comparison-time>Date unavailable</span>"
             } else {
-                "<dd data-comparison-time>날짜 확인 불가</dd>"
+                "<span data-comparison-time>날짜 확인 불가</span>"
             }));
             assert!(html.contains("2026.10.20 11:09 UTC"));
             assert!(!html.contains("1970"));
