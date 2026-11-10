@@ -624,3 +624,96 @@ fn related_decisions_share_work_outline_and_keep_canonical_meaning(
     }
     Ok(())
 }
+
+#[test]
+fn timeline_keeps_complete_originals_folded_and_adverse_routes_visible(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::*;
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let work = f.goals["older"];
+    let p = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::ExactWork(work))?;
+    let w = p.selected_work.as_ref().ok_or("Work")?;
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let r = ViewerRequest {
+            project_id: f.project,
+            locale,
+            view: ViewerView::Work { work: Some(work) },
+            requested_language: locale_key(locale).into(),
+            guarded_request: None,
+        };
+        let answers = work_answers(w, &r.requested_language, locale.fixed());
+        let reader = ReaderAnswers::new(
+            &answers,
+            f.project,
+            &format!("work:{work}"),
+            &r.requested_language,
+            "article",
+        );
+        let mut html = String::new();
+        work_timeline::render(&mut html, &r, &reader, w);
+        assert_eq!(
+            html.matches("data-checkpoint-id=").count(),
+            w.reading.states.len()
+        );
+        for state in &w.reading.states {
+            let event = format!(
+                "{}-{}-r{}",
+                document_anchor(&reader, "event"),
+                state.checkpoint_id,
+                state.checkpoint_revision
+            );
+            assert!(html.contains(&format!("id=\"{event}\" tabindex=\"-1\"")));
+            let body = html
+                .split(&format!("id=\"{event}\""))
+                .nth(1)
+                .ok_or("event")?
+                .split("</li>")
+                .next()
+                .ok_or("event end")?;
+            let digest = body.split("<details").next().ok_or("digest")?;
+            for fact in &state.verification {
+                if let Some(outcome) = fact.outcome.as_deref().filter(|s| !s.is_empty()) {
+                    assert!(body.contains(&escape(outcome)), "original report retained");
+                    assert!(
+                        !digest.contains(&escape(outcome)),
+                        "outcome is not a semantic digest"
+                    );
+                }
+            }
+            if state
+                .verification
+                .iter()
+                .any(|f| f.state == volicord_context::VerificationState::Failed)
+            {
+                assert!(
+                    digest.contains("timeline-failure"),
+                    "failed report route outside folded originals"
+                );
+            }
+            for change in w
+                .reading
+                .changes
+                .iter()
+                .filter(|c| {
+                    c.basis.record == ReadingRecord::Checkpoint(state.checkpoint_id)
+                        && c.basis.revision == state.checkpoint_revision
+                })
+                .filter_map(|c| c.original_text.as_deref())
+                .filter(|s| !s.trim().is_empty())
+            {
+                assert!(
+                    body.contains(&escape(change)),
+                    "complete original progress report"
+                );
+                assert!(
+                    !digest.contains(&escape(change)),
+                    "no raw/truncated prose as digest"
+                );
+            }
+        }
+        assert!(!html.contains("class=\"timeline-original\" open"));
+    }
+    Ok(())
+}

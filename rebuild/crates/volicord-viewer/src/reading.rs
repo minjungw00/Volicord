@@ -1562,7 +1562,7 @@ fn render_document_body(
             "<details class=\"record-box\"><summary>{}</summary>",
             text(r.locale, "Recorded history", "기록의 흐름")
         ));
-        super::work_timeline::render(html, r, &document_anchor(answers, "timeline"), w);
+        work_timeline::render(html, r, answers, w);
         html.push_str(&format!(
             "<details class=\"state-observations\"><summary>{}</summary>",
             text(r.locale, "Original state observations", "상태 관측 원문")
@@ -1877,6 +1877,9 @@ fn render_source_scope(
     }
     html.push_str("</ul></details>");
 }
+
+#[path = "work_timeline.rs"]
+mod work_timeline;
 
 #[path = "reading_verification.rs"]
 mod verification;

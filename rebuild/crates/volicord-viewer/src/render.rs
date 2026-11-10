@@ -6,8 +6,6 @@ mod presentation;
 mod reading;
 #[path = "shell.rs"]
 mod shell;
-#[path = "work_timeline.rs"]
-mod work_timeline;
 pub(crate) use presentation::locale_key;
 use presentation::*;
 pub(crate) use shell::work_state_key;

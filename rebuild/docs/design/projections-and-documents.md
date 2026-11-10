@@ -3447,6 +3447,15 @@ creation/latest-work-record distinction remains in the header. Its real heading
 participates in the same document contents as ordinary article headings. Static
 exports use the same canonical timeline and their existing bounded public reads.
 
+The timeline's ordinary rows use only recorded state/time, report-state counts,
+review and acceptance. Counts describe reports, never tests or coverage. A directly
+recorded paused-to-in-progress transition may be labelled resumed; no prose is
+truncated or inferred as a semantic summary. Complete progress and verification
+quotations have individual native disclosures and exact event/record return links.
+Failure labels and their exact inspection routes remain outside those disclosures.
+Blank progress, absent verification and explicit NotRun remain distinct. Original
+state observations and full verification models stay deliberately inspectable.
+
 ### Grounded display wording independent of narrative — current contract
 
 This section supersedes prose-substring and U+2028 role conventions above, under
