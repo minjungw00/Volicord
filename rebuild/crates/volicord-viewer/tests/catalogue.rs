@@ -272,7 +272,7 @@ fn detail_timeline_and_native_return_keep_typed_query_scope_without_invented_his
     assert!(detail.starts_with("HTTP/1.1 200"));
     assert!(detail.contains("Recorded timeline"));
     assert!(detail.contains("These are recorded reports; opening this page runs no checks."));
-    assert_eq!(detail.matches("<li data-checkpoint-id=").count(), 1);
+    assert_eq!(detail.matches(" data-checkpoint-id=").count(), 1);
     assert!(detail.contains("Synthetic report 016; no actual execution"));
     let breadcrumb = detail
         .split("class=\"breadcrumb\"")

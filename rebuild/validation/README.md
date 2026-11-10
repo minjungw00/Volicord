@@ -67,6 +67,23 @@ real Cargo builds and the actual comparison CLI; use it through `validate focuse
 
 ## Commands
 
+`node rebuild/validation/end-to-end/multi-repository/work_history_browser.cjs
+<private-config.json>` checks installed Work history and related-Decision reading in
+live, script-disabled HTTP and script-free offline consumers at 390/768/1440px,
+in en/ko. Supply existing `viewer`, `cli`, `chromium`, `playwright`, `fontconfig`,
+a fresh `output`, and `cases` with exact `key`, `runtime`, `project`, `work` and
+optional independently declared `decisions` counts. Optional
+`adverse_layout_control` appends complete unbroken control text only in the
+browser; use it solely for labelled synthetic cases. It checks single outline
+ownership, exact native fragments, per-report disclosure, adverse routes,
+keyboard/focus returns and database immutability. Every width starts a fresh
+document so native disclosure-state retention cannot masquerade as default state.
+The headless shell supplies no actual browser zoom or human comprehension/input/
+paint verdict. Request timings cover this scripted journey, not a resource ceiling
+or human response latency. Run through `validate focused` and preserve failed
+attempts as well as the resulting candidate's controls.
+
+
 `node end-to-end/multi-repository/code_origin_browser.cjs <private-config.json>`
 checks separately verified pinned-file origin and unchanged command-stream
 coordinates in live, live-no-JS and genuinely script-free file exports, at wide

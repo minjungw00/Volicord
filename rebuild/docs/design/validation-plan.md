@@ -3383,6 +3383,15 @@ native zoom, assistive use, content understanding and acceptance stay unobserved
 unless actually performed. No aggregate gate or naturalistic claim follows from
 these checks. Existing citation/v4/managed retention are regression baselines.
 
+The focused `work_history_browser.cjs` consumer controls cover one Work outline,
+related canonical Decisions, folded complete progress/verification originals and
+visible failure routes in en/ko at 390/768/1440px across live, script-disabled HTTP
+and offline. Subject-bound fact inspection must select the actual Work/Decision;
+DOM order is not entity authority. Native document return/fold behavior and live
+focus restoration remain separate assertions. Headless geometry supplies no actual
+200% browser zoom, assistive comprehension, original-user choice understanding or
+human input/paint evidence. Preserve those missing observations independently.
+
 ### Reader evidence campaign admission
 
 [Reader AC-17–25](reader-experience-design.md) supplements AC-01–16. Use the existing

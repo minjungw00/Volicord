@@ -109,7 +109,10 @@ fn korean_visible_state_answers_are_localized() -> Result<(), Box<dyn std::error
     // Independent states remain localized in the full-evidence facts, separate
     // from original wire identities and the concise lifecycle strip.
     let states = page
-        .split("class=\"record-facts\"")
+        .split(&format!(
+            "data-record-subject=\"work:{}\"",
+            f.goals["older"]
+        ))
         .nth(1)
         .ok_or("facts")?
         .split("</div>")

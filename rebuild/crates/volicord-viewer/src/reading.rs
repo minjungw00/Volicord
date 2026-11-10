@@ -1529,7 +1529,7 @@ fn render_document_body(
         html.push_str(&format!("<p>{}</p><details class=\"raw-disclosure\"><summary>{}</summary><pre>{}</pre></details>",text(r.locale,"Host interpretation; semantic accuracy has not been independently established.","호스트 해석입니다. 의미 정확성은 독립적으로 확인되지 않았습니다."),text(r.locale,"Article publication provenance","작업 설명 발행 정보"),escape(&format!("{provenance:?}"))));
     }
     html.push_str("</details>");
-    html.push_str(&format!("<details class=\"record-category\"><summary>{}</summary><div class=\"record-facts\" data-statement-role=\"deterministic-derived\">",text(r.locale,"Record state and supporting limits","기록 상태와 근거 한계")));
+    html.push_str(&format!("<details class=\"record-category\"><summary>{}</summary><div class=\"record-facts\" data-record-subject=\"{}\" data-statement-role=\"deterministic-derived\">",text(r.locale,"Record state and supporting limits","기록 상태와 근거 한계"),escape(&answers.subject)));
     for fact in answers.facts.iter().filter(|f| {
         work.is_none()
             || !current
@@ -2024,9 +2024,10 @@ fn opening_context(
                     || c["freshness"]["state"].as_str() != Some("current")
             })
         {
-            reading_warning(html, r, "analysis", "caution",
+            let actions = notice_record_action(r, answers, work, "audit");
+            reading_notice(html, "analysis", "caution",
                 text(r.locale, "Analysis limitation", "분석 한계"),
-                text(r.locale, "Analysis includes failed or non-current capability reports. Read the explanation within those limits; inspect records for the exact reports.", "분석에 실패하거나 최신성을 확인할 수 없는 보고가 있습니다. 이 한계 안에서 설명을 읽고 정확한 보고는 기록에서 확인하세요."));
+                text(r.locale, "Analysis includes failed or non-current capability reports. Read the explanation within those limits; inspect records for the exact reports.", "분석에 실패하거나 최신성을 확인할 수 없는 보고가 있습니다. 이 한계 안에서 설명을 읽고 정확한 보고는 기록에서 확인하세요."), &actions);
         }
     }
     use volicord_projections::ReadingCautionKind as Kind;
@@ -2099,8 +2100,9 @@ fn opening_context(
         .iter()
         .any(|c| c.kind == Kind::PartialCheck && !c.historical)
     {
-        reading_warning(html, r,"partial","caution",text(r.locale,"Partial verification", "부분 검증"),
-            text(r.locale,"The latest report covers only part of the intended verification. Inspect the original report for its stated limits.","최근 보고는 의도한 검증의 일부만 다룹니다. 원래 보고에서 명시된 한계를 확인하세요."));
+        let actions = notice_record_action(r, answers, work, "full-verification");
+        reading_notice(html,"partial","caution",text(r.locale,"Partial verification", "부분 검증"),
+            text(r.locale,"The latest report covers only part of the intended verification. Inspect the original report for its stated limits.","최근 보고는 의도한 검증의 일부만 다룹니다. 원래 보고에서 명시된 한계를 확인하세요."), &actions);
     } else if work.is_none()
         && failed.is_empty()
         && answers.cautions.iter().any(|c| {
@@ -2110,8 +2112,9 @@ fn opening_context(
             )
         })
     {
-        reading_warning(html,r,"unverified","note",text(r.locale,"Coverage remains unestablished", "검증 범위 미확인"),
-            text(r.locale,"A reported pass or process exit does not establish current assertion coverage. Skips, historical results and unresolved comparison remain separate in the report.","보고된 통과나 프로세스 종료만으로 현재 assertion coverage를 확정하지 않습니다. 미실행·과거 결과·비교 미해결은 보고에서 구분됩니다."));
+        let actions = notice_record_action(r, answers, work, "audit");
+        reading_notice(html,"unverified","note",text(r.locale,"Coverage remains unestablished", "검증 범위 미확인"),
+            text(r.locale,"A reported pass or process exit does not establish current assertion coverage. Skips, historical results and unresolved comparison remain separate in the report.","보고된 통과나 프로세스 종료만으로 현재 assertion coverage를 확정하지 않습니다. 미실행·과거 결과·비교 미해결은 보고에서 구분됩니다."), &actions);
     }
     let rejected = work
         .and_then(|w| w.reading.answers.acceptance.as_ref())
@@ -3031,12 +3034,14 @@ fn decision_detail(
     html.push_str(&content);
     html.push_str(&format!("<details class=\"decision-originals\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\">",text(r.locale,"Decision originals and evidence","결정 원문과 근거"),document_anchor(&reader,"audit")));
     render_evidence_index(html, r, &reader);
+    html.push_str(&format!("<div class=\"record-facts\" data-record-subject=\"decision:{}\" data-statement-role=\"deterministic-derived\">",d.decision.decision_id));
     for fact in &reader.facts {
         html.push_str(&format!(
             "<p data-statement-role=\"deterministic-derived\">{}</p>",
             escape(&fact.text)
         ));
     }
+    html.push_str("</div>");
     html.push_str(&records);
     if let Some(provenance) = &reader.provenance {
         html.push_str(&format!(
