@@ -2721,6 +2721,11 @@ evidence keys and citations remain admitted, retained and revalidated unchanged;
 role-based presentation cannot prove semantic sufficiency or relax source authority. Missing summary and article availability have distinct
 messages without repeating the complete unavailable-publication fallback.
 
+Failure and unavailability notices own their state, current reading impact and exact
+inspection actions in a single wrapping boundary. Historical failure labels and
+routes remain visible; original diagnostics remain deliberate disclosures. A later
+unrelated pass changes neither that notice's attribution nor its report targets.
+
 ### Persistent outline and repository reading hierarchy
 
 [Reader D-35–37 / AC-33–35](reader-experience-design.md) require a compact persistent

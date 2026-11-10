@@ -449,3 +449,8 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
    Keep a non-color focus cue for these origins in live and script-free readers. */
 .connected-overview .diagram-element:focus text { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
 .connected-overview .diagram-route:focus .relation-line { stroke-width: 3; }
+
+/* Notices own their impact and actions, including unbroken command/path text. */
+.reading-warning { min-width:0; overflow-wrap:anywhere; }
+.notice-actions { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:12px; }
+.notice-actions a { min-width:0; max-width:100%; overflow-wrap:anywhere; text-decoration:underline; }

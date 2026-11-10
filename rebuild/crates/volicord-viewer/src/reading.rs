@@ -1951,11 +1951,32 @@ fn reading_warning(
     title: &str,
     message: &str,
 ) {
-    if kind == "source" || severity == "history" {
-        html.push_str(&format!("<details class=\"reading-warning\" data-warning=\"{}\" data-severity=\"{}\"><summary>{}</summary><p>{}</p></details>", escape(kind),escape(severity),escape(title),escape(message)));
-    } else {
-        html.push_str(&format!("<aside class=\"reading-warning\" role=\"note\" aria-label=\"{}\" data-warning=\"{}\" data-severity=\"{}\"><strong>{}</strong><p>{}</p></aside>", escape(title),escape(kind),escape(severity),escape(title),escape(message)));
-    }
+    reading_notice(html, kind, severity, title, message, "");
+}
+
+/// State, impact and exact inspection actions share one notice boundary.
+fn reading_notice(
+    html: &mut String,
+    kind: &str,
+    severity: &str,
+    title: &str,
+    message: &str,
+    actions: &str,
+) {
+    html.push_str(&format!("<aside class=\"reading-warning\" role=\"note\" aria-label=\"{}\" data-warning=\"{}\" data-severity=\"{}\"><strong>{}</strong><p>{}</p>{actions}</aside>", escape(title),escape(kind),escape(severity),escape(title),escape(message)));
+}
+
+fn notice_record_action(
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    work: Option<&UnderstandingWork>,
+    section: &str,
+) -> String {
+    let target = document_anchor(answers, if work.is_some() { section } else { "audit" });
+    format!(
+        "<div class=\"notice-actions\"><a href=\"#{target}\">{}</a></div>",
+        text(r.locale, "Inspect original records", "원래 기록 확인")
+    )
 }
 
 fn opening_context(
@@ -2018,11 +2039,10 @@ fn opening_context(
         })
     };
     if failed.iter().any(|c| !historical(c)) {
-        reading_warning(html, r, "failure", "danger", text(r.locale,"Unresolved verification failure", "해결 여부가 확인되지 않은 검증 실패"),
-            text(r.locale,"A failed report remains unresolved. A later unrelated pass does not establish a retest or current coverage.","실패 보고의 해결 여부가 확인되지 않았습니다. 무관한 후속 통과는 재검증이나 현재 coverage를 확정하지 않습니다."));
+        let mut actions = String::new();
         if let Some(w) = work {
-            html.push_str("<p class=\"failure-check-links\">");
-            for (index, check) in w
+            actions.push_str("<div class=\"notice-actions failure-check-links\">");
+            let unresolved = w
                 .reading
                 .verification_report
                 .checks
@@ -2032,28 +2052,30 @@ fn opening_context(
                     c.reported_state == volicord_projections::ReportedCheckState::Failed
                         && !verification::historical_check(c, &w.reading.verification_report)
                 })
-                .take(3)
-            {
-                let target = if index < 64 {
+                .collect::<Vec<_>>();
+            for (index, check) in unresolved.iter().take(3) {
+                let target = if *index < 64 {
                     verification::check_anchor(answers, check)
                 } else {
                     document_anchor(answers, "full-verification")
                 };
-                html.push_str(&format!(
-                    "<a href=\"#{target}\">{} {}</a> ",
+                actions.push_str(&format!(
+                    "<a href=\"#{target}\">{} {}</a>",
                     text(r.locale, "Inspect failed report", "실패 보고 확인"),
                     index + 1
                 ));
             }
-            if failed.len() > 3 {
-                html.push_str(&format!(
+            if unresolved.len() > 3 {
+                actions.push_str(&format!(
                     "<a href=\"#{}\">{}</a>",
                     document_anchor(answers, "full-verification"),
                     text(r.locale, "All original reports", "전체 원래 보고")
                 ));
             }
-            html.push_str("</p>");
+            actions.push_str("</div>");
         }
+        reading_notice(html, "failure", "danger", text(r.locale,"Unresolved verification failure", "해결 여부가 확인되지 않은 검증 실패"),
+            text(r.locale,"A failed report remains unresolved. A later unrelated pass does not establish a retest or current coverage.","실패 보고의 해결 여부가 확인되지 않았습니다. 무관한 후속 통과는 재검증이나 현재 coverage를 확정하지 않습니다."), &actions);
     }
     if failed.iter().any(historical)
         && !answers
@@ -2061,8 +2083,9 @@ fn opening_context(
             .iter()
             .any(|f| f.question == "HistoricalAdversity")
     {
-        reading_warning(html, r, "historical", "history", text(r.locale,"Historical failure", "과거 검증 실패"),
-            text(r.locale,"An earlier failure remains recorded. Historical applicability or an explicitly compared rerun establishes no whole-work coverage.","이전 실패는 원래 보고에 남아 있습니다. 과거 적용 범위나 명시적으로 비교한 재실행이 작업 전체의 coverage를 확정하지는 않습니다."));
+        let actions = notice_record_action(r, answers, work, "full-verification");
+        reading_notice(html, "historical", "history", text(r.locale,"Historical failure", "과거 검증 실패"),
+            text(r.locale,"An earlier failure remains recorded. Historical applicability or an explicitly compared rerun establishes no whole-work coverage.","이전 실패는 원래 보고에 남아 있습니다. 과거 적용 범위나 명시적으로 비교한 재실행이 작업 전체의 coverage를 확정하지는 않습니다."), &actions);
     }
     if answers
         .cautions
@@ -2139,7 +2162,17 @@ fn opening_context(
                 ),
             ),
         };
-        reading_warning(html, r, kind, severity, title, &fact.text);
+        let actions = notice_record_action(
+            r,
+            answers,
+            work,
+            if kind == "source" || kind == "history" {
+                "verification-originals"
+            } else {
+                "audit"
+            },
+        );
+        reading_notice(html, kind, severity, title, &fact.text, &actions);
     }
     if decision.is_some() {
         for fact in answers

@@ -439,3 +439,68 @@ fn repository_analysis_failures_stay_visible_above_optional_coverage(
     }
     Ok(())
 }
+
+#[test]
+fn failure_notices_own_actions_and_preserve_exact_report_targets(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::*;
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    let id = f.goals["older"];
+    let p = f
+        .operations
+        .project_projection_selected(f.project, WorkSelector::ExactWork(id))?;
+    let mut w = p.selected_work.clone().ok_or("Work")?;
+    // Read-side adverse controls retain canonical originals; no new authority.
+    for c in &mut w.reading.verification_report.checks {
+        c.reported_state = ReportedCheckState::Failed;
+        c.applicability = VerificationApplicability::Unknown;
+        c.retest_comparison = RetestComparison::Unresolved;
+    }
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let r = ViewerRequest {
+            project_id: f.project,
+            locale,
+            view: ViewerView::Work { work: Some(id) },
+            requested_language: locale_key(locale).into(),
+            guarded_request: None,
+        };
+        for snapshot in [false, true] {
+            let mut html = String::new();
+            work_detail(&mut html, &r, &p, &w, snapshot);
+            let warning = html
+                .split("data-warning=\"failure\"")
+                .nth(1)
+                .ok_or("failure notice")?
+                .split("</aside>")
+                .next()
+                .ok_or("notice end")?;
+            assert!(warning.contains("class=\"notice-actions failure-check-links\""));
+            for target in warning
+                .split("href=\"#")
+                .skip(1)
+                .filter_map(|s| s.split('"').next())
+            {
+                assert_eq!(
+                    html.matches(&format!("id=\"{target}\"")).count(),
+                    1,
+                    "exact report target"
+                );
+            }
+            assert!(html.contains("data-warning=\"history\""));
+        }
+    }
+    let long = "path/command/identifier".repeat(200);
+    let mut html = String::new();
+    reading_notice(
+        &mut html,
+        "historical",
+        "history",
+        &long,
+        &long,
+        "<a href=\"#exact\">Inspect</a>",
+    );
+    assert!(html.starts_with("<aside"));
+    assert!(html.ends_with("</a></aside>"));
+    assert!(html.contains(&long));
+    Ok(())
+}
