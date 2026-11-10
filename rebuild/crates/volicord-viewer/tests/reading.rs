@@ -41,7 +41,10 @@ fn exact_routes_keep_older_work_failed_states_and_decision_rationales(
             assert!(page.contains(&fixture.checkpoints[key].to_string()));
         }
         let states = page
-            .split("class=\"record-facts\"")
+            .split(&format!(
+                "data-record-subject=\"work:{}\"",
+                fixture.goals["older"]
+            ))
             .nth(1)
             .ok_or("facts")?
             .split("</div>")

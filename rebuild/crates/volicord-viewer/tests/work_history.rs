@@ -43,7 +43,7 @@ fn check_primary(
     micros: &[String],
 ) -> Result<(), &'static str> {
     let facts = html
-        .split("class=\"record-facts\"")
+        .split("data-record-subject=\"work:")
         .nth(1)
         .and_then(|s| s.split("</div>").next())
         .ok_or("record facts missing")?;

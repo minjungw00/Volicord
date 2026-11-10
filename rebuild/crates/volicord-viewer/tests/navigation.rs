@@ -117,14 +117,16 @@ fn project_destinations_and_exact_related_records_are_readable_without_mutation(
         let opening = work.split("class=\"audit\"").next().ok_or("opening")?;
         assert!(opening.contains(&f.decisions["explicit"].to_string()));
         assert!(!work.contains(&f.decisions["other_work"].to_string()));
-        let (decision_heading, other_locale_heading) = match locale {
-            ViewerLocale::English => ("DECISION DOCUMENT", "판단 문서"),
-            ViewerLocale::Korean => ("판단 문서", "DECISION DOCUMENT"),
+        let decision_heading = match locale {
+            ViewerLocale::English => "Related Decisions",
+            ViewerLocale::Korean => "관련 결정",
         };
-        let decision_eyebrow = format!("<p class=\"eyebrow\">{decision_heading} · ");
-        let other_locale_eyebrow = format!("<p class=\"eyebrow\">{other_locale_heading} · ");
-        assert!(work.contains(&decision_eyebrow));
-        assert!(!work.contains(&other_locale_eyebrow));
+        assert!(work.contains(decision_heading));
+        assert_eq!(work.matches("class=\"document-nav\"").count(), 1);
+        assert_eq!(work.matches("<article class=\"doc\"").count(), 1);
+        assert!(work.contains("data-toc-entry"));
+        assert!(!work.contains("DECISION DOCUMENT"));
+        assert!(!work.contains("판단 문서"));
         assert!(work.contains("class=\"recorded-choice") || work.contains("recorded-choice"));
         let snapshot = viewer
             .render_snapshot(&request, TimestampMicros::from_unix_micros(123))?
@@ -145,8 +147,9 @@ fn project_destinations_and_exact_related_records_are_readable_without_mutation(
         assert!(!snapshot.contains("<form"));
         assert!(!snapshot.contains("<script"));
         assert!(!snapshot.contains("test-authenticity"));
-        assert!(snapshot.contains(&decision_eyebrow));
-        assert!(!snapshot.contains(&other_locale_eyebrow));
+        assert!(snapshot.contains(decision_heading));
+        assert!(!snapshot.contains("DECISION DOCUMENT"));
+        assert!(!snapshot.contains("판단 문서"));
     }
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())

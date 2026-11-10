@@ -74,7 +74,17 @@ fn unrelated_pass_keeps_failure_visible_and_exact_details_disclosed(
                 assert!(selected.contains("<details class=\"reading-section verification-report\""));
                 assert!(!selected.contains("verification-report\" open"));
                 if key == "failed" {
-                    assert!(selected.contains("class=\"failure-check-links\""));
+                    let notice = selected
+                        .split("data-warning=\"failure\"")
+                        .nth(1)
+                        .ok_or("failure notice")?
+                        .split("</aside>")
+                        .next()
+                        .ok_or("notice end")?;
+                    assert!(
+                        notice.contains("failure-check-links"),
+                        "inspection actions stay inside the failure notice"
+                    );
                     assert!(
                         html.contains(&format!("data-checkpoint=\"{}\"", f.checkpoints["failure"]))
                     );
