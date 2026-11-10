@@ -46,6 +46,14 @@ async function inspect(page,c,url,width,mode,language){
  assert.equal(await doc.locator('.document-nav').count(),1,'one page-level Work TOC');
  assert.equal(await doc.locator('article.doc').count(),0,'no appended/nested Decision page');
  if(c.decisions!==undefined)assert.equal(await doc.locator('.decision-reading').count(),c.decisions);
+ const decisionFolds=doc.locator('.decision-reading > details.related-decision');
+ assert.equal(await decisionFolds.count(),await doc.locator('.decision-reading').count(),'one shared disclosure per Decision');
+ assert.equal(await decisionFolds.evaluateAll(ns=>ns.every(n=>!n.open)),true,'each Decision starts closed');
+ const style=n=>{const s=getComputedStyle(n);return Object.fromEntries(['borderTopWidth','borderTopStyle','borderRadius','backgroundColor','paddingTop','paddingRight','fontSize','minHeight','textDecorationLine'].map(k=>[k,s[k]]));};
+ const evidenceStyle=doc.locator('a.evidence-link:not(.admitted-diagram a)').first();
+ if(await evidenceStyle.count())for(const action of await doc.locator('.notice-actions a').all())
+  assert.deepEqual(await action.evaluate(style),await evidenceStyle.evaluate(style),'notice actions share actual evidence-control styling');
+ if(await decisionFolds.count())await doc.locator('.related-decisions').screenshot({path:path.join(C.output,`${c.key}-${language}-${mode}-${width}-decisions-closed.png`)});
  for(const action of await doc.locator('.failure-check-links a').all())assert.equal(await action.evaluate(n=>!!n.closest('.reading-warning')),true,'notice owns every failure action');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false,'body remains bounded');
  // Open history alone: every long original is still individually folded.
@@ -71,11 +79,17 @@ async function inspect(page,c,url,width,mode,language){
  const decision=doc.locator('.decision-reading').first();
  if(await decision.count()){
   assert.equal(await decision.locator('.recorded-choice').count(),1,'canonical choice survives prose availability');
-  const toc=doc.locator('.document-nav'),link=toc.locator('a').filter({hasText:await decision.locator('h3[data-toc-entry]').textContent()}).first();
+  const fold=decision.locator(':scope > details.related-decision'),summary=fold.locator(':scope > summary');
+  await summary.press('Enter');assert.equal(await fold.evaluate(n=>n.open),true,'keyboard opens this Decision');
+  assert.equal(await decision.locator('.recorded-choice').isVisible(),true,'actual canonical choice is deliberately readable');
+  await summary.press('Enter');assert.equal(await fold.evaluate(n=>n.open),false,'keyboard folds this Decision');
+  const toc=doc.locator('.document-nav'),link=toc.locator('a').filter({hasText:await decision.locator('.decision-title').textContent()}).first();
   assert.equal(await link.count(),1,'related Decision participates in the Work outline');
   if(!await toc.evaluate(n=>n.open))await toc.locator(':scope > summary').click();
   const target=await link.getAttribute('href');await link.press('Enter');if(mode==='live')await frames(page);
   assert.equal(await page.locator(`[id="${target.slice(1)}"]`).isVisible(),true);
+  assert.equal(await fold.evaluate(n=>n.open),true,'outline opens the exact folded Decision, including native/offline');
+  assert.equal(await decisionFolds.evaluateAll(ns=>ns.slice(1).every(n=>!n.open)),true,'other Decisions stay independently folded');
   if(mode==='live')assert.equal(await page.evaluate(()=>document.activeElement.id),target.slice(1),'Decision navigation focus');
  }
  const evidence=doc.locator('.unit > .evidence-actions > a.paragraph-evidence-action').first();

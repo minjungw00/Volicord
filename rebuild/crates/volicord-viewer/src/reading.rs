@@ -1664,18 +1664,35 @@ fn insert_contents(
         let selected = prefix
             .rfind("<section class=\"diagram-claim\"")
             .is_some_and(|n| n > prefix.rfind("</section>").unwrap_or(0));
-        if in_details || selected {
+        let heading_attributes = &article[at..open_end];
+        let explicit_target = heading_attributes
+            .split("data-toc-target=\"")
+            .nth(1)
+            .and_then(|value| value.split('"').next())
+            .map(str::to_owned);
+        if (in_details && explicit_target.is_none()) || selected {
             cursor = end + close.len();
             continue;
         }
-        let title = article[open_end + 1..end].to_owned();
-        let id = format!(
-            "{}-heading-{}",
-            document_anchor(answers, "contents"),
-            entries.len() + 1
-        );
+        let title = heading_attributes
+            .split("data-toc-label=\"")
+            .nth(1)
+            .and_then(|value| value.split('"').next())
+            .unwrap_or(&article[open_end + 1..end])
+            .to_owned();
+        let id = explicit_target.clone().unwrap_or_else(|| {
+            format!(
+                "{}-heading-{}",
+                document_anchor(answers, "contents"),
+                entries.len() + 1
+            )
+        });
         let checks = grouped && prefix.contains("data-reading-group=\"checks\"");
-        let attributes = format!(" id=\"{id}\" tabindex=\"-1\"");
+        let attributes = if explicit_target.is_some() {
+            String::new()
+        } else {
+            format!(" id=\"{id}\" tabindex=\"-1\"")
+        };
         article.insert_str(at + 3, &attributes);
         cursor = end + close.len() + attributes.len();
         entries.push((id, title, level, checks));
@@ -2986,31 +3003,26 @@ fn decision_detail(
         &r.requested_language,
         "article",
     );
-    html.push_str("<header class=\"related-decision-head\">");
-    if let Some((index, title)) = reader
+    let heading = reader
         .prose
         .iter()
         .enumerate()
-        .find(|(_, a)| a.question == "Heading")
-    {
-        html.push_str(&format!(
-            "<div id=\"{}\" tabindex=\"-1\"{}><h3 data-toc-entry lang=\"{}\">{}</h3></div>",
-            reader_claim_anchor(&reader, index),
-            publication_scope(&reader),
-            escape(&content_language_tag(&r.requested_language)),
-            escape(&title.text)
-        ));
+        .find(|(_, a)| a.question == "Heading");
+    let title = heading
+        .map(|(_, unit)| unit.text.clone())
+        .unwrap_or_else(|| decision_choice_attribution(&d.decision, r.locale));
+    let heading_id = heading.map_or_else(
+        || document_anchor(&reader, "summary"),
+        |(index, _)| reader_claim_anchor(&reader, index),
+    );
+    let body_id = document_anchor(&reader, "reading");
+    // The outline targets the hidden body, so native fragment navigation also
+    // opens this exact Decision. Its summary retains the compact title/state.
+    html.push_str(&format!("<details class=\"record-box related-decision\"><summary id=\"{heading_id}\"{}><h3 data-toc-entry data-toc-target=\"{body_id}\" data-toc-label=\"{}\"><span class=\"decision-title\" lang=\"{}\">{}</span><span class=\"record-strip\">{}</span></h3></summary><div class=\"related-decision-body\" id=\"{body_id}\" tabindex=\"-1\">",
+        publication_scope(&reader),escape(&title),escape(&content_language_tag(&r.requested_language)),escape(&title),brief_decision_state_label(d.decision.state,r.locale)));
+    if let Some((index, _)) = heading {
         reader_inline_citations(html, r, &reader, index);
-    } else {
-        html.push_str(&format!(
-            "<h3 data-toc-entry>{}</h3>",
-            escape(&decision_choice_attribution(&d.decision, r.locale))
-        ));
     }
-    html.push_str(&format!(
-        "<p class=\"record-strip\">{}</p></header>",
-        brief_decision_state_label(d.decision.state, r.locale)
-    ));
     render_applicability(html, r, &reader, snapshot);
     opening_context(html, r, &reader, None, Some(d));
     explanation_diagnostic(html, r, &reader);
@@ -3032,7 +3044,7 @@ fn decision_detail(
         .replace("<h2", "<h4")
         .replace("</h2>", "</h4>");
     html.push_str(&content);
-    html.push_str(&format!("<details class=\"decision-originals\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\">",text(r.locale,"Decision originals and evidence","결정 원문과 근거"),document_anchor(&reader,"audit")));
+    html.push_str(&format!("<details class=\"record-box decision-originals\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\">",text(r.locale,"Decision originals and evidence","결정 원문과 근거"),document_anchor(&reader,"audit")));
     render_evidence_index(html, r, &reader);
     html.push_str(&format!("<div class=\"record-facts\" data-record-subject=\"decision:{}\" data-statement-role=\"deterministic-derived\">",d.decision.decision_id));
     for fact in &reader.facts {
@@ -3055,7 +3067,7 @@ fn decision_detail(
             escape(&format!("{provenance:?}"))
         ));
     }
-    html.push_str("</div></details></section>");
+    html.push_str("</div></details></div></details></section>");
     render_source_excerpts(sources, r, &reader, snapshot);
 }
 

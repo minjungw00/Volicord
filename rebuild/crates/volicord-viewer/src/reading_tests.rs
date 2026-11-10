@@ -619,6 +619,29 @@ fn related_decisions_share_work_outline_and_keep_canonical_meaning(
                     );
                 }
                 assert_eq!(html.matches("data-toc-entry").count(), seen.len());
+                assert_eq!(
+                    html.matches("<details class=\"record-box related-decision\"><summary")
+                        .count(),
+                    seen.len(),
+                    "each Decision is independently closed using the shared disclosure control"
+                );
+                assert_eq!(html.matches("data-toc-target=").count(), seen.len());
+                for target in html
+                    .split("data-toc-target=\"")
+                    .skip(1)
+                    .filter_map(|s| s.split('"').next())
+                {
+                    assert!(
+                        html.contains(&format!(
+                            "class=\"related-decision-body\" id=\"{target}\" tabindex=\"-1\""
+                        )),
+                        "outline enters the folded Decision body"
+                    );
+                    assert!(
+                        html.contains(&format!("href=\"#{target}\"")),
+                        "one Work outline retains each Decision"
+                    );
+                }
             }
         }
     }

@@ -3932,3 +3932,13 @@ other document kinds do not claim to use a Repository publication they omit.
 Stale, withheld, expired or unavailable publications supply only their actual
 availability message, with no older-publication fallback. Existing field, claim,
 publication and output-byte bounds and durable formats are unchanged.
+
+Related Decisions use the reader's shared native record disclosure controls, one
+initially closed disclosure per actual Decision. The compact summary retains its
+title and state. Each complete canonical choice/reason, independent explanation,
+applicability and original record remains inside that Decision; separate Decisions
+do not share an open state. The single Work outline targets the selected hidden
+body so live and script-free native fragment navigation opens that exact Decision.
+Claim/Source navigation and focus retain their exact publication-scoped origins.
+Notice inspection actions share the evidence controls' visual rules while keeping
+their existing report-navigation behavior.
