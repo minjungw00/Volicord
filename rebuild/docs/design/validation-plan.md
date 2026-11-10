@@ -5581,11 +5581,19 @@ worker boundary. Closed test-only fixtures submit the same Error/null/undefined/
 number throws, deferred jobs, actual interrupt, memory/stack/time/job/output bounds
 and positive handled-rejection/host-restriction controls through that worker.
 Every failure must reject geometry, discard and reap the child, then admit complete
-geometry from a fresh child. A framed negative outcome must match its expected
-reason; an observed native signal remains a contained failure, never a successful
-VM-disposal assertion. The interrupted-job fixture retains the Rust-handle release
+geometry from a fresh child. Test-only, content-free child traces distinguish control
+preparation from entry into the intended callback/resource operation. A framed
+negative outcome must match its exact expected reason and stage; unrelated startup,
+protocol, timeout or cleanup outcomes cannot supply it. The timeout resource control
+separately permits the parent request deadline after verified operation entry.
+Only a pre-cleanup `observed=signal:N` establishes an observed native fault;
+`cleanup=signal:N` alone never does. Containment is not a VM-disposal assertion.
+The interrupted-job fixture retains the Rust-handle release
 probe inside the child when native execution returns normally; a signal cannot
-supply that probe's result. Successful handled-rejection reuse must retain the same
+supply that probe's result. An intentionally held handle independently verifies the
+probe's explicit failure. Startup protocol/rejection followed by forced kill remain
+distinct negative controls. Recovery parses complete bounded two-node, one-edge
+geometry with finite coordinates and a nonempty route. Successful handled-rejection reuse must retain the same
 worker. No renderer, failure bound or production native ownership changes.
 Development/test builds optimize only the pinned `rquickjs-sys` package at level
 2; the remaining Rust development profile is unchanged. This retains Rust 1.85,

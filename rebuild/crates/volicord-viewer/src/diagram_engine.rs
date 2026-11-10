@@ -137,34 +137,56 @@ impl Engine {
     #[cfg(test)]
     pub(super) fn controlled(control: &str) -> Result<Self, String> {
         let engine = Self::new()?;
-        if control == "interrupted-job" {
+        let entered = Arc::new(AtomicUsize::new(0));
+        let reached = entered.clone();
+        engine
+            .context
+            .with(|ctx| -> rquickjs::Result<()> {
+                ctx.globals().set(
+                    "nativeControlReached",
+                    Function::new(ctx.clone(), move || {
+                        reached.store(1, Ordering::Relaxed);
+                        super::worker::test_control_reached("operation");
+                    })?,
+                )
+            })
+            .map_err(|_| "cannot install native control probe")?;
+        super::worker::test_control_reached("prepared");
+        if matches!(control, "interrupted-job" | "handle-probe-failure") {
             engine
                 .context
                 .with(|ctx| -> rquickjs::Result<()> {
-                    let job: Function = ctx.eval("() => { while (true) {} }")?;
+                    let job: Function =
+                        ctx.eval("() => { nativeControlReached(); while (true) {} }")?;
                     job.defer(())
                 })
                 .map_err(|_| "cannot enqueue interrupted control")?;
             let probe = Arc::new(());
             let released = Arc::downgrade(&probe);
-            engine
-                .runtime
-                .set_interrupt_handler(Some(Box::new(move || Arc::strong_count(&probe) > 0)));
+            let retained = (control == "handle-probe-failure").then(|| probe.clone());
+            engine.runtime.set_interrupt_handler(Some(Box::new(move || {
+                let _keep_alive = &probe;
+                entered.load(Ordering::Relaxed) > 0
+            })));
             let outcome = engine.execute_job();
             drop(engine);
             if released.upgrade().is_some() {
+                drop(retained);
                 return Err("native control retained a Rust runtime handle".into());
             }
+            super::worker::test_control_reached("handle-released");
             return match outcome {
                 Err(error) => Err(error.into()),
                 Ok(_) => Err("interrupted control unexpectedly completed".into()),
             };
         }
         let job = match control {
-            "job-error" => Some("() => { throw new Error('controlled job failure'); }"),
-            "job-null" => Some("() => { throw null; }"),
-            "job-undefined" => Some("() => { throw undefined; }"),
-            "job-number" => Some("() => { throw 7; }"),
+            "job-error" => {
+                Some("() => { nativeControlReached(); throw new Error('controlled job failure'); }")
+            }
+            "job-null" => Some("() => { nativeControlReached(); throw null; }"),
+            "job-undefined" => Some("() => { nativeControlReached(); throw undefined; }"),
+            "job-number" => Some("() => { nativeControlReached(); throw 7; }"),
             _ => None,
         };
         if let Some(job) = job {
@@ -178,15 +200,15 @@ impl Engine {
             return Ok(engine);
         }
         let script = match control {
-            "async-error" => "setTimeout(function(){throw new Error('private diagnostic must not escape');});",
-            "async-null" => "setTimeout(function(){throw null;});",
-            "async-undefined" => "setTimeout(function(){throw undefined;});",
-            "async-number" => "setTimeout(function(){throw 7;});",
-            "time" => "setTimeout(function(){while(true){}});",
-            "jobs" => "setTimeout(function again(){setTimeout(again);});",
-            "memory" => "setTimeout(function(){new ArrayBuffer(128*1024*1024);});",
-            "stack" => "setTimeout(function recurse(){recurse();});",
-            "output" => "takeLocalLayout=function(){return 'x'.repeat(262145);};",
+            "async-error" => "setTimeout(function(){nativeControlReached();throw new Error('private diagnostic must not escape');});",
+            "async-null" => "setTimeout(function(){nativeControlReached();throw null;});",
+            "async-undefined" => "setTimeout(function(){nativeControlReached();throw undefined;});",
+            "async-number" => "setTimeout(function(){nativeControlReached();throw 7;});",
+            "time" => "setTimeout(function(){nativeControlReached();while(true){}});",
+            "jobs" => "nativeControlReached();setTimeout(function again(){setTimeout(again);});",
+            "memory" => "setTimeout(function(){nativeControlReached();new ArrayBuffer(128*1024*1024);});",
+            "stack" => "setTimeout(function(){nativeControlReached();(function recurse(){recurse();})();});",
+            "output" => "takeLocalLayout=function(){nativeControlReached();return 'x'.repeat(262145);};",
             "handled" => "var rejected=Promise.reject(null);Promise.resolve().then(function(){rejected.catch(function(){});});",
             "restricted-hosts" => "if(!(typeof fetch==='undefined'&&typeof require==='undefined'&&typeof process==='undefined'&&typeof std==='undefined'&&typeof Worker==='undefined'))throw new Error('unexpected external host');",
             _ => return Err("unknown native test control".into()),
@@ -219,8 +241,11 @@ pub(super) fn layout(input: &str) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::worker::{layout, select_test_engine, test_worker_pid};
-    const GRAPH: &str = r#"{"id":"root","layoutOptions":{"elk.algorithm":"layered"},"children":[{"id":"a","width":20,"height":20}]}"#;
+    use super::super::worker::{
+        layout,
+        proof::{assert_geometry, Failure, Mechanism, GRAPH},
+        select_test_engine, test_control_trace, test_worker_pid,
+    };
 
     #[test]
     fn actual_callback_failure_reaches_the_shared_svg_consumer() -> Result<(), String> {
@@ -279,36 +304,47 @@ mod tests {
         Ok(())
     }
 
-    fn reject_and_recover(control: &'static str, expected: &[&str]) -> Result<(), String> {
+    fn reject_and_recover(control: &'static str, expected: &[Mechanism<'_>]) -> Result<(), String> {
         select_test_engine(control);
         let failure = layout(GRAPH).expect_err("failed native control cannot admit geometry");
-        // A framed engine error or an observed native fault is a failure. A
-        // native fault is contained, never relabelled as a successful VM drop.
+        let trace = test_control_trace();
+        let outcome = Failure::parse(&failure);
+        eprintln!("native control={control}; trace={trace:?}; {failure}");
         assert!(
-            expected.iter().any(|reason| failure.contains(reason)) || failure.contains("signal:"),
-            "{control}: {failure}"
+            trace.iter().any(|s| s == "prepared"),
+            "control initialization: {failure}"
         );
+        assert!(
+            trace.iter().any(|s| s == "operation"),
+            "intended operation never reached: {failure}"
+        );
+        assert!(
+            expected.contains(&outcome.mechanism()),
+            "{control}: {outcome:?}"
+        );
+        assert_eq!(
+            outcome.stage,
+            if control == "interrupted-job" {
+                "initialization"
+            } else {
+                "request"
+            }
+        );
+        if control == "interrupted-job" {
+            assert!(
+                trace.iter().any(|s| s == "handle-released"),
+                "missing handle-probe result"
+            );
+        }
         assert!(!failure.contains("private diagnostic"));
         assert!(
             test_worker_pid().is_none(),
             "failed child must be discarded"
         );
-        let pid = failure
-            .split("worker_pid=")
-            .nth(1)
-            .and_then(|part| part.split(';').next())
-            .and_then(|value| value.parse::<i32>().ok())
-            .and_then(rustix::process::Pid::from_raw)
-            .ok_or("native failure process identity")?;
-        assert!(
-            matches!(
-                rustix::process::waitpid(Some(pid), rustix::process::WaitOptions::NOHANG),
-                Err(rustix::io::Errno::CHILD)
-            ),
-            "failed native process must be reaped"
-        );
+        outcome.assert_reaped();
         let recovered = layout(GRAPH)?;
-        assert!(recovered.contains("root") && recovered.contains("a"));
+        assert_geometry(&recovered);
+        assert_ne!(test_worker_pid(), Some(outcome.pid as u32));
         assert!(
             test_worker_pid().is_some(),
             "fresh child serves the next request"
@@ -319,7 +355,7 @@ mod tests {
     #[test]
     fn handled_rejections_are_not_unhandled_execution_failures() -> Result<(), String> {
         select_test_engine("handled");
-        layout(GRAPH)?;
+        assert_geometry(&layout(GRAPH)?);
         let original = test_worker_pid().ok_or("successful worker")?;
         layout(GRAPH)?;
         assert_eq!(
@@ -333,10 +369,22 @@ mod tests {
     #[test]
     fn native_budget_failures_discard_partial_work_and_recover() -> Result<(), String> {
         for control in ["time", "jobs", "memory", "stack", "output"] {
-            let reasons: &[&str] = if control == "time" {
-                &["execution failed", "budget exceeded", "deadline exceeded"]
-            } else {
-                &["execution failed", "budget exceeded"]
+            let reasons: &[Mechanism<'_>] = match control {
+                "time" => &[
+                    Mechanism::Timeout,
+                    Mechanism::EngineRejection("local layout time/job budget exceeded"),
+                    Mechanism::EngineRejection("local layout asynchronous execution failed"),
+                ],
+                "jobs" => &[Mechanism::EngineRejection(
+                    "local layout time/job budget exceeded",
+                )],
+                "memory" | "stack" => &[Mechanism::EngineRejection(
+                    "local layout asynchronous execution failed",
+                )],
+                "output" => &[Mechanism::EngineRejection(
+                    "local layout geometry budget exceeded",
+                )],
+                _ => unreachable!(),
             };
             reject_and_recover(control, reasons)?;
         }
@@ -351,20 +399,35 @@ mod tests {
             "async-undefined",
             "async-number",
         ] {
-            reject_and_recover(control, &["asynchronous execution failed"])?;
+            reject_and_recover(
+                control,
+                &[Mechanism::EngineRejection(
+                    "local layout asynchronous execution failed",
+                )],
+            )?;
         }
         Ok(())
     }
 
     #[test]
     fn interrupted_job_discards_child_and_allows_fresh_geometry() -> Result<(), String> {
-        reject_and_recover("interrupted-job", &["execution failed"])
+        reject_and_recover(
+            "interrupted-job",
+            &[Mechanism::EngineRejection(
+                "local layout execution failed or exceeded its bound",
+            )],
+        )
     }
 
     #[test]
     fn pending_job_errors_discard_process_without_reusing_a_failed_context() -> Result<(), String> {
         for control in ["job-error", "job-null", "job-undefined", "job-number"] {
-            reject_and_recover(control, &["execution failed"])?;
+            reject_and_recover(
+                control,
+                &[Mechanism::EngineRejection(
+                    "local layout execution failed or exceeded its bound",
+                )],
+            )?;
         }
         Ok(())
     }
@@ -374,6 +437,51 @@ mod tests {
         select_test_engine("restricted-hosts");
         layout(GRAPH)?;
         Ok(())
+    }
+
+    #[test]
+    fn explicit_handle_probe_failure_cannot_pass_as_interruption() -> Result<(), String> {
+        select_test_engine("handle-probe-failure");
+        let failure = layout(GRAPH).expect_err("held handle must fail");
+        let outcome = Failure::parse(&failure);
+        assert_eq!(
+            outcome.mechanism(),
+            Mechanism::EngineRejection("native control retained a Rust runtime handle")
+        );
+        assert!(test_control_trace().iter().any(|s| s == "operation"));
+        assert!(!test_control_trace().iter().any(|s| s == "handle-released"));
+        outcome.assert_reaped();
+        assert_geometry(&layout(GRAPH)?);
+        Ok(())
+    }
+
+    #[test]
+    fn cleanup_signal_never_supplies_a_failure_mechanism() {
+        for (primary, stage, mechanism) in [
+            (
+                "local layout worker protocol rejected",
+                "initialization",
+                Mechanism::Protocol,
+            ),
+            (
+                "local layout worker ended before a complete response",
+                "initialization",
+                Mechanism::Initialization,
+            ),
+            (
+                "local layout worker deadline exceeded",
+                "request",
+                Mechanism::Timeout,
+            ),
+        ] {
+            let diagnostic = format!("{primary}; stage={stage}; worker_pid=123; observed=running_or_unobserved; cleanup=signal:9; native_startup=");
+            let failure = Failure::parse(&diagnostic);
+            assert_eq!(failure.mechanism(), mechanism);
+            assert!(!matches!(
+                failure.mechanism(),
+                Mechanism::EngineRejection(_) | Mechanism::NativeFault(_)
+            ));
+        }
     }
 
     #[test]

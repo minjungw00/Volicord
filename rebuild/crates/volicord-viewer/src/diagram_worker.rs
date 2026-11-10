@@ -107,6 +107,11 @@ impl Worker {
             command.env_clear().env("VOLICORD_LAYOUT_TEST_CHILD", "1");
             if let Some(control) = TEST_ENGINE_CONTROL.with(|slot| slot.take()) {
                 command.env("VOLICORD_LAYOUT_TEST_ENGINE", control);
+                TEST_CONTROL_TRACE.with(|slot| {
+                    let trace = tempfile::NamedTempFile::new().expect("native control trace");
+                    command.env("VOLICORD_LAYOUT_TEST_TRACE", trace.path());
+                    *slot.borrow_mut() = Some(trace);
+                });
             }
             if let Some(value) = std::env::var_os("ASAN_OPTIONS") {
                 command.env("ASAN_OPTIONS", value);
@@ -362,10 +367,37 @@ thread_local! {static TEST_WORKER: std::cell::Cell<&'static str> = const {std::c
 #[cfg(test)]
 thread_local! {static TEST_ENGINE_CONTROL: std::cell::Cell<Option<&'static str>> = const {std::cell::Cell::new(None)};}
 #[cfg(test)]
+thread_local! {static TEST_CONTROL_TRACE: RefCell<Option<tempfile::NamedTempFile>> = const {RefCell::new(None)};}
+#[cfg(test)]
+pub(super) fn test_control_reached(stage: &str) {
+    let path = std::env::var_os("VOLICORD_LAYOUT_TEST_TRACE").expect("control trace path");
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(path)
+        .expect("control trace");
+    writeln!(file, "{stage}").expect("control trace write");
+}
+#[cfg(test)]
+pub(super) fn test_control_trace() -> Vec<String> {
+    TEST_CONTROL_TRACE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .map(|trace| {
+                std::fs::read_to_string(trace.path())
+                    .expect("control trace read")
+                    .lines()
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default()
+    })
+}
+#[cfg(test)]
 pub(super) fn select_test_worker(test: &'static str) {
     WORKER.with(|slot| *slot.borrow_mut() = None);
     TEST_WORKER.with(|slot| slot.set(test));
     TEST_ENGINE_CONTROL.with(|slot| slot.set(None));
+    TEST_CONTROL_TRACE.with(|slot| *slot.borrow_mut() = None);
 }
 #[cfg(test)]
 pub(super) fn select_test_engine(control: &'static str) {
@@ -376,10 +408,137 @@ pub(super) fn select_test_engine(control: &'static str) {
 pub(super) fn test_worker_pid() -> Option<u32> {
     WORKER.with(|slot| slot.borrow().as_ref().map(|worker| worker.child.id()))
 }
+
+#[cfg(test)]
+pub(super) mod proof {
+    #[derive(Debug, PartialEq)]
+    pub enum Mechanism<'a> {
+        EngineRejection(&'a str),
+        NativeFault(i32),
+        Initialization,
+        Protocol,
+        Timeout,
+        Other,
+    }
+    #[derive(Debug)]
+    pub struct Failure<'a> {
+        pub primary: &'a str,
+        pub stage: &'a str,
+        pub pid: i32,
+        pub observed: &'a str,
+        pub cleanup: &'a str,
+    }
+    impl<'a> Failure<'a> {
+        pub fn parse(value: &'a str) -> Self {
+            let (primary, fields) = value.split_once("; stage=").expect("attributed failure");
+            let mut fields = fields.split("; ");
+            let stage = fields.next().expect("stage");
+            let pid = fields
+                .next()
+                .and_then(|f| f.strip_prefix("worker_pid="))
+                .and_then(|f| f.parse().ok())
+                .expect("worker PID");
+            let observed = fields
+                .next()
+                .and_then(|f| f.strip_prefix("observed="))
+                .expect("observed");
+            let cleanup = fields
+                .next()
+                .and_then(|f| f.strip_prefix("cleanup="))
+                .expect("cleanup");
+            Self {
+                primary,
+                stage,
+                pid,
+                observed,
+                cleanup,
+            }
+        }
+        pub fn mechanism(&self) -> Mechanism<'a> {
+            if let Some(reason) = self
+                .primary
+                .strip_prefix("local layout worker rejected execution: ")
+            {
+                return Mechanism::EngineRejection(reason);
+            }
+            if self.primary == "local layout worker deadline exceeded" {
+                return Mechanism::Timeout;
+            }
+            if self.primary.contains("protocol") {
+                return Mechanism::Protocol;
+            }
+            if let Some(signal) = self
+                .observed
+                .strip_prefix("signal:")
+                .and_then(|s| s.parse().ok())
+            {
+                return Mechanism::NativeFault(signal);
+            }
+            if self.stage == "initialization" {
+                Mechanism::Initialization
+            } else {
+                Mechanism::Other
+            }
+        }
+        pub fn assert_reaped(&self) {
+            let pid = rustix::process::Pid::from_raw(self.pid).expect("valid PID");
+            assert_ne!(self.cleanup, "unavailable");
+            assert!(
+                matches!(
+                    rustix::process::waitpid(Some(pid), rustix::process::WaitOptions::NOHANG),
+                    Err(rustix::io::Errno::CHILD)
+                ),
+                "failed child must be reaped: {self:?}"
+            );
+        }
+    }
+    pub const GRAPH: &str = r#"{"id":"root","layoutOptions":{"elk.algorithm":"layered"},"children":[{"id":"a","width":20,"height":20},{"id":"b","width":20,"height":20}],"edges":[{"id":"ab","sources":["a"],"targets":["b"]}]}"#;
+    pub fn assert_geometry(output: &str) {
+        use serde_json::Value;
+        let graph: Value = serde_json::from_str(output).expect("complete JSON geometry");
+        assert!(output.len() <= super::OUTPUT_LIMIT);
+        assert_eq!(graph["id"], "root");
+        let coordinate = |v: &Value| {
+            let n = v.as_f64().expect("numeric coordinate");
+            assert!(n.is_finite() && (0.0..=100_000.0).contains(&n));
+            n
+        };
+        let width = coordinate(&graph["width"]);
+        let height = coordinate(&graph["height"]);
+        assert!(width > 0.0 && height > 0.0);
+        let children = graph["children"].as_array().expect("nodes");
+        assert_eq!(children.len(), 2);
+        for (node, id) in children.iter().zip(["a", "b"]) {
+            assert_eq!(node["id"], id);
+            assert_eq!(node["width"], 20);
+            assert_eq!(node["height"], 20);
+            assert!(coordinate(&node["x"]) + 20.0 <= width);
+            assert!(coordinate(&node["y"]) + 20.0 <= height);
+        }
+        let edges = graph["edges"].as_array().expect("edges");
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["id"], "ab");
+        assert_eq!(edges[0]["sources"], serde_json::json!(["a"]));
+        assert_eq!(edges[0]["targets"], serde_json::json!(["b"]));
+        let sections = edges[0]["sections"].as_array().expect("routed sections");
+        assert_eq!(sections.len(), 1);
+        let section = &sections[0];
+        let mut points = vec![&section["startPoint"]];
+        if let Some(bends) = section["bendPoints"].as_array() {
+            points.extend(bends);
+        }
+        points.push(&section["endPoint"]);
+        for point in &points {
+            assert!(coordinate(&point["x"]) <= width);
+            assert!(coordinate(&point["y"]) <= height);
+        }
+        assert_ne!(points.first(), points.last(), "nonempty complete route");
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
-    const GRAPH: &str = r#"{"id":"root","layoutOptions":{"elk.algorithm":"layered"},"children":[{"id":"a","width":20,"height":20}]}"#;
+    use proof::{assert_geometry, Failure, Mechanism, GRAPH};
     fn child() -> bool {
         std::env::var_os("VOLICORD_LAYOUT_TEST_CHILD").is_some()
     }
@@ -447,6 +606,26 @@ mod tests {
         std::process::exit(12);
     }
     #[test]
+    #[ignore = "internal child entry, exercised by supervisor controls"]
+    fn startup_protocol_stall_child() {
+        if !child() {
+            return;
+        }
+        io::stderr().write_all(&[b'x'; HELLO.len()]).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(60));
+    }
+    #[test]
+    #[ignore = "internal child entry, exercised by supervisor controls"]
+    fn startup_rejection_stall_child() {
+        if !child() {
+            return;
+        }
+        let mut output = io::stderr().lock();
+        output.write_all(HELLO).unwrap();
+        frame(&mut output, true, b"controlled initialization failure").unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(60));
+    }
+    #[test]
     fn faults_partial_frames_and_timeouts_discard_the_process_and_recover() -> Result<(), String> {
         for test in [
             "abrupt_child",
@@ -454,6 +633,8 @@ mod tests {
             "stalled_child",
             "callback_failure_child",
             "startup_diagnostic_child",
+            "startup_protocol_stall_child",
+            "startup_rejection_stall_child",
         ] {
             let name = match test {
                 "abrupt_child" => "diagram::overview::worker::tests::abrupt_child",
@@ -462,21 +643,54 @@ mod tests {
                 "callback_failure_child" => {
                     "diagram::overview::worker::tests::callback_failure_child"
                 }
-                _ => "diagram::overview::worker::tests::startup_diagnostic_child",
+                "startup_diagnostic_child" => {
+                    "diagram::overview::worker::tests::startup_diagnostic_child"
+                }
+                "startup_protocol_stall_child" => {
+                    "diagram::overview::worker::tests::startup_protocol_stall_child"
+                }
+                _ => "diagram::overview::worker::tests::startup_rejection_stall_child",
             };
             select_test_worker(name);
             let failure = layout(GRAPH).expect_err("failed child cannot admit geometry");
-            assert!(failure.contains("stage="), "{failure}");
-            assert!(failure.contains("cleanup="), "{failure}");
+            let attributed = Failure::parse(&failure);
+            eprintln!("native worker control={test}; {failure}");
             if test == "abrupt_child" {
-                assert!(failure.contains("signal:6"), "{failure}");
+                // EOF can race waitpid. Only a pre-cleanup observation is a
+                // NativeFault; a signal first learned during cleanup is not.
+                if attributed.observed == "signal:6" {
+                    assert_eq!(attributed.mechanism(), Mechanism::NativeFault(6));
+                } else {
+                    assert_eq!(attributed.mechanism(), Mechanism::Initialization);
+                }
+                assert_eq!(attributed.cleanup, "signal:6");
             }
             if test == "partial_child" {
-                assert!(failure.contains("exit:7"), "{failure}");
+                assert_eq!(attributed.stage, "request");
+                assert_eq!(attributed.cleanup, "exit:7");
             }
             if test == "stalled_child" {
-                assert!(failure.contains("deadline exceeded"), "{failure}");
-                assert!(failure.contains("signal:9"), "{failure}");
+                assert_eq!(attributed.mechanism(), Mechanism::Timeout);
+                assert_eq!(attributed.stage, "request");
+                assert_eq!(attributed.observed, "running_or_unobserved");
+                assert_eq!(attributed.cleanup, "signal:9");
+            }
+            if test == "startup_protocol_stall_child" || test == "startup_rejection_stall_child" {
+                assert_eq!(attributed.stage, "initialization");
+                assert_eq!(attributed.observed, "running_or_unobserved");
+                assert_eq!(attributed.cleanup, "signal:9");
+                assert!(
+                    test_control_trace().is_empty(),
+                    "no intended operation was reached"
+                );
+                assert_eq!(
+                    attributed.mechanism(),
+                    if test == "startup_protocol_stall_child" {
+                        Mechanism::Protocol
+                    } else {
+                        Mechanism::EngineRejection("controlled initialization failure")
+                    }
+                );
             }
             if test == "startup_diagnostic_child" {
                 assert!(
@@ -486,14 +700,16 @@ mod tests {
                 assert!(failure.len() < 1400, "native startup evidence is bounded");
             }
             if test == "callback_failure_child" {
-                assert!(
-                    failure.contains("asynchronous execution failed"),
-                    "{failure}"
+                assert_eq!(attributed.stage, "request");
+                assert_eq!(
+                    attributed.mechanism(),
+                    Mechanism::EngineRejection("local layout asynchronous execution failed")
                 );
             }
+            attributed.assert_reaped();
             assert!(WORKER.with(|slot| slot.borrow().is_none()));
-            assert!(layout(GRAPH)?.contains("children"));
-            assert!(layout(GRAPH)?.contains("children"), "supported reuse");
+            assert_geometry(&layout(GRAPH)?);
+            assert_geometry(&layout(GRAPH)?);
         }
         Ok(())
     }
