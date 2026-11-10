@@ -86,7 +86,7 @@ async function inspect(page,c,url,width,mode,language){
   const point=page.locator(`[id="${href.slice(1)}"]`);assert.equal(await point.isVisible(),true,'exact Source target reachable');
   const back=point.locator('a.return').first();assert.equal(await back.getAttribute('href'),'#'+origin);
   await back.press('Enter');if(mode==='live')await frames(page);
-  if(mode==='live')assert.equal(await page.evaluate(()=>document.activeElement.id),origin,'Source focus return');
+  if(mode==='live')assert.equal(await evidence.evaluate(n=>document.activeElement===n),true,'Source focus returns to the exact activating evidence action');
  }
  if(c.adverse_layout_control){
   const notice=doc.locator('.reading-warning').first();
