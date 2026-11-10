@@ -2694,6 +2694,14 @@ are not allocator or RSS measurements. Existing store decoding and invalidation
 costs remain distinct; no constant-time side-channel guarantee or absolute Project
 size/latency SLA is established by this projection contract.
 
+Related Decisions render as sections within their actual Work reading hierarchy.
+The Work owns one page-level outline, including each selected Decision title;
+Decision canonical statements, generated prose and evidence retain independent
+publication identity and availability. Source panes remain siblings of the Work
+article, with Work-scoped DOM origins even when a Decision applies to several
+Works. Canonical question, alternatives/consequences, recommendation/reason,
+user choice/optional reason and applicability survive missing Decision prose.
+
 ### Publication-scoped reader fragments
 
 Viewer anchor namespaces derive from a structured Project, subject, publication

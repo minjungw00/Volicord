@@ -1639,13 +1639,17 @@ fn insert_contents(
     while let Some(relative) = article[cursor..].find("<h") {
         let at = cursor + relative;
         let level = article.as_bytes().get(at + 2).copied().unwrap_or(b'0');
-        if !matches!(level, b'2' | b'3') || grouped && level != b'2' {
+        if !matches!(level, b'2' | b'3') {
             cursor = at + 2;
             continue;
         }
         let Some(open_end) = article[at..].find('>').map(|n| at + n) else {
             break;
         };
+        if grouped && level != b'2' && !article[at..open_end].contains("data-toc-entry") {
+            cursor = open_end + 1;
+            continue;
+        }
         let close = format!("</h{}>", char::from(level));
         let Some(end) = article[open_end + 1..]
             .find(&close)
@@ -2725,38 +2729,17 @@ fn work_detail(
             "일부 관련 Decision은 이 문서의 제한된 선택 범위 밖에 있습니다. live 독자 또는 CLI/MCP에서 정확한 Work로 확인하세요."));
     }
     let mut related = String::new();
-    let mut decision_documents = String::new();
-    for d in decisions
-        .iter()
-        .filter(|d| w.decision_ids.contains(&d.decision.decision_id))
-    {
-        let mut document = String::new();
-        decision_detail(&mut document, r, d, p, snapshot);
-        // A Decision may actually apply to several Works. Scope its DOM anchors
-        // to this reading context while retaining the canonical/citation identity.
-        let ids = document
-            .split(" id=\"")
-            .skip(1)
-            .filter_map(|s| s.split('"').next())
-            .map(str::to_owned)
-            .collect::<Vec<_>>();
-        for id in ids {
-            let scoped = format!("work-{}-{id}", w.work_item_id);
-            document = document
-                .replace(&format!("id=\"{id}\""), &format!("id=\"{scoped}\""))
-                .replace(&format!("href=\"#{id}\""), &format!("href=\"#{scoped}\""))
-                .replace(
-                    &format!("data-origin=\"{id}\""),
-                    &format!("data-origin=\"{scoped}\""),
-                );
-        }
-        related.push_str(&format!(
-            "<p><a href=\"#work-{}-decision-{}\">{}</a></p>",
+    let mut decision_sources = String::new();
+    for d in decisions {
+        decision_detail(
+            &mut related,
+            &mut decision_sources,
+            r,
+            d,
+            p,
             w.work_item_id,
-            d.decision.decision_id,
-            escape(&decision_choice_attribution(&d.decision, r.locale))
-        ));
-        decision_documents.push_str(&document);
+            snapshot,
+        );
     }
     for candidate in related_learning(p, w.work_item_id) {
         records.push_str(&format!("<article id=\"learning-{}\" data-candidate-id=\"{}\" data-work-id=\"{}\" data-statement-role=\"session-candidate\">",candidate.candidate_id,candidate.candidate_id,w.work_item_id));
@@ -2781,7 +2764,7 @@ fn work_detail(
         &related,
         snapshot,
     );
-    html.push_str(&decision_documents);
+    html.push_str(&decision_sources);
     html.push_str("</section>");
 }
 
@@ -2904,12 +2887,14 @@ pub(super) fn decision_answers(
 }
 fn decision_detail(
     html: &mut String,
+    sources: &mut String,
     r: &ViewerRequest,
     d: &volicord_projections::UnderstandingDecision,
     p: &ProjectProjection,
+    work: ContextItemId,
     snapshot: bool,
 ) {
-    html.push_str(&format!("<section id=\"decision-{}\" class=\"decision-reading\" data-decision-id=\"{}\" data-decision-scope=\"{}\">", d.decision.decision_id, d.decision.decision_id, decision_scope_key(d.decision.work_scope)));
+    html.push_str(&format!("<section id=\"work-{work}-decision-{}\" class=\"decision-reading\" tabindex=\"-1\" data-decision-id=\"{}\" data-decision-scope=\"{}\">", d.decision.decision_id, d.decision.decision_id, decision_scope_key(d.decision.work_scope)));
     let answers = decision_answers(r, &d.decision);
     let mut records = String::new();
     contextual_limits(&mut records, r, p, snapshot);
@@ -2986,28 +2971,86 @@ fn decision_detail(
     for gap in d.known_link_gaps.iter().chain(&d.decision.known_limits) {
         empty_state(&mut records, gap);
     }
-    let mut related = String::new();
-    if let DecisionWorkScope::WorkItem(work) = d.decision.work_scope {
-        link(
-            &mut related,
-            r,
-            ViewerView::Work { work: Some(work) },
-            text(r.locale, "Read the linked Work →", "연결된 작업 읽기 →"),
-            snapshot.then(|| format!("work-{work}")).as_deref(),
-        );
-    }
-    render_document(
-        html,
-        r,
+    // Related Decisions share their Work's outline but keep independent
+    // publication/lifetime authority and exact claim/range origins.
+    let reader = ReaderAnswers::new(
         &answers,
-        None,
-        Some(d),
-        &records,
-        &related,
-        snapshot,
+        r.project_id,
+        &format!("work:{work}/decision:{}", d.decision.decision_id),
+        &r.requested_language,
+        "article",
     );
-    html.push_str("</section>");
+    html.push_str("<header class=\"related-decision-head\">");
+    if let Some((index, title)) = reader
+        .prose
+        .iter()
+        .enumerate()
+        .find(|(_, a)| a.question == "Heading")
+    {
+        html.push_str(&format!(
+            "<div id=\"{}\" tabindex=\"-1\"{}><h3 data-toc-entry lang=\"{}\">{}</h3></div>",
+            reader_claim_anchor(&reader, index),
+            publication_scope(&reader),
+            escape(&content_language_tag(&r.requested_language)),
+            escape(&title.text)
+        ));
+        reader_inline_citations(html, r, &reader, index);
+    } else {
+        html.push_str(&format!(
+            "<h3 data-toc-entry>{}</h3>",
+            escape(&decision_choice_attribution(&d.decision, r.locale))
+        ));
+    }
+    html.push_str(&format!(
+        "<p class=\"record-strip\">{}</p></header>",
+        brief_decision_state_label(d.decision.state, r.locale)
+    ));
+    render_applicability(html, r, &reader, snapshot);
+    opening_context(html, r, &reader, None, Some(d));
+    explanation_diagnostic(html, r, &reader);
+    let mut content = String::new();
+    render_recorded_choice(&mut content, r, &reader, d);
+    for (index, _) in reader
+        .prose
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| matches!(a.question.as_str(), "Synopsis" | "ExplanationAvailability"))
+    {
+        reader_unit(&mut content, r, &reader, index);
+    }
+    render_article_sections(&mut content, r, &reader, &reader.sections, false, snapshot);
+    // Nested reading preserves admitted units and indices, not another page.
+    content = content
+        .replace("<h3", "<h5")
+        .replace("</h3>", "</h5>")
+        .replace("<h2", "<h4")
+        .replace("</h2>", "</h4>");
+    html.push_str(&content);
+    html.push_str(&format!("<details class=\"decision-originals\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\">",text(r.locale,"Decision originals and evidence","결정 원문과 근거"),document_anchor(&reader,"audit")));
+    render_evidence_index(html, r, &reader);
+    for fact in &reader.facts {
+        html.push_str(&format!(
+            "<p data-statement-role=\"deterministic-derived\">{}</p>",
+            escape(&fact.text)
+        ));
+    }
+    html.push_str(&records);
+    if let Some(provenance) = &reader.provenance {
+        html.push_str(&format!(
+            "<details class=\"raw-disclosure\"{}><summary>{}</summary><pre>{}</pre></details>",
+            publication_scope(&reader),
+            text(
+                r.locale,
+                "Explanation publication provenance",
+                "설명 발행 정보"
+            ),
+            escape(&format!("{provenance:?}"))
+        ));
+    }
+    html.push_str("</div></details></section>");
+    render_source_excerpts(sources, r, &reader, snapshot);
 }
+
 fn repository_explanation(
     html: &mut String,
     r: &ViewerRequest,

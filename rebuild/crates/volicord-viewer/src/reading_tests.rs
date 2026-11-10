@@ -504,3 +504,123 @@ fn failure_notices_own_actions_and_preserve_exact_report_targets(
     assert!(html.contains(&long));
     Ok(())
 }
+
+#[test]
+fn related_decisions_share_work_outline_and_keep_canonical_meaning(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::*;
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    // An actual current producer publishes both languages for one Decision;
+    // its peers deliberately retain missing prose as an independent baseline.
+    let decision = f.decisions["explicit"];
+    for language in ["en", "ko"] {
+        let plan = f.operations.prepare_explanation(
+            f.project,
+            ExplanationSubject::Decision(decision),
+            language,
+        )?;
+        let draft = serde_json::from_value(serde_json::json!({
+            "plan_fingerprint":plan.fingerprint,"language":language,
+            "generator":{"host":"authored-control","session":"reader-decision","agent":null,"model":null},
+            "paragraphs":[
+                {"question":"heading","text":"Bounded recommendation · 제한된 권고","evidence_keys":["choice"],"sources":[]},
+                {"question":"synopsis","text":"Recorded choice and its independent interpretation · 기록된 선택과 독립 해석","evidence_keys":["choice"],"sources":[]},
+                {"question":"section_heading","text":"Recommendation · 권고","evidence_keys":["recommendation"],"sources":[]},
+                {"question":"narrative","text":"Prefer a bounded local boundary · 제한된 로컬 경계 권고","evidence_keys":["recommendation"],"sources":[]}
+            ]
+        }))?;
+        let realized = f
+            .operations
+            .compose_decision_explanation(f.project, decision, draft)?;
+        f.operations.record_explanation(
+            f.project,
+            ExplanationSubject::Decision(decision),
+            language,
+            realized,
+        )?;
+    }
+    for key in ["older", "same_title", "goal_only"] {
+        let id = f.goals[key];
+        let p = f
+            .operations
+            .project_projection_selected(f.project, WorkSelector::ExactWork(id))?;
+        let w = p.selected_work.as_ref().ok_or("Work")?;
+        for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+            let r = ViewerRequest {
+                project_id: f.project,
+                locale,
+                view: ViewerView::Work { work: Some(id) },
+                requested_language: locale_key(locale).into(),
+                guarded_request: None,
+            };
+            for snapshot in [false, true] {
+                let mut html = String::new();
+                work_detail(&mut html, &r, &p, w, snapshot);
+                assert_eq!(
+                    html.matches("class=\"document-nav\"").count(),
+                    1,
+                    "one Work outline"
+                );
+                assert_eq!(
+                    html.matches("<article class=\"doc\"").count(),
+                    1,
+                    "no appended Decision page"
+                );
+                let mut seen = std::collections::BTreeSet::new();
+                for d in p
+                    .selected_work_decisions
+                    .iter()
+                    .chain(p.decision_catalog.iter().filter(|_| snapshot))
+                    .filter(|d| w.decision_ids.contains(&d.decision.decision_id))
+                    .filter(|d| seen.insert(d.decision.decision_id))
+                {
+                    let start = html
+                        .find(&format!(
+                            "class=\"decision-reading\" tabindex=\"-1\" data-decision-id=\"{}\"",
+                            d.decision.decision_id
+                        ))
+                        .ok_or("related Decision")?;
+                    let body = &html[start..];
+                    assert!(
+                        body.contains(&escape(&decision_choice_attribution(&d.decision, locale)))
+                    );
+                    for reason in [
+                        &d.reading.user_rationale.original_text,
+                        &d.reading.recommendation_rationale.original_text,
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        assert!(body.contains(&escape(reason)), "separate retained reasons");
+                    }
+                    assert!(body.contains("recorded-choice"));
+                }
+                let ids = html
+                    .split(" id=\"")
+                    .skip(1)
+                    .filter_map(|s| s.split('"').next())
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    ids.iter()
+                        .copied()
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .len(),
+                    ids.len(),
+                    "unique scoped anchors"
+                );
+                for target in html
+                    .split("href=\"#")
+                    .skip(1)
+                    .filter_map(|s| s.split('"').next())
+                {
+                    assert!(
+                        target == "works" || ids.contains(&target),
+                        "missing native target {target}"
+                    );
+                }
+                assert_eq!(html.matches("data-toc-entry").count(), seen.len());
+            }
+        }
+    }
+    Ok(())
+}
