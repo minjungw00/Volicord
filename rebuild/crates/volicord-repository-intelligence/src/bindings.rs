@@ -742,6 +742,21 @@ impl<'a> BindingFile<'a> {
     fn owner<'t>(&self, at: Node<'t>) -> Option<Node<'t>> {
         let mut ancestor = at.parent();
         while let Some(node) = ancestor {
+            if *self.language == Language::Java
+                && node.kind() == "class_body"
+                && node.parent().is_some_and(|parent| {
+                    matches!(
+                        parent.kind(),
+                        "object_creation_expression" | "enum_constant"
+                    )
+                })
+            {
+                // Anonymous classes introduce their own `this`. They have no
+                // supported owner identity here, so never borrow an enclosing
+                // named class. The body boundary excludes constructor arguments;
+                // lambdas there still inherit the surrounding `this`.
+                return None;
+            }
             if *self.language == Language::TypeScript
                 && matches!(node.kind(), "function_declaration" | "function_expression")
             {

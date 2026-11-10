@@ -856,7 +856,7 @@
       "id": "semantic-binding-receiver",
       "validation_id": "V02",
       "path": "rebuild/validation/repository-intelligence/semantic-binding",
-      "purpose": "Independently distinguish a host receiver property from a sole same-arity local declaration while preserving a local call.",
+      "purpose": "Distinguish receiver ownership and expression scope from spelling, preserving justified lexical, named-class, lambda and static calls.",
       "expected_entities": [
         "typescript|receiver.ts|function|log|3",
         "typescript|receiver.ts|function|demo|6",
@@ -866,10 +866,11 @@
         "references|local|log"
       ],
       "expected_unsupported": [
-        "external receiver binding for console.log"
+        "external receiver binding for console.log",
+        "Java anonymous this owner binding; never use the enclosing named class"
       ],
-      "content_sha256": "479525f4784653056a8f87ab001ea9678621f22b29ad92fafc2a0765639e516e",
-      "origin": "Self-authored deterministic binding regression; Node counter is an independent runtime oracle.",
+      "content_sha256": "e5789c6255db547594c36f7a2f6b81adc85261fce60c8aa60bd7c1abb12ec012",
+      "origin": "Self-authored CC0 controls; Java language-specification expectations and executable counters, plus independent Node receiver/expression oracles.",
       "license": "CC0-1.0"
     }
   ]

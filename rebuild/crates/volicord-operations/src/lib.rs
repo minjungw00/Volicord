@@ -37,6 +37,8 @@ mod payload;
 mod provider;
 mod recall;
 mod repository_explanation;
+#[cfg(test)]
+mod semantic_receiver_tests;
 mod source_observations;
 mod work_catalogue;
 mod work_explanation;

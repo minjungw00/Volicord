@@ -960,6 +960,10 @@ and unresolved limitation. Superseded semantic producers remain historical/stale
 source bytes match. Existing retained prose and authored Source-cited figures retain their
 original publication identity and basis; renderer admission or a valid citation alone never
 certifies symbol binding or claim entailment. No automatic generation occurs during reading.
+Java anonymous receiver limitations follow this same path: unresolved calls retain their
+exact occurrence and producer, with no asserted enclosing-class target or confirmed edge.
+Analyzer `7` results remain inspectable as stale historical evidence after the `8` correction;
+reading or renderer admission cannot silently repair or republish their target meaning.
 
 ## 7. Initial generated documents
 

@@ -25,3 +25,26 @@ function-expression and named class-expression scope controls. Object receivers
 and expression-owned declarations absent from the structural model stay
 unresolved; neither may fall back to an enclosing class or same-spelled outer
 function. Run it with Node through the same focused runner.
+
+`Outer.java` checks Java receiver ownership independently from the analyzer. Java
+Language Specification [15.8.3](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.8.3),
+[15.9.5](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.9.5)
+and [15.27.2](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.27.2)
+establish that an anonymous class introduces its own `this`, whereas a lambda
+retains the surrounding `this`. The executable counter oracle distinguishes the
+outer, anonymous, deeper anonymous, named nested and static methods, including a
+lambda in an anonymous constructor's argument list. Run `java
+rebuild/validation/repository-intelligence/semantic-binding/Outer.java` through
+`validate focused` on a JDK supporting source-file launch; unavailable Java tools
+are a skipped oracle, never a compiled pass.
+
+The bounded analyzer leaves anonymous `this.ping()` unresolved, including inside
+an anonymous-owned lambda, while retaining named nested, lexical, static and
+outer-lambda bindings. Operations `--lib semantic_receiver_tests` exercises the
+actual durable graph, restart, warm cache, Search and grounding on this fixture.
+Host `--test semantic_targets` uses smaller coupled controls to require exact
+resolved/unresolved Projection, MCP and deterministic-explanation rows without
+hiding a counterexample behind a section limit. Repository Intelligence
+`--test semantic` and `--test import_bindings` retain the original TypeScript and
+supported import controls, and synthetic obsolete-producer tests explicitly
+include analyzer `7`. These are focused engineering checks, not qualification.

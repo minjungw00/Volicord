@@ -1953,3 +1953,14 @@ publication. API/CLI/MCP preserve the primary outcome, safe operation/snapshot
 identities, hidden storage chains, unchanged canonical state on pre-observation
 failure, and retained published bytes across a later successful retry. These
 controls do not reproduce or explain historical analysis latency.
+
+Semantic receiver ownership uses focused Repository Intelligence `--test semantic`
+and `--test import_bindings`, Operations `--lib semantic_receiver_tests`, and Host
+`--test semantic_targets`. See [the independent language controls](repository-intelligence/semantic-binding/README.md).
+The Operations control reads actual durable analysis and its warm read cache before
+Search/grounding; the Host control exercises restart and the ordinary Projection,
+MCP and deterministic explanation consumers. The Java source-file oracle requires
+an available JDK; the TypeScript oracles use Node type stripping. Obsolete analyzer
+`7` is historical/stale, never reinterpreted as current analyzer `8` output. Preserve
+old manifests, Sources and observations; use a disposable runtime for new analysis.
+These controls run through `validate focused`, without Final or the aggregate gate.

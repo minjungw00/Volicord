@@ -416,6 +416,13 @@ in-process source-semantic symbol index를 둔다. 이 선택은 compiler/LSP co
   Object-literal method는 lexical declaration이 아니며 named function/class expression의
   own scope와 `this`의 실제 enclosing class body를 구분한다. Unsupported object receiver는
   바깥 class나 같은 이름의 function으로 승격하지 않는다.
+  Version `8`은 Java anonymous class body(객체 생성과 enum constant body)에서
+  unsupported owner traversal을 멈춘다. 그 안의 `this` call은 named enclosing class의
+  member로 fallback하지 않고 unresolved reason, diagnostic과 high uncertainty를 유지한다.
+  Lambda는 새 `this` owner가 아니므로 주변 owner를 유지하며, anonymous body 안에
+  선언된 named class는 자기 member를 사용할 수 있다. Constructor argument는
+  anonymous body 밖이므로 그 안의 lambda까지 차단하지 않는다. Anonymous identity와
+  inherited member resolution을 새로 주장하지 않는다.
   명시적인 Java package import는 verified local file의 유일한 public top-level type과
   그 type이 직접 선언한 public static member에만 연결한다. TypeScript named import는
   정규화된 유일 local `.ts` module의 직접 exported declaration에만 연결한다.

@@ -169,8 +169,14 @@ read-side Search/grounding/Projection and full/metadata repository comparison ma
 semantic producers stale and require explicit reanalysis. Persisted historical bytes,
 canonical records, and independently retained publications are never relabelled or rewritten.
 Read-model target/provenance/uncertainty fields add no new durable format or publication seal.
-Version `6` results retain their original unresolved/import limitations; they are not
-retroactively resolved. The existing superseded-producer read boundary includes `6`.
+Source-semantic analyzer `8` stops receiver-owner traversal at unsupported Java
+anonymous class bodies, preserving lexical lambda and supported named-class owners.
+This semantic correction changes producer and new Analysis/observation identities,
+not Analysis format `5`, structural adapter identity or durable storage/cache formats.
+The existing superseded-producer read boundary now includes `7`: even unchanged
+source cannot make its semantic targets current. Structural reuse still recomputes
+semantics. Versions `6` and `7` retain their original limitations/targets as historical;
+no Source, manifest, observation or independently retained publication is rewritten.
 
 `RepositoryChangeBasis` is an ephemeral typed read of exact-current Analysis Snapshot 5,
 not a new durable kind, stored side payload or incomplete Analysis Snapshot. It uses the same
