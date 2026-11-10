@@ -66,6 +66,92 @@ class CaptureProvenanceTests(unittest.TestCase):
                     load_codex_capture(path)
 
 
+class ActivationBookkeepingTests(unittest.TestCase):
+    """Sanitized host schemas retain conservative activation timing controls."""
+
+    load = CaptureProvenanceTests.load
+
+    def events(self):
+        from codex_events import activation_identity
+        original = [json.loads(line) for line in
+                    (HERE / "fixtures/current-codex-cli-evidence.jsonl").read_text().splitlines()]
+        meta = original[0]["payload"]
+        catalog = {"type": "response_item", "payload": {
+            "type": "additional_tools", "id": "sanitized-tool-catalog", "role": "developer",
+            "tools": [{"type": "namespace", "name": "tools", "description": "Definitions.",
+                "tools": [{"type": "function", "name": "read", "description": "Read.",
+                    "parameters": {"type": "object"}, "strict": True},
+                    {"type": "custom", "name": "patch", "description": "Patch.",
+                        "format": {"type": "text"}}]}]}}
+        settings = {"type": "event_msg", "payload": {
+            "type": "thread_settings_applied", "thread_id": meta["id"], "thread_settings": {
+                "model": "fixture-model", "model_provider_id": "fixture-provider",
+                "service_tier": "fixture-tier", "approval_policy": "on-request",
+                "approvals_reviewer": "user", "reasoning_effort": "medium",
+                "reasoning_summary": "auto", "personality": "default",
+                "cwd": meta["cwd"], "runtime_workspace_roots": [meta["cwd"]],
+                "permission_profile": {}, "collaboration_mode": {}, "disabled_plugin_ids": []}}}
+        marker = {"type": "response_item", "payload": {"type": "message", "role": "developer",
+            "content": [{"type": "input_text", "text": activation_identity(Path(meta["cwd"]), meta["id"])}]}}
+        return original[:2] + [catalog, settings, marker] + original[2:]
+
+    def state(self, events):
+        return self.load(events).activation_evidence_state
+
+    def test_same_thread_catalog_and_settings_preserve_pre_work_activation(self):
+        self.assertEqual(self.state(self.events()), "valid")
+
+    def test_catalog_definitions_cannot_hide_calls_or_unknown_shapes(self):
+        for change in (lambda p: p.update(role="assistant"),
+                lambda p: p.update(call_id="invocation"),
+                lambda p: p["tools"][0]["tools"][0].update(type="function_call"),
+                lambda p: p["tools"][0]["tools"][0].update(arguments="{}"),
+                lambda p: p["tools"][0]["tools"][0].update(strict="true"),
+                lambda p: p["tools"][0]["tools"][1].update(format=None),
+                lambda p: p.update(tools=[]),
+                lambda p: p.update(tools=p["tools"] * 257)):
+            events = self.events()
+            change(events[2]["payload"])
+            self.assertEqual(self.state(events), "indeterminate")
+
+    def test_foreign_or_malformed_settings_do_not_establish_timing(self):
+        for change in (lambda p: p.update(thread_id="different-thread"),
+                lambda p: p["thread_settings"].update(cwd="/different/repository"),
+                lambda p: p["thread_settings"].update(runtime_workspace_roots=["relative"]),
+                lambda p: p["thread_settings"].update(disabled_plugin_ids="plugin"),
+                lambda p: p["thread_settings"].update(permission_profile="profile"),
+                lambda p: p["thread_settings"].update(unknown_event=True)):
+            events = self.events()
+            change(events[3]["payload"])
+            self.assertEqual(self.state(events), "indeterminate")
+        events = self.events()
+        events[0]["payload"]["runtime_workspace_roots"] = ["/different/repository"]
+        self.assertEqual(self.state(events), "indeterminate")
+
+    def test_catalog_and_settings_never_supply_missing_activation(self):
+        events = self.events()
+        del events[4]
+        self.assertEqual(self.state(events), "absent")
+
+    def test_actual_work_before_activation_remains_late(self):
+        events = self.events()
+        marker = events.pop(4)
+        events.insert(5, marker)
+        self.assertEqual(self.state(events), "late")
+
+    def test_unknown_pre_activation_activity_remains_indeterminate(self):
+        events = self.events()
+        events.insert(4, {"type": "event_msg", "payload": {"type": "unrecognized_activity"}})
+        self.assertEqual(self.state(events), "indeterminate")
+
+    def test_conflicting_or_malformed_activation_remains_invalid(self):
+        for text, expected in (("invalid", "malformed"), ("0" * 64, "binding_mismatch")):
+            from codex_events import ACTIVATION_PREFIX, ACTIVATION_SUFFIX
+            events = self.events()
+            events[4]["payload"]["content"][0]["text"] = ACTIVATION_PREFIX + text + ACTIVATION_SUFFIX
+            self.assertEqual(self.state(events), expected)
+
+
 class McpCompletionTests(unittest.TestCase):
     def setUp(self):
         self.payloads = [json.loads(line)["payload"] for line in
@@ -551,7 +637,8 @@ class CurrentExecutionTests(unittest.TestCase):
 
 def check_capture_regressions():
     suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls)
-                               for cls in (CaptureProvenanceTests, McpCompletionTests, CurrentExecutionTests))
+                               for cls in (CaptureProvenanceTests, ActivationBookkeepingTests,
+                                           McpCompletionTests, CurrentExecutionTests))
     result = unittest.TextTestRunner().run(suite)
     if not result.wasSuccessful():
         raise AssertionError("MCP completion transport regressions failed")

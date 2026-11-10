@@ -781,6 +781,12 @@ rebuild/scripts/dogfood-campaign verify-collection --campaign-root NEW_PUBLICATI
 ```
 
 The current clean collector revision must contain all recorded producer bytes.
+SessionStart timing recognizes bounded `additional_tools` definition catalogs and
+same-thread, same-workspace `thread_settings_applied` records as host setup.
+Their closed payload shapes are checked before timing classification; a tool
+invocation, foreign binding, malformed definition or unknown pre-activation event
+still leaves timing indeterminate. Setup metadata supplies no activation identity
+and cannot excuse a missing, late, malformed or conflicting SessionStart marker.
 The Product candidate, executable hashes, tasks and eight sessions remain those
 of `SOURCE`. Repeat `--rejected-attempt` for related historical process/diagnostic
 files outside the inventoried observations. The publication is disjoint and

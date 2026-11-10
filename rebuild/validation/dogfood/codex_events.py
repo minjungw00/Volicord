@@ -95,6 +95,62 @@ def host_setup_message(segments: list[str]) -> bool:
     return environment
 
 
+def host_tool_catalog(payload: dict[str, Any]) -> bool:
+    """Recognize definitions, never tool calls or arbitrary pre-work activity."""
+    def definitions(tools, depth=0):
+        if not isinstance(tools, list) or not 0 < len(tools) <= 256 or depth > 4:
+            return False
+        for tool in tools:
+            if (not isinstance(tool, dict) or not nonempty(tool.get("name"))
+                    or len(tool["name"]) > 256 or not isinstance(tool.get("description"), str)):
+                return False
+            kind = tool.get("type")
+            if kind == "namespace":
+                if (set(tool) != {"type", "name", "description", "tools"}
+                        or not definitions(tool["tools"], depth + 1)):
+                    return False
+            elif kind == "function":
+                if (set(tool) != {"type", "name", "description", "parameters", "strict"}
+                        or not isinstance(tool["parameters"], dict)
+                        or not isinstance(tool["strict"], bool)):
+                    return False
+            elif kind == "custom":
+                if (set(tool) != {"type", "name", "description", "format"}
+                        or not isinstance(tool["format"], dict)):
+                    return False
+            else:
+                return False
+        return True
+
+    return (set(payload) == {"type", "id", "role", "tools"}
+        and payload["type"] == "additional_tools" and nonempty(payload["id"])
+        and payload["role"] == "developer" and definitions(payload["tools"]))
+
+
+def host_thread_settings(payload: dict[str, Any], meta: dict[str, Any]) -> bool:
+    """Only same-thread, same-workspace settings are timing bookkeeping."""
+    if (set(payload) != {"type", "thread_id", "thread_settings"}
+            or payload["type"] != "thread_settings_applied"
+            or payload["thread_id"] != meta.get("id")):
+        return False
+    settings = payload["thread_settings"]
+    text_fields = {"model", "model_provider_id", "service_tier", "approval_policy",
+        "approvals_reviewer", "reasoning_effort", "reasoning_summary", "personality"}
+    if (not isinstance(settings, dict)
+            or set(settings) != text_fields | {"cwd", "runtime_workspace_roots",
+                "permission_profile", "collaboration_mode", "disabled_plugin_ids"}
+            or any(not nonempty(settings[field]) for field in text_fields)
+            or settings["cwd"] != meta.get("cwd")
+            or not isinstance(settings["permission_profile"], dict)
+            or not isinstance(settings["collaboration_mode"], dict)):
+        return False
+    roots, plugins = settings["runtime_workspace_roots"], settings["disabled_plugin_ids"]
+    return (isinstance(roots, list) and bool(roots)
+        and all(nonempty(root) and Path(root).is_absolute() for root in roots)
+        and ("runtime_workspace_roots" not in meta or roots == meta["runtime_workspace_roots"])
+        and isinstance(plugins, list) and all(nonempty(plugin) for plugin in plugins))
+
+
 def session_activation_state(
     events: list[dict[str, Any]],
     identities: list[tuple[int, str]],
@@ -130,12 +186,15 @@ def session_activation_state(
                         uncertain.add(sequence)
             elif role != "system":
                 uncertain.add(sequence)
+        elif envelope == "response_item" and host_tool_catalog(payload):
+            continue
         elif envelope == "response_item":
             # Known project operations are definitive boundaries below. Unknown
             # agent activity must not silently become setup or an operator fault.
             uncertain.add(sequence)
         elif envelope == "event_msg":
-            if kind not in {"task_started", "token_count"}:
+            if (kind not in {"task_started", "token_count"}
+                    and not host_thread_settings(payload, events[0]["payload"])):
                 uncertain.add(sequence)
         elif envelope not in {"session_meta", "world_state", "turn_context", "token_usage_record"}:
             uncertain.add(sequence)

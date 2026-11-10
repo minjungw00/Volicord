@@ -1723,6 +1723,16 @@ operator/steward artifacts and explicit rejected-attempt inputs, are copied with
 exact byte/hash identities. Source files and collector dependencies are rechecked
 before publication; drift rejects publication.
 
+Activation timing distinguishes typed host setup from actual work. Bounded
+`additional_tools` definition catalogs and same-thread/same-workspace
+`thread_settings_applied` envelopes may precede the repository-bound SessionStart
+marker. Closed shapes, tool-definition kinds and thread/workspace bindings are
+validated; these records never supply the marker themselves. Unknown or malformed
+pre-marker activity remains indeterminate, and missing, late or conflicting
+activation retains its original failure classification. Collector-only recognition
+fixes use retained-observation reprocessing with the original Product candidate
+and raw bytes; they do not require replaying the user's measured conversations.
+
 Evidence-set schema 9 requires `collection_run` for both live collection and
 reprocessing. `collection/run.json` owns source campaign/root/hash, observed
 candidate and all three executable identities, exact input and producer hashes,
