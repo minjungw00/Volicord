@@ -53,8 +53,8 @@ main.shell { padding-top:24px; padding-bottom:80px; }
 .button:hover,.return:hover,.breadcrumb>a:hover { background:var(--wash); border-color:var(--accent); }
 .button.primary { background:var(--accent); color:var(--surface); border-color:var(--accent); }
 .button.secondary { color:var(--accent); }
-.evidence-link,.notice-actions a { display:inline-flex; align-items:center; gap:2px; border:1px solid var(--line); border-radius:7px; background:var(--wash); padding:8px 12px; text-decoration:none; font-size:.82rem; line-height:1.5; max-width:100%; min-height:44px; }
-.evidence-link:hover,.notice-actions a:hover { border-color:var(--accent); }
+.evidence-link,.notice-actions .inspection-action { display:inline-flex; align-items:center; gap:2px; border:1px solid var(--line); border-radius:7px; background:var(--wash); padding:8px 12px; text-decoration:none; font-size:.82rem; line-height:1.5; max-width:100%; min-height:44px; }
+.evidence-link:hover,.notice-actions .inspection-action:hover { border-color:var(--accent); }
 .evidence-link span { font-family:ui-monospace,monospace; font-size:.72rem; color:var(--muted); }
 .comparisons { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
 .comparison-card { background:var(--surface); border:1px solid var(--line); padding:20px; border-radius:8px; }
@@ -459,5 +459,5 @@ body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
 
 /* Notices own their impact and actions, including unbroken command/path text. */
 .reading-warning { min-width:0; overflow-wrap:anywhere; }
-.notice-actions { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:12px; }
-.notice-actions a { min-width:0; max-width:100%; overflow-wrap:anywhere; }
+.notice-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px 16px; margin-top:12px; }
+.notice-actions .inspection-action { min-width:0; max-width:100%; overflow-wrap:anywhere; }

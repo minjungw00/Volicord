@@ -18,9 +18,9 @@
 .doc[data-reading-layout="grouped"] .article-section > .unit[data-section-number]::before{content:attr(data-section-number)}
 .doc[data-reading-layout="grouped"] .unit + .unit{margin-top:20px}
 .doc[data-reading-layout="grouped"] .unit > .evidence-actions{justify-content:flex-end;gap:0;margin-top:4px}
-.doc[data-reading-layout="grouped"] :is(.paragraph-evidence-action,.notice-actions a){display:inline-flex;align-items:center;background:none;border:0;border-radius:4px;box-shadow:none;color:#7890a1;font-size:11px;font-weight:400;line-height:1.6;padding:5px 8px;min-height:28px;width:auto;text-decoration:none}
-.doc[data-reading-layout="grouped"] :is(.paragraph-evidence-action,.notice-actions a):hover{color:var(--accent);background:var(--wash)}
-.doc[data-reading-layout="grouped"] :is(.paragraph-evidence-action,.notice-actions a):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.doc[data-reading-layout="grouped"] :is(.paragraph-evidence-action,.notice-actions .inspection-action){display:inline-flex;align-items:center;background:none;border:0;border-radius:4px;box-shadow:none;color:#7890a1;font-size:11px;font-weight:400;line-height:1.6;padding:5px 8px;min-height:28px;width:auto;text-decoration:none}
+.doc[data-reading-layout="grouped"] :is(.paragraph-evidence-action,.notice-actions .inspection-action):hover{color:var(--accent);background:var(--wash)}
+.doc[data-reading-layout="grouped"] :is(.paragraph-evidence-action,.notice-actions .inspection-action):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .doc[data-reading-layout="grouped"] .verification-report-row h3{font-size:14px;line-height:1.7;margin:0 0 16px}
 .doc[data-reading-layout="grouped"] .verification-report-row h4{font-size:12px;margin:16px 0 12px}
 .doc[data-reading-layout="grouped"] .verification-report-row dl{font-size:12px}
@@ -89,3 +89,12 @@
 /* Related Decisions share the existing disclosure hierarchy and compact state. */
 .doc[data-reading-layout="grouped"] .decision-reading > details{margin:0;border-bottom:1px solid var(--line)}
 .doc[data-reading-layout="grouped"] .related-decision > summary .record-strip{border:0;margin:0;padding:0;font-size:10px;font-weight:400;color:var(--muted)}
+
+/* One native report picker sits at the notice's lower right. */
+.doc[data-reading-layout="grouped"] .notice-actions > .notice-report-picker{width:100%;margin:0;padding:0;border:0;background:none}
+.doc[data-reading-layout="grouped"] .notice-actions > .notice-report-picker > summary{display:flex;align-items:center;justify-content:center;width:fit-content;margin:0 0 0 auto;padding:5px 8px;min-height:28px;list-style:none;font-size:11px;font-weight:400;line-height:1.6;border:0;border-radius:4px;background:none;color:#7890a1;box-shadow:none}
+.doc[data-reading-layout="grouped"] .notice-actions .notice-report-picker > summary::-webkit-details-marker{display:none}
+.doc[data-reading-layout="grouped"] .notice-actions .notice-report-picker > summary::before,.doc[data-reading-layout="grouped"] .notice-actions .notice-report-picker > summary::after{content:none}
+.doc[data-reading-layout="grouped"] .notice-actions .notice-report-options{display:grid;gap:8px;margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);max-height:22rem;overflow:auto}
+.doc[data-reading-layout="grouped"] .notice-report-options .inspection-action{display:grid;gap:4px;justify-content:start;align-items:start;width:100%;padding:8px 12px;background:var(--wash);font-size:12px;text-align:left;overflow-wrap:anywhere}
+.notice-report-options small{font-size:10px;color:var(--muted)}

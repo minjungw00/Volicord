@@ -2004,7 +2004,7 @@ fn notice_record_action(
 ) -> String {
     let target = document_anchor(answers, if work.is_some() { section } else { "audit" });
     format!(
-        "<div class=\"notice-actions\"><a href=\"#{target}\">{}</a></div>",
+        "<div class=\"notice-actions\"><a class=\"inspection-action\" href=\"#{target}\">{}</a></div>",
         text(r.locale, "Inspect original records", "원래 기록 확인")
     )
 }
@@ -2072,7 +2072,7 @@ fn opening_context(
     if failed.iter().any(|c| !historical(c)) {
         let mut actions = String::new();
         if let Some(w) = work {
-            actions.push_str("<div class=\"notice-actions failure-check-links\">");
+            actions.push_str(&format!("<div class=\"notice-actions failure-check-links\"><details class=\"notice-report-picker\"><summary class=\"inspection-action\">{}</summary><div class=\"notice-report-options\">",text(r.locale,"Inspect failed reports","실패 보고 확인")));
             let unresolved = w
                 .reading
                 .verification_report
@@ -2084,26 +2084,50 @@ fn opening_context(
                         && !verification::historical_check(c, &w.reading.verification_report)
                 })
                 .collect::<Vec<_>>();
-            for (index, check) in unresolved.iter().take(3) {
-                let target = if *index < 64 {
-                    verification::check_anchor(answers, check)
-                } else {
-                    document_anchor(answers, "full-verification")
+            for (_, check) in unresolved.iter().filter(|(index, _)| *index < 64) {
+                let target = verification::check_anchor(answers, check);
+                let label = match &check.intended_check {
+                    volicord_projections::EvidenceDetail::Observed(name)
+                        if !name.trim().is_empty() =>
+                    {
+                        name.as_str()
+                    }
+                    _ => text(
+                        r.locale,
+                        "Unnamed verification report",
+                        "이름이 기록되지 않은 검증 보고",
+                    ),
                 };
                 actions.push_str(&format!(
-                    "<a href=\"#{target}\">{} {}</a>",
-                    text(r.locale, "Inspect failed report", "실패 보고 확인"),
-                    index + 1
+                    "<a class=\"inspection-action\" href=\"#{target}\"><span>{}</span><small>{}: {}</small></a>",
+                    escape(label),text(r.locale,"Reported","보고 시각"),
+                    escape(&timestamp_label(TimestampMicros::from_unix_micros(check.reported_at_unix_micros),r.locale))
                 ));
             }
-            if unresolved.len() > 3 {
+            let outside = unresolved.iter().filter(|(index, _)| *index >= 64).count();
+            if outside > 0 {
                 actions.push_str(&format!(
-                    "<a href=\"#{}\">{}</a>",
+                    "<a class=\"inspection-action\" href=\"#{}\">{} · {outside}</a>",
                     document_anchor(answers, "full-verification"),
-                    text(r.locale, "All original reports", "전체 원래 보고")
+                    text(
+                        r.locale,
+                        "Other failed reports in full originals",
+                        "전체 원문에서 나머지 실패 보고 확인"
+                    )
                 ));
             }
-            actions.push_str("</div>");
+            if unresolved.is_empty() {
+                actions.push_str(&format!(
+                    "<a class=\"inspection-action\" href=\"#{}\">{}</a>",
+                    document_anchor(answers, "full-verification"),
+                    text(
+                        r.locale,
+                        "Inspect original verification records",
+                        "검증 원문 확인"
+                    )
+                ));
+            }
+            actions.push_str("</div></details></div>");
         }
         reading_notice(html, "failure", "danger", text(r.locale,"Unresolved verification failure", "해결 여부가 확인되지 않은 검증 실패"),
             text(r.locale,"A failed report remains unresolved. A later unrelated pass does not establish a retest or current coverage.","실패 보고의 해결 여부가 확인되지 않았습니다. 무관한 후속 통과는 재검증이나 현재 coverage를 확정하지 않습니다."), &actions);

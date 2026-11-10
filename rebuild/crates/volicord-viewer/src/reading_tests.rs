@@ -451,10 +451,12 @@ fn failure_notices_own_actions_and_preserve_exact_report_targets(
         .project_projection_selected(f.project, WorkSelector::ExactWork(id))?;
     let mut w = p.selected_work.clone().ok_or("Work")?;
     // Read-side adverse controls retain canonical originals; no new authority.
-    for c in &mut w.reading.verification_report.checks {
+    for (index, c) in w.reading.verification_report.checks.iter_mut().enumerate() {
         c.reported_state = ReportedCheckState::Failed;
         c.applicability = VerificationApplicability::Unknown;
         c.retest_comparison = RetestComparison::Unresolved;
+        c.intended_check =
+            EvidenceDetail::Observed(format!("cargo test --case named-check-{index}"));
     }
     for locale in [ViewerLocale::English, ViewerLocale::Korean] {
         let r = ViewerRequest {
@@ -475,6 +477,17 @@ fn failure_notices_own_actions_and_preserve_exact_report_targets(
                 .next()
                 .ok_or("notice end")?;
             assert!(warning.contains("class=\"notice-actions failure-check-links\""));
+            assert_eq!(
+                warning
+                    .matches("<summary class=\"inspection-action\"")
+                    .count(),
+                1,
+                "one closed native picker for every unresolved failure set"
+            );
+            assert!(warning.contains("<details class=\"notice-report-picker\"><summary"));
+            assert!(warning.contains("cargo test --case named-check-0"));
+            assert!(!warning.contains("Inspect failed report 1"));
+            assert!(!warning.contains("실패 보고 확인 1"));
             for target in warning
                 .split("href=\"#")
                 .skip(1)

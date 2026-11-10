@@ -225,8 +225,8 @@ body[data-reader-enhanced=true] .source-point:not([data-selected=true]) {display
 .diagram-claim-context p {font-size:13px;line-height:1.8}
 .diagram-claim .connection-navigation {display:flex}
 .unit>.evidence-actions {justify-content:flex-end}
-.evidence-link,.notice-actions a {font-size:11px;color:var(--muted);text-decoration:none;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:#fff}
-.evidence-link:is(:hover,:focus-visible),.notice-actions a:is(:hover,:focus-visible) {color:var(--accent);border-color:var(--accent)}
+.evidence-link,.notice-actions .inspection-action {font-size:11px;color:var(--muted);text-decoration:none;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:#fff}
+.evidence-link:is(:hover,:focus-visible),.notice-actions .inspection-action:is(:hover,:focus-visible) {color:var(--accent);border-color:var(--accent)}
 .evidence-choice-picker {display:grid;gap:6px;margin-block:12px;font-size:12px;color:var(--body)}
 .evidence-choice-picker select {max-width:100%;width:100%;font:12px/1.7 var(--sans);padding:8px;color:var(--body);background:white;border:1px solid var(--line);border-radius:5px}
 body[data-reader-enhanced=true] .source-point>.range-selector {display:none}

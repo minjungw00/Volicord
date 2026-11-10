@@ -3942,3 +3942,11 @@ body so live and script-free native fragment navigation opens that exact Decisio
 Claim/Source navigation and focus retain their exact publication-scoped origins.
 Notice inspection actions share the evidence controls' visual rules while keeping
 their existing report-navigation behavior.
+
+Failure notices expose one native report-selection disclosure at the lower right.
+Opening it reveals the exact unresolved reports by their observed check/name and
+reporting time, without global report-list ordinal labels. Unnamed reports remain
+explicitly unnamed. Reports outside the existing individual-record display bound
+route to complete original verification; the selector does not change failure truth,
+coverage, report identity or the retained bound. Non-scripted reading retains the
+same deliberate selection and exact fragment targets.

@@ -51,7 +51,7 @@ async function inspect(page,c,url,width,mode,language){
  assert.equal(await decisionFolds.evaluateAll(ns=>ns.every(n=>!n.open)),true,'each Decision starts closed');
  const style=n=>{const s=getComputedStyle(n);return Object.fromEntries(['borderTopWidth','borderTopStyle','borderRadius','backgroundColor','paddingTop','paddingRight','fontSize','minHeight','textDecorationLine'].map(k=>[k,s[k]]));};
  const evidenceStyle=doc.locator('a.evidence-link:not(.admitted-diagram a)').first();
- if(await evidenceStyle.count())for(const action of await doc.locator('.notice-actions a').all())
+ if(await evidenceStyle.count())for(const action of await doc.locator('.notice-actions > a,.notice-report-picker > summary').all())
   assert.deepEqual(await action.evaluate(style),await evidenceStyle.evaluate(style),'notice actions share actual evidence-control styling');
  if(await decisionFolds.count())await doc.locator('.related-decisions').screenshot({path:path.join(C.output,`${c.key}-${language}-${mode}-${width}-decisions-closed.png`)});
  for(const action of await doc.locator('.failure-check-links a').all())assert.equal(await action.evaluate(n=>!!n.closest('.reading-warning')),true,'notice owns every failure action');
@@ -71,7 +71,16 @@ async function inspect(page,c,url,width,mode,language){
   assert.equal(await page.locator(`[id="${target.slice(1)}"]`).isVisible(),true);
   if(mode==='live')assert.equal(await page.evaluate(()=>document.activeElement.id),target.slice(1),'event focus return');
  }
- const failed=doc.locator('.reading-warning[data-warning="failure"] a[href^="#"]').first();
+ const failure=doc.locator('.reading-warning[data-warning="failure"]').first();
+ if(await failure.count()){
+  const picker=failure.locator('.notice-report-picker'),trigger=picker.locator(':scope > summary');
+  assert.equal(await picker.evaluate(n=>n.open),false,'failure reports behind one closed picker');
+  assert.equal(await trigger.count(),1,'one report action regardless of report count');
+  const actionBox=await failure.locator('.notice-actions').boundingBox(),triggerBox=await trigger.boundingBox();
+  assert.ok(Math.abs((triggerBox.x+triggerBox.width)-(actionBox.x+actionBox.width))<2,'report action right aligned');
+  await trigger.press('Enter');assert.equal(await picker.evaluate(n=>n.open),true,'keyboard exposes report choices below action');
+ }
+ const failed=failure.locator('.notice-report-options a[href^="#"]').first();
  if(await failed.count()){
   const target=await failed.getAttribute('href');await failed.press('Enter');if(mode==='live')await frames(page);
   assert.equal(await page.locator(`[id="${target.slice(1)}"]`).isVisible(),true,'exact failed report opens folded ancestors');
