@@ -5,6 +5,7 @@ use rustix::{
     event::{poll, PollFd, PollFlags, Timespec},
     fs::{fcntl_getfl, fcntl_setfl, OFlags},
 };
+use sha2::{Digest, Sha256};
 use std::{
     cell::RefCell,
     io::{self, Read, Write},
@@ -261,23 +262,40 @@ pub(super) fn layout(input: &str) -> Result<String, String> {
     if input.len() > INPUT_LIMIT {
         return Err("local layout input budget exceeded".into());
     }
-    let result = WORKER.with(|slot| {
-        let mut slot = slot
-            .try_borrow_mut()
-            .map_err(|_| "local layout already active")?;
-        if slot.is_none() {
-            *slot = Some(Worker::start()?);
-        }
-        let worker = slot.as_mut().ok_or("local layout worker unavailable")?;
-        match worker.layout(input) {
-            Ok(output) => Ok(output),
-            Err(error) => {
-                let failure = worker.failure("request", &error);
-                *slot = None;
-                Err(failure)
+    let started = Instant::now();
+    let result = WORKER
+        .with(|slot| {
+            let mut slot = slot
+                .try_borrow_mut()
+                .map_err(|_| "local layout already active")?;
+            if slot.is_none() {
+                *slot = Some(Worker::start()?);
             }
-        }
-    });
+            let worker = slot.as_mut().ok_or("local layout worker unavailable")?;
+            match worker.layout(input) {
+                Ok(output) => Ok(output),
+                Err(error) => {
+                    let failure = worker.failure("request", &error);
+                    *slot = None;
+                    Err(failure)
+                }
+            }
+        })
+        .map_err(|failure| {
+            // Hash the bounded submitted geometry, never authored labels or Source
+            // bodies. This identifies the attempted input even when startup failed
+            // before transmission; it is not evidence of operation reachability.
+            let (attributed, native) = failure.split_once("; native_startup=")
+                .unwrap_or((&failure, ""));
+            // Preserve fixed attribution before the bounded startup excerpt.
+            format!(
+                "{attributed}; request_sha256={:x}; request_bytes={}; duration_micros={}; engine={}; native_startup={native}",
+                Sha256::digest(input.as_bytes()),
+                input.len(),
+                started.elapsed().as_micros(),
+                super::engine::ENGINE_ID
+            )
+        });
     if let Err(error) = &result {
         if !FIRST_FAILURE_REPORTED.swap(true, Ordering::Relaxed) {
             // One content-free first failure per process. A closed diagnostic
@@ -725,6 +743,43 @@ mod tests {
             rustix::process::waitpid(Some(pid), rustix::process::WaitOptions::NOHANG),
             Err(rustix::io::Errno::CHILD)
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn returned_failure_attributes_the_submitted_input_without_disclosing_it() -> Result<(), String>
+    {
+        for input in [
+            GRAPH.to_owned(),
+            GRAPH.replace("root", "private-geometry-identity"),
+        ] {
+            select_test_worker("diagram::overview::worker::tests::startup_protocol_stall_child");
+            let failure = layout(&input).expect_err("protocol failure rejects the request");
+            let attributed = Failure::parse(&failure);
+            assert_eq!(attributed.mechanism(), Mechanism::Protocol);
+            assert_eq!(
+                attributed.stage, "initialization",
+                "hashing a request is not transmission"
+            );
+            assert_eq!(attributed.cleanup, "signal:9");
+            attributed.assert_reaped();
+            assert!(failure.contains(&format!(
+                "; request_sha256={:x};",
+                Sha256::digest(input.as_bytes())
+            )));
+            assert!(failure.contains(&format!("; request_bytes={};", input.len())));
+            let micros = failure
+                .split("; duration_micros=")
+                .nth(1)
+                .and_then(|s| s.split(';').next())
+                .and_then(|s| s.parse::<u128>().ok())
+                .ok_or("duration")?;
+            assert!(micros > 0);
+            assert!(failure.contains(&format!("; engine={};", super::super::engine::ENGINE_ID)));
+            assert!(!failure.contains("private-geometry-identity"));
+            assert!(!failure.contains('"'));
+            assert_geometry(&layout(GRAPH)?);
+        }
         Ok(())
     }
 }

@@ -148,7 +148,11 @@ that stage remains explicitly unobserved without corresponding evidence.
   protocol/size rejection or timeout discards that process and rejects its geometry.
   The reader retains its own state; the next request may create a fresh child.
   Primary stage/error, observed process outcome and forced cleanup outcome remain
-  distinct. The parent retains one bounded first native-worker
+  distinct. Returned native failures also carry the submitted bounded geometry's
+  SHA-256/byte count, monotonic request duration and engine/configuration identity.
+  A submitted-input fingerprint does not prove transmission or callback entry;
+  initialization failures keep their original stage. Executable/build attribution
+  still requires the caller's actual selected-artifact receipt. The parent retains one bounded first native-worker
   diagnostic on stderr (engine identity, operation stage, worker PID and numeric
   outcomes). A rejected startup preamble can retain at most 1,024 native diagnostic
   bytes before any graph has been transmitted; no request/Source body or inherited
