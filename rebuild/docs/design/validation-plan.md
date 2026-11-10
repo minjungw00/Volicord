@@ -2299,14 +2299,20 @@ string fields `answer`, `question`, and `questionItemId`. The identity string is
 itself a JSON array `["request_user_input_async", call_id, question_index]`, with a
 nonnegative integer index identifying an actual question in that request, never
 the reply array position. Duplicate JSON members and duplicate item identities,
-incomplete/unknown wrappers and malformed JSON fail closed; no substring recovery
+incomplete/unknown wrappers and malformed JSON fail closed. Only terminal ASCII
+space/tab/CR/LF after the complete closing tag may be removed for parsing; leading,
+interior-tag and Unicode suffix whitespace gain no equivalence. Retain the exact
+raw-envelope hash, suffix character count and suffix-free envelope hash separately
+from answer-text normalization. No substring recovery
 or legacy host decoder is provided. XML-like leading wrappers cannot use the plain
 message path. Ordinary unwrapped chat responses still use the existing comparison.
 
 A structured reply requires one captured direct `request_user_input_async`
-function call, its same-task `function_call_output` with `{"accepted":true}`, and
-the same raw session/task. Request and acceptance must precede the unique latest
-user event, which must precede Decision invocation. Each item's question matches
+function call and its same-request-turn `function_call_output` with `{"accepted":true}`.
+The request and reply belong to the same raw session but may have distinct actual
+turn IDs. Both turns must exist in the captured lifecycle; request and acceptance
+must precede the unique latest user event, which must precede Decision invocation
+in that reply's current turn. Each item's question matches
 its requested title through the maintained directional text-equivalence primitive;
 the Decision caller's `async_reply.request_call_id/question_index` selects exactly
 one verified item by identity; its `answer` matches `user_turn` through that same
@@ -2318,9 +2324,11 @@ by searching answer text or reply array position is not Decision authority. Equa
 answers in distinct items remain distinct request/index identities; missing or
 ambiguous coordinates do not qualify. Non-Decision learning consumers retain their
 existing bounded answer-matching contract. Duplicate
-requests, stale, future or cross-task/session responses
-cannot establish authority. The result preserves raw-envelope and answer hashes,
-request identity/index/order and the original user event identity. All canonical
+requests, replayed request/index replies, already-consumed Decision reply coordinates,
+stale or future responses, unknown request turns, foreign sessions or replies outside
+the current invocation's turn cannot establish authority. The result preserves
+raw-envelope and answer hashes, request identity/index/order, original
+request/reply/invocation turn IDs and the original user event identity. All canonical
 Source/actor/Project/Question/revision/response-relation/receipt/Decision/history
 requirements remain independent, including agreement with explicitly supplied
 Decision Work scope and selected alternative. No raw reply alone proves a canonical Decision.
@@ -2328,7 +2336,8 @@ Decision Work scope and selected alternative. No raw reply alone proves a canoni
 `decision_selected_answers_persist_without_host_envelopes` in the Host MCP test
 exports a fresh actual Product bundle after plain and async recording, then invokes
 `decision_transport_self_test.py --product` with the actual call arguments, receipt,
-result and export. Synthetic host events supply a labeled transport seam; canonical
+result and export. Synthetic host events supply a labeled plain or cross-turn async
+transport seam, including the complete envelope's terminal LF; canonical
 Source/Decision/response/history are actual persisted Product output. Negative
 controls alter Source content/actor, Decision choice/authority and history linkage
 and must remain blocking. This is integration support, not a measured campaign.
@@ -2342,7 +2351,7 @@ no qualitative policy or canonical authority check is relaxed. Raw-envelope hash
 selected-answer hashes, request/session/task/index/order and canonical Source hashes
 remain separately inspectable without retaining conversation bodies in diagnostics.
 
-Evaluator policy identity `evidence-evaluation-12` includes the changed evaluator
+Evaluator policy identity `evidence-evaluation-17` includes the changed evaluator
 file hashes; new evaluations also retain their evaluator Git revision and previous
 immutable evaluation reference. Preserved failed raw evidence and canonical records
 are never rewritten or converted. Re-evaluating them creates a separately identified
@@ -2537,7 +2546,10 @@ and permitted semantic review groups. `machine_findings.py` validates complete c
   document/interpretation usefulness use the common rubric. Structural HTML checks are
   observations and never direct human-observed accessibility or usability evidence.
 Current-host response attribution uses the unique latest captured user message
-before the tool invocation, in the same task `turn_id`. A Codex task can retain
+before the tool invocation, in the invocation's task `turn_id`. The accepted async
+request can originate in an earlier actual turn of the same raw session; request
+completion, exact call/index/title, lifecycle membership and replay checks bind it
+without rewriting either turn. A Codex task can retain
 multiple distinct user `client_id` messages, including an asynchronous Question
 reply; uniqueness of task `turn_id` is not a response requirement. The current
 response must still match caller and canonical Source text using the maintained

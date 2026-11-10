@@ -783,8 +783,13 @@ For MCP `decision_record`, `user_turn` is the exact selected user's answer:
 plain response text, or the selected `request_user_input_async` reply's `answer`.
 The caller must select by the actual `questionItemId` request call identity and
 question index, and supply those coordinates as `async_reply`. It must verify
-request acceptance, Question linkage, current raw session/task and temporal order
-before recording; missing, duplicate, malformed, stale, ambiguous or cross-request
+request acceptance, Question linkage, same raw session and temporal order before
+recording. An accepted request may precede its reply in a different actual host
+turn. Preserve both turn identities; the unique latest reply must belong to the
+current Decision invocation's turn. A complete reply envelope may have only terminal
+ASCII space/tab/CR/LF transport suffixes; preserve its original bytes and report
+suffix removal separately from answer-text comparison. Missing, duplicate,
+malformed, stale, replayed, ambiguous or cross-request
 responses leave authority unresolved. Host rejects XML-like envelopes in this
 answer field; it does not parse caller envelopes into authenticated responses.
 

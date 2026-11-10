@@ -1,5 +1,16 @@
 # Reconstruction validation assets
 
+For current-host selected-answer transport, run `validate focused <label> --
+python3 -B rebuild/validation/dogfood/decision_transport_self_test.py` and the Host
+MCP `decision_selected_answers_persist_without_host_envelopes` test. They cover
+plain messages and same-session async continuation across distinct real host turns,
+terminal ASCII envelope suffixes, replay/current-invocation rejection and independent
+canonical bindings. The Host test feeds an actual persisted Product bundle to the
+Python evaluator; synthetic host events are explicitly support evidence. Use
+`dogfood-campaign evaluate --previous-evaluation`, `qualify`, and publish/verify
+result-lineage for unchanged original campaigns. Preserve earlier results and
+Product candidate identity; repaired hard checks supply no qualitative or human pass.
+
 Accumulated reading uses Operations `--test accumulated_reading`, alongside
 `--test analysis_storage_footprint`, Privacy `--test privacy_boundary`, Host
 `--test work_explanation` and Viewer `--test citation_reading`. The new controls

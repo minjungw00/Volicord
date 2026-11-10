@@ -426,7 +426,12 @@ class AsyncQuestionReply:
 
 
 def parse_async_question_replies(text: str) -> tuple[AsyncQuestionReply, ...] | None:
-    """Only the complete current Codex envelope and its array-of-items JSON schema."""
+    """Complete current envelope, allowing only a terminal ASCII transport suffix.
+
+    The raw UserTurn is never changed. Whitespace inside the JSON retains its
+    existing JSON meaning; leading text, Unicode suffixes and partial tags fail.
+    """
+    text = text.rstrip(" \t\r\n")
     opening = "<send_user_message_question_reply>"
     closing = "</send_user_message_question_reply>"
     if not text.startswith(opening) or not text.endswith(closing):
@@ -1841,6 +1846,21 @@ class CodexCapture:
         replies = parse_async_question_replies(turn.text)
         if replies is None:
             return result
+        envelope = turn.text.rstrip(" \t\r\n")
+        result.update({
+            "envelope_terminal_ascii_whitespace_removed_count": len(turn.text) - len(envelope),
+            "envelope_text_sha256": sha256_bytes(envelope.encode("utf-8")),
+            "invocation_turn_id": call.turn_id,
+            "invocation_sequence": call.sequence,
+        })
+        # A reply must be current for this invocation. Request and reply may
+        # occupy distinct real turns, but both must belong to this capture's
+        # observed lifecycle. Never substitute one turn identity for another.
+        if not self.turn_lifecycle.contains_completion(turn.turn_id, turn.sequence, call.sequence):
+            return result
+        prior_reply_keys = {(reply.call_id, reply.question_index)
+            for prior in self.user_turns if prior.sequence < turn.sequence
+            for reply in (parse_async_question_replies(prior.text) or ())}
         # Validate every item before selecting one. A valid selected item cannot
         # hide malformed/cross-request evidence elsewhere in the same envelope.
         bound = []
@@ -1850,8 +1870,11 @@ class CodexCapture:
             if len(requests) != 1:
                 return result
             request = requests[0]
-            if (request.session_id != self.session_id or request.turn_id != turn.turn_id
+            if (request.session_id != self.session_id
+                or not self.turn_lifecycle.contains_completion(request.turn_id,
+                    request.sequence, request.completion_sequence)
                 or not request.sequence < request.completion_sequence < turn.sequence < call.sequence
+                or (reply.call_id, reply.question_index) in prior_reply_keys
                 or reply.question_index >= len(request.questions)
                 or not compare(request.questions[reply.question_index], reply.question)["equivalent"]):
                 return result
@@ -1877,8 +1900,13 @@ class CodexCapture:
         if len(selected) != 1:
             return result
         reply, request = selected[0]
+        if call.operation == "decision_record" and any(
+            prior.sequence < call.sequence and prior.arguments.get("async_reply") == reference
+            for prior in self.successful_calls("decision_record")
+        ):
+            return result
         comparison = compare(caller, reply.answer)
-        return {**comparison, "response_kind": "async_question_reply",
+        return {**result, **comparison, "response_kind": "async_question_reply",
             "failure_kind": (None if comparison["equivalent"] else
                 "raw_envelope_as_answer" if caller == turn.text else "answer_text_mismatch"),
             "transport_equivalence_used": True,

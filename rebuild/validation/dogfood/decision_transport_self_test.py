@@ -61,7 +61,8 @@ class DecisionTransportTests(unittest.TestCase):
         bundle = h.load_canonical_bundle(root / descriptor["evidence"]["canonical_bundle"]["file"])
         return capture, bundle
 
-    def async_response_fixture(self, *, structured=False, mutate=None, selected_index=0):
+    def async_response_fixture(self, *, structured=False, mutate=None, selected_index=0,
+                               cross_turn=False, suffix=""):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = Path(directory.name)
@@ -73,6 +74,9 @@ class DecisionTransportTests(unittest.TestCase):
         joined = []
         for event in events:
             payload = event.get("payload", {})
+            if cross_turn:
+                joined.append(event)
+                continue
             if payload.get("type") == "task_complete" and payload.get("turn_id") == task:
                 continue
             if payload.get("type") == "task_started" and payload.get("turn_id") != task:
@@ -94,14 +98,19 @@ class DecisionTransportTests(unittest.TestCase):
             completion = {"type": "response_item", "payload": {"type": "function_call_output",
                 "call_id": "async-request", "output": '{"accepted":true}',
                 "internal_chat_message_metadata_passthrough": metadata}}
-            index = joined.index(response)
+            index = (next(i for i, e in enumerate(joined)
+                if e.get("payload", {}).get("type") == "task_complete")
+                if cross_turn else joined.index(response))
             joined[index:index] = [request, completion]
+            reply_task = (next(e["payload"]["turn_id"] for e in joined
+                if e.get("payload", {}).get("type") == "task_started"
+                and e["payload"]["turn_id"] != task) if cross_turn else task)
             response["payload"] = {"type": "item_completed",
-                "thread_id": events[0]["payload"]["id"], "turn_id": task,
+                "thread_id": events[0]["payload"]["id"], "turn_id": reply_task,
                 "item": {"type": "UserMessage", "id": "async-user-item",
                     "client_id": payload["client_id"], "content": [{"type": "text", "text": self.envelope([
                         {"answer": answer, "question": question,
-                         "questionItemId": json.dumps(["request_user_input_async", "async-request", 0])}])}]}}
+                         "questionItemId": json.dumps(["request_user_input_async", "async-request", 0])}]) + suffix}]}}
         if structured:
             fixture_bundle = h.load_canonical_bundle(root / descriptor["evidence"]["canonical_bundle"]["file"])
             fixture_session = next(row["detail_two"] for row in fixture_bundle.rows("sources")
@@ -140,6 +149,77 @@ class DecisionTransportTests(unittest.TestCase):
         self.assertEqual(transport["async_question_index"], 0)
         self.assertEqual(transport["raw_host_text_sha256"], hashlib.sha256(capture.user_turns[-1].text.encode()).hexdigest())
         self.assertNotEqual(transport["raw_host_text_sha256"], transport["answer_text_sha256"])
+
+    def test_async_continuation_preserves_real_turns_and_envelope_suffix(self):
+        for suffix in ("", "\n", "\r\n", " \t\r\n"):
+            with self.subTest(suffix=repr(suffix)):
+                capture, bundle = self.async_response_fixture(structured=True, cross_turn=True, suffix=suffix)
+                turn = capture.user_turns[-1]
+                request = capture.async_question_requests[0]
+                call = capture.successful_calls("decision_record")[0]
+                self.assertNotEqual(request.turn_id, turn.turn_id)
+                self.assertEqual(turn.turn_id, call.turn_id)
+                facts = self.assert_response(capture, bundle, True)
+                transport = facts[-1][facts[1]]["current_host_response_transport"]
+                self.assertEqual(transport["async_request_turn_id"], request.turn_id)
+                self.assertEqual(transport["captured_turn_id"], turn.turn_id)
+                self.assertEqual(transport["invocation_turn_id"], call.turn_id)
+                self.assertEqual(transport["envelope_terminal_ascii_whitespace_removed_count"], len(suffix))
+                self.assertEqual(transport["raw_host_text_sha256"], hashlib.sha256(turn.text.encode()).hexdigest())
+                self.assertEqual(transport["envelope_text_sha256"], hashlib.sha256(turn.text.rstrip(" \t\r\n").encode()).hexdigest())
+                self.assertEqual(transport["raw_capture_sha256"], h.sha256(self.response_path))
+                self.assertFalse(transport["answer_transport_equivalence_used"])
+
+    def test_cross_turn_reply_rejects_replay_noncurrent_and_foreign_identity(self):
+        capture, bundle = self.async_response_fixture(structured=True, cross_turn=True, suffix="\n")
+        turn = capture.user_turns[-1]
+        request = capture.async_question_requests[0]
+        call = capture.successful_calls("decision_record")[0]
+        for changed in (
+            replace(capture, user_turns=(*capture.user_turns[:-1],
+                replace(turn, sequence=turn.sequence - 1, user_turn_id="already-answered"), turn)),
+            replace(capture, user_turns=(*capture.user_turns,
+                replace(turn, sequence=call.sequence - 1, user_turn_id="newer", text="New response"))),
+            replace(capture, user_turns=(*capture.user_turns[:-1], replace(turn, turn_id=request.turn_id))),
+            replace(capture, user_turns=(*capture.user_turns, replace(turn, user_turn_id="ambiguous"))),
+            replace(capture, async_question_requests=(replace(request, session_id="foreign"),)),
+            replace(capture, async_question_requests=(replace(request, turn_id="unknown"),)),
+            replace(capture, async_question_requests=(replace(request, completion_sequence=turn.sequence),)),
+            replace(capture, async_question_requests=(request, request)),
+        ):
+            self.assert_response(changed, bundle, False)
+        consumed = replace(capture, tool_calls=(*capture.tool_calls,
+            replace(call, call_id="already-consumed", sequence=call.sequence - 1)))
+        self.assertFalse(h.current_host_response_transport(consumed, call)["equivalent"])
+        self.assertFalse(h.decision_facts(consumed, bundle)[0])
+
+    def test_cross_turn_transport_does_not_relax_canonical_authority(self):
+        capture, bundle = self.async_response_fixture(structured=True, cross_turn=True, suffix="\n")
+        call = capture.successful_calls("decision_record")[0]
+        for field, value in (("question_revision", 99), ("presentation_receipt_id", "stale"),
+            ("alternative_key", "changed"), ("work_scope", "project_wide"),
+            ("work_item_id", "unrelated-work")):
+            changed = replace(call, arguments={**call.arguments, field: value})
+            self.assert_response(replace(capture, tool_calls=tuple(changed if c is call else c
+                for c in capture.tool_calls)), bundle, False)
+        for table, field, value in (("sources", "locator", "Altered answer"),
+            ("sources", "detail_two", "different-adapter-session"), ("sources", "actor_kind", "agent"),
+            ("question_response_sources", "question_revision", 99),
+            ("question_decision_history_witnesses", "response_source_id", "unrelated-source")):
+            tables = deepcopy(bundle.tables)
+            for row in tables[table]:
+                row[field] = value
+            self.assert_response(capture, replace(bundle, tables=tables), False)
+
+    def test_envelope_suffix_does_not_normalize_other_text(self):
+        capture, bundle = self.async_response_fixture(structured=True, cross_turn=True)
+        turn = capture.user_turns[-1]
+        for text in (" " + turn.text, "\n" + turn.text, turn.text + "\u00a0",
+            turn.text + "\v", turn.text + "\f", turn.text + "\nextra",
+            turn.text.replace("</send_", "</ send_"),
+            turn.text.replace("send_user_message_question_reply", "unknown")):
+            self.assert_response(replace(capture, user_turns=(*capture.user_turns[:-1],
+                replace(turn, text=text))), bundle, False)
 
     def test_multiple_items_use_request_identity_not_array_position(self):
         def change(events):
@@ -563,7 +643,8 @@ def check_decision_transport_regressions():
 def verify_product(config):
     tests = DecisionTransportTests()
     try:
-        capture, _ = tests.async_response_fixture(structured=config["asynchronous"])
+        capture, _ = tests.async_response_fixture(structured=config["asynchronous"],
+            cross_turn=config["asynchronous"], suffix="\n" if config["asynchronous"] else "")
         raw_path = tests.response_path
         events = [json.loads(line) for line in raw_path.read_text().splitlines()]
         old = capture.successful_calls("decision_record")[0]
@@ -577,7 +658,7 @@ def verify_product(config):
             reply = next(e["payload"]["item"] for e in events if e.get("payload", {}).get("item", {}).get("type") == "UserMessage")
             reply["content"][0]["text"] = tests.envelope([{"answer": answer,
                 "question": "Which report style should be used?",
-                "questionItemId": json.dumps(["request_user_input_async", request["call_id"], 0])}])
+                "questionItemId": json.dumps(["request_user_input_async", request["call_id"], 0])}]) + "\n"
         else:
             event = next(e for e in events if e.get("payload", {}).get("type") == "user_message"
                 and e["payload"].get("message") == old.arguments["user_turn"])
@@ -587,7 +668,12 @@ def verify_product(config):
         raw_path.write_text("".join(json.dumps(e) + "\n" for e in events))
         capture = h.load_codex_capture(raw_path)
         bundle = h.load_canonical_bundle(Path(config["bundle"]))
-        tests.assert_response(capture, bundle, True)
+        facts = tests.assert_response(capture, bundle, True)
+        if config["asynchronous"]:
+            transport = facts[-1][facts[1]]["current_host_response_transport"]
+            tests.assertNotEqual(transport["async_request_turn_id"], transport["captured_turn_id"])
+            tests.assertEqual(transport["invocation_turn_id"], transport["captured_turn_id"])
+            tests.assertEqual(transport["envelope_terminal_ascii_whitespace_removed_count"], 1)
         call = capture.successful_calls("decision_record")[0]
         for table, field, value in (("sources", "locator", "agent reconstructed answer"),
             ("sources", "actor_kind", "agent"), ("decisions", "choice_value", "remote"),
