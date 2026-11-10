@@ -87,7 +87,6 @@
 .work-state-badge .state-dot{margin:0}
 
 /* Related Decisions share the existing disclosure hierarchy and compact state. */
-.doc[data-reading-layout="grouped"] .decision-reading > details{margin:0;border-bottom:1px solid var(--line)}
 .doc[data-reading-layout="grouped"] .related-decision > summary .record-strip{border:0;margin:0;padding:0;font-size:10px;font-weight:400;color:var(--muted)}
 
 /* One native report picker sits at the notice's lower right. */
@@ -98,3 +97,13 @@
 .doc[data-reading-layout="grouped"] .notice-actions .notice-report-options{display:grid;gap:8px;margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);max-height:22rem;overflow:auto}
 .doc[data-reading-layout="grouped"] .notice-report-options .inspection-action{display:grid;gap:4px;justify-content:start;align-items:start;width:100%;padding:8px 12px;background:var(--wash);font-size:12px;text-align:left;overflow-wrap:anywhere}
 .notice-report-options small{font-size:10px;color:var(--muted)}
+/* Related explanations keep the article rhythm; each Decision is a bordered
+   child disclosure like the nested original-record sections. */
+.doc[data-reading-layout="grouped"] .work-reading-group > .related-decisions{margin-top:32px}
+.doc[data-reading-layout="grouped"] .related-decisions .decision-reading + .decision-reading{margin-top:12px}
+.doc[data-reading-layout="grouped"] .related-decisions .decision-reading > .related-decision{margin:0;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{min-height:48px;padding:12px 0}
+.doc[data-reading-layout="grouped"] .related-decisions .related-decision[open]{padding-bottom:14px}
+.doc[data-reading-layout="grouped"] .work-reading-group:has(> .related-decisions) + .work-reading-group{border-top:0;padding-top:0}
+.doc[data-reading-layout="grouped"] .related-decision-body > .article-section .unit-text,.doc[data-reading-layout="grouped"] .related-decision-body > .unit > .unit-text{font-size:14px;line-height:1.9;color:var(--body)}
+.doc[data-reading-layout="grouped"] .document-nav [data-level="3"] > a{padding-left:28px}

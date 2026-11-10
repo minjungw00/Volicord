@@ -94,12 +94,7 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
 .purpose-absence { margin:16px 0 24px; font-size:.9rem; color:var(--muted); }
 .repository-entry p { margin:16px 0 20px; max-width:var(--measure); color:var(--muted); }
 .decision-summary { padding:20px 0; border-bottom:1px solid var(--line); }
-.decision-reading + .decision-reading { margin-top:16px; }
 .related-decision > summary h3 { display:grid; gap:4px; margin:0; min-width:0; font-size:1rem; line-height:1.55; overflow-wrap:anywhere; }
-.related-decision > summary .record-strip { margin:0; font-size:.78rem; font-weight:400; }
-.related-decision-body > .reading-section { margin-top:24px; padding-top:24px; }
-.related-decision-body > .recorded-choice { margin-top:0; padding-top:0; border-top:0; }
-.related-decision-body .reading-section h4 { font-size:1rem; margin-bottom:16px; }
 .related-decision-body > .decision-originals { margin-top:24px; }
 .badge { font-size:.8rem; color:var(--muted); }
 .source-point { margin:32px 0; padding:0; scroll-margin-top:20px; }

@@ -2101,7 +2101,8 @@ fn opening_context(
                 actions.push_str(&format!(
                     "<a class=\"inspection-action\" href=\"#{target}\"><span>{}</span><small>{}: {}</small></a>",
                     escape(label),text(r.locale,"Reported","보고 시각"),
-                    escape(&timestamp_label(TimestampMicros::from_unix_micros(check.reported_at_unix_micros),r.locale))
+                    escape(&observation_time(TimestampMicros::from_unix_micros(check.reported_at_unix_micros))
+                        .map(|(instant,_)|instant).unwrap_or_else(||text(r.locale,"Date unavailable","날짜 확인 불가").into()))
                 ));
             }
             let outside = unresolved.iter().filter(|(index, _)| *index >= 64).count();
@@ -3057,7 +3058,6 @@ fn decision_detail(
     opening_context(html, r, &reader, None, Some(d));
     explanation_diagnostic(html, r, &reader);
     let mut content = String::new();
-    render_recorded_choice(&mut content, r, &reader, d);
     for (index, _) in reader
         .prose
         .iter()
@@ -3075,6 +3075,15 @@ fn decision_detail(
         .replace("</h2>", "</h4>");
     html.push_str(&content);
     html.push_str(&format!("<details class=\"record-box decision-originals\"><summary>{}</summary><div id=\"{}\" tabindex=\"-1\">",text(r.locale,"Decision originals and evidence","결정 원문과 근거"),document_anchor(&reader,"audit")));
+    let mut original_choice = String::new();
+    render_recorded_choice(&mut original_choice, r, &reader, d);
+    html.push_str(
+        &original_choice
+            .replace("<h3", "<h5")
+            .replace("</h3>", "</h5>")
+            .replace("<h2", "<h4")
+            .replace("</h2>", "</h4>"),
+    );
     render_evidence_index(html, r, &reader);
     html.push_str(&format!("<div class=\"record-facts\" data-record-subject=\"decision:{}\" data-statement-role=\"deterministic-derived\">",d.decision.decision_id));
     for fact in &reader.facts {

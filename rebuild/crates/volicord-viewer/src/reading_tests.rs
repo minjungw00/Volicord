@@ -607,6 +607,14 @@ fn related_decisions_share_work_outline_and_keep_canonical_meaning(
                         assert!(body.contains(&escape(reason)), "separate retained reasons");
                     }
                     assert!(body.contains("recorded-choice"));
+                    assert!(
+                        body.find("class=\"record-box decision-originals\"")
+                            .ok_or("originals disclosure")?
+                            < body
+                                .find("class=\"reading-section recorded-choice\"")
+                                .ok_or("canonical original choice")?,
+                        "complete choice reports belong behind the originals disclosure"
+                    );
                 }
                 let ids = html
                     .split(" id=\"")

@@ -3950,3 +3950,11 @@ explicitly unnamed. Reports outside the existing individual-record display bound
 route to complete original verification; the selector does not change failure truth,
 coverage, report identity or the retained bound. Non-scripted reading retains the
 same deliberate selection and exact fragment targets.
+
+Within each bordered related-Decision disclosure, current authored explanation is
+ordinary reading content. Complete original Question, alternatives, selected choice,
+separate user/agent reasons, scope and report facts remain in a second closed
+originals/evidence disclosure. Missing prose remains explicit and does not erase or
+replace those inspectable canonical records. Decision outline entries keep their
+visual child level under Related Decisions. The related section shares article
+spacing; its card border replaces a redundant adjacent group separator.
