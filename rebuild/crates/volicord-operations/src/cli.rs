@@ -279,6 +279,23 @@ fn explanation_command(kind: &'static str) -> Command {
                         .arg(language()),
                 )
                 .subcommand(
+                    Command::new("production-assess")
+                        .about(
+                            "Record diagram applicability, actual authorship or missing evidence",
+                        )
+                        .arg(subject())
+                        .arg(language())
+                        .arg(
+                            Arg::new("production-id")
+                                .long("production-id")
+                                .required(true),
+                        )
+                        .arg(
+                            path_arg("input", "input", "ExplanationDiagramAssessment JSON")
+                                .required(true),
+                        ),
+                )
+                .subcommand(
                     Command::new("produce")
                         .about(
                             "Explicit host production intent; unchanged current bases are skipped",
@@ -364,6 +381,7 @@ fn explanation_command(kind: &'static str) -> Command {
                     "produce",
                     "production-status",
                     "production-fail",
+                    "production-assess",
                 ]
                 .into_iter()
                 .fold(explain, |command, action| {
@@ -1188,6 +1206,14 @@ fn dispatch_explanation_action(
         ),
     };
     match action {
+        "production-assess" => operations.assess_explanation_diagrams(
+            project,
+            subject,
+            required(args, "language")?,
+            required(args, "production-id")?,
+            serde_json::from_value(read_explanation_input(args)?)
+                .map_err(|_| Error::new("invalid diagram assessment"))?,
+        ),
         "produce" => operations.begin_explanation_production(
             project,
             subject,

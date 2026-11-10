@@ -3851,3 +3851,27 @@ order. Captions state scope/conditions; prose explains consequences, exact evide
 supports them. Complete and bounded guidance preserve these obligations within the
 existing preparation ceiling. This changes new preparation hashes only; admitted
 format-9 publications retain their original preparation provenance and lifecycle.
+
+### Explicit diagram applicability outcome
+
+Normal article production must retain an explicit active-host diagram assessment
+with `assess` (CLI `production-assess --production-id ID --input FILE`) before
+guarded recording. `authored` requires actual admitted figures; `not_needed` needs
+a reader-question rationale for why prose suffices; `insufficient_evidence` names
+the missing relational/temporal basis and remains incomplete content. No assessment
+is distinct from all three. Composition and all readers remain non-writing.
+
+The bounded assessment is local managed Derived metadata tied to exact production,
+Project/subject/language/preparation and canonical dependencies. It adds no prose
+claims to the publication or Source authority. Status exposes it separately from
+publication readability and `content_complete`. A permitted prose-only publication
+may survive insufficient diagram evidence, but cannot count as content completion.
+Unchanged-basis production skips without repeatedly reauthoring that prose; recovery
+is explicit refinement after investigation/evidence is sufficient. Legacy deliberate
+prepare/compose/record remains usable and never acquires an invented assessment.
+
+Assess the actual reader question before choosing concept/component/flowchart/state/
+sequence. Inspect relationships, direction, ownership, conditions and static versus
+temporal meaning against permitted originals. Every displayed role and caption uses
+its existing exact Source-cited claim; accessible linear meaning comes from the
+same admitted graph. The renderer invents neither domain meaning nor applicability.

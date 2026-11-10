@@ -150,8 +150,32 @@ impl LocalOperations {
             None if current => "current",
             None => "needed",
         };
+        let assessment = intent
+            .as_ref()
+            .map(|(id, _)| {
+                self.explanation_diagram_assessment(
+                    project,
+                    subject,
+                    language,
+                    id,
+                    &plan.fingerprint,
+                )
+            })
+            .transpose()?
+            .flatten();
+        let article = matches!(
+            subject,
+            ExplanationSubject::Work(_)
+                | ExplanationSubject::Repository(_)
+                | ExplanationSubject::Decision(_)
+        );
+        let content_complete = matches!(state, "complete" | "current")
+            && (!article
+                || assessment.as_ref().is_some_and(|a| {
+                    a.outcome != crate::DiagramAssessmentOutcome::InsufficientEvidence
+                }));
         Ok(
-            json!({"project_id":project.to_string(),"subject":subject,"language":language,
+            json!({"diagram_assessment":assessment,"content_complete":content_complete,"project_id":project.to_string(),"subject":subject,"language":language,
             "state":state,"plan_fingerprint":plan.fingerprint,"publication_id":publication_id,
             "production_id":intent.as_ref().map(|(id,_)|id),"intent":intent.as_ref().map(|(_,i)|i),
             "read_only":true,"generation_required":!matches!(state,"complete"|"current"),
@@ -214,6 +238,22 @@ impl LocalOperations {
         plan: &ExplanationPlan,
         intent: &Intent,
     ) -> Result<String, Error> {
+        self.store_production_metadata(
+            plan,
+            purpose(intent.subject, &intent.language),
+            serde_json::to_string(intent)
+                .map_err(|e| Error::with_source("production encoding failed", e))?,
+            &[],
+        )
+    }
+
+    pub(crate) fn store_production_metadata(
+        &self,
+        plan: &ExplanationPlan,
+        purpose: String,
+        content: String,
+        additional_sources: &[volicord_context::SourceId],
+    ) -> Result<String, Error> {
         let mut links = Vec::new();
         for evidence in &plan.evidence {
             let bytes = || parse_identity(&evidence.identity);
@@ -239,13 +279,19 @@ impl LocalOperations {
                 ));
             }
         }
-        let project = ProjectId::from_bytes(parse_identity(&intent.project_id)?);
+        links.extend(
+            additional_sources
+                .iter()
+                .copied()
+                .map(ManagedCanonicalLink::Source),
+        );
+        let project = ProjectId::from_bytes(parse_identity(&plan.project_id)?);
         let mut store = PrivacyStore::open(self.layout().privacy_store())
             .map_err(|e| Error::with_source("production storage unavailable", e))?;
         let record = store.record_managed_derived(ManagedDerivedDraft {
             project_id:project, kind:ManagedDerivedKind::CachedSummary, provider:None, model:None,
-            purpose:purpose(intent.subject,&intent.language), analysis_snapshot:None, included_sources:vec![], canonical_links:links,
-            content:serde_json::to_string(intent).map_err(|e|Error::with_source("production encoding failed",e))?, uncertainty:None, retained_until:None,
+            purpose, analysis_snapshot:None, included_sources:vec![], canonical_links:links,
+            content, uncertainty:None, retained_until:None,
             retention_basis:"Explicit host production intent and recovery metadata; no prose, Source bodies, background dispatch or provider authority".into(),
         }).map_err(|e|Error::with_source("production intent was not retained",e))?;
         Ok(record.id.to_string())

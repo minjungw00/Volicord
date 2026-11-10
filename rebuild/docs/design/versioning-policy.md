@@ -971,3 +971,12 @@ prior publication and nullable typed failure. There is no old-shape decoder, mig
 canonical/bundle/analysis change or rebind of historical output. Production status
 is ephemeral. Existing publication/Source lifetimes and explanation byte limits
 remain unchanged.
+
+### Diagram assessment metadata
+
+`volicord_explanation_diagram_assessment` version 1 is a bounded exact-only managed
+metadata envelope, separate from intent v1 and retained explanation v9. It binds
+production/Project/subject/language/preparation and the host's typed outcome plus
+rationale and exact investigated Source identities. No retained-publication field, explanation fingerprint, canonical schema,
+Source/bundle format or compatibility decoder changes. Earlier publications and
+intents remain readable; missing historical assessment remains missing.

@@ -1733,6 +1733,39 @@ impl HostAdapter {
                 }
                 Ok(status)
             }
+            "assess" => {
+                let request_id = required_str(args, "generation_id")?;
+                let request = self.explanation_requests.get(request_id).ok_or_else(|| {
+                    HostError::new(
+                        "request unavailable; inspect status and explicitly produce again",
+                    )
+                })?;
+                if request.project != project || request.subject != subject {
+                    return Err(HostError::new(
+                        "explanation request Project/subject mismatch",
+                    ));
+                }
+                let id = request.production_id.as_deref().ok_or_else(|| {
+                    HostError::new("assessment requires an explicit produce request")
+                })?;
+                let mut assessment: volicord_operations::ExplanationDiagramAssessment =
+                    serde_json::from_value(args["assessment"].clone())
+                        .map_err(|_| HostError::new("invalid diagram assessment"))?;
+                assessment.source_ids = request
+                    .retrieved
+                    .iter()
+                    .map(|(source, _)| source.clone())
+                    .collect();
+                self.operations
+                    .assess_explanation_diagrams(
+                        project,
+                        subject,
+                        &request.language,
+                        id,
+                        assessment,
+                    )
+                    .map_err(operation_error)
+            }
             "fail" => {
                 let request_id = required_str(args, "generation_id")?;
                 let request = self.explanation_requests.get(request_id).ok_or_else(|| {
@@ -1813,6 +1846,15 @@ impl HostAdapter {
                     }
                     if matches!(subject, ExplanationSubject::Decision(_)) {
                         result["next_action"] = json!("The authorized active host authors a reader-directed Decision article from this exact plan: question context, actual alternatives/consequences, recorded recommendation and recommendation rationale, distinct user choice and only recorded user rationale, applicability and qualified later interpretation. Use section_heading/narrative in useful order; no compulsory empty sections. Technical Source unavailability limits independent verification, not the retained recommendation. Compose then record with this generation_id. No Work Source authority or automatic model dispatch is granted; host/access failure remains incomplete.");
+                    }
+                    if producing
+                        && matches!(
+                            subject,
+                            ExplanationSubject::Work(_) | ExplanationSubject::Decision(_)
+                        )
+                    {
+                        let instruction = result["next_action"].as_str().unwrap_or_default();
+                        result["next_action"] = json!(format!("{instruction} Before record, use assess for this generation_id: authored with actual grounded diagrams, not_needed with a reader-question rationale, or insufficient_evidence with the missing relationship/evidence. Omission is not assessment. Inspect roles, conditions, claim citations and accessible linear meaning; byte-valid admission is not semantic approval. Insufficient evidence leaves content incomplete and needs explicit refinement when evidence becomes available."));
                     }
                     explanation_tool_result(result.clone())?;
                     self.explanation_requests.insert(
@@ -3056,6 +3098,15 @@ fn work_explanation_schema() -> Value {
             ),
         ),
     ]);
+    let mut assess = scope();
+    assess.extend([
+        ("action",enum_schema("Retain an explicit diagram applicability/authoring judgment for this production", &["assess"])),
+        ("generation_id",identity_schema("Current explicit produce request")),
+        ("assessment",{ let mut schema = object_schema(vec![
+            ("outcome",enum_schema("Actual diagram outcome; insufficient evidence is incomplete content", &["authored","not_needed","insufficient_evidence"])),
+            ("rationale",text_schema("Reader question, relationships/order, and evidence sufficiency; self-reported, not semantic approval",1,2048)),
+        ], &["outcome","rationale"]); schema["description"] = json!("Explicit diagram applicability and actual authoring outcome for this production; no Source authority or semantic approval"); schema }),
+    ]);
     let mut read = scope();
     read.extend([
         (
@@ -3111,7 +3162,7 @@ fn work_explanation_schema() -> Value {
             &["verification"],
         ),
     ));
-    json!({"oneOf":[object_schema(produce,&["action","project_id","work_item_id","language","reason"]),object_schema(status,&["action","project_id","work_item_id","language"]),object_schema(fail,&["action","project_id","work_item_id","generation_id","failure"]),object_schema(verification,&["action","project_id","work_item_id"]),object_schema(prepare,&["action","project_id","work_item_id","language"]),
+    json!({"oneOf":[object_schema(assess,&["action","project_id","work_item_id","generation_id","assessment"]),object_schema(produce,&["action","project_id","work_item_id","language","reason"]),object_schema(status,&["action","project_id","work_item_id","language"]),object_schema(fail,&["action","project_id","work_item_id","generation_id","failure"]),object_schema(verification,&["action","project_id","work_item_id"]),object_schema(prepare,&["action","project_id","work_item_id","language"]),
         object_schema(read,&["action","project_id","work_item_id","generation_id","source_id"]),
         object_schema(record,&["action","project_id","work_item_id","generation_id","realization"]),
         object_schema(compose,&["action","project_id","work_item_id","generation_id","draft"]),

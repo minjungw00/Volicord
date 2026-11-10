@@ -1070,3 +1070,15 @@ bodies, user-turn text, provider authority or model tokens. Explicit produce/fai
 are writes; status and all readers are non-writing. Unchanged successful bases add
 no record and renew no lifetime. Prior valid prose remains independent of a failed
 refinement. This is local host-request metadata, not consent or a background grant.
+
+Diagram applicability assessments retain only a bounded author rationale and exact
+production binding in managed CachedSummary metadata, linked to actual canonical
+records/Sources for correction and forgetting. They copy no article or Source body
+and create no model or retention authority. Explicit assess is a write; status,
+composition and publication reads never author or retain an assessment.
+
+MCP assessment dependencies include every Source actually retrieved in that live
+request. Local CLI assessment may supply exact `source_ids`, validated by the same
+Work/Repository scoped readers before linking them. Canonical forgetting therefore
+also removes rationale grounded in those Sources; expired bodies grant no new
+assessment authority. The rationale is self-reported and does not prove entailment.

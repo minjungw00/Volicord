@@ -448,3 +448,12 @@ Work or replaces independently valid output. This grants no Learning, Decision,
 provider authority or mandatory generation quota. CLI Work/Decision/Repository use
 `explain produce --reason ...`, `production-status`, `production-fail` and
 `record --production-id ID` with their existing scope/language selectors.
+
+For normal article `produce`, use `assess` with the same `generation_id` and
+`assessment: {outcome, rationale}` before record. Outcomes are `authored` (actual
+grounded figures required), `not_needed` (why prose answers the reader question) or
+`insufficient_evidence` (missing relationships/order/evidence). Status separates
+content completion from prose readability. Insufficient diagrams do not trigger
+automatic repeated authoring; explicitly refine after investigating the missing
+basis. Titles, roles, guards, relationships, captions and linear reading remain
+ordinary admitted Source-grounded meaning; the renderer supplies no semantics.

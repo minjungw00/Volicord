@@ -385,6 +385,7 @@ impl LocalOperations {
                 id,
                 &realization.plan_fingerprint,
             )?;
+            self.validate_production_diagrams(project, subject, language, id, &realization)?;
         }
         let canonical = self.canonical_basis(project)?;
         let plan = self.prepare_subject_explanation(&canonical, subject, language)?;

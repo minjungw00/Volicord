@@ -5665,3 +5665,12 @@ comprehension or qualification. Current-host original drafts, failures, later ed
 and Source reads are separate ignored runtime deliverables; production stage costs
 must distinguish host/model, Source, composition, persistence and reading. Unknown
 telemetry stays unknown; no arbitrary ceiling or authoritative aggregate is added.
+
+Focused Host `normal_article_production_requires_an_actual_diagram_assessment`
+checks omitted assessment rejection, an authored-but-empty refusal, justified
+no-diagram recording, foreign-Work rejection, explicitly insufficient evidence and
+unchanged-basis skip without repeated prose cost. Existing grounded diagram and
+complete-publication controls retain claim/role/condition/linear-reading checks.
+These controls establish admission, not semantic sufficiency. Current-host actual
+figures require independently inspected permitted originals, exact original drafts,
+failed/edited attempts, assess/compose/record receipts and complete public readback.

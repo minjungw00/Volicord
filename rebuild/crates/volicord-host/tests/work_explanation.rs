@@ -2859,3 +2859,56 @@ fn ordinary_goal_handoff_keeps_same_project_works_distinct_without_hidden_produc
     assert!(names.contains(&"Investigate the returned value".to_owned()));
     Ok(())
 }
+
+#[test]
+fn normal_article_production_requires_an_actual_diagram_assessment_and_preserves_incomplete_outcomes(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::new()?;
+    let generation = produce(&mut f, "article", "en", "boundary")?;
+    let read = f.read(&generation, f.source)?;
+    let realized = response(&generation, &read)?;
+    let args = f.record_args(&generation, &realized)?;
+    let before = f.host.operations().privacy_status(f.project)?;
+    let rejected = call(&mut f.host, args.clone());
+    assert_eq!(rejected["result"]["isError"], true, "{rejected}");
+    assert!(rejected.to_string().contains("diagram assessment"));
+    assert_eq!(before, f.host.operations().privacy_status(f.project)?);
+    let mut assess = f.args("assess");
+    assess["generation_id"] = generation["generation_id"].clone();
+    assess["assessment"] = json!({"outcome":"authored","rationale":"The intended illustration compares the function with its returned constant."});
+    success(&mut f.host, assess.clone())?;
+    // A declared authored outcome cannot hide an empty figure list.
+    assert_eq!(call(&mut f.host, args.clone())["result"]["isError"], true);
+    assess["assessment"] = json!({"outcome":"not_needed","rationale":"The reader question is only whether this one expression returns a constant. The exact single return statement and concise prose answer it; there is no relational or temporal explanation requiring a figure."});
+    success(&mut f.host, assess)?;
+    success(&mut f.host, args)?;
+    let status = production_status(&mut f, "article", "en")?;
+    assert_eq!(status["content_complete"], true);
+    assert_eq!(status["diagram_assessment"]["outcome"], "not_needed");
+    let generation = produce(&mut f, "article", "en", "refinement")?;
+    let read = f.read(&generation, f.source)?;
+    let realized = response(&generation, &read)?;
+    let mut assess = f.args("assess");
+    assess["generation_id"] = generation["generation_id"].clone();
+    assess["assessment"] = json!({"outcome":"insufficient_evidence","rationale":"A wider caller-order explanation was considered, but the caller was not observed; the retained function alone cannot establish that order. The prose remains limited to the actual function."});
+    success(&mut f.host, assess.clone())?;
+    let mut wrong = assess;
+    wrong["work_item_id"] = json!("01".repeat(16));
+    assert_eq!(call(&mut f.host, wrong)["result"]["isError"], true);
+    let args = f.record_args(&generation, &realized)?;
+    success(&mut f.host, args)?;
+    let status = production_status(&mut f, "article", "en")?;
+    assert_eq!(status["content_complete"], false);
+    assert_eq!(
+        status["diagram_assessment"]["outcome"],
+        "insufficient_evidence"
+    );
+    // Explicitly incomplete figures do not cause automatic repeated prose cost.
+    let before = f.host.operations().privacy_status(f.project)?;
+    assert_eq!(
+        produce(&mut f, "article", "en", "progress")?["generation_status"],
+        "skipped_unchanged_basis"
+    );
+    assert_eq!(before, f.host.operations().privacy_status(f.project)?);
+    Ok(())
+}
