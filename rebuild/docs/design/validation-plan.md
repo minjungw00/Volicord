@@ -1736,6 +1736,12 @@ Direct single-call MCP forwarding cells are correlated with native completion
 events only for static literal arguments and a unique matching operation/turn.
 Their invocation sequence is retained separately from completion; dynamic,
 conditional and multi-call cells cannot supply an inferred pre-work witness.
+Observation-time whole-answer field-count omissions use the Product DTO's full
+serialized field inventory, with only serializer-skipped cards optional. The
+review projection's smaller allowlist cannot validate that count. A correctly
+scoped omission remains insufficient evidence; it neither supplies missing prose
+or provenance nor excuses present contradictions. Evaluator-only corrections
+append a new evaluation over the same immutable evidence set.
 
 Evidence-set schema 9 requires `collection_run` for both live collection and
 reprocessing. `collection/run.json` owns source campaign/root/hash, observed

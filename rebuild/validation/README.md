@@ -791,6 +791,10 @@ Single static `text(await tools.mcp__volicord__operation({...}))` wrappers retai
 invocation/completion order under the same operation, arguments, turn and unique
 completion checks as assigned calls. Dynamic, conditional or multi-call wrappers
 remain unsupported; a completion mismatch does not establish an invocation.
+Shared-answer parent-field omissions use the serialized `QuestionAnswers` DTO
+field inventory, including fields deliberately excluded from the private review
+projection. A valid same-object marker establishes unavailable evidence, not a
+contradiction; malformed markers and present contradictory values remain failures.
 The Product candidate, executable hashes, tasks and eight sessions remain those
 of `SOURCE`. Repeat `--rejected-attempt` for related historical process/diagnostic
 files outside the inventoried observations. The publication is disjoint and

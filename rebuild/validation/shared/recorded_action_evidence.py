@@ -4,6 +4,14 @@ Expected values must come from independent authoring/observation-time records,
 never from the returned answer. This module has no fixture-specific task meaning.
 """
 
+# Serialized QuestionAnswers fields; the private review projection is smaller.
+ANSWER_DTO_FIELDS = frozenset({
+    'work_name', 'work_summary', 'evidence_index', 'cautions', 'prose', 'diagrams',
+    'sections', 'facts', 'explanation_state', 'diagnostic', 'applicability',
+    'provenance', 'source_excerpts', 'omitted_source_excerpt_count', 'embedded_source_scope',
+})
+ANSWER_DTO_OPTIONAL = frozenset({'work_name', 'work_summary'})
+
 
 def transport_omission(value):
     if not isinstance(value, dict) or set(value) != {'transport_omission'}:
@@ -79,7 +87,7 @@ def recorded_action_errors(expected, recall):
         return errors + ["shared answer sections"]
     if not isinstance(prose, list):
         if not field_omission(answers, 'prose',
-                fields={'facts', 'prose', 'explanation_state', 'diagnostic', 'provenance'}):
+                fields=ANSWER_DTO_FIELDS, optional=ANSWER_DTO_OPTIONAL):
             return errors + ["shared answer sections"]
         # Only the visible recorded action is checked here. The caller retains
         # the generated-prose observation gap; the V11 oracle still requires its

@@ -11,7 +11,9 @@ import sys
 import codex_events as c
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'shared'))
-from recorded_action_evidence import field_omission, recorded_action_errors, transport_omission
+from recorded_action_evidence import (
+    ANSWER_DTO_FIELDS, ANSWER_DTO_OPTIONAL, field_omission, recorded_action_errors, transport_omission,
+)
 from answer_projection import PROVENANCE, ANSWERS, CLAIM, EVIDENCE
 
 
@@ -73,6 +75,8 @@ def recall_identity_errors(result, project=None, work_id=None, *, work_state='re
 
 
 def bounded_field(value, field, contract):
+    if contract is ANSWERS:
+        return field_omission(value, field, fields=ANSWER_DTO_FIELDS, optional=ANSWER_DTO_OPTIONAL)
     return field_omission(value, field, fields=contract,
         optional={name for name, schema in contract.items()
             if isinstance(schema, tuple) and schema[0] == 'optional'})

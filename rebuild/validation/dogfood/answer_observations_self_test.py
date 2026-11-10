@@ -275,7 +275,9 @@ class AnswerTests(unittest.TestCase):
     def generated_answer(self):
         correct = copy.deepcopy(self.answer)
         work = correct['selected_work']; action = work['answers']['facts'][0]['recorded_action']
-        work['answers'].update(explanation_state='current', provenance={
+        work['answers'].update(evidence_index=[], cautions=[], diagrams=[], sections=[], applicability={},
+            source_excerpts=[], omitted_source_excerpt_count=0, embedded_source_scope=[],
+            explanation_state='current', provenance={
             'project_id': correct['project_id'], 'subject': {'kind': 'work', 'identity': list(bytes.fromhex(work['work_item_id']))},
             'language': 'en', 'generator_identity_status': 'self_reported_not_independently_verified',
             'question': 'work', 'fingerprint': 'ab' * 32, 'generated_at_unix_micros': 1,
@@ -287,6 +289,54 @@ class AnswerTests(unittest.TestCase):
             prose=[{'question': 'NextStep', 'role': 'generated_interpretation',
                 'text': 'Continue the task using the recorded action.', 'evidence_keys': ['next_step']}])
         return correct
+
+    def dto_omitted_answer(self):
+        value = self.generated_answer()
+        answers = value['selected_work']['answers']
+        # The actual serializer keeps these eight fields and marks seven omitted
+        # Product fields. Four retained fields are outside the private projection.
+        answers.update(evidence_index=[], cautions=[], applicability={}, embedded_source_scope=[])
+        for field in ('prose', 'provenance', 'sections', 'source_excerpts', 'omitted_source_excerpt_count'):
+            answers.pop(field)
+        answers.setdefault('diagrams', [])
+        answers['transport_omission'] = {'reason': 'serialized_byte_budget',
+            'omitted_field_count': 7, 'basis': 'inspect the authoritative record at this identity'}
+        return value
+
+    def test_answer_omission_uses_current_product_dto_not_review_projection(self):
+        value = self.dto_omitted_answer()
+        _, fact = self.evaluate(value, cli=value)
+        self.assertEqual(fact['status'], 'indeterminate', fact)
+        for observation in fact['basis']['observations']:
+            self.assertFalse(observation['errors'], observation)
+            self.assertTrue(any(r['field'] == 'provenance' and r['scope'] == '/selected_work/answers'
+                                for r in observation['transport_omissions']))
+
+    def test_answer_dto_omission_cannot_hide_present_contradiction_or_bad_marker(self):
+        for mode in ('missing', 'count', 'unknown_field', 'present_wrong_project'):
+            value = self.dto_omitted_answer(); answers = value['selected_work']['answers']
+            if mode == 'missing':
+                del answers['transport_omission']
+            elif mode == 'count':
+                answers['transport_omission']['omitted_field_count'] = 99
+            elif mode == 'unknown_field':
+                answers['unexpected_private_field'] = 'not a Product DTO member'
+            else:
+                answers['provenance'] = self.generated_answer()['selected_work']['answers']['provenance']
+                answers['provenance']['project_id'] = 'ff' * 16
+                answers['transport_omission']['omitted_field_count'] = 6
+            _, fact = self.evaluate(value)
+            self.assertEqual(fact['status'], 'confirmed_violation', (mode, fact))
+
+    def test_answer_dto_omission_fields_match_serialized_product_owner(self):
+        import re
+        from answer_observations import ANSWER_DTO_FIELDS, ANSWER_DTO_OPTIONAL
+        source = (Path(__file__).resolve().parents[2] / 'crates/volicord-projections/src/answers.rs').read_text()
+        body = source.split('pub struct QuestionAnswers {', 1)[1].split('\n}', 1)[0]
+        fields = set(re.findall(r'^\s*pub\s+(\w+):', body, re.MULTILINE))
+        optional = set(re.findall(r'#\[serde\(skip_serializing_if = "Option::is_none"\)\]\s*pub\s+(\w+):', body))
+        self.assertEqual(ANSWER_DTO_FIELDS, fields)
+        self.assertEqual(ANSWER_DTO_OPTIONAL, optional)
 
     def insert_correction(self, *, after=False, identity=None, expected=1, revision=2, failed=False, call_id='correction'):
         template = next(e for e in self.events if e['payload'].get('type') == 'mcp_tool_call_end'
