@@ -4,6 +4,37 @@ use volicord_context::{Principal, PrincipalKind, ProjectId, TimestampMicros};
 use volicord_inquiry::*;
 use volicord_operations::{LocalOperations, RuntimeLayout};
 
+#[path = "../../../validation/privacy/expiry_controls.rs"]
+mod expiry_controls;
+
+#[test]
+fn expiry_cleanup_and_inspection_failures_remain_independent_through_cli(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (cleanup_fails, inspection_fails) in
+        [(false, false), (true, false), (false, true), (true, true)]
+    {
+        // Each API/CLI invocation gets its own original uncleaned record.
+        for api in [true, false] {
+            let f = expiry_controls::ExpiryControl::new(cleanup_fails, inspection_fails)?;
+            let before = f.ops.canonical_basis(f.project)?;
+            let result = if api {
+                serde_json::to_value(f.ops.cleanup_expired(f.project, 1)?)?
+            } else {
+                cli(&f.ops, f.project, &["privacy", "cleanup", "--limit", "1"])?["result"].clone()
+            };
+            f.assert_outcome(&result, cleanup_fails, inspection_fails);
+            f.repair()?;
+            // A real new CLI process retries without restoring removed bodies.
+            let retry = cli(&f.ops, f.project, &["privacy", "cleanup", "--limit", "1"])?;
+            f.assert_retry(&retry["result"], cleanup_fails);
+            let repeated = cli(&f.ops, f.project, &["privacy", "cleanup", "--limit", "1"])?;
+            f.assert_retry(&repeated["result"], false);
+            assert_eq!(f.ops.canonical_basis(f.project)?, before);
+        }
+    }
+    Ok(())
+}
+
 fn observation(project_id: ProjectId) -> CandidateDraft {
     CandidateDraft {
         project_id,

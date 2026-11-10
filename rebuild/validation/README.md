@@ -1934,6 +1934,13 @@ alter publication/source metadata or submit a future maintenance clock. Expiry
 receipts promise logical removal only; no physical-erasure assertion is inferred.
 These are focused supporting checks, not the aggregate gate or external acceptance.
 
+The shared actual-store `privacy/expiry_controls.rs` fixture independently blocks
+managed cleanup with an SQL trigger and remaining-count inspection with an invalid
+authority observation. Operations `lifecycle_controls` and Host `privacy_controls`
+exercise success, cleanup-only, inspection-only and dual failure through the API,
+real CLI and real MCP stdio, including text/structured response parity and restart
+retry. Diagnostics remain independent; unknown counts and identities stay null.
+
 
 Selective semantic annotation controls additionally use Operations
 `lifecycle_controls`, `guarded_provider`, and Host `privacy_controls` / `mcp`.

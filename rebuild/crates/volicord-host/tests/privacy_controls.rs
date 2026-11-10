@@ -2,6 +2,45 @@ use serde_json::{json, Value};
 use volicord_host::HostAdapter;
 use volicord_operations::{LocalOperations, RuntimeLayout};
 
+#[path = "../../../validation/privacy/expiry_controls.rs"]
+mod expiry_controls;
+
+#[test]
+fn expiry_cleanup_and_inspection_failures_remain_independent_through_stdio(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (cleanup_fails, inspection_fails) in
+        [(false, false), (true, false), (false, true), (true, true)]
+    {
+        let f = expiry_controls::ExpiryControl::new(cleanup_fails, inspection_fails)?;
+        let before = f.ops.canonical_basis(f.project)?;
+        let args = json!({"project_id":f.project.to_string(),"limit":1});
+        let response = stdio_call(f.ops.layout(), "expiry_cleanup", args.clone())?;
+        assert_eq!(
+            response["result"]["isError"], false,
+            "partition states carry incomplete outcomes"
+        );
+        f.assert_outcome(
+            &response["result"]["structuredContent"],
+            cleanup_fails,
+            inspection_fails,
+        );
+        // Text-only MCP consumers receive the same complete diagnostics.
+        let text: Value = serde_json::from_str(
+            response["result"]["content"][0]["text"]
+                .as_str()
+                .ok_or("MCP text")?,
+        )?;
+        assert_eq!(text, response["result"]["structuredContent"]);
+        f.repair()?;
+        let retry = stdio_call(f.ops.layout(), "expiry_cleanup", args.clone())?;
+        f.assert_retry(&retry["result"]["structuredContent"], cleanup_fails);
+        let repeated = stdio_call(f.ops.layout(), "expiry_cleanup", args)?;
+        f.assert_retry(&repeated["result"]["structuredContent"], false);
+        assert_eq!(f.ops.canonical_basis(f.project)?, before);
+    }
+    Ok(())
+}
+
 fn call(adapter: &mut HostAdapter, name: &str, args: Value) -> Value {
     adapter.handle(json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":name,"arguments":args}})).expect("response")
 }

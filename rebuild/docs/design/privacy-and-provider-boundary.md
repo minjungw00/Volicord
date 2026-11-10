@@ -340,8 +340,15 @@ cleanup/deletion receipts persist; repeated invocations continue remaining work.
 The two owner outcomes are independent: `completed` means that batch completed,
 not that all history was cleaned; `remaining_eligible` reports the current backlog.
 An incomplete batch can have committed a prefix, so `removed_ids: null` means
-unknown, not zero. Inspect lifecycle metadata and retry. Process interruption has
-no success receipt and does not restore already removed content. Promoted canonical
+unknown, not zero. Inspect lifecycle metadata and retry. Each partition exposes
+independent `cleanup_diagnostic` and
+`inspection_diagnostic` fields; either failure makes the partition `incomplete`.
+Failed remaining-count inspection leaves `remaining_eligible: null`, even after
+successful removal. A dual failure preserves both diagnostics and never replaces
+the cleanup failure with the inspection failure. These transient Operations/CLI/MCP
+receipts introduce no durable format, lifetime or deletion-guarantee change.
+Process interruption has no success receipt and does not restore already removed
+content. Promoted canonical
 records, Candidate promotion targets, policy-at-collection evidence and independently
 retained articles are preserved. A recorded Source-computed explanation deadline
 continues to use its existing exact receipt exception; arbitrary deadlines are not

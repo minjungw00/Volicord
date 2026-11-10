@@ -74,6 +74,14 @@ consequence이고 원인 state를 대체하지 않는다. `repair_required`는 r
 
 ## 3. Canonical mutation failure와 projection failure
 
+Expiry maintenance preserves cleanup and subsequent remaining-count inspection
+as independent per-owner outcomes. Operations, CLI and MCP expose both
+`cleanup_diagnostic` and `inspection_diagnostic`; neither replaces the other.
+Unknown removed identities or remaining counts stay null, and either failure
+keeps the partition incomplete. Explicit retry inspects the actual persisted
+prefix without restoring removed content. Batch completion, total backlog and
+logical-only removal retain the privacy owner's existing meanings.
+
 Runtime health는 각 store의 availability와 failure cause를 독립적으로 검사한다.
 Candidate, Privacy 또는 다른 보조 store의 비호환/손상을 Canonical Context의
 unavailability로 일반화하지 않으며, 실제로 읽을 수 있는 canonical memory는 계속

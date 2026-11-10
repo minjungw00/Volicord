@@ -75,7 +75,8 @@ pub struct ExpiryPartition {
     pub state: &'static str,
     pub removed_ids: Option<Vec<String>>,
     pub remaining_eligible: Option<usize>,
-    pub diagnostic: Option<String>,
+    pub cleanup_diagnostic: Option<String>,
+    pub inspection_diagnostic: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -92,29 +93,27 @@ fn expiry_partition<T: ToString>(
     result: Result<Vec<T>, Error>,
     remaining: Result<usize, Error>,
 ) -> ExpiryPartition {
-    let (removed_ids, mut diagnostic) = match result {
+    let (removed_ids, cleanup_diagnostic) = match result {
         Ok(ids) => (
             Some(ids.into_iter().map(|id| id.to_string()).collect()),
             None,
         ),
         Err(error) => (None, Some(error.to_string())),
     };
-    let remaining_eligible = match remaining {
-        Ok(count) => Some(count),
-        Err(error) => {
-            diagnostic = Some(error.to_string());
-            None
-        }
+    let (remaining_eligible, inspection_diagnostic) = match remaining {
+        Ok(count) => (Some(count), None),
+        Err(error) => (None, Some(error.to_string())),
     };
     ExpiryPartition {
-        state: if diagnostic.is_some() {
+        state: if cleanup_diagnostic.is_some() || inspection_diagnostic.is_some() {
             "incomplete"
         } else {
             "completed"
         },
         removed_ids,
         remaining_eligible,
-        diagnostic,
+        cleanup_diagnostic,
+        inspection_diagnostic,
     }
 }
 
