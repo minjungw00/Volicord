@@ -1178,6 +1178,34 @@ fn production_tracks_meaningful_progress_and_public_cli_without_reauthoring_name
         realized,
         next["production_id"].as_str(),
     )?;
+    // Completion survives restart: a CLI/Operations token is not replay authority.
+    let replay_plan = f.operations.prepare_explanation(f.project, summary, "en")?;
+    let replay = f.operations.compose_subject_explanation(
+        f.project,
+        summary,
+        draft(&replay_plan, "A replay must not publish another edition."),
+    )?;
+    let before_replay = f.operations.privacy_status(f.project)?;
+    let restarted = LocalOperations::new(f.operations.layout().clone());
+    assert!(restarted
+        .record_explanation_for_production(
+            f.project,
+            summary,
+            "en",
+            replay,
+            next["production_id"].as_str()
+        )
+        .is_err());
+    assert!(restarted
+        .fail_explanation_production(
+            f.project,
+            summary,
+            "en",
+            next["production_id"].as_str().ok_or("production")?,
+            ExplanationProductionFailure::Interrupted
+        )
+        .is_err());
+    assert_eq!(before_replay, restarted.privacy_status(f.project)?);
     // Independent Work progress changes neither publication nor the chosen basis.
     checkpoint.expected_project_revision =
         f.operations.canonical_basis(f.project)?.project.revision;

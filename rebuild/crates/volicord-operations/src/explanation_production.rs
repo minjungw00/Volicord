@@ -314,6 +314,9 @@ impl LocalOperations {
         {
             return Err(Error::new("production superseded, failed or belongs to another preparation; inspect status and explicitly produce again"));
         }
+        if self.explanation_production_status(project, subject, language)?["state"] == "complete" {
+            return Err(Error::new("production already completed; read its publication or explicitly request refinement before another recording"));
+        }
         Ok(())
     }
 
@@ -338,6 +341,13 @@ impl LocalOperations {
                 "production basis changed; explicitly produce again",
             ));
         }
+        self.validate_explanation_production(
+            project,
+            subject,
+            language,
+            production_id,
+            &plan.fingerprint,
+        )?;
         intent.failure = Some(failure);
         self.store_production_intent(&plan, &intent)?;
         self.explanation_production_status(project, subject, language)

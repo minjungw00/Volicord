@@ -3875,3 +3875,8 @@ sequence. Inspect relationships, direction, ownership, conditions and static ver
 temporal meaning against permitted originals. Every displayed role and caption uses
 its existing exact Source-cited claim; accessible linear meaning comes from the
 same admitted graph. The renderer invents neither domain meaning nor applicability.
+
+Completed production IDs are consumed across CLI/Operations restart as well as
+the live MCP request. They cannot record another edition or retroactively report
+failure. Read the admitted publication or explicitly produce refinement; rejected
+replay preserves complete managed state and all original attempts.
