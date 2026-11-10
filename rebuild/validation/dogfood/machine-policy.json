@@ -1,5 +1,5 @@
 {
-  "revision": 6,
+  "revision": 7,
   "rules": {
     "activation_identity": {
       "authority": "hard_blocking",
@@ -455,7 +455,8 @@
       "owner": "product-charter.md/verification",
       "rationale": "An evidence-attributable numeric failed required validation after the final material mutation is disqualifying. Broader diagnostics, baseline/environment failures, recovery and raw/canonical conflicts retain distinct evidence-backed states; ambiguity is reviewable and never success. Unsupported or unresolved execution wrappers are scoped observation limits, including when no command was parsed; missing automatic results prove neither absence nor success.",
       "review_groups": [
-        "context_recovery"
+        "context_recovery",
+        "interaction"
       ]
     },
     "procedure_invocation_counts": {
@@ -485,7 +486,8 @@
       "owner": "projections-and-documents.md/shared RecordedNextStep",
       "rationale": "Wrong canonical identity, recorded direction, revision or typed grounding contradicts observed Product evidence. Missing historical basis and generated meaning remain review-required.",
       "review_groups": [
-        "context_recovery"
+        "context_recovery",
+        "interaction"
       ]
     }
   },

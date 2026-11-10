@@ -2447,6 +2447,15 @@ Post-hoc review의 optional immutable machine run은 current machine schema/find
 run ID/receipt를 검증하고 recorded policy identity를 보존한다. Changed qualitative rubric과의
 current-policy equivalence를 주장하지 않으며 qualification은 여전히 exact current policy를 요구한다.
 
+The current finite review mapping includes Work-only validation-attribution and
+shared-direction findings in same-Work interaction/source-grounding review. B/C
+have no context-recovery criterion because they are not resume pairs; those findings
+must not become mechanically unreachable review duties. This mapping never changes
+hard violations, missing execution evidence or unresolved raw/canonical conflicts.
+Regression controls retain both resume and non-resume applicability and exact-sample
+binding. Policy changes append an evaluation of unchanged originals separately from
+fresh changed-Product measurement.
+
 ### Append-only evaluation identity
 
 `dogfood-campaign evaluate --campaign-root <input> --output <new-run>` reads an

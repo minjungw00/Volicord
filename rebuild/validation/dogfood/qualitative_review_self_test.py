@@ -664,5 +664,40 @@ def run_contract_tests():
         raise AssertionError("qualitative review contract self-test failed")
 
 
+class WorkOnlyFindingRoutes(unittest.TestCase):
+    def test_nonresume_work_findings_have_same_work_review_routes(self):
+        for resume in (False, True):
+            prep = preparation()
+            index = prep["index"]
+            sample = index["samples"][0]
+            sample["resume_pair"] = resume
+            specs = q.criterion_specs(index, prep["rubric"])
+            available = {s["group"] for s in specs if s["sample_id"] == sample["sample_id"]}
+            for rule in ("required_validation_execution", "shared_answer_integrity"):
+                self.assertTrue(m.review_groups(rule) & available)
+                self.assertIn("interaction", m.review_groups(rule))
+                self.assertEqual(m.disposition(rule,m.Status.INDETERMINATE),m.Disposition.REVIEW)
+                self.assertEqual(m.disposition(rule,m.Status.VIOLATION),m.Disposition.HARD)
+            self.assertEqual("context_recovery" in available,resume)
+            # Exercise the actual completion consumer, not just group membership.
+            for rule in ("required_validation_execution", "shared_answer_integrity"):
+                finding_id = sample["sample_id"] + "/" + rule
+                index["machine_findings"][finding_id] = {"sample_id":sample["sample_id"],
+                    "finding":m.finding(rule,m.Status.INDETERMINATE,{"observation":"authored unresolved control"})}
+            value = q.template(prep,"d" * 64)
+            source = next(a for a in value["assessments"] if a["criterion_id"] == sample["sample_id"] + "/interaction/source_grounding")
+            source["assessment"] = "insufficient_evidence"
+            source["machine_relationships"] = [{"finding_id":finding_id,"relationship":"cannot_resolve","reasoning":"Missing captured execution basis remains unresolved."} for finding_id in index["machine_findings"]]
+            progress = q.completion_progress(prep,value,specs)
+            self.assertEqual(set(progress["unaddressed_review_required_finding_ids"]),set(index["machine_findings"]))
+            # Authored hypothetical stronger evidence exercises reachability only;
+            # this does not make missing real evidence a successful review.
+            source["assessment"] = "satisfied"
+            for relation in source["machine_relationships"]:
+                relation["relationship"] = "clarifies_indeterminate"
+            self.assertEqual(q.completion_progress(prep,value,specs)["unaddressed_review_required_finding_ids"],[])
+
+
+
 if __name__ == "__main__":
     unittest.main()

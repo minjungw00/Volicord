@@ -5,7 +5,7 @@ This contract owns review artifacts and operations, not Product behavior or fina
 replacement policy. It grants neither reviewer kind Phase 9 approval authority.
 
 Current identities are qualitative review schema 19 / policy revision 19, machine evaluation
-policy `evidence-evaluation-16`, human observation/receipt schema 7, qualification policy
+policy `evidence-evaluation-18`, human observation/receipt schema 7, qualification policy
 `replacement-qualification-16`, and result-lineage schema 2. Historical runs retain their old
 identities and are comparison inputs only; they are not silently upgraded.
 
@@ -110,6 +110,15 @@ Decision or prior authority. Unrelated or late authority, silent commitment and
 production-committed avoidance/defer/prototype cannot satisfy a discovered
 outcome. Additional independent outcomes require their own assessments;
 complete actual-work coverage remains a separate required criterion. Generic interaction satisfaction cannot replace it.
+
+Validation-attribution and shared recorded-direction findings exist for every Work,
+including Work B/C without a resume pair. Their review may use that same Work's
+`interaction/source_grounding` criterion as well as applicable context recovery.
+This consumes exact execution/record evidence, never another Work's resume or a
+human Decision-comprehension judgment. The finite machine policy revision 7 adds
+that route; it changes no hard disposition, observed outcome, coverage or authority.
+Missing evidence remains `cannot_resolve`. A new append-only evaluation/review binds
+the changed policy; original evaluations and assessments remain unchanged.
 
 ## Binding, identity and machine relationships
 
