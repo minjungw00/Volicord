@@ -107,3 +107,4 @@
 .doc[data-reading-layout="grouped"] .work-reading-group:has(> .related-decisions) + .work-reading-group{border-top:0;padding-top:0}
 .doc[data-reading-layout="grouped"] .related-decision-body > .article-section .unit-text,.doc[data-reading-layout="grouped"] .related-decision-body > .unit > .unit-text{font-size:14px;line-height:1.9;color:var(--body)}
 .doc[data-reading-layout="grouped"] .document-nav [data-level="3"] > a{padding-left:28px}
+.notice-report-options q{display:block;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--body);font-size:12px;line-height:1.8}

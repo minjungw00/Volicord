@@ -3958,3 +3958,10 @@ originals/evidence disclosure. Missing prose remains explicit and does not erase
 replace those inspectable canonical records. Decision outline entries keep their
 visual child level under Related Decisions. The related section shares article
 spacing; its card border replaces a redundant adjacent group separator.
+
+When a check name is absent, the deliberate failure-report selector additionally
+shows an explicitly labelled quotation of its original reported outcome. The
+existing reading-text character bound applies only to that raw quote; any omitted
+character count is stated and the exact report target retains the whole original.
+The quote is neither a synthesized check name nor an authored semantic summary.
+This distinguishes actual same-time unnamed reports without global list ordinals.

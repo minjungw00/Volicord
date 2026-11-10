@@ -79,6 +79,11 @@ async function inspect(page,c,url,width,mode,language){
   const actionBox=await failure.locator('.notice-actions').boundingBox(),triggerBox=await trigger.boundingBox();
   assert.ok(Math.abs((triggerBox.x+triggerBox.width)-(actionBox.x+actionBox.width))<2,'report action right aligned');
   await trigger.press('Enter');assert.equal(await picker.evaluate(n=>n.open),true,'keyboard exposes report choices below action');
+  if(c.distinct_failed_report_options){
+   const labels=await picker.locator('.notice-report-options > a').allTextContents();
+   assert.equal(new Set(labels).size,labels.length,'distinct original reports have distinguishable selector labels');
+  }
+  await failure.screenshot({path:path.join(C.output,`${c.key}-${language}-${mode}-${width}-failure-report-options.png`)});
  }
  const failed=failure.locator('.notice-report-options a[href^="#"]').first();
  if(await failed.count()){

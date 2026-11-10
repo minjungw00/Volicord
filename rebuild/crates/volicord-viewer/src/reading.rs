@@ -2086,23 +2086,61 @@ fn opening_context(
                 .collect::<Vec<_>>();
             for (_, check) in unresolved.iter().filter(|(index, _)| *index < 64) {
                 let target = verification::check_anchor(answers, check);
-                let label = match &check.intended_check {
+                let name = match &check.intended_check {
                     volicord_projections::EvidenceDetail::Observed(name)
                         if !name.trim().is_empty() =>
                     {
-                        name.as_str()
+                        Some(name.as_str())
                     }
-                    _ => text(
-                        r.locale,
-                        "Unnamed verification report",
-                        "이름이 기록되지 않은 검증 보고",
-                    ),
+                    _ => None,
                 };
                 actions.push_str(&format!(
-                    "<a class=\"inspection-action\" href=\"#{target}\"><span>{}</span><small>{}: {}</small></a>",
-                    escape(label),text(r.locale,"Reported","보고 시각"),
-                    escape(&observation_time(TimestampMicros::from_unix_micros(check.reported_at_unix_micros))
-                        .map(|(instant,_)|instant).unwrap_or_else(||text(r.locale,"Date unavailable","날짜 확인 불가").into()))
+                    "<a class=\"inspection-action\" href=\"#{target}\"><span>{}</span>",
+                    escape(name.unwrap_or(text(
+                        r.locale,
+                        "Check name not recorded",
+                        "검증 이름 기록 없음"
+                    )))
+                ));
+                if name.is_none() {
+                    if let Some(original) = check
+                        .original_outcome
+                        .as_deref()
+                        .filter(|text| !text.trim().is_empty())
+                    {
+                        // A labelled raw quotation, never an inferred test name
+                        // or first-N semantic summary. The exact target below
+                        // retains the complete original without this display cap.
+                        let quote = original
+                            .chars()
+                            .take(volicord_projections::READING_TEXT_CHARACTER_LIMIT)
+                            .collect::<String>();
+                        let omitted = original.chars().count() - quote.chars().count();
+                        actions.push_str(&format!(
+                            "<small>{}</small><q lang=\"\">{}</q>",
+                            text(r.locale, "Original report quotation", "보고 원문 인용"),
+                            escape(&quote)
+                        ));
+                        if omitted > 0 {
+                            actions.push_str(&format!("<small>{} {omitted} {}</small>",text(r.locale,"Excerpt;","발췌 ·"),text(r.locale,"characters omitted; inspect this report for the complete original","자 생략 · 이 보고에서 전체 원문 확인")));
+                        }
+                    }
+                }
+                actions.push_str(&format!(
+                    "<small>{}: {}</small></a>",
+                    text(r.locale, "Reported", "보고 시각"),
+                    escape(
+                        &observation_time(TimestampMicros::from_unix_micros(
+                            check.reported_at_unix_micros
+                        ))
+                        .map(|(instant, _)| instant)
+                        .unwrap_or_else(|| text(
+                            r.locale,
+                            "Date unavailable",
+                            "날짜 확인 불가"
+                        )
+                        .into())
+                    )
                 ));
             }
             let outside = unresolved.iter().filter(|(index, _)| *index >= 64).count();

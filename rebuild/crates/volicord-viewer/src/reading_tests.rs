@@ -502,6 +502,53 @@ fn failure_notices_own_actions_and_preserve_exact_report_targets(
             assert!(html.contains("data-warning=\"history\""));
         }
     }
+    // Distinct unnamed reports at the same instant must remain distinguishable
+    // without inventing names or substituting a semantic summary for the report.
+    for (index, prefix) in [
+        "Recorded escaping fixture failure: ",
+        "Recorded documentation failure: ",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let check = w
+            .reading
+            .verification_report
+            .checks
+            .get_mut(index)
+            .ok_or("two report controls")?;
+        check.intended_check = EvidenceDetail::NotObserved;
+        check.reported_at_unix_micros = 123;
+        check.original_outcome = Some(format!(
+            "{prefix}{} unique-complete-tail-{index}",
+            "가".repeat(500)
+        ));
+    }
+    let r = ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::English,
+        view: ViewerView::Work { work: Some(id) },
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let mut quoted = String::new();
+    work_detail(&mut quoted, &r, &p, &w, false);
+    let warning = quoted
+        .split("data-warning=\"failure\"")
+        .nth(1)
+        .ok_or("notice")?
+        .split("</aside>")
+        .next()
+        .ok_or("notice end")?;
+    assert!(warning.contains("Recorded escaping fixture failure: "));
+    assert!(warning.contains("Recorded documentation failure: "));
+    assert!(warning.contains("Original report quotation"));
+    assert!(warning.contains("characters omitted"));
+    assert!(!warning.contains("unique-complete-tail"));
+    assert!(
+        quoted.contains("unique-complete-tail-0") && quoted.contains("unique-complete-tail-1"),
+        "the exact target retains complete originals beyond the chooser excerpt"
+    );
     let long = "path/command/identifier".repeat(200);
     let mut html = String::new();
     reading_notice(
