@@ -45,7 +45,10 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     assert guidance_bytes < 4096, f"SessionStart guidance is {guidance_bytes} UTF-8 bytes; must be less than 4096"
     for rule in (
         "project_resolve using the MCP tool",
+        "for implementation follow workflow.required_next_action",
         "workflow.required_next_action until blocks_ordinary_work is false",
+        "Authorized explanation-only: no new Goal/Discovery/Decision/Checkpoint",
+        "ordinary blockers remain",
         "MCP work_explanation produce",
         "work_source for permitted relevant Sources",
         "work_explanation read_source",
@@ -86,7 +89,7 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     assert "Explicit learning/explanation participation stays active for this bounded Goal" in context
     assert "exact current-host Source/verbatim statement, even for routine dimensions" in context
     assert "Routine learning value requires no Learning Deliberation, Question, or Decision" in context
-    assert "default inactive; generic coding, agent explanation or ungrounded keywords cannot activate participation" in context
+    assert "default inactive; generic coding, agent explanation or ungrounded keywords cannot activate participation" in context.lower()
     return context
 
 
