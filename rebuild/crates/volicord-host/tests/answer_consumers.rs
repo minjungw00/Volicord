@@ -909,10 +909,7 @@ fn mcp_work_consumers_recover_omitted_verification_through_operations_detail_rea
             result["structuredContent"].to_string().len()
                 <= volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET
         );
-        assert_eq!(
-            serde_json::from_str::<Value>(result["content"][0]["text"].as_str().ok_or("text")?)?,
-            result["structuredContent"]
-        );
+        assert!(result["content"][0]["text"].as_str().ok_or("text")?.len() < 128);
         Ok(result["structuredContent"].clone())
     };
     let recall = invoke(

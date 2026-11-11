@@ -1386,8 +1386,9 @@ def mcp_result_semantics(result: dict[str, Any]) -> tuple[bool | None, dict[str,
     """One bounded semantic decoder shared by legacy and ItemCompleted MCP.
 
     Text is only a fallback when the entire block is a CallToolResult object.
-    Its optional product-text representation must parse and agree too. Ordinary
-    display text alongside a direct structured result is not success evidence.
+    A purported product-JSON copy must parse and agree too. Display text is not
+    success evidence; a complete structured result and explicit error flag are
+    required when a whole serialized envelope contains display text.
     """
     is_error = result.get("isError")
     structured = result.get("structuredContent")
@@ -1408,9 +1409,16 @@ def mcp_result_semantics(result: dict[str, Any]) -> tuple[bool | None, dict[str,
             envelope = json.loads(content[0]["text"])
         except json.JSONDecodeError:
             # A purported serialized object that is truncated is not display prose.
-            if structured is None or content[0]["text"].lstrip().startswith("{"):
+            if structured is None or content[0]["text"].lstrip().startswith(("{", "[", '"')):
                 return None, None
             envelope = None
+        else:
+            if not isinstance(envelope, dict):
+                return None, None
+            # A direct logical copy may itself have domain fields named content
+            # or isError; equality to the complete structured value is decisive.
+            if structured is not None and envelope == structured:
+                return is_error, structured
         if isinstance(envelope, dict) and set(envelope) & {"content", "structuredContent", "isError"}:
             if (set(envelope) not in (
                 {"content", "isError"}, {"structuredContent", "isError"},
@@ -1433,17 +1441,24 @@ def mcp_result_semantics(result: dict[str, Any]) -> tuple[bool | None, dict[str,
                 try:
                     product = json.loads(inner[0]["text"])
                 except json.JSONDecodeError:
-                    return None, None
-                if not isinstance(product, dict):
-                    return None, None
-                if nested is not None and nested != product:
-                    raise EvidenceError("Codex MCP content result representations conflict")
-                nested = product
+                    if nested is None or inner[0]["text"].lstrip().startswith(("{", "[", '"')):
+                        return None, None
+                else:
+                    if not isinstance(product, dict):
+                        return None, None
+                    if nested is not None and nested != product:
+                        raise EvidenceError("Codex MCP content result representations conflict")
+                    nested = product
             if not isinstance(nested, dict):
                 return None, None
             if structured is not None and structured != nested:
                 raise EvidenceError("Codex MCP structured result representations conflict")
             is_error, structured = nested_error, nested
+        elif isinstance(envelope, dict):
+            if structured is None:
+                return None, None
+            if envelope != structured:
+                raise EvidenceError("Codex MCP content result representations conflict")
     return is_error, structured
 
 

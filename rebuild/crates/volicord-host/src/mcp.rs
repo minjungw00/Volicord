@@ -6336,17 +6336,25 @@ fn is_hex(value: &str, length: usize, uppercase_allowed: bool) -> bool {
 }
 
 fn compact_read_tool_result(value: Value) -> Value {
-    // Encoding compact JSON twice is bounded by 3x the structured bytes, even
-    // when all quotes/backslashes need escaping in the text representation.
     let value = volicord_operations::bounded_read_section(
         value,
         volicord_operations::HOST_READ_STRUCTURED_BYTE_BUDGET,
     );
-    json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":false})
+    tool_result(value, false)
 }
 
 fn tool_result(value: Value, is_error: bool) -> Value {
-    json!({"content":[{"type":"text","text":serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into())}],"structuredContent":value,"isError":is_error})
+    // Structured content owns the complete result. Repeating it as escaped JSON
+    // in display text can make a valid result overflow the host's envelope.
+    let display = if is_error {
+        match value.get("error").and_then(Value::as_str).filter(|error| error.len() <= 4096) {
+            Some(error) => format!("Product operation failed: {error}\nFull result is in structuredContent."),
+            None => "Product operation failed. Full error and recovery details are in structuredContent.".into(),
+        }
+    } else {
+        "Exact Product result is in structuredContent.".into()
+    };
+    json!({"content":[{"type":"text","text":display}],"structuredContent":value,"isError":is_error})
 }
 
 fn guarded_candidate_json(candidate: &volicord_operations::GuardedEffectCandidate) -> Value {
@@ -9498,6 +9506,29 @@ mod draft_budget_tests {
     use super::*;
 
     #[test]
+    fn display_text_preserves_complete_structured_success_and_failure_results() {
+        for error in [
+            None,
+            Some("receipt storage failed".to_owned()),
+            Some("long error detail ".repeat(800)),
+        ] {
+            let is_error = error.is_some();
+            let value = json!({"project_id":"project", "error":error,
+                "publication":{"state":"published","analysis_snapshot":"snapshot"},
+                "cleanup":{"completed":false,"remaining_count":null},
+                "evidence":[{"text":"quoted \\\" 한글🙂".repeat(1024),"source_ids":["one","two"]}]});
+            let result = tool_result(value.clone(), is_error);
+            let decoded: Value =
+                serde_json::from_slice(&serde_json::to_vec(&result).unwrap()).unwrap();
+            assert_eq!(decoded["structuredContent"], value);
+            assert_eq!(decoded["isError"], is_error);
+            assert!(decoded["content"][0]["text"].as_str().unwrap().len() < 4200);
+            let duplicated = json!({"content":[{"type":"text","text":value.to_string()}],"structuredContent":value,"isError":is_error});
+            assert!(result.to_string().len() < duplicated.to_string().len());
+        }
+    }
+
+    #[test]
     fn explanation_transport_boundary_and_repository_read_recovery_are_exact() {
         let limit = volicord_operations::HOST_READ_RESULT_BYTE_BUDGET;
         let empty_bytes = explanation_tool_result(json!({"text":""}))
@@ -9646,9 +9677,7 @@ mod draft_budget_tests {
         );
         let result = tool_result(json!({"details":details}), true);
         assert!(result.to_string().len() < volicord_operations::HOST_READ_RESULT_BYTE_BUDGET);
-        assert_eq!(
-            serde_json::from_str::<Value>(result["content"][0]["text"].as_str().unwrap()).unwrap(),
-            result["structuredContent"]
-        );
+        assert_eq!(result["structuredContent"]["details"], details);
+        assert!(result["content"][0]["text"].as_str().unwrap().len() < 128);
     }
 }

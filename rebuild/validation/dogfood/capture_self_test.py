@@ -235,6 +235,45 @@ class McpCompletionTests(unittest.TestCase):
         with self.assertRaises(EvidenceError):
             normalize_mcp_completion(payload)
 
+    def test_serialized_structured_result_with_display_text(self):
+        for payload in self.payloads:
+            expected = normalize_mcp_completion(payload)
+            envelope = json.loads(payload["result"]["Ok"]["content"][0]["text"])
+            envelope["content"] = [{"type": "text", "text": "Exact Product result is in structuredContent."}]
+            direct = deepcopy(payload)
+            direct["result"]["Ok"] = envelope
+            self.assertEqual(normalize_mcp_completion(direct), expected)
+            wrapped = deepcopy(payload)
+            wrapped["result"]["Ok"]["content"][0]["text"] = json.dumps(envelope)
+            self.assertEqual(normalize_mcp_completion(wrapped), expected)
+            current = {"type": "item_completed", "thread_id": "fixture-session", "turn_id": "fixture-turn",
+                       "item": {"type": "McpToolCall", "id": payload["call_id"],
+                                **payload["invocation"], "status": "completed", "result": wrapped["result"]["Ok"]}}
+            self.assertEqual(normalize_current_mcp_completion(current, "fixture-session")[1:], expected)
+
+    def test_display_text_never_repairs_missing_or_truncated_structured_results(self):
+        for text in ("Exact Product result is in structuredContent.", '{"project_id":"truncated',
+                     '["truncated', '"truncated', "null", "false", "[]", '"display"'):
+            for complete_structured in (False, True):
+                envelope = {"isError": False, "content": [{"type": "text", "text": text}]}
+                if complete_structured:
+                    envelope["structuredContent"] = {"project_id": "fixture-project"}
+                if complete_structured and text == "Exact Product result is in structuredContent.":
+                    continue
+                payload = deepcopy(self.payloads[0])
+                payload["result"]["Ok"]["content"][0]["text"] = json.dumps(envelope)
+                self.assertEqual(normalize_mcp_completion(payload)[4], "malformed_mcp_completion")
+
+    def test_direct_product_json_copy_must_agree_even_with_envelope_named_domain_fields(self):
+        payload = deepcopy(self.payloads[0])
+        product = {"project_id": "fixture-project", "content": "domain body", "isError": "domain state"}
+        payload["result"]["Ok"] = {"isError": False, "structuredContent": product,
+                                  "content": [{"type": "text", "text": json.dumps(product)}]}
+        self.assertEqual(normalize_mcp_completion(payload)[2], product)
+        payload["result"]["Ok"]["content"][0]["text"] = '{"project_id":"other"}'
+        with self.assertRaises(EvidenceError):
+            normalize_mcp_completion(payload)
+
     def test_malformed_and_arbitrary_text_fail_closed(self):
         for text in ("success", "{}", "[]", '{"isError":false',
                      json.dumps({"isError": "false", "structuredContent": {}}),

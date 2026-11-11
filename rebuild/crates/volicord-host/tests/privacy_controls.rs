@@ -24,13 +24,19 @@ fn expiry_cleanup_and_inspection_failures_remain_independent_through_stdio(
             cleanup_fails,
             inspection_fails,
         );
-        // Text-only MCP consumers receive the same complete diagnostics.
-        let text: Value = serde_json::from_str(
-            response["result"]["content"][0]["text"]
+        // The complete diagnostics survive transport once, in structuredContent.
+        let decoded: Value = serde_json::from_slice(&serde_json::to_vec(&response)?)?;
+        assert_eq!(
+            decoded["result"]["structuredContent"],
+            response["result"]["structuredContent"]
+        );
+        assert!(
+            decoded["result"]["content"][0]["text"]
                 .as_str()
-                .ok_or("MCP text")?,
-        )?;
-        assert_eq!(text, response["result"]["structuredContent"]);
+                .ok_or("MCP display text")?
+                .len()
+                < 128
+        );
         f.repair()?;
         let retry = stdio_call(f.ops.layout(), "expiry_cleanup", args.clone())?;
         f.assert_retry(&retry["result"]["structuredContent"], cleanup_fails);

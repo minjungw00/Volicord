@@ -1,9 +1,8 @@
 use serde_json::{json, Map, Value};
 
-/// Includes both MCP content representations. 768 KiB of headroom below 1 MiB.
+/// Includes the complete structured result and concise MCP display text.
 pub const HOST_READ_RESULT_BYTE_BUDGET: usize = 256 * 1024;
-/// Compact JSON is repeated in text and structuredContent. Even maximally escaped
-/// text takes at most twice its original JSON bytes, leaving envelope headroom.
+/// Bound the same structured projection independently from its display envelope.
 pub const HOST_READ_STRUCTURED_BYTE_BUDGET: usize = 80 * 1024;
 
 /// Bound a read projection at complete field/item boundaries. The caller supplies
@@ -240,14 +239,11 @@ mod tests {
         assert_eq!(bounded["snapshots"][0]["analysis_snapshot"], "analysis");
         assert_eq!(bounded, bounded_read_section(current, 56 * 1024));
         assert!(bounded.to_string().contains("omitted_count"));
-        let wire = json!({"content":[{"type":"text","text":bounded.to_string()}],"structuredContent":bounded,"isError":false});
+        let wire = json!({"content":[{"type":"text","text":"Exact Product result is in structuredContent."}],"structuredContent":bounded,"isError":false});
         let bytes = serde_json::to_vec(&wire).unwrap();
         assert!(bytes.len() <= HOST_READ_RESULT_BYTE_BUDGET);
         let decoded: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(
-            serde_json::from_str::<Value>(decoded["content"][0]["text"].as_str().unwrap()).unwrap(),
-            decoded["structuredContent"]
-        );
+        assert_eq!(bounded, decoded["structuredContent"]);
     }
 
     #[test]

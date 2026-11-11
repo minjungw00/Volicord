@@ -30,6 +30,7 @@ class AnswerTests(unittest.TestCase):
                 payload = event['payload']
                 if payload.get('type') == 'mcp_tool_call_end' and payload.get('call_id') == 'exec-' + self.output['call_id']:
                     payload['result']['Ok']['structuredContent'] = copy.deepcopy(answer)
+                    payload['result']['Ok']['content'] = [{'type': 'text', 'text': json.dumps(answer)}]
         if cli is not None:
             turn = next(event['payload']['turn_id'] for event in self.events
                 if event['payload'].get('type') == 'task_started')

@@ -808,12 +808,17 @@ report나 hidden memory를 identity authority로 사용하지 않는다.
 
 ### Host-facing serialized Recall budget
 
-MCP Recall result는 compact UTF-8 JSON의 `content` text와 `structuredContent`를
-모두 포함해 **262,144 bytes (256 KiB)** 이하다. 관찰된 약 1 MiB host truncation
-경계에 768 KiB headroom을 둔다. Shared CLI/MCP Resume Brief는 56 KiB,
+MCP Recall result는 complete machine-readable `structuredContent`와 짧은 `content` text
+안내를 모두 포함해 **262,144 bytes (256 KiB)** 이하다. 전체 JSON을 text에 다시 복제하지
+않는다. 관찰된 약 1 MiB host 경계나 더 작은 실제 capture 경계는 서로 다른 관찰이며,
+이 ceiling이 모든 host/capture의 무손실을 보장하지 않는다. Shared CLI/MCP Resume Brief는 56 KiB,
 Candidate Inspection의 compact learning resume는 15 KiB, workflow는 8 KiB를
 사용하고 health/envelope를 포함한 structured payload는 80 KiB 이하다.
-Compact JSON text의 escaping과 중복 structured content 비용도 이 상한에 포함된다.
+Envelope와 text 안내 비용도 이 상한에 포함된다. Text는 상태/구조화 결과 위치를 알리는
+presentation이며 데이터의 대체 요약이나 success 근거가 아니다. 짧은 error message는 전체를
+표시할 수 있지만 긴 message를 prefix로 자르지 않고 structured result에서 그대로 읽는다.
+CLI의 shared brief와 MCP의 structured payload, existing whole-field omission/expansion basis는
+동일하며 data, history, graph 또는 required authoring contract를 text 크기에 맞춰 줄이지 않는다.
 
 동일 state에서는 identity/state/authority와 Goal, behavior Context, Decision,
 Checkpoint/work/verification/review/acceptance, next action을 history와 repository

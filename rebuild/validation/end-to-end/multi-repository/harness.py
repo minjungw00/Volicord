@@ -1404,19 +1404,27 @@ def validate_codex_probe(stdout: str, project_id: str) -> dict[str, Any]:
             result = item.get("result")
             if not isinstance(result, dict) or (
                 "isError" in result and result["isError"] is not False
-            ):
+            ) or ("is_error" in result and result["is_error"] is not False):
                 raise ValueError("Codex probe returned an invalid or error result")
             content = result.get("content")
             if not isinstance(content, list) or len(content) != 1 or not isinstance(content[0], dict):
                 raise ValueError("Codex probe lacks a typed health result")
             if content[0].get("type") != "text" or not isinstance(content[0].get("text"), str):
                 raise ValueError("Codex probe health content is invalid")
+            health = result.get("structured_content")
+            if "structured_content" in result and not isinstance(health, dict):
+                raise ValueError("Codex probe structured health result is invalid")
             try:
-                health = json.loads(content[0]["text"])
+                text_health = json.loads(content[0]["text"])
             except json.JSONDecodeError as error:
-                raise ValueError("Codex probe health result is not structured JSON") from error
-            if "structured_content" in result and result["structured_content"] != health:
-                raise ValueError("Codex probe health result representations disagree")
+                if health is None or content[0]["text"].lstrip().startswith(("{", "[", '"')):
+                    raise ValueError("Codex probe health result is not complete structured JSON") from error
+            else:
+                if not isinstance(text_health, dict):
+                    raise ValueError("Codex probe JSON health copy is not an object")
+                if health is not None and health != text_health:
+                    raise ValueError("Codex probe health result representations disagree")
+                health = text_health
             if (not isinstance(health, dict) or health.get("connection") != "connected"
                 or health.get("capability_state") != "healthy"
                 or health.get("canonical_available") is not True
@@ -1439,6 +1447,9 @@ def assert_codex_probe_completion() -> None:
     def encode(value):
         return "\n".join(json.dumps(event) for event in value)
     validate_codex_probe(encode(events), "synthetic-project")
+    display = copy.deepcopy(events)
+    display[3]["item"]["result"]["content"][0]["text"] = "Exact Product result is in structuredContent."
+    validate_codex_probe(encode(display), "synthetic-project")
     cases = {"started-only": events[:3], "text-only": [
         {"type": "item.completed", "item": {"type": "agent_message",
          "text": "mcp_tool_call volicord project_health"}}]}
@@ -1469,6 +1480,18 @@ def assert_codex_probe_completion() -> None:
     mutated = copy.deepcopy(events)
     mutated[3]["item"]["result"]["content"][0]["text"] = '{}'
     cases["conflicting-result"] = mutated
+    for flag in ("isError", "is_error"):
+        mutated = copy.deepcopy(display)
+        mutated[3]["item"]["result"][flag] = True
+        cases["tool-error-" + flag] = mutated
+    for label, text in (("truncated-object", '{"connection":'), ("truncated-array", "["),
+                        ("null-copy", "null"), ("scalar-copy", "false")):
+        mutated = copy.deepcopy(display)
+        mutated[3]["item"]["result"]["content"][0]["text"] = text
+        cases[label] = mutated
+    mutated = copy.deepcopy(display)
+    del mutated[3]["item"]["result"]["structured_content"]
+    cases["display-without-data"] = mutated
     for kind in ("command_execution", "file_change", "web_search", "unknown_action"):
         cases[kind] = events[:-1] + [{"type": "item.started", "item": {
             "id": "forbidden", "type": kind}}] + events[-1:]

@@ -8699,10 +8699,17 @@ fn assert_large_learning_recall(adapter: &mut HostAdapter, project: &str, learni
     assert!(bytes.len() <= volicord_operations::HOST_READ_RESULT_BYTE_BUDGET);
     let roundtrip: Value = serde_json::from_slice(&bytes).unwrap();
     let recalled = structured(&roundtrip);
-    assert_eq!(
-        serde_json::from_str::<Value>(roundtrip["result"]["content"][0]["text"].as_str().unwrap())
-            .unwrap(),
-        *recalled
+    assert!(
+        roundtrip["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .len()
+            < 128
+    );
+    let duplicated = json!({"result":{"content":[{"type":"text","text":recalled.to_string()}],"structuredContent":recalled,"isError":false}});
+    assert!(
+        bytes.len() < duplicated.to_string().len(),
+        "complete data is encoded only once"
     );
     for key in [
         "goals",
@@ -8860,12 +8867,12 @@ fn compact_materiality_large_state_builds_record_revise_inspect_without_probes()
                 .len(),
             3
         );
-        assert_eq!(
-            serde_json::from_str::<Value>(
-                response["result"]["content"][0]["text"].as_str().unwrap()
-            )
-            .unwrap(),
-            *draft
+        assert!(
+            response["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .len()
+                < 128
         );
         let mut request = draft["record_request"]["skeleton"].clone();
         request["rationale"] = json!("Every module preserves the current public result; private organization stays within bounded discretion");

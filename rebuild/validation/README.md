@@ -1982,7 +1982,7 @@ The shared actual-store `privacy/expiry_controls.rs` fixture independently block
 managed cleanup with an SQL trigger and remaining-count inspection with an invalid
 authority observation. Operations `lifecycle_controls` and Host `privacy_controls`
 exercise success, cleanup-only, inspection-only and dual failure through the API,
-real CLI and real MCP stdio, including text/structured response parity and restart
+real CLI and real MCP stdio, including complete structured diagnostics, concise display text and restart
 retry. Diagnostics remain independent; unknown counts and identities stay null.
 
 
