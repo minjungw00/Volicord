@@ -1313,6 +1313,13 @@ availability. Started-only, failed, text-only, conflicting result representation
 and additional tool, shell, file-change, or search activity cannot qualify.
 The maintained positive fixture follows captured `codex exec --json` events;
 mutation controls exercise completion, identity, health, and action restrictions.
+The dispatched prompt must explicitly require exactly one invocation, prohibit
+repeat/retry/confirmation calls after either success or failure, and end the turn
+with that one result. Restricting the tool name alone does not state this count
+boundary. Two distinct calls with identical healthy results still fail; do not
+delete an extra call or relabel its original run as passing. Instruction alignment
+is not a guarantee of model compliance: the fresh actual transcript remains the
+owner of the observed call count.
 
 V11's local MCP transport bounds request writes and complete newline-framed response
 reads with a monotonic per-RPC deadline (the maintained 90-second call ceiling).

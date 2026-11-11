@@ -1300,7 +1300,10 @@ def authenticated_codex(
     prompt = (
         "This is a bounded MCP connectivity probe, not repository work. Call only this "
         "repository's Volicord MCP server project_health tool for Project "
-        f"{project_id}. Do not call project_resolve, Recall, context_record, "
+        f"{project_id} exactly once. Do not repeat or retry the call, including to "
+        "confirm a successful result or recover from a failure. After that one result, "
+        "end the turn with its connection and capability state, or its failure; "
+        "do not make another tool call. Do not call project_resolve, Recall, context_record, "
         "repository_analyze, another tool, or the shell. Report the returned connection "
         "and capability state."
     )
@@ -1499,6 +1502,10 @@ def assert_codex_probe_completion() -> None:
     extra["item"].update(id="extra", tool="recall")
     cases["extra-tool"] = events[:-1] + [extra] + events[-1:]
     cases["duplicate-completion"] = events[:-1] + [events[3]] + events[-1:]
+    repeated = copy.deepcopy(display[2:4])
+    for event in repeated:
+        event["item"]["id"] = "second-healthy-call"
+    cases["repeated-healthy-call"] = display[:-1] + repeated + display[-1:]
     cases["unfinished-turn"] = events[:-1]
     cases["failed-turn"] = events[:-1] + [{"type": "turn.failed", "error": {"message": "failed"}}]
     accepted = []
@@ -3478,6 +3485,8 @@ def assert_authenticated_codex_lifecycle() -> None:
             "    raise SystemExit(42)\n"
             "if 'Do not call project_resolve' not in prompt or 'project_health' not in prompt:\n"
             "    raise SystemExit(43)\n"
+            "if 'exactly once' not in prompt or 'Do not repeat or retry' not in prompt:\n"
+            "    raise SystemExit(45)\n"
             "pathlib.Path(os.environ['V11_AUTH_VISIBILITY_MARKER']).write_text('visible\\n')\n"
             "if os.environ.get('V11_SYNTHETIC_CODEX_FAILURE') == '1':\n"
             "    raise SystemExit(19)\n"
@@ -3510,7 +3519,11 @@ def assert_authenticated_codex_lifecycle() -> None:
             authentication_source=source_auth,
         )
         if succeeded["status"] != "passed" or not visibility_marker.is_file():
-            raise AssertionError("synthetic child could not use staged Codex authentication")
+            operation = succeeded.get("evidence", {}).get("operation", {})
+            raise AssertionError(
+                "synthetic child failed the configured authorization/prompt contract; "
+                f"exit_code={operation.get('exit_code')}"
+            )
         if any(staging_parent.iterdir()):
             raise AssertionError("Codex authentication staging remains after successful execution")
 

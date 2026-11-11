@@ -456,3 +456,30 @@ all-target Clippy passed. The post-fix binary's two direct failure controls unde
 Memcheck each returned the exact expected error frame and exit 1 with zero reported
 memory errors. Leak checking was disabled: native handles are intentionally retained
 until process exit, and those observations do not prove general leak freedom.
+
+The changed `93445cd19d18cdca3bdbc7de4f06237ce7437619` candidate passed all 17
+support checks, ordered Final, evidence rehearsal, bounded provider qualification
+and preflight. Official V11 retained 53 passed / two failed / zero skipped. The two
+failures were authenticated Codex health probes: Volicord and polyglot-medium each
+issued two distinct `project_health` calls with the same Project arguments and
+identical successful healthy results. Small-python issued one. There was no other
+action tool and the public reports matched the structured data. The strict
+exactly-one-call validator correctly rejected both repeated-call transcripts.
+The original and copied failed archives were independently verified and retained.
+
+All named V11 performance limits passed: peak MCP RSS 3,387,834,368 bytes, post-warmup
+analysis growth 498,148,281 bytes, and named workload duration 873,060.230 ms. These
+are the named workload's measurements, not total gate time or an unrestricted
+process-tree guarantee. The failed probes do not become passing connection leaves
+because their results were healthy or because the performance limits passed.
+
+The probe instruction restricted the tool identity with `Call only ...` but did
+not state the exactly-once requirement enforced by its validator. The dispatched
+prompt now explicitly requires one call and forbids repetition, retry or confirmation
+after success or failure. An offline synthetic Codex checks this dispatch boundary;
+an additional negative fixture contains two distinct complete healthy calls, which
+must remain rejected. Decoder, cardinality validation, result shape, selected model,
+authorization and every workload limit are unchanged. Public events do not establish
+why the model repeated a call, and the clearer instruction does not guarantee future
+compliance. Fresh changed-candidate evidence is still required; the original failure
+records are not rewritten or filtered into success.
