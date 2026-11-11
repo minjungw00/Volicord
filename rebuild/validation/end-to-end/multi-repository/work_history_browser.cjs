@@ -39,6 +39,16 @@ async function serve(c){
   result.processes.push({label:c.key+'-viewer',exit_code:code,signal,termination:'explicit cleanup'});resolve();});child.kill('SIGTERM');});}};
 }
 const frames=page=>page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+async function statusAppearance(metadata){
+ assert.equal(await metadata.isVisible(),true,'measure the displayed metadata, not a closed disclosure');
+ const readable=metadata.locator('.publication-state-badge'),comparison=metadata.locator('.comparison-status');
+ assert.equal(await readable.evaluate(n=>getComputedStyle(n).minHeight),await comparison.evaluate(n=>getComputedStyle(n).minHeight),'readability and repository comparison share badge height');
+ const publicationIcon=await readable.locator('svg').boundingBox(),repositoryIcon=await comparison.locator('svg').boundingBox();
+ assert.ok(publicationIcon&&repositoryIcon,'both status icons are displayed');
+ assert.equal(publicationIcon.width,15,'displayed reading-status icon');
+ assert.equal(publicationIcon.width,repositoryIcon.width,'displayed status icons share their visual size');
+ assert.equal(publicationIcon.height,repositoryIcon.height);
+}
 async function inspect(page,c,url,width,mode,language){
  await page.goto('about:blank');await page.setViewportSize({width,height:1000});const started=performance.now();const response=await page.goto(url);await page.evaluate(()=>document.fonts.ready);
  const doc=page.locator(`[id="work-${c.work}"] > article.doc`);await doc.waitFor();
@@ -68,9 +78,7 @@ async function inspect(page,c,url,width,mode,language){
   assert.ok(await card.evaluate(n=>parseFloat(getComputedStyle(n).borderTopWidth))>=1);
  }
  for(const metadata of await doc.locator('.reading-metadata').all()){
-  const readable=metadata.locator('.publication-state-badge'),comparison=metadata.locator('.comparison-status');
-  assert.equal(await readable.evaluate(n=>getComputedStyle(n).minHeight),await comparison.evaluate(n=>getComputedStyle(n).minHeight),'readability and repository comparison share badge height');
-  assert.equal(await readable.locator('svg').evaluate(n=>getComputedStyle(n).width),await comparison.locator('svg').evaluate(n=>getComputedStyle(n).width),'status icons share their visual size');
+  if(await metadata.isVisible())await statusAppearance(metadata);
   assert.equal(await metadata.locator('.comparison-icon').count(),1,'shared comparison status icon');
   assert.ok((await metadata.locator('[data-comparison-label]').textContent()).trim().length>0,'state has explicit non-color wording');
   assert.ok(!(await metadata.locator('.reading-dates').textContent()).includes('Unix'),'calendar format matches Work dates');
@@ -121,6 +129,7 @@ async function inspect(page,c,url,width,mode,language){
   assert.equal(await decision.locator('.recorded-choice').count(),1,'canonical choice survives prose availability');
   const fold=decision.locator(':scope > details.related-decision'),summary=fold.locator(':scope > summary');
   await summary.press('Enter');assert.equal(await fold.evaluate(n=>n.open),true,'keyboard opens this Decision');
+  await statusAppearance(decision.locator('.reading-metadata'));
   if(await decision.getAttribute('data-decision-scope')==='work-item')assert.equal(await decision.locator('.related-decision-body > .scope-summary').count(),0,'Work association is not repeated as primary prose');
   await decision.screenshot({path:path.join(C.output,`${c.key}-${language}-${mode}-${width}-decision-explanation.png`)});
   const originals=decision.locator('details.decision-originals');

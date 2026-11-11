@@ -5659,6 +5659,13 @@ An already expired baseline cannot establish a stale-publication rejection, and
 must not silently count as that positive-to-negative transition. No future clock,
 deadline rewrite, Source renewal or old-body fallback may supply this evidence.
 
+Status-icon geometry is a visible-reading observation. Check the displayed Work
+metadata, then open a related Decision through its real disclosure before checking
+its painted icon bounds. A zero computed SVG width inside a closed native disclosure
+does not establish a visible defect. Preserve that failed measurement; do not infer
+its browser cause from a later non-reproduction. Continue checking the actual opened
+state and exact navigation rather than expanding every Decision for the initial view.
+
 For command-code origin, run the scoped Host `work_explanation` regression
 `pinned_command_origin_preserves_observation_and_does_not_color_labels_or_mixed_logs`
 and Viewer syntax/reader checks through `validate focused`. Normal MCP preparation,
