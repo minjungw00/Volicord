@@ -262,7 +262,7 @@ pub(super) fn overview(
             )
         ));
     }
-    html.push_str(&format!("</section><section class=\"repository-card\"><p class=\"card-topline\">{}</p><h2>{}</h2><p>{}</p><a class=\"text-action repository-reading-link\" href=\"{}\">{} →</a></section></div>",text(r.locale,"Repository explanation","저장소 설명"),text(r.locale,"Start with the structure","전체 구조부터 살펴보기"),text(r.locale,"Open the available repository article and inspect the code basis and limits stated there.","저장소 글을 열어 설명한 구조와 동작, 코드 기준과 한계를 확인하세요."),escape(&reading::url(r,&ViewerView::RepositoryExplanation)),text(r.locale,"Read repository explanation","저장소 설명 읽기")));
+    html.push_str(&format!("</section><section class=\"repository-card\"><p class=\"card-topline\">{}</p><h2>{}</h2><p>{}</p><a class=\"text-action repository-reading-link\" href=\"{}\">{} →</a></section></div>",text(r.locale,"Repository explanation","저장소 설명"),text(r.locale,"Start with the structure","전체 구조부터 살펴보기"),text(r.locale,"Open the repository explanation to read any available article and its code basis and limits.","저장소 설명을 열어 이용 가능한 글과 그 코드 기준·한계를 확인하세요."),escape(&reading::url(r,&ViewerView::RepositoryExplanation)),text(r.locale,"Read repository explanation","저장소 설명 읽기")));
     html.push_str(&format!(
         "<div class=\"work-stats\"><a href=\"{}\">{} <b>{}</b></a>",
         escape(&href(r, WorkCatalogueQuery::default())),
