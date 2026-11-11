@@ -10744,7 +10744,7 @@ def real_session_fixture(
                 "duration": {"secs": 0, "nanos": 1},
                 "result": {
                     "Ok": {
-                        "content": [{"type": "text", "text": json.dumps(structured)}],
+                        "content": [{"type": "text", "text": "Exact Product result is in structuredContent."}],
                         "structuredContent": structured,
                         "isError": is_error,
                     }
