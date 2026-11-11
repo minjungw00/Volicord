@@ -1224,7 +1224,9 @@ impl LocalOperations {
                 analysis_snapshot: Some(baseline.identity.to_string()),
                 execution: None,
                 host_turn: None,
-                other: Some("meaningful pre-work engineering forks".to_owned()),
+                other: Some(
+                    "pre-work engineering choices and Source-grounded no-fork review".to_owned(),
+                ),
             },
             observed_at,
             retention: CandidateRetention {

@@ -19,7 +19,7 @@ use volicord_context::{
 use volicord_repository_intelligence::RepositoryChangeView;
 
 pub const CANDIDATE_SCHEMA_KIND: &str = "volicord-inquiry-candidates";
-pub const CANDIDATE_SCHEMA_VERSION: u32 = 24;
+pub const CANDIDATE_SCHEMA_VERSION: u32 = 25;
 
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_LIST_ITEMS: usize = 64;
@@ -114,6 +114,16 @@ impl CandidateStore {
             ));
         }
         validate_discovery_against_canonical(canonical, discovery)?;
+        if discovery.choices.is_empty()
+            && crate::work_authority::retained_goal_has_choices(
+                draft.project_id,
+                discovery.goal_context_id,
+                &self.read_basis(draft.project_id)?.candidates,
+            )
+        {
+            return Err(Error::new(ErrorKind::DomainConflict,
+                "retained choices for this Goal must be reviewed; a no-fork Discovery cannot discard them"));
+        }
         self.submit_validated(draft)
     }
 
@@ -178,6 +188,16 @@ impl CandidateStore {
         validate_review_against_canonical(canonical, review)?;
         validate_review_against_discovery(review, discovery_candidate)?;
         let history = self.read_basis(draft.project_id)?;
+        if review.dimensions.is_empty()
+            && crate::work_authority::retained_goal_has_choices(
+                draft.project_id,
+                review.goal_context_id,
+                &history.candidates,
+            )
+        {
+            return Err(Error::new(ErrorKind::DomainConflict,
+                "retained choices for this Goal must be reviewed; a no-fork Materiality Review cannot discard them"));
+        }
         validate_learning_continuity(
             draft.project_id,
             review,
@@ -395,6 +415,12 @@ impl CandidateStore {
             .choices
             .iter()
             .flat_map(|choice| choice.source_basis.iter().copied())
+            .chain(
+                discovery
+                    .material_boundary_review
+                    .iter()
+                    .flat_map(|review| review.source_basis.iter().copied()),
+            )
             .chain(
                 existing_review
                     .dimensions
@@ -731,6 +757,7 @@ impl CandidateStore {
             disposition: CandidateDisposition::PendingOrRetained,
             cleanup: None,
             promotion_target: None,
+            work_review_binding: crate::CandidateWorkReviewBinding::from_content(&draft.content),
             opt_out_state_at_collection: applicable_policies,
             content: Some(draft.content),
         };
@@ -1689,7 +1716,7 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
     {
         validate_text("learning participation statement", verbatim_statement)?;
     }
-    if review.dimensions.is_empty() || review.dimensions.len() > MAX_LIST_ITEMS {
+    if review.dimensions.len() > MAX_LIST_ITEMS {
         return Err(Error::new(
             ErrorKind::InvalidInput,
             "Materiality Review requires a bounded set of independently material dimensions",
@@ -2236,13 +2263,13 @@ fn executable_path_is_covered(declared_paths: &[String], requested: &str) -> boo
     })
 }
 
-fn validate_engineering_choice_discovery(
+pub(crate) fn validate_engineering_choice_discovery(
     discovery: &EngineeringChoiceDiscovery,
 ) -> Result<(), Error> {
-    if discovery.choices.is_empty() || discovery.choices.len() > MAX_LIST_ITEMS {
+    if discovery.choices.len() > MAX_LIST_ITEMS {
         return Err(Error::new(
             ErrorKind::InvalidInput,
-            "Engineering Choice Discovery requires a bounded non-empty choice set",
+            "Engineering Choice Discovery exceeds the bounded choice set",
         ));
     }
     let mut identities = BTreeSet::new();
@@ -2781,6 +2808,13 @@ fn validate_discovery_against_canonical(
             "Engineering Choice Discovery must bind the current Goal Context",
         ));
     }
+    validate_discovery_source_basis(canonical, discovery)
+}
+
+pub(crate) fn validate_discovery_source_basis(
+    canonical: &CanonicalReadBasis,
+    discovery: &EngineeringChoiceDiscovery,
+) -> Result<(), Error> {
     let current_sources = canonical
         .sources
         .iter()
@@ -4098,6 +4132,7 @@ fn encode_scope(scope: &CollectionOptOutScope) -> Result<String, Error> {
 }
 
 fn encode_record(record: &CandidateRecord) -> Result<String, Error> {
+    validate_work_review_binding(record)?;
     let encoded = serde_json::to_string(record).map_err(encode_error)?;
     if encoded.len() > MAX_RECORD_BYTES {
         return Err(Error::new(
@@ -4116,6 +4151,7 @@ fn decode_record(value: &str) -> Result<CandidateRecord, Error> {
         ));
     }
     let record: CandidateRecord = serde_json::from_str(value).map_err(decode_error)?;
+    validate_work_review_binding(&record)?;
     if let Some(content) = &record.content {
         if let Some(discovery) = &content.engineering_choice_discovery {
             validate_engineering_choice_discovery(discovery)?;
@@ -4136,6 +4172,35 @@ fn decode_record(value: &str) -> Result<CandidateRecord, Error> {
         }
     }
     Ok(record)
+}
+
+fn validate_work_review_binding(record: &CandidateRecord) -> Result<(), Error> {
+    if record.content.as_ref().is_some_and(|content| {
+        (record.kind == CandidateKind::EngineeringChoiceDiscovery)
+            != content.engineering_choice_discovery.is_some()
+            || (record.kind == CandidateKind::MaterialityReview)
+                != content.materiality_review.is_some()
+    }) {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "Candidate kind and work-review payload must agree exactly",
+        ));
+    }
+    let requires_work_binding = matches!(
+        record.kind,
+        CandidateKind::EngineeringChoiceDiscovery | CandidateKind::MaterialityReview
+    );
+    if requires_work_binding != record.work_review_binding.is_some()
+        || record.content.as_ref().is_some_and(|content| {
+            crate::CandidateWorkReviewBinding::from_content(content) != record.work_review_binding
+        })
+    {
+        return Err(Error::new(
+            ErrorKind::CorruptState,
+            "Candidate work-review binding is missing or contradicts its typed content",
+        ));
+    }
+    Ok(())
 }
 
 fn load_record(

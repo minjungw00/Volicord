@@ -78,6 +78,17 @@ Source-grounded `no_independent_fork`를 기록한다. No-fork는 `mechanically_
 `settled_by_current_sources`, `outside_affected_scope` 중 typed basis와 rationale를 가진다.
 Category는 ownership classifier가 아닌 semantic review prompt다.
 
+검토 결과 meaningful fork가 하나도 없을 수 있다. 이때 `choices=[]`는 그 자체로 완료가
+아니다. 동일 Goal과 exact pre-work baseline의 모든 effect category와 다섯 interaction axis에
+concrete outcome/result, current Source, typed `no_independent_fork`와 rationale를 기록한
+Discovery만 no-fork 검토로 admit한다. 해당 Discovery에 대한 Materiality judgment/dimension은
+빈 집합이며 behavioral Context와 explicit Learning participation, prospective chronology,
+planned commitments와 coupled-artifact/temporal scope binding은 그대로 요구한다. Bare empty
+Candidate, missing review, stale Source 또는 unresolved/represented choice는 이 경로가 아니다.
+동일 Goal에 이미 retained non-empty Discovery가 있으면 그 stable choices를 재검토해야 하며,
+no-fork 제출이나 이전 no-fork Review 재사용으로 지울 수 없다. Test-fixture selection이나
+기계적으로 동등한 detail을 choice/Question으로 제조하지 않는다.
+
 Discovery의 `interaction_review`는 effect category와 별도로 reference/scope/context basis,
 existing configuration/authority/Source와 composition/precedence, multi-item ordering/partial
 success/atomic durable effects, failure/retry/recovery, temporal/lifetime을 각각 한 번 challenge한다.
@@ -573,14 +584,15 @@ context를 모두 수집하고 current executable scope, review/binding basis와
 verification과 truthful work-state 검사는 생략하거나 success로 바꾸지 않는다.
 이 result는 일반 file/command admission이 아니다.
 
-Fresh resume baseline에서 새 material choice가 발견되지 않았다고 `choices=[]` Discovery를 제출하지
-않는다. Host workflow는 retained Candidate inspection을 먼저 가리킨다. Continued bounded work가 있으면
+Fresh resume baseline에서 새 material choice가 발견되지 않았다는 이유만으로 기존 choices를
+`choices=[]`로 지우지 않는다. Host workflow는 retained Candidate inspection을 먼저 가리킨다. Continued bounded work가 있으면
 caller는 prior stable choice identities를 fresh Goal/baseline/repository Source와 current scope에 대해
 재평가하고, prior non-empty choices가 그대로 applicable하며 additional choice가 없다는 결론을 current
 evidence로 한 번 record한 뒤 Materiality draft/review로 진행한다. Completed state를 read-only로
 inspection/verification할 뿐 bounded work가 계속되지 않으면 Discovery나 Checkpoint를 제조하지 않는다.
-이 두 경로는 empty Candidate를 success로 인정하지 않고 기존 inspect/record/read-only operation을
-사용한다.
+처음부터 Source-grounded no-fork였던 Goal은 같은 완전한 category/interaction 검토를 fresh
+basis에 대해 수행할 수 있다. 모든 경로는 empty payload를 success로 인정하지 않으며 기존
+inspect/record/read-only operation을 사용한다.
 
 ### Learning participation, assessment와 Deliberation
 

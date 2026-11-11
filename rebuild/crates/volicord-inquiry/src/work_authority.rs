@@ -316,17 +316,24 @@ pub fn evaluate_work_authority(
             "the first authoritative review was late and cannot retroactively authorize work",
         );
     }
-    if review.dimensions.is_empty() {
-        return invalid(
-            result,
-            None,
-            "the review omitted owner classification for every outcome dimension",
-        );
-    }
-    let discovery = match validate_discovery_boundary(review, candidate_basis.discovery) {
+    let discovery = match validate_discovery_boundary(canonical, review, candidate_basis.discovery)
+    {
         Ok(discovery) => discovery,
         Err(reason) => return invalid(result, None, reason),
     };
+    if discovery.choices.is_empty()
+        && retained_goal_has_choices(
+            project_id,
+            review.goal_context_id,
+            candidate_basis.learning_deliberations,
+        )
+    {
+        return invalid(
+            result,
+            None,
+            "retained choices for this Goal must be reviewed; a no-fork review cannot discard them",
+        );
+    }
     if let Some(binding) = &review.executable_work_scope {
         if let crate::PreWriteMaterialityClosure::NoNewMaterialOutcome { commitments, .. } =
             &binding.coupled_artifact_review.materiality_closure
@@ -465,14 +472,30 @@ pub fn evaluate_work_authority(
     result
 }
 
+pub(crate) fn retained_goal_has_choices(
+    project: ProjectId,
+    goal: ContextItemId,
+    candidates: &[CandidateRecord],
+) -> bool {
+    candidates.iter().any(|candidate| {
+        candidate.project_id == project
+            && candidate
+                .work_review_binding
+                .as_ref()
+                .is_some_and(|binding| binding.goal_context_id == goal && binding.has_choices)
+    })
+}
+
 fn validate_discovery_boundary<'a>(
+    canonical: &CanonicalReadBasis,
     review: &crate::MaterialityReview,
     discovery_candidate: Option<&'a CandidateRecord>,
 ) -> Result<&'a crate::EngineeringChoiceDiscovery, String> {
     let candidate = discovery_candidate.ok_or_else(|| {
         "the referenced Engineering Choice Discovery Candidate is missing".to_owned()
     })?;
-    if candidate.id != review.engineering_choice_discovery_candidate_id
+    if candidate.project_id != canonical.project.id
+        || candidate.id != review.engineering_choice_discovery_candidate_id
         || candidate.kind != CandidateKind::EngineeringChoiceDiscovery
     {
         return Err("Materiality Review references the wrong Engineering Choice Discovery".into());
@@ -482,13 +505,27 @@ fn validate_discovery_boundary<'a>(
         .as_ref()
         .and_then(|content| content.engineering_choice_discovery.as_ref())
         .ok_or_else(|| "Engineering Choice Discovery content is unavailable".to_owned())?;
+    if candidate.work_review_binding
+        != candidate
+            .content
+            .as_ref()
+            .and_then(crate::CandidateWorkReviewBinding::from_content)
+    {
+        return Err(
+            "Engineering Choice Discovery work-review binding is missing or inconsistent".into(),
+        );
+    }
     if discovery.goal_context_id != review.goal_context_id
         || discovery.baseline_analysis_snapshot_id != review.baseline_analysis_snapshot_id
     {
         return Err("Engineering Choice Discovery Goal or baseline is stale".into());
     }
-    crate::interaction::validate_interactions(discovery).map_err(|error| error.to_string())?;
-    crate::store::validate_material_decomposition(discovery).map_err(|error| error.to_string())?;
+    // A zero-choice discovery is meaningful only with the same complete,
+    // Source-grounded boundary and interaction review as a discovered fork.
+    crate::store::validate_engineering_choice_discovery(discovery)
+        .map_err(|error| error.to_string())?;
+    crate::store::validate_discovery_source_basis(canonical, discovery)
+        .map_err(|error| error.to_string())?;
     let discovered = discovery
         .choices
         .iter()

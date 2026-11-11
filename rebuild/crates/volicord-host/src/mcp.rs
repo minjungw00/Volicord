@@ -4249,8 +4249,8 @@ fn engineering_choice_discovery_schema() -> Value {
     ]});
     let choices = json!({
         "type":"array",
-        "description":"Bounded consequence-bearing engineering forks; omit mechanically equivalent or trivial syntax/naming details",
-        "minItems":1,
+        "description":"Bounded consequence-bearing engineering forks; use an empty set only when the complete Source-grounded material-boundary and interaction reviews establish that no independent fork remains. Never manufacture equivalent details to fill a quota.",
+        "minItems":0,
         "maxItems":64,
         "items":object_schema(
             vec![
@@ -4360,7 +4360,7 @@ fn interaction_review_schema() -> Value {
                     ("result_id",text_schema("Stable result identity within this outcome",1,256)),
                     ("description",text_schema("Concrete externally observable or durable result",1,4096))
                 ], &["result_id","description"])})),
-                ("affected_choice_ids",string_array_schema("All choices whose alternatives must account for this outcome; empty only for Source-grounded outside scope")),
+                ("affected_choice_ids",string_array_schema("All choices whose alternatives must account for this outcome; empty for a complete zero-choice Discovery or Source-grounded outside scope")),
                 ("source_basis",identity_array_schema("Current Sources grounding the interaction challenge and conclusion",1)),
                 ("conclusion",json!({"description":"Source-grounded closure or explicit independent choices","oneOf":[
                     object_schema(vec![("state",enum_schema("Closure", &["represented_by_choices"])),("choice_ids",nonempty_string_array_schema("Real affected choices representing this independent outcome; parent alternatives must decompose subordinate outcomes"))], &["state","choice_ids"]),
@@ -5235,8 +5235,8 @@ fn materiality_judgment_schemas() -> Vec<Value> {
 fn materiality_judgments_schema() -> Value {
     json!({
         "type":"array",
-        "description":"One caller-owned authority and learning judgment for every discovery-owned choice",
-        "minItems":1,
+        "description":"Exactly one caller-owned authority and learning judgment for every discovery-owned choice; empty only when the bound complete Source-grounded Discovery has no choices",
+        "minItems":0,
         "maxItems":64,
         "items":{"oneOf":materiality_judgment_schemas()},
     })
@@ -8865,9 +8865,14 @@ fn workflow_input_guidance(workflow: &WorkflowDirective) -> Value {
                 "semantic_owner":"active_agent",
                 "production_validation":"category coverage, real choice links, Source provenance, and closed shape only; production does not infer semantic truth",
             },
-            "draft_note":"Use current repository/Goal Sources. Omit mechanically equivalent syntax, local naming, private helper splits, and test-fixture selection.",
+            "draft_note":"Use current repository/Goal Sources. Omit mechanically equivalent syntax, local naming, private helper splits, and test-fixture selection. If no meaningful fork remains, remove the placeholder choices and complete every Source-grounded material-boundary and interaction review; the exact bound Materiality draft then has zero judgments. A no-fork review cannot discard retained choices for the same Goal.",
             "when_no_new_material_choice":{
-                "empty_discovery_submission":{"valid":false,"reason":"An empty Candidate would falsely claim that Engineering Choice Discovery occurred."},
+                "unreviewed_empty_submission":{"valid":false,"reason":"An empty payload without complete Source-grounded material-boundary and interaction reviews does not establish that discovery occurred."},
+                "source_grounded_no_fork_path":{
+                    "record_choices":[], "materiality_judgments":[],
+                    "requires":"Complete every material-boundary category and interaction axis with concrete current Source-grounded no-independent-fork outcomes. Preserve behavioral Context, explicit participation, chronology and planned-artifact scope checks.",
+                    "retained_choice_rule":"If this Goal already has retained non-empty discoveries, re-evaluate those stable choices rather than discarding them through a no-fork review.",
+                },
                 "inspect_previous":{"tool":"candidate_inspect","purpose":"Read the retained prior Engineering Choice Discovery and its exact choice identities before deciding whether bounded work continues."},
                 "continued_work_path":[
                     "Re-evaluate the retained prior choices against the fresh Goal, baseline, repository Source, and current work scope.",

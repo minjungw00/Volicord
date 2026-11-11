@@ -91,10 +91,11 @@ pub(crate) fn validate_interactions(discovery: &EngineeringChoiceDiscovery) -> R
                             .credible_outcomes
                             .iter()
                             .any(|r| &r.result_id == result_id)
-                        || (outcome.affected_choice_ids.is_empty()
+                        || (!discovery.choices.is_empty()
+                            && outcome.affected_choice_ids.is_empty()
                             && *basis != NoIndependentForkBasis::OutsideAffectedScope)
                     {
-                        return Err(invalid("no-independent-fork interaction requires typed source-grounded rationale and affected choices unless outside scope"));
+                        return Err(invalid("no-independent-fork interaction requires typed source-grounded rationale and affected choices unless the discovery has no choices or the outcome is outside scope"));
                     }
                 }
             }

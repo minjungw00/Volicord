@@ -124,6 +124,11 @@ current Source identity를 보존하며 residual outcome이 있으면 subordinat
 authority를 production이 자동 추론한 fact가 아니며, 누락 방지를 위한 inspectable semantic review다.
 
 Materiality Review의 각 dimension은 discovered choice identity를 정확히 한 번 consume한다.
+Meaningful fork가 없는 경우에도 complete Source-grounded material-boundary/interaction review는
+남으며 exact bound Review의 dimension은 zero다. Discovery와 Materiality Candidate는 server가
+검증된 content에서 도출한 exact Goal identity와 choice 존재 여부를 lifecycle metadata로
+보존한다. 본문 cleanup 뒤에도 같은 Goal의 known choices를 no-fork로 재분류하지 않기 위한
+최소 binding이며, 원래 prose나 현재 authority를 보존하거나 재구성하는 수단이 아니다.
 Independent choice 여러 개를 broad Goal이나 feature label만으로 한 dimension에 넣지 않으며,
 하나의 dimension이 여러 choice를 참조하려면 complete symmetric coupled set이어야 한다.
 

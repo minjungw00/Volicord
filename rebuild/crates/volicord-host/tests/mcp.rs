@@ -3686,7 +3686,15 @@ fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
     .clone();
     assert_eq!(resumed["workflow"]["stage"], "engineering_choice_discovery");
     let no_new = &resumed["workflow"]["input_guidance"]["when_no_new_material_choice"];
-    assert_eq!(no_new["empty_discovery_submission"]["valid"], false);
+    assert_eq!(no_new["unreviewed_empty_submission"]["valid"], false);
+    assert_eq!(
+        no_new["source_grounded_no_fork_path"]["record_choices"],
+        json!([])
+    );
+    assert_eq!(
+        no_new["source_grounded_no_fork_path"]["materiality_judgments"],
+        json!([])
+    );
     assert_eq!(no_new["inspect_previous"]["tool"], "candidate_inspect");
     assert!(no_new["continued_work_path"]
         .as_array()
@@ -9104,6 +9112,53 @@ fn discovery_authoring_fixture() -> (tempfile::TempDir, HostAdapter, String, Val
         outcome["conclusion"]["result_id"] = outcome["credible_outcomes"][0]["result_id"].clone();
     }
     (temporary, adapter, project, draft, request)
+}
+
+#[test]
+fn complete_no_fork_discovery_round_trips_without_placeholder_judgments() {
+    let (_temporary, mut adapter, project, draft, mut request) = discovery_authoring_fixture();
+    request["choices"] = json!([]);
+    for boundary in request["material_boundary_review"].as_array_mut().unwrap() {
+        boundary["conclusion"] = json!({
+            "state":"no_independent_fork", "basis":"settled_by_current_sources",
+            "rationale":"The inspected fixture and bounded Goal preserve the same result; private test coverage introduces no material product fork.",
+        });
+    }
+    for axis in request["interaction_review"].as_array_mut().unwrap() {
+        axis["outcomes"][0]["conclusion"]["basis"] = json!("settled_by_current_sources");
+    }
+    let mut bare = request.clone();
+    bare["material_boundary_review"] = json!([]);
+    assert_eq!(
+        call(&mut adapter, "engineering_choice_discovery", bare)["result"]["isError"],
+        true
+    );
+    let recorded = call(&mut adapter, "engineering_choice_discovery", request);
+    assert_eq!(recorded["result"]["isError"], false, "{recorded}");
+    let materiality = structured(&call(&mut adapter, "materiality_review", json!({
+        "action":"draft", "project_id":project,
+        "engineering_choice_discovery_candidate_id":structured(&recorded)["discovery_candidate_id"],
+    }))).clone();
+    assert_eq!(
+        materiality["record_request"]["skeleton"]["judgments"],
+        json!([])
+    );
+    let mut review_request = draft_request(
+        &materiality,
+        "Inspected the complete Source-grounded no-fork review",
+        json!({"state":"inactive"}),
+        Vec::new(),
+    );
+    review_request["behavioral_context_basis"]["context_item_ids"] =
+        json!([draft["behavioral_context"][0]["context_item_id"]]);
+    let reviewed = call(&mut adapter, "materiality_review", review_request);
+    assert_eq!(reviewed["result"]["isError"], false, "{reviewed}");
+    let canonical = adapter
+        .operations()
+        .canonical_basis(parse_project(&project))
+        .unwrap();
+    assert!(canonical.active_questions.is_empty());
+    assert!(canonical.active_decisions.is_empty());
 }
 
 #[test]

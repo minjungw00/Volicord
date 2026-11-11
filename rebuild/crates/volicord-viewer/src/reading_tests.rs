@@ -158,6 +158,7 @@ mod learning_tests {
                 disposition: CandidateDisposition::PendingOrRetained,
                 cleanup: None,
                 promotion_target: None,
+                work_review_binding: None,
                 opt_out_state_at_collection: Vec::new(),
                 content: Some(CandidateContent {
                     bounded_summary: "Learning about representation".into(),

@@ -298,6 +298,13 @@ opt-out을 promotion authorization으로 사용할 수 없다. Retention expiry/
 Candidate content와 managed copy에 한정되며 이미 explicit promotion으로 생성된
 canonical record를 삭제하거나 바꾸지 않는다.
 
+Discovery/Materiality Candidate의 server-derived work-review binding은 exact opaque Goal
+identity와 원래 검증된 choice 존재 여부만 lifecycle metadata로 남긴다. `promotion_target`처럼
+본문 cleanup이 알려진 선택의 존재까지 지워 새 no-fork authority를 만드는 것을 방지한다.
+Statement, rationale, alternatives 또는 Source body를 보존·복원하지 않으며, 원래 zero였다는
+metadata만으로 현재 no-fork나 work readiness를 인정하지 않는다. 새 검토는 current Source와
+complete category/interaction proof 및 scope validation을 다시 요구한다.
+
 Automatic collection은 계속 최소 structured observation으로 제한한다. Full prompt,
 full tool argument, full Source body와 unlimited stdout/stderr는 default long-term
 retention 대상이 아니다. Candidate Inspection에 필요한 provenance, scope와 bounded

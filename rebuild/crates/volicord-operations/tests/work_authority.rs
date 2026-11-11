@@ -1859,7 +1859,11 @@ fn record_review_with_learning(
         complete_material_boundary_review(&choices, fixture.baseline.repository_source.identity());
     let discovery = fixture.operations.record_engineering_choice_discovery(
         EngineeringChoiceDiscoveryDraft {
-            interaction_review: outside_interactions(fixture.baseline.repository_source.identity()),
+            interaction_review: if choices.is_empty() {
+                no_fork_interactions(fixture.baseline.repository_source.identity())
+            } else {
+                outside_interactions(fixture.baseline.repository_source.identity())
+            },
             project_id: fixture.project_id,
             goal_context_id: fixture.goal_id,
             baseline_analysis_snapshot_id: fixture.baseline.identity,
@@ -2051,6 +2055,21 @@ fn readiness(
         Vec::new(),
         Vec::new(),
     )
+}
+
+fn bound_discovery_id(
+    fixture: &Fixture,
+    review: &volicord_operations::MaterialityReviewOutcome,
+) -> Result<volicord_inquiry::CandidateId, Box<dyn std::error::Error>> {
+    let candidate =
+        volicord_inquiry::CandidateStore::open(fixture.operations.layout().candidate_store())?
+            .get(fixture.project_id, review.review_candidate_id)?;
+    Ok(candidate
+        .content
+        .as_ref()
+        .and_then(|content| content.materiality_review.as_ref())
+        .ok_or("review content missing")?
+        .engineering_choice_discovery_candidate_id)
 }
 
 fn checkpoint_draft(
@@ -2546,6 +2565,468 @@ fn settled_choice_does_not_manufacture_a_second_user_question(
         .satisfied_requirements
         .iter()
         .any(|requirement| requirement.dimension_id.as_deref() == Some("wire-tag")));
+    Ok(())
+}
+
+#[test]
+fn source_grounded_no_fork_review_allows_routine_work_without_invented_choices(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "Add regression coverage for value() while preserving its existing public behavior.",
+    )?;
+    let recorded = review(&fixture, Vec::new())?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    assert_eq!(
+        fixture
+            .operations
+            .workflow_for_review_candidate(fixture.project_id, recorded.review_candidate_id,)?
+            .stage,
+        WorkflowStage::ReadyForWork
+    );
+    let canonical = fixture.operations.canonical_basis(fixture.project_id)?;
+    assert!(canonical.active_questions.is_empty());
+    assert!(canonical.active_decisions.is_empty());
+    fs::write(
+        fixture.repository.join("src/lib.rs"),
+        "pub fn value() -> u32 { 1 }\n#[cfg(test)] mod tests { #[test] fn existing_result() { assert_eq!(super::value(), 1); } }\n",
+    )?;
+    let checkpoint = fixture
+        .operations
+        .record_grounded_checkpoint(checkpoint_draft(&fixture, Vec::new()))?;
+    assert_eq!(checkpoint.changed_paths, ["src/lib.rs"]);
+    assert!(checkpoint.applied_decisions.is_empty());
+    Ok(())
+}
+
+#[test]
+fn no_fork_review_cannot_drop_retained_unresolved_choices() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut fixture = fixture()?;
+    let unresolved = dimension(
+        "observable-failure-policy",
+        MaterialityDisposition::UnresolvedUserOwnedOutcome {
+            resolution_decision_id: None,
+        },
+        vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+        fixture.baseline.repository_source.identity(),
+    );
+    let recorded = record_review_with_learning(
+        &fixture,
+        vec![engineering_choice(
+            "observable-failure-policy",
+            EngineeringEffectCategory::PublicApiShapeOrSemantics,
+            fixture.baseline.repository_source.identity(),
+        )],
+        vec![unresolved],
+        LearningParticipation::Inactive,
+    )?;
+    assert_eq!(
+        readiness(&fixture, &recorded)?.stage,
+        WorkAuthorityStage::QuestionRequired
+    );
+    let error = review(&fixture, Vec::new())
+        .expect_err("a no-fork assertion cannot erase retained choices");
+    assert!(error.to_string().contains("retained choices for this Goal"));
+    assert_eq!(
+        readiness(&fixture, &recorded)?.stage,
+        WorkAuthorityStage::QuestionRequired
+    );
+    for id in [
+        bound_discovery_id(&fixture, &recorded)?,
+        recorded.review_candidate_id,
+    ] {
+        let deleted = fixture.operations.delete_candidate(
+            fixture.project_id,
+            id,
+            "explicit synthetic cleanup control",
+        )?;
+        assert!(deleted.content.is_none());
+        let binding = deleted
+            .work_review_binding
+            .ok_or("cleanup erased work-review binding")?;
+        assert_eq!(binding.goal_context_id, fixture.goal_id);
+        assert!(binding.has_choices);
+        assert!(
+            review(&fixture, Vec::new()).is_err(),
+            "cleanup cannot turn known choices into no-fork authority"
+        );
+    }
+    let next = fixture.operations.transition_work(
+        fixture.project_id,
+        volicord_operations::WorkTransition::StartNew {
+            host: "codex".into(),
+            session: "next-work".into(),
+            user_turn: "Add bounded regression assertions while preserving value()".into(),
+            statement: "Add bounded regression assertions while preserving value()".into(),
+        },
+    )?;
+    fixture.goal_id = next.context_item_id;
+    fixture.goal_source_id = next.source_id;
+    fixture.baseline = fixture
+        .operations
+        .analyze(fixture.project_id, Vec::new())?
+        .value
+        .ok_or("next baseline missing")?
+        .analysis;
+    let next_review = review(&fixture, Vec::new())?;
+    assert_eq!(
+        readiness(&fixture, &next_review)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    Ok(())
+}
+
+#[test]
+fn cleaned_no_fork_history_requires_new_proof_without_blocking_it(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Add regression assertions while preserving value()")?;
+    let recorded = review(&fixture, Vec::new())?;
+    for id in [
+        bound_discovery_id(&fixture, &recorded)?,
+        recorded.review_candidate_id,
+    ] {
+        let deleted = fixture.operations.delete_candidate(
+            fixture.project_id,
+            id,
+            "explicit synthetic cleanup control",
+        )?;
+        assert!(deleted.content.is_none());
+        assert!(
+            !deleted
+                .work_review_binding
+                .ok_or("binding missing")?
+                .has_choices
+        );
+    }
+    assert!(readiness(&fixture, &recorded).map_or(true, |state| state.blocking));
+    let fresh = review(&fixture, Vec::new())?;
+    assert_ne!(fresh.review_candidate_id, recorded.review_candidate_id);
+    assert_eq!(
+        readiness(&fixture, &fresh)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    Ok(())
+}
+
+#[test]
+fn persisted_no_fork_binding_rejects_missing_and_contradictory_metadata(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Add regression assertions while preserving value()")?;
+    let recorded = review(&fixture, Vec::new())?;
+    let connection = rusqlite::Connection::open(fixture.operations.layout().candidate_store())?;
+    for id in [
+        bound_discovery_id(&fixture, &recorded)?,
+        recorded.review_candidate_id,
+    ] {
+        let original: String = connection.query_row(
+            "SELECT record_json FROM candidates WHERE id = ?1",
+            [id.as_bytes().as_slice()],
+            |row| row.get(0),
+        )?;
+        for defect in [
+            "missing",
+            "foreign-goal",
+            "wrong-presence",
+            "wrong-kind",
+            "both-payloads",
+        ] {
+            let mut value: serde_json::Value = serde_json::from_str(&original)?;
+            match defect {
+                "missing" => {
+                    value
+                        .as_object_mut()
+                        .ok_or("record is not an object")?
+                        .remove("work_review_binding");
+                }
+                "foreign-goal" => {
+                    value["work_review_binding"]["goal_context_id"] =
+                        serde_json::json!(volicord_context::ContextItemId::from_bytes([0xf2; 16]))
+                }
+                "wrong-presence" => {
+                    value["work_review_binding"]["has_choices"] = serde_json::json!(true)
+                }
+                "wrong-kind" => {
+                    value["kind"] = serde_json::json!(if id == recorded.review_candidate_id {
+                        CandidateKind::EngineeringChoiceDiscovery
+                    } else {
+                        CandidateKind::MaterialityReview
+                    })
+                }
+                _ => {
+                    let other = if id == recorded.review_candidate_id {
+                        bound_discovery_id(&fixture, &recorded)?
+                    } else {
+                        recorded.review_candidate_id
+                    };
+                    let paired = volicord_inquiry::CandidateStore::open(
+                        fixture.operations.layout().candidate_store(),
+                    )?
+                    .get(fixture.project_id, other)?;
+                    let body = paired.content.ok_or("paired content missing")?;
+                    if id == recorded.review_candidate_id {
+                        value["content"]["engineering_choice_discovery"] =
+                            serde_json::to_value(body.engineering_choice_discovery)?;
+                    } else {
+                        value["content"]["materiality_review"] =
+                            serde_json::to_value(body.materiality_review)?;
+                    }
+                }
+            }
+            connection.execute(
+                "UPDATE candidates SET record_json = ?1 WHERE id = ?2",
+                rusqlite::params![value.to_string(), id.as_bytes().as_slice()],
+            )?;
+            assert!(
+                fixture
+                    .operations
+                    .candidate_basis(fixture.project_id)
+                    .is_err(),
+                "{defect}"
+            );
+            connection.execute(
+                "UPDATE candidates SET record_json = ?1 WHERE id = ?2",
+                rusqlite::params![&original, id.as_bytes().as_slice()],
+            )?;
+        }
+    }
+    assert_eq!(
+        readiness(&fixture, &recorded)?.stage,
+        WorkAuthorityStage::ReadyForWork
+    );
+    Ok(())
+}
+
+#[test]
+fn no_fork_discovery_still_requires_complete_current_source_grounded_reviews(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for defect in [
+        "bare",
+        "missing-category",
+        "missing-axis",
+        "unrepresented-fork",
+        "unknown-source",
+    ] {
+        let fixture =
+            fixture_with_goal("Add assertions without changing the existing value() result")?;
+        let source = fixture.baseline.repository_source.identity();
+        let mut draft = EngineeringChoiceDiscoveryDraft {
+            project_id: fixture.project_id,
+            goal_context_id: fixture.goal_id,
+            baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "work-authority-session".into(),
+            source_operation: "review-no-fork".into(),
+            summary: "Review the unchanged public result before adding assertions".into(),
+            choices: Vec::new(),
+            material_boundary_review: complete_material_boundary_review(&[], source),
+            interaction_review: no_fork_interactions(source),
+        };
+        match defect {
+            "bare" => {
+                draft.material_boundary_review.clear();
+                draft.interaction_review.clear();
+            }
+            "missing-category" => {
+                draft.material_boundary_review.pop();
+            }
+            "missing-axis" => {
+                draft.interaction_review.pop();
+            }
+            "unrepresented-fork" => {
+                draft.interaction_review[0].outcomes[0].conclusion =
+                    volicord_inquiry::InteractionConclusion::RepresentedByChoices {
+                        choice_ids: vec!["missing-choice".into()],
+                    }
+            }
+            _ => {
+                draft.material_boundary_review[0].source_basis =
+                    vec![volicord_context::SourceId::from_bytes([0xf1; 16])]
+            }
+        }
+        assert!(
+            fixture
+                .operations
+                .record_engineering_choice_discovery(draft)
+                .is_err(),
+            "{defect}"
+        );
+        let canonical = fixture.operations.canonical_basis(fixture.project_id)?;
+        assert!(canonical.active_questions.is_empty());
+        assert!(canonical.active_decisions.is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+fn no_fork_category_only_source_is_bound_and_rechecked_for_readiness(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal("Add regression assertions while preserving value()")?;
+    let category = fixture.operations.record_current_host_user_context(
+        fixture.project_id,
+        "codex".into(),
+        "work-authority-session".into(),
+        "Validate the existing public result".into(),
+        ContextItemRole::ProjectPurpose,
+        "Validate the existing public result".into(),
+    )?;
+    let source = fixture.baseline.repository_source.identity();
+    let mut boundaries = complete_material_boundary_review(&[], source);
+    boundaries[0].source_basis = vec![category.source_id];
+    let discovery = fixture.operations.record_engineering_choice_discovery(
+        EngineeringChoiceDiscoveryDraft {
+            project_id: fixture.project_id,
+            goal_context_id: fixture.goal_id,
+            baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "work-authority-session".into(),
+            source_operation: "category-source-review".into(),
+            summary: "Review every unchanged outcome before adding assertions".into(),
+            choices: Vec::new(),
+            material_boundary_review: boundaries,
+            interaction_review: no_fork_interactions(source),
+        },
+    )?;
+    let recorded = fixture
+        .operations
+        .record_materiality_review(MaterialityReviewDraft {
+            project_id: fixture.project_id,
+            goal_context_id: fixture.goal_id,
+            baseline_analysis_snapshot_id: fixture.baseline.identity,
+            session: "work-authority-session".into(),
+            source_operation: "category-source-review".into(),
+            rationale: "All reviewed effects remain fixed by current Sources".into(),
+            behavioral_context_basis: volicord_operations::BehavioralContextBasis {
+                context_item_ids: Vec::new(),
+                completeness_rationale: "No Learning, Preference or Constraint is omitted".into(),
+            },
+            learning_participation: LearningParticipation::Inactive,
+            engineering_choice_discovery_candidate_id: discovery.discovery_candidate_id,
+            dimensions: Vec::new(),
+        })?;
+    fixture.operations.bind_executable_work_scope(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        ApplicabilityScope {
+            paths: vec!["src/lib.rs".into()],
+            components: Vec::new(),
+            work_contexts: Vec::new(),
+        },
+        coupled_artifact_review(&["src/lib.rs"]),
+    )?;
+    let candidates = fixture
+        .operations
+        .candidate_basis(fixture.project_id)?
+        .candidates;
+    let review = candidates
+        .iter()
+        .find(|candidate| candidate.id == recorded.review_candidate_id)
+        .ok_or("review missing")?;
+    let discovery = candidates
+        .iter()
+        .find(|candidate| candidate.id == discovery.discovery_candidate_id)
+        .ok_or("discovery missing")?;
+    assert!(review
+        .content
+        .as_ref()
+        .and_then(|content| content.materiality_review.as_ref())
+        .and_then(|review| review.executable_work_scope.as_ref())
+        .ok_or("binding missing")?
+        .authority_basis
+        .source_basis
+        .contains(&category.source_id));
+    let canonical = fixture.operations.canonical_basis(fixture.project_id)?;
+    let evaluate = |basis: &volicord_context::CanonicalReadBasis| {
+        volicord_inquiry::evaluate_work_authority(
+            basis,
+            volicord_inquiry::WorkAuthorityCandidateBasis {
+                review: Some(review),
+                discovery: Some(discovery),
+                learning_deliberations: &candidates,
+            },
+            fixture.project_id,
+            fixture.goal_id,
+            fixture.baseline.identity,
+            &volicord_inquiry::ApplicabilityQuery {
+                project_id: fixture.project_id,
+                paths: vec!["src/lib.rs".into()],
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+                current_assumptions: Vec::new(),
+                met_revisit_triggers: Vec::new(),
+            },
+        )
+    };
+    assert_eq!(evaluate(&canonical).stage, WorkAuthorityStage::ReadyForWork);
+    for freshness in [
+        volicord_context::SourceFreshness::Stale,
+        volicord_context::SourceFreshness::Unavailable,
+        volicord_context::SourceFreshness::Unknown,
+    ] {
+        let mut changed = canonical.clone();
+        changed
+            .sources
+            .iter_mut()
+            .find(|basis| basis.source.id == category.source_id)
+            .ok_or("category Source missing")?
+            .freshness = freshness;
+        assert!(evaluate(&changed).blocking);
+    }
+    let mut missing = canonical;
+    missing
+        .sources
+        .retain(|basis| basis.source.id != category.source_id);
+    assert!(evaluate(&missing).blocking);
+    Ok(())
+}
+
+#[test]
+fn no_fork_review_preserves_explicit_learning_and_prospective_scope_after_restart(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = fixture_with_goal(
+        "I want to learn while adding regression assertions and preserving value()",
+    )?;
+    let participation = active_learning(&fixture);
+    let recorded = review_with_learning(&fixture, Vec::new(), Vec::new(), participation.clone())?;
+    let reopened = LocalOperations::new(fixture.operations.layout().clone());
+    let candidate =
+        volicord_inquiry::CandidateStore::open(fixture.operations.layout().candidate_store())?
+            .get(fixture.project_id, recorded.review_candidate_id)?;
+    assert_eq!(
+        candidate
+            .content
+            .as_ref()
+            .and_then(|content| content.materiality_review.as_ref())
+            .ok_or("review missing")?
+            .learning_participation,
+        participation
+    );
+    let ready = reopened.work_readiness(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        vec!["src/lib.rs".into()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )?;
+    assert_eq!(ready.stage, WorkAuthorityStage::ReadyForWork);
+    assert!(ready.learning_deliberation_candidate_ids.is_empty());
+    let uncovered = reopened.work_readiness(
+        fixture.project_id,
+        fixture.goal_id,
+        fixture.baseline.identity,
+        recorded.review_candidate_id,
+        vec!["outside.rs".into()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )?;
+    assert!(uncovered.blocking);
+    assert!(uncovered.scope_mismatch.is_some());
     Ok(())
 }
 
@@ -6045,6 +6526,26 @@ fn outside_interactions(
             source_basis: vec![source],
         }],
     }).collect()
+}
+
+fn no_fork_interactions(
+    source: volicord_context::SourceId,
+) -> Vec<volicord_inquiry::InteractionReview> {
+    let mut reviews = outside_interactions(source);
+    for review in &mut reviews {
+        for outcome in &mut review.outcomes {
+            outcome.scenario = format!(
+                "Regression coverage preserves the existing value() result and its {:?} behavior",
+                review.axis
+            );
+            outcome.conclusion = volicord_inquiry::InteractionConclusion::NoIndependentFork {
+                basis: volicord_inquiry::NoIndependentForkBasis::SettledByCurrentSources,
+                rationale: "The bounded Goal preserves existing behavior; the inspected fixture returns1 and adding assertions does not select a different public result or lifetime.".into(),
+                result_id: "unchanged".into(),
+            };
+        }
+    }
+    reviews
 }
 
 #[test]

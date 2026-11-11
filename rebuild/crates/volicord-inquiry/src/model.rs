@@ -861,6 +861,30 @@ pub struct CandidateDraft {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CandidateWorkReviewBinding {
+    pub goal_context_id: ContextItemId,
+    pub has_choices: bool,
+}
+
+impl CandidateWorkReviewBinding {
+    pub(crate) fn from_content(content: &CandidateContent) -> Option<Self> {
+        content
+            .engineering_choice_discovery
+            .as_ref()
+            .map(|discovery| Self {
+                goal_context_id: discovery.goal_context_id,
+                has_choices: !discovery.choices.is_empty(),
+            })
+            .or_else(|| {
+                content.materiality_review.as_ref().map(|review| Self {
+                    goal_context_id: review.goal_context_id,
+                    has_choices: !review.dimensions.is_empty(),
+                })
+            })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CandidateRecord {
     pub id: CandidateId,
     pub project_id: ProjectId,
@@ -881,6 +905,9 @@ pub struct CandidateRecord {
     /// Candidate-content cleanup so local retention policy cannot erase the
     /// cross-store reconciliation basis.
     pub promotion_target: Option<QuestionId>,
+    /// Server-derived minimal work-review identity survives content cleanup;
+    /// unavailable choice details cannot become an assertion that no choices existed.
+    pub work_review_binding: Option<CandidateWorkReviewBinding>,
     pub opt_out_state_at_collection: Vec<CollectionOptOut>,
     pub content: Option<CandidateContent>,
 }

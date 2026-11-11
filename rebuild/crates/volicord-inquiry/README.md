@@ -7,7 +7,7 @@ to present. It does not own canonical Questions or Decisions.
 ## Candidate boundary
 
 - `CandidateStore` requires an explicit SQLite path and uses schema kind
-  `volicord-inquiry-candidates`, version 24. Only the exact current kind and
+  `volicord-inquiry-candidates`, version 25. Only the exact current kind and
   version are supported; non-current stores are rejected with
   `UnsupportedVersion` before domain decoding or mutation, without migration.
   Candidate identity and persistence are physically separate from
