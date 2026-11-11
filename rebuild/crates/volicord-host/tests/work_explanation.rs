@@ -2868,6 +2868,9 @@ fn ordinary_goal_handoff_keeps_same_project_works_distinct_without_hidden_produc
 fn normal_article_production_requires_an_actual_diagram_assessment_and_preserves_incomplete_outcomes(
 ) -> Result<(), Box<dyn Error>> {
     let mut f = Fixture::new()?;
+    let canonical = f.host.operations().canonical_basis(f.project)?;
+    let workflow = f.host.operations().workflow_after_recall(f.project)?;
+    assert!(workflow.blocks_ordinary_work);
     let generation = produce(&mut f, "article", "en", "boundary")?;
     let read = f.read(&generation, f.source)?;
     let realized = response(&generation, &read)?;
@@ -2891,6 +2894,11 @@ fn normal_article_production_requires_an_actual_diagram_assessment_and_preserves
     let status = production_status(&mut f, "article", "en")?;
     assert_eq!(status["content_complete"], true);
     assert_eq!(status["diagram_assessment"]["outcome"], "not_needed");
+    assert_eq!(canonical, f.host.operations().canonical_basis(f.project)?);
+    assert_eq!(
+        workflow,
+        f.host.operations().workflow_after_recall(f.project)?
+    );
     let generation = produce(&mut f, "article", "en", "refinement")?;
     let read = f.read(&generation, f.source)?;
     let realized = response(&generation, &read)?;

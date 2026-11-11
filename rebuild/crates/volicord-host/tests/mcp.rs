@@ -4018,6 +4018,9 @@ fn instructions_and_descriptions_define_resolution_recall_and_user_decision_boun
         .expect("server instructions");
     assert!(instructions.contains("Project work starts with project_resolve"));
     assert!(instructions.contains("workflow.required_next_action"));
+    assert!(instructions.contains("For ordinary implementation"));
+    assert!(instructions.contains("Authorized explanation-only production needs no new Goal, Discovery, Decision or Checkpoint"));
+    assert!(instructions.contains("it never clears ordinary-work blockers"));
     assert!(instructions.contains("never bypass a blocker"));
     assert!(instructions.contains("Failed required transitions stay blocking"));
     assert!(instructions.contains("prose is not canonical resolution"));

@@ -484,6 +484,13 @@ judgments about useful content, not per-turn/per-Checkpoint quotas. Goal and
 Checkpoint responses advertise the follow-up without executing it or blocking Work.
 Learning participation, Decisions and provider authority remain independent.
 
+An explicitly authorized explanation-only request may investigate and publish
+Derived reading for existing subjects while ordinary implementation remains
+blocked. It requires no new Goal, Engineering Choice Discovery, Decision or
+Checkpoint merely to author prose. It neither clears that blocker nor authorizes
+repository implementation writes; existing evidence, retention and publication
+guards still apply. Both SessionStart and MCP guidance must preserve this boundary.
+
 `produce` persists a content-minimal intent in the existing managed CachedSummary
 store under `explanation-production:SUBJECT:LANGUAGE`, then returns an ordinary
 request-local plan awaiting host interpretation. It invokes no model, collects no
