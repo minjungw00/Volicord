@@ -381,7 +381,11 @@ schema, 반복 explanatory checklist, choice별 Goal text나 full review graph�
 않는다. Learning participation/value/revision basis와 pre-write closure의 compact variant
 field table도 같은 schema에서 파생한다. Interaction outcome, residual fork, authority,
 delegation와 commitment의 full nested schema는 기존 tool inputSchema에 남는다.
-별도 detailed contract tool, versioned decoder 또는 두 번째 review workflow는 없다.
+별도 detailed contract tool, versioned decoder 또는 두 번째 review workflow는 없다. Host가 중첩 inputSchema를 `unknown`으로 축약하면 설치된
+`volicord-mcp --tool-schema TOOL`이 같은 `tools/list` definition을 그대로 출력한다.
+이 metadata 경로는 Runtime을 열거나 tool을 호출하지 않으며 별도 schema를 소유하지 않는다.
+큰 definition은 로컬 JSON reader로 필요한 subtree만 검사한다. SessionStart는 설치된
+MCP 실행 파일의 정확한 경로를 안내한다.
 
 `record_request`는 current review가 없으면 discovery identity를 가진 `record`, 있으면
 exact current review identity를 가진 `revise`를 prefill한다. Discovery/review revision,

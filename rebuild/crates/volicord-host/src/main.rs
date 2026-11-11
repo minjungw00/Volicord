@@ -1,8 +1,29 @@
-use volicord_host::{run_stdio, HostAdapter};
+use volicord_host::{run_stdio, tool_definition, HostAdapter};
 use volicord_operations::{LocalOperations, RuntimeLayout};
 
 fn main() {
-    let result = RuntimeLayout::from_environment()
+    if let Err(error) = run() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), volicord_operations::Error> {
+    let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    if !arguments.is_empty() {
+        if arguments.len() != 2 || arguments[0] != "--tool-schema" {
+            return Err(volicord_operations::Error::new(
+                "usage: volicord-mcp [--tool-schema TOOL]",
+            ));
+        }
+        let definition = arguments[1]
+            .to_str()
+            .and_then(tool_definition)
+            .ok_or_else(|| volicord_operations::Error::new("unknown MCP tool name"))?;
+        println!("{definition}");
+        return Ok(());
+    }
+    RuntimeLayout::from_environment()
         .map(LocalOperations::new)
         .map(HostAdapter::new)
         .and_then(|mut adapter| {
@@ -23,9 +44,5 @@ fn main() {
                 std::io::stdout().lock(),
             )
             .map_err(|error| volicord_operations::Error::new(error.to_string()))
-        });
-    if let Err(error) = result {
-        eprintln!("{error}");
-        std::process::exit(1);
-    }
+        })
 }

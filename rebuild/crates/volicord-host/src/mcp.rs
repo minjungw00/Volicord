@@ -3640,16 +3640,20 @@ fn repository_read_tool_result(value: Value, arguments: &Value) -> Result<Value,
 fn tool_catalog() -> Vec<Value> {
     HOST_TOOL_NAMES
         .iter()
-        .filter_map(|name| tool_contract(name))
-        .map(|contract| {
-            json!({
-                "name": contract.name,
-                "description": contract.description,
-                "inputSchema": contract.input_schema,
-                "annotations": contract.behavior.annotations(),
-            })
-        })
+        .filter_map(|name| tool_definition(name))
         .collect()
+}
+
+/// The exact tools/list definition, without opening a Runtime or invoking a tool.
+pub fn tool_definition(name: &str) -> Option<Value> {
+    tool_contract(name).map(|contract| {
+        json!({
+            "name": contract.name,
+            "description": contract.description,
+            "inputSchema": contract.input_schema,
+            "annotations": contract.behavior.annotations(),
+        })
+    })
 }
 
 struct ToolContract {
