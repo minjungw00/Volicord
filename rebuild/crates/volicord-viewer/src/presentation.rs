@@ -136,7 +136,7 @@ pub(super) fn content_language_tag(requested: &str) -> String {
             .iter()
             .skip(1)
             .all(|p| !p.is_empty() && p.len() <= 8 && p.bytes().all(|b| b.is_ascii_alphanumeric()))
-        && !parts.last().is_some_and(|p| p.len() == 1)
+        && parts.last().is_none_or(|p| p.len() != 1)
     {
         candidate
     } else {

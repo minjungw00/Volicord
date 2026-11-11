@@ -105,8 +105,8 @@ impl<'a> BindingFile<'a> {
             let named = node.child_by_field_name("name");
             let kind = node.kind();
             let declaration = entity.filter(|e| {
-                !matches!(e.kind, CodeEntityKind::File | CodeEntityKind::Package)
-                    && !(*self.language == Language::TypeScript
+                !(matches!(e.kind, CodeEntityKind::File | CodeEntityKind::Package)
+                    || *self.language == Language::TypeScript
                         && e.kind == CodeEntityKind::Method
                         && node.parent().is_none_or(|parent| {
                             !matches!(parent.kind(), "class_body" | "interface_body")

@@ -505,3 +505,30 @@ qualification. The native Viewer startup failure remains a separate unresolved
 historical observation. Explicit installed-toolchain selection permits a fresh
 controlled gate comparison without ambient overrides, relaxed optimization, weaker
 limits or relabelling these earlier failures.
+
+The explicit Rust 1.96.1 / LLVM 22.1.2 comparison at
+`c4d2abaf46619c175c318395cdee934bfab4c9d1` passed all 17 support checks,
+metadata, formatting and all 880 workspace tests (14 ignored). Final Clippy failed
+with `nonminimal_bool` on the existing lexical declaration exclusion guard;
+warning denial correctly retained exit 101. Installation, provider and V11 therefore
+did not run. The same source had passed the earlier Rust 1.97 Clippy. Both failed
+archive copies remain verified; no toolchain fallback or lint suppression applies.
+The guard now expresses `!A && !B` as `!(A || B)`, retaining its exact condition
+order, short-circuit behavior and missing-parent treatment. Receiver meaning and
+analyzer/cache identity remain unchanged. Existing TypeScript object/expression and
+valid local/member tests, Java anonymous/named/lambda persistence and public-reader
+controls remain the behavioral checks; this lint repair does not explain the
+earlier compiler trap or historical native fault.
+The subsequent focused workspace Clippy exposed the same lint in the bounded
+function-body observation reader. Its negated `is_some_and(len <= limit)` is now
+`is_none_or(len > limit)`: missing/non-array input still rejects, the exact limit
+still admits, and oversized input still rejects. Observation bounds, decoding,
+Source checks and unavailable behavior are unchanged. This focused failed attempt
+also remains preserved; a successful workspace check is not inferred from fixing
+the first reported predicate.
+The next consumer exposed this lint in the Viewer content-language hint guard.
+`!last.is_some_and(len == 1)` becomes `last.is_none_or(len != 1)`, preserving
+singleton rejection, missing-element behavior and every other language check.
+Requested-language identity and translation availability do not change. The three
+diagnosed predicates receive equivalent expressions, without lint suppression or
+acceptance changes; each intermediate failed Clippy receipt remains preserved.

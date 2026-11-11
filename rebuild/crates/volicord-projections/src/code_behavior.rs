@@ -534,10 +534,10 @@ impl CodeBehaviorReading {
             return reading;
         }
         let value = &extension.values[BODY_OBSERVATIONS_KEY];
-        if !value
+        if value
             .get("observations")
             .and_then(|v| v.as_array())
-            .is_some_and(|v| v.len() <= BODY_OBSERVATIONS_LIMIT)
+            .is_none_or(|v| v.len() > BODY_OBSERVATIONS_LIMIT)
         {
             return reading;
         }
