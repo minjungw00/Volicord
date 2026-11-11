@@ -1447,6 +1447,11 @@ Closed-control traces distinguish entry into runtime/Context creation,
 host/bundle/adapter evaluation and Rust callback installation before `prepared`.
 An entry marks phase entry, not completion or intended-operation reachability.
 These content-free test-only writes do not change the production protocol.
+`engine::tests::initialization_failures_discard_partial_state_and_recover` exercises
+actual Context and bundle allocation failures before `prepared`, exact framed
+rejection, reaping and fresh complete geometry. Its reduced heap is a closed
+failure fixture, not a changed production ceiling. Compare memory-check evidence
+against the retained failing fixture; process disposal is not a leak-check result.
 
 The local native supervisor is covered by focused Viewer `--lib worker::tests` and
 `--test diagram_worker`. Child-entry tests are intentionally ignored as standalone

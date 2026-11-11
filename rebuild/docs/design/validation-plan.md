@@ -5663,6 +5663,15 @@ requires entry into the intended control. A missing `prepared` must not be
 attributed to ELK evaluation alone. These test-only traces neither alter production
 transport nor prove a causal repair of native memory corruption.
 
+Context-allocation and embedded-bundle allocation controls separately reduce the
+test child's available heap to enter real initialization error paths. Require the
+exact framed initialization rejection and phase entries, absence of `prepared` and
+`operation`, child reaping and complete fresh geometry. A native signal or cleanup
+signal cannot satisfy these controls. Preserve the original failing execution and
+the first invalid-access diagnostic; a same-control post-fix memory check must
+distinguish intentional retention until child exit from destructor/leak safety.
+Production heap limits and all ordinary execution controls remain unchanged.
+
 The real-expiry Viewer control must first observe the complete available original
 in its pre-expiry snapshot. Capture the same short-lived Source once, after the
 other fixture observations, and render this baseline before unrelated read or

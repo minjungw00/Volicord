@@ -162,6 +162,15 @@ that stage remains explicitly unobserved without corresponding evidence.
   This is native-fault containment, not a claim that an unidentified engine/binding
   memory defect was causally repaired.
 
+  Native initialization follows the same disposal boundary. Until Context and
+  installed code initialization succeed, the worker retains native handles without
+  running VM destructors on an error return. A partial Context allocation can leave
+  a freed node in the pinned engine's GC list; automatic Runtime destruction would
+  traverse that node. The worker reports the initialization error, exits, and is
+  reaped by the supervisor. Fully initialized engines retain ordinary ownership;
+  successful handle-release controls remain separate. This does not turn an
+  unexplained historical native fault into a diagnosed allocation failure.
+
 - Retained repository Source identity/binding rejection identifies the failed fixed
   predicate names without disclosing body bytes, identities or stored values. All
   Project, Analysis Snapshot, Source, binding, retention and chronology predicates

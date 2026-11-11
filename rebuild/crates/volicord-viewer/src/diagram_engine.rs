@@ -2,6 +2,7 @@
 //! argument. There are no filesystem, network, process, module or timer hosts.
 use rquickjs::{Context, Function, Runtime};
 use std::{
+    mem::ManuallyDrop,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -50,7 +51,13 @@ impl Engine {
     pub(super) fn new() -> Result<Self, String> {
         #[cfg(test)]
         initialization_trace("runtime-create");
-        let runtime = Runtime::new().map_err(|_| "local layout runtime unavailable")?;
+        // This constructor runs only inside the disposable native worker.
+        // A failed native initialization may leave a partially linked Context
+        // in the VM's GC list. Do not call native destructors on that state:
+        // retain both handles until the worker reports failure and exits.
+        // Fully initialized engines regain ordinary ownership below.
+        let runtime =
+            ManuallyDrop::new(Runtime::new().map_err(|_| "local layout runtime unavailable")?);
         runtime.set_memory_limit(HEAP_LIMIT);
         runtime.set_max_stack_size(1024 * 1024);
         let unhandled_rejections = Arc::new(AtomicUsize::new(0));
@@ -68,8 +75,22 @@ impl Engine {
             bound.lock().map_or(true, |end| Instant::now() >= *end)
         })));
         #[cfg(test)]
+        if std::env::var("VOLICORD_LAYOUT_TEST_ENGINE").as_deref() == Ok("context-memory") {
+            // Permit the native Context allocation, but refuse its prototype
+            // array. This control is separate from a layout-operation budget.
+            runtime.set_memory_limit(runtime.memory_usage().malloc_size as usize + 1024);
+        }
+        #[cfg(test)]
         initialization_trace("context-create");
-        let context = Context::full(&runtime).map_err(|_| "local layout context unavailable")?;
+        let context = ManuallyDrop::new(
+            Context::full(&runtime).map_err(|_| "local layout context unavailable")?,
+        );
+        #[cfg(test)]
+        if std::env::var("VOLICORD_LAYOUT_TEST_ENGINE").as_deref() == Ok("bundle-memory") {
+            // Admit the small host shim, but reject the embedded bundle's
+            // compilation. Keep this separate from Context allocation failure.
+            runtime.set_memory_limit(runtime.memory_usage().malloc_size as usize + 16 * 1024);
+        }
         context
             .with(|ctx| -> rquickjs::Result<()> {
                 #[cfg(test)]
@@ -84,8 +105,8 @@ impl Engine {
             })
             .map_err(|_| "local layout initialization failed or exceeded its bound")?;
         Ok(Self {
-            context,
-            runtime,
+            context: ManuallyDrop::into_inner(context),
+            runtime: ManuallyDrop::into_inner(runtime),
             deadline,
             unhandled_rejections,
         })
@@ -385,6 +406,39 @@ mod tests {
             test_worker_pid().is_some(),
             "fresh child serves the next request"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn initialization_failures_discard_partial_state_and_recover() -> Result<(), String> {
+        for (control, reason, phases) in [
+            ("context-memory", "local layout context unavailable", 2),
+            (
+                "bundle-memory",
+                "local layout initialization failed or exceeded its bound",
+                4,
+            ),
+        ] {
+            select_test_engine(control);
+            let failure = layout(GRAPH).expect_err("failed initialization cannot admit geometry");
+            let trace = test_control_trace();
+            let attributed = Failure::parse(&failure);
+            eprintln!("initialization control={control}; trace={trace:?}; {failure}");
+            assert_eq!(attributed.stage, "initialization");
+            assert_eq!(attributed.mechanism(), Mechanism::EngineRejection(reason));
+            assert_eq!(
+                trace,
+                [
+                    "runtime-create",
+                    "context-create",
+                    "host-eval",
+                    "bundle-eval"
+                ][..phases]
+            );
+            attributed.assert_reaped();
+            assert!(test_worker_pid().is_none());
+            assert_geometry(&layout(GRAPH)?);
+        }
         Ok(())
     }
 

@@ -418,3 +418,41 @@ creation, Context creation, host/bundle/adapter evaluation and callback installa
 Future failures can retain the last entered phase while preserving the independent
 `prepared` and intended `operation` requirements. This improves attribution only;
 the original native corruption remains unresolved.
+
+A subsequent fixed plan observed 1,024 original-executable asynchronous-control
+initializations with the original glibc allocator, ASLR and a debugger stopping at
+`malloc_printerr`, native signals or `JS_ThrowOutOfMemory`. All reached readiness
+and `prepared`; none reproduced the original fault. No graph was sent. A separate
+fork-aware execution of the original parent asynchronous control also passed its
+four negative conditions and recovery. These preserve ordinary allocation slack
+but change timing and omit or perturb supervisor conditions. The OOM breakpoint
+does not cover every raw allocation failure; no absence-of-OOM conclusion follows.
+
+Source review found a distinct reproducible initialization failure: the pinned
+`JS_NewContextRaw` links its new Context into the runtime GC list, then frees that
+Context when its prototype-array allocation fails without unlinking the GC node.
+A closed real-worker control admitting the Context allocation but refusing its
+prototype array reproduced `SIGABRT` before the context error could be framed.
+The preserved pre-fix binary under Memcheck stopped at the first invalid read in
+`gc_decref` → `JS_RunGC` → `JS_FreeRuntime` → Rust Runtime destruction. Its report
+identifies the 552-byte Context freed by `JS_NewContextRaw` at that failure branch.
+This establishes the injected allocation failure's cause, not the original 17b
+failure's cause: that original has no proof of this allocation failure.
+
+The worker now retains native Runtime and Context handles during construction
+with `ManuallyDrop`, restoring ordinary ownership only after successful installed
+code initialization. An initialization error can therefore be framed before the
+worker exits, allowing kernel process disposal instead of traversing partial VM
+state. Real Context-allocation and bundle-allocation controls require exact error
+reasons and phases, no prepared/operation entry, reaping and complete fresh geometry.
+Existing successful disposal and Rust-handle release controls remain required.
+No native dependency, production ceiling, layout algorithm or geometry identity
+changes. The unexplained historical startup corruption remains a separate risk;
+this bounded causal repair must not be relabelled as proof of its resolution.
+
+Before commit, the full Viewer library passed 47 tests (nine internal child entries
+ignored), its production executable integration passed both tests, and Viewer
+all-target Clippy passed. The post-fix binary's two direct failure controls under
+Memcheck each returned the exact expected error frame and exit 1 with zero reported
+memory errors. Leak checking was disabled: native handles are intentionally retained
+until process exit, and those observations do not prove general leak freedom.
