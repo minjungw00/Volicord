@@ -5655,6 +5655,14 @@ A proposed repair remains unqualified while covering evidence is missing or
 failures remain unresolved. Qualification from an earlier candidate cannot be
 assigned to a changed worktree.
 
+Closed native controls also retain content-free initialization phase entries for
+runtime creation, Context creation, host/bundle/adapter evaluation and Rust callback
+installation. Each entry proves only that phase was entered. `prepared` still
+requires successful initialization and callback installation; `operation` still
+requires entry into the intended control. A missing `prepared` must not be
+attributed to ELK evaluation alone. These test-only traces neither alter production
+transport nor prove a causal repair of native memory corruption.
+
 The real-expiry Viewer control must first observe the complete available original
 in its pre-expiry snapshot. Capture the same short-lived Source once, after the
 other fixture observations, and render this baseline before unrelated read or

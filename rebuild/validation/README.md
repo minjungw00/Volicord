@@ -1443,6 +1443,10 @@ Successful scoped controls do not supersede a default-parallel Viewer failure.
 Preserve the Cargo-selected executable/hash before execution and stop repetitions
 at the declared failure boundary. Distinguish Rust/C ASan instrumentation from a
 signal-handler preload, and record unavailable leak detection independently.
+Closed-control traces distinguish entry into runtime/Context creation,
+host/bundle/adapter evaluation and Rust callback installation before `prepared`.
+An entry marks phase entry, not completion or intended-operation reachability.
+These content-free test-only writes do not change the production protocol.
 
 The local native supervisor is covered by focused Viewer `--lib worker::tests` and
 `--test diagram_worker`. Child-entry tests are intentionally ignored as standalone

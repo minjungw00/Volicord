@@ -387,3 +387,34 @@ equal the first request; its failure and the corrected full-sequence oracle are
 retained. No field was normalized or omitted. These are bounded controls, not
 proof of the unidentified native defect's causal repair or a replacement for
 the new exact candidate's gate and installed-reader checks.
+
+The later exact `17b36a3f42966d5a214185d853addda7e043cfe1` gate passed its 17
+support checks but Final failed in the Viewer library (45 passed, one failed,
+nine ignored). The asynchronous-shim control received native startup diagnostic
+`free(): invalid next size (fast)` before `prepared`; no graph had been sent.
+The primary failure was initialization/protocol rejection, with pre-cleanup
+`running_or_unobserved` and forced `cleanup=signal:9`. Neither that cleanup signal
+nor the empty trace establishes the original native termination or exact C phase.
+Provider qualification and official V11 did not run. The failed executable,
+streams and independently verified archive remain preserved.
+
+Finite same-source diagnostics did not reproduce the corruption: one ordinary
+exact control and six direct initialization processes; two Memcheck direct
+initializations (zero reported errors); six debugger allocation-fill cases; and
+128 fresh ASan initialization processes, half including actual Rust callback
+installation and asynchronous-shim preparation. The ASan full-library condition
+passed 46 active tests, but its separately declared serial condition timed out at
+120 seconds and stopped the remaining plan. No ASan report was produced. A
+minimal C-only execution of the pinned native source under UndefinedBehaviorSanitizer
+completed the same ELK initialization, one maintained two-node graph and disposal
+without a report. The latter excludes Rust bindings and the supervisor; direct
+EOF controls do not exercise layout or destructor paths. Instrumentation and
+allocator changes may hide the original behavior. These are non-reproduction
+results, not a native-memory repair or a passing replacement gate.
+
+The earlier `prepared` trace followed both ELK initialization and Rust callback
+installation. Closed controls now record test-only phase entries before runtime
+creation, Context creation, host/bundle/adapter evaluation and callback installation.
+Future failures can retain the last entered phase while preserving the independent
+`prepared` and intended `operation` requirements. This improves attribution only;
+the original native corruption remains unresolved.

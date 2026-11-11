@@ -48,6 +48,8 @@ pub(super) struct Engine {
 }
 impl Engine {
     pub(super) fn new() -> Result<Self, String> {
+        #[cfg(test)]
+        initialization_trace("runtime-create");
         let runtime = Runtime::new().map_err(|_| "local layout runtime unavailable")?;
         runtime.set_memory_limit(HEAP_LIMIT);
         runtime.set_max_stack_size(1024 * 1024);
@@ -65,11 +67,19 @@ impl Engine {
         runtime.set_interrupt_handler(Some(Box::new(move || {
             bound.lock().map_or(true, |end| Instant::now() >= *end)
         })));
+        #[cfg(test)]
+        initialization_trace("context-create");
         let context = Context::full(&runtime).map_err(|_| "local layout context unavailable")?;
         context
             .with(|ctx| -> rquickjs::Result<()> {
+                #[cfg(test)]
+                initialization_trace("host-eval");
                 ctx.eval::<(), _>(HOST)?;
+                #[cfg(test)]
+                initialization_trace("bundle-eval");
                 ctx.eval::<(), _>(SOURCE)?;
+                #[cfg(test)]
+                initialization_trace("adapter-eval");
                 ctx.eval::<(), _>(ADAPTER)
             })
             .map_err(|_| "local layout initialization failed or exceeded its bound")?;
@@ -139,6 +149,7 @@ impl Engine {
         let engine = Self::new()?;
         let entered = Arc::new(AtomicUsize::new(0));
         let reached = entered.clone();
+        initialization_trace("bridge-install");
         engine
             .context
             .with(|ctx| -> rquickjs::Result<()> {
@@ -233,6 +244,15 @@ impl Engine {
     }
 }
 
+// Content-free, test-only attribution for faults that happen before `prepared`.
+// Writing a phase marks entry, not completion, and never proves callback entry.
+#[cfg(test)]
+fn initialization_trace(stage: &str) {
+    if std::env::var_os("VOLICORD_LAYOUT_TEST_TRACE").is_some() {
+        super::worker::test_control_reached(stage);
+    }
+}
+
 // Geometry and authority never cross this boundary as retained state. The
 // supervisor discards a failed native process before another request can use it.
 pub(super) fn layout(input: &str) -> Result<String, String> {
@@ -313,6 +333,22 @@ mod tests {
         assert!(
             trace.iter().any(|s| s == "prepared"),
             "control initialization: {failure}"
+        );
+        assert_eq!(
+            trace.get(..6),
+            Some(
+                [
+                    "runtime-create",
+                    "context-create",
+                    "host-eval",
+                    "bundle-eval",
+                    "adapter-eval",
+                    "bridge-install"
+                ]
+                .map(str::to_owned)
+                .as_slice()
+            ),
+            "initialization phases must precede control preparation"
         );
         assert!(
             trace.iter().any(|s| s == "operation"),
