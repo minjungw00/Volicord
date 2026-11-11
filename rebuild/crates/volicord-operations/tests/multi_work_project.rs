@@ -21,6 +21,26 @@ fn operation(value: u8) -> OperationId {
     OperationId::from_bytes([value; 16])
 }
 
+// These fixtures assert checkpoint call order while varying Git boundaries.
+// UTC may repeat or move backwards; chronological ordering is tested separately.
+struct OrderedFixtureClock(i64);
+
+impl volicord_context::Clock for OrderedFixtureClock {
+    fn now(&mut self) -> Result<TimestampMicros, volicord_context::Error> {
+        self.0 = self.0.checked_add(1).expect("fixture clock UTC range");
+        Ok(TimestampMicros::from_unix_micros(self.0))
+    }
+}
+
+fn ordered_fixture_store(path: &std::path::Path) -> Result<Store, volicord_context::Error> {
+    let initial = volicord_context::Clock::now(&mut volicord_context::SystemClock)?;
+    Store::open_with(
+        path,
+        volicord_context::SystemIdGenerator,
+        OrderedFixtureClock(initial.as_unix_micros()),
+    )
+}
+
 fn principal(kind: PrincipalKind, identity: &str) -> Principal {
     Principal {
         kind,
@@ -205,7 +225,7 @@ fn multi_work_identity_survives_restart_portability_and_read_consumers(
         |row| row.get(0),
     )?;
     let project_id = ProjectId::from_slice(&project_bytes)?;
-    let mut store = Store::open(layout.canonical_store())?;
+    let mut store = ordered_fixture_store(&layout.canonical_store())?;
     let project = store.get_project(project_id)?;
     let user = store
         .record_source(
@@ -544,7 +564,13 @@ fn assert_git_work_consumers(
             .latest_meaningful_checkpoint
             .as_ref()
             .and_then(|c| c.work_item_id),
-        Some(latest_work)
+        Some(latest_work),
+        "canonical checkpoint order (identity, Work, UTC micros): {:?}",
+        before
+            .checkpoint_history
+            .iter()
+            .map(|c| (c.id, c.work_item_id, c.recorded_at.as_unix_micros()))
+            .collect::<Vec<_>>()
     );
     let continued = operations.transition_work(
         project,
@@ -756,7 +782,7 @@ fn work_identity_is_independent_of_real_git_commit_path_and_dirty_boundaries(
         )
     };
     let alpha = start("Implement Alpha")?;
-    let mut store = Store::open(operations.layout().canonical_store())?;
+    let mut store = ordered_fixture_store(&operations.layout().canonical_store())?;
     let alpha_decision = decision_with_scope(
         &mut store,
         project.id,

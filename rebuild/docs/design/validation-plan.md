@@ -153,6 +153,15 @@ locations and the bounded unresolved scoped-check investigation are maintained i
 The original invariant rejection and the separately established diagnostic target
 contamination are distinct findings; non-reproduction establishes no causal fix.
 
+The multi-Work Git-boundary fixtures require Checkpoint call order when asserting
+their expected latest Work and history. Their writing Store therefore uses an
+explicit strictly advancing fixture clock, retaining system-generated identities,
+real Git changes and all public-consumer assertions. They do not test monotonic UTC.
+Product time is unchanged: latest still follows recorded UTC and identity, equal
+instants remain equal, and late older records remain older. Keep independent event
+ordering/tie/late-record controls. A diagnostic clock counterfactual demonstrates
+the fixture premise, not the unknown exact clock/state of an original failed run.
+
 The gate may select an already installed complete Rustup toolchain with
 `--toolchain <installed-rustup-name>`. This is an owned execution input, not an
 ambient override: inherited `RUSTUP_TOOLCHAIN`, flags, caches and configuration

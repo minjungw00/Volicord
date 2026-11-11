@@ -532,3 +532,29 @@ singleton rejection, missing-element behavior and every other language check.
 Requested-language identity and translation availability do not change. The three
 diagnosed predicates receive equivalent expressions, without lint suppression or
 acceptance changes; each intermediate failed Clippy receipt remains preserved.
+
+Candidate `eb09219eb8195bd6b112b4483380d74941714d56` passed all 17 support
+checks and Final metadata, formatting and Clippy. Workspace tests stopped at
+`multi_work_project::work_identity_is_independent_of_real_git_commit_path_and_dirty_boundaries`:
+Recall selected a different Work from the fixture's expected last-written Work.
+Original streams, selected executable and verified original/copied failed archives
+remain preserved. The original temporary database was not retained, so its exact
+Checkpoint times, phase and association state remain unknown.
+
+A bounded instrumented copy retained each canonical Checkpoint tuple and selected
+Work. It completed 98 executions without reproduction, stopping new iterations
+at the 90-second budget; the final elapsed time was 90.418 seconds. The last child
+retains its separate 20-second timeout. One declared counterfactual moved
+only the Store clock back ten minutes before Beta's Checkpoint. The same assertion
+failed while Product selection matched `(recorded_at, id)` and both Work identities
+remained distinct. This proves the uncontrolled fixture premise can reject valid
+chronological selection; it does not prove the original run had that clock event.
+
+Both multi-Work identity fixtures now explicitly advance their writing Store's
+test clock, seeded once from UTC, while retaining random identities and all real
+Git, dirty-path, restart, portability, Recall and CLI assertions. Failure context
+includes ordered Checkpoint identities, Work and UTC instants. Product clocks,
+timestamp/identity ordering, canonical records and formats are unchanged. Existing
+independent event tests keep equal-instant and late-older-record behavior. The
+historical native fault, compiler trap and original unknown fixture state remain
+separate from this demonstrated test-premise repair.
