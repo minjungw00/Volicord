@@ -4006,3 +4006,9 @@ state/date labels, never substituted Work event times. Related Decision explanat
 put the original question before option comparisons and explain each alternative's
 expected result and actual applicable surface, rather than directing the reader
 to folded originals for the primary answer. Exact originals remain available.
+
+Explanation readability and repository comparison use equally sized icon badges
+in one metadata row; constrained widths may wrap that same row without overflow.
+Their meanings remain independent. A Decision's opening paragraph explains its
+question and issue naturally, without a form-like “Original question:” prefix;
+the directly explained alternatives, applicability and exact original remain.

@@ -48,7 +48,7 @@ async function inspect(page,c,url,width,mode,language){
  const metadataPeers=doc.locator('.doc-head > .reader-metadata-groups > .reader-metadata-group');
  assert.deepEqual(await metadataPeers.evaluateAll(ns=>ns.map(n=>n.dataset.metadataGroup)),['work','publication'],'Work records and explanation/repository metadata are explicit peers');
  assert.equal(await metadataPeers.nth(0).locator('.work-dates').count(),1);
- assert.equal(await metadataPeers.nth(1).locator('.reading-metadata > .publication-status').count(),1,'document readability is separate from repository comparison');
+ assert.equal(await metadataPeers.nth(1).locator('.reading-metadata .publication-status').count(),1,'document readability is separate from repository comparison');
  if(c.decisions!==undefined)assert.equal(await doc.locator('.decision-reading').count(),c.decisions);
  const groups=await doc.locator(':scope > .work-reading-group').evaluateAll(ns=>ns.map(n=>n.dataset.readingGroup));
  assert.deepEqual(groups,await doc.locator('.decision-reading').count()?['work','decisions','checks','records']:['work','checks','records'],'Work explanation, related Decisions, checks and originals are sibling groups');
@@ -68,6 +68,9 @@ async function inspect(page,c,url,width,mode,language){
   assert.ok(await card.evaluate(n=>parseFloat(getComputedStyle(n).borderTopWidth))>=1);
  }
  for(const metadata of await doc.locator('.reading-metadata').all()){
+  const readable=metadata.locator('.publication-state-badge'),comparison=metadata.locator('.comparison-status');
+  assert.equal(await readable.evaluate(n=>getComputedStyle(n).minHeight),await comparison.evaluate(n=>getComputedStyle(n).minHeight),'readability and repository comparison share badge height');
+  assert.equal(await readable.locator('svg').evaluate(n=>getComputedStyle(n).width),await comparison.locator('svg').evaluate(n=>getComputedStyle(n).width),'status icons share their visual size');
   assert.equal(await metadata.locator('.comparison-icon').count(),1,'shared comparison status icon');
   assert.ok((await metadata.locator('[data-comparison-label]').textContent()).trim().length>0,'state has explicit non-color wording');
   assert.ok(!(await metadata.locator('.reading-dates').textContent()).includes('Unix'),'calendar format matches Work dates');

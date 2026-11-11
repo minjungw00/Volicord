@@ -2440,7 +2440,7 @@ fn render_applicability(
         E::Unsupported => text(r.locale, "Unsupported format", "지원하지 않는 형식"),
         E::Corrupt => text(r.locale, "Integrity unavailable", "무결성 확인 불가"),
     };
-    html.push_str(&format!("<div class=\"reading-metadata\"{}><p class=\"publication-status\" data-publication-state=\"{:?}\"><span class=\"record-status-label\">{}</span><span class=\"publication-state-badge\">{article_state}</span></p>",publication_scope(answers),answers.explanation_state,text(r.locale,"Explanation state","설명 상태")));
+    html.push_str(&format!("<div class=\"reading-metadata\"{}><div class=\"publication-status-row\"><p class=\"publication-status\" data-publication-state=\"{:?}\"><span class=\"record-status-label sr-only\">{}</span><span class=\"publication-state-badge\"><svg class=\"publication-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M6 3h8l4 4v14H6zM14 3v5h4\"/><path d=\"{}\"/></svg><span>{article_state}</span></span></p>",publication_scope(answers),answers.explanation_state,text(r.locale,"Explanation state","설명 상태"),if answers.explanation_state==E::Current {"m8 14 2 2 5-5"} else {"M8 12h7m-7 4h5"}));
     let label = match basis.repository_comparison {
         C::VerifiedAtRead => text(r.locale, "Repository matched", "저장소 일치"),
         C::Changed => text(r.locale, "Repository changed", "저장소 변경됨"),
@@ -2469,7 +2469,7 @@ fn render_applicability(
             escape(&source.analysis_snapshot_id)
         ));
     }
-    html.push_str("</dl></details><div class=\"work-dates reading-dates\">");
+    html.push_str("</dl></details></div><div class=\"work-dates reading-dates\">");
     for (index, (label, value)) in [
         (
             text(r.locale, "Explanation recorded at", "설명 기록 시각"),
