@@ -4012,3 +4012,8 @@ in one metadata row; constrained widths may wrap that same row without overflow.
 Their meanings remain independent. A Decision's opening paragraph explains its
 question and issue naturally, without a form-like “Original question:” prefix;
 the directly explained alternatives, applicability and exact original remain.
+
+The Work record uses the same sized icon badge, with its recorded-state label
+available to assistive reading and its actual state still visible. Repository
+explanation uses the same bordered explanation/repository metadata group as Work;
+its single group spans the available width without inventing Work metadata.

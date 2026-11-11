@@ -144,6 +144,9 @@
 .doc[data-reading-layout="grouped"] .metadata-heading{margin:0 0 10px;font-size:11px;font-weight:600;color:var(--muted)}
 .doc[data-reading-layout="grouped"] .reader-metadata-group > .record-strip{border:0;margin:0 0 8px;padding:0;min-height:28px}
 .doc[data-reading-layout="grouped"] .reader-metadata-group > .reading-metadata{margin:0}
+.doc[data-reading-layout="grouped"] .reader-metadata-group:only-child{grid-column:1/-1}
+.doc[data-reading-layout="grouped"] .reader-metadata-group .work-state-badge{min-height:28px;box-sizing:border-box}
+.work-record-icon{width:15px;height:15px;flex:none}
 .doc[data-reading-layout="grouped"] .publication-status-row{display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px}
 .doc[data-reading-layout="grouped"] .reading-metadata .publication-status{display:flex;align-items:center;min-width:0;min-height:28px;margin:0;font-size:10px;line-height:1.6}
 .publication-state-badge{display:inline-flex;align-items:center;gap:6px;min-height:28px;box-sizing:border-box;padding:3px 8px;border:0;border-radius:5px;background:var(--wash);color:var(--muted);font-size:10px;font-weight:500;line-height:1.6}

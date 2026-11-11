@@ -1289,19 +1289,25 @@ fn render_document_body(
             render_card_publication(html, r, &answers.publication(summary, "summary"), "summary");
         }
     }
+    if decision.is_none() {
+        html.push_str("<div class=\"reader-metadata-groups\">");
+    }
     if let Some(w) = work {
-        html.push_str(&format!("<div class=\"reader-metadata-groups\"><section class=\"reader-metadata-group\" data-metadata-group=\"work\" aria-label=\"{}\"><p class=\"metadata-heading\">{}</p>",text(r.locale,"Work record","작업 기록"),text(r.locale,"Work record","작업 기록")));
+        html.push_str(&format!("<section class=\"reader-metadata-group\" data-metadata-group=\"work\" aria-label=\"{}\"><p class=\"metadata-heading\">{}</p>",text(r.locale,"Work record","작업 기록"),text(r.locale,"Work record","작업 기록")));
         html.push_str(&format!(
-            "<p class=\"record-strip\"><span class=\"record-status-label\">{}</span><span class=\"work-badge work-state-badge\" data-state=\"{}\"><span class=\"state-dot\" aria-hidden=\"true\"></span>{}</span></p>",
+            "<p class=\"record-strip\"><span class=\"record-status-label sr-only\">{}</span><span class=\"work-badge work-state-badge\" data-state=\"{}\"><svg class=\"work-record-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M9 4H5v17h14V4h-4M9 3h6v4H9zM8 12h8m-8 4h6\"/></svg>{}</span></p>",
             text(r.locale, "Recorded state", "기록된 상태"),
             understanding_work_state_key(w.state),
             understanding_work_state_label(w.state, r.locale)
         ));
         work_event_times(html, r, w);
-        html.push_str(&format!("</section><section class=\"reader-metadata-group\" data-metadata-group=\"publication\" aria-label=\"{}\"><p class=\"metadata-heading\">{}</p>",text(r.locale,"Explanation and repository","설명과 저장소"),text(r.locale,"Explanation and repository","설명과 저장소")));
+        html.push_str("</section>");
+    }
+    if decision.is_none() {
+        html.push_str(&format!("<section class=\"reader-metadata-group\" data-metadata-group=\"publication\" aria-label=\"{}\"><p class=\"metadata-heading\">{}</p>",text(r.locale,"Explanation and repository","설명과 저장소"),text(r.locale,"Explanation and repository","설명과 저장소")));
     }
     render_applicability(html, r, answers, snapshot);
-    if work.is_some() {
+    if decision.is_none() {
         html.push_str("</section></div>");
     }
     if let Some(d) = decision {

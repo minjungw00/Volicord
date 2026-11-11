@@ -59,6 +59,11 @@ async function inspect(page,c,url,width,mode,language){
  assert.deepEqual(await metadataPeers.evaluateAll(ns=>ns.map(n=>n.dataset.metadataGroup)),['work','publication'],'Work records and explanation/repository metadata are explicit peers');
  assert.equal(await metadataPeers.nth(0).locator('.work-dates').count(),1);
  assert.equal(await metadataPeers.nth(1).locator('.reading-metadata .publication-status').count(),1,'document readability is separate from repository comparison');
+ const record=metadataPeers.nth(0).locator('.record-strip'),recordIcon=await record.locator('.work-record-icon').boundingBox();
+ assert.ok(recordIcon,'Work record has a displayed icon');
+ assert.equal(recordIcon.width,15);assert.equal(recordIcon.height,15);
+ assert.equal(await record.locator('.record-status-label').evaluate(n=>n.classList.contains('sr-only')),true,'recorded-state category remains accessible without a visible extra label');
+ assert.equal(await record.locator('.work-state-badge').evaluate(n=>getComputedStyle(n).minHeight),await metadataPeers.nth(1).locator('.publication-state-badge').evaluate(n=>getComputedStyle(n).minHeight),'Work and explanation badges share their size');
  if(c.decisions!==undefined)assert.equal(await doc.locator('.decision-reading').count(),c.decisions);
  const groups=await doc.locator(':scope > .work-reading-group').evaluateAll(ns=>ns.map(n=>n.dataset.readingGroup));
  assert.deepEqual(groups,await doc.locator('.decision-reading').count()?['work','decisions','checks','records']:['work','checks','records'],'Work explanation, related Decisions, checks and originals are sibling groups');
