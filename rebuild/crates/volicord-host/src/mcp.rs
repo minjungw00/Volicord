@@ -7310,7 +7310,9 @@ fn materiality_dimension_from_judgment(
         }
     ) {
         contract_basis.clear();
-        research_basis.clear();
+        // Completing investigation does not settle the remaining user policy.
+        // Preserve validated evidence_completion_basis so readiness can reach
+        // the Question lifecycle while NoSettlingAuthority still blocks work.
     }
     source_basis.sort_unstable();
     source_basis.dedup();

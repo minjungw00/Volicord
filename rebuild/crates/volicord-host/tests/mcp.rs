@@ -247,6 +247,26 @@ fn record_fixture_discovery(
     source_id: &str,
     choice: FixtureEngineeringChoice<'_>,
 ) -> String {
+    record_fixture_discovery_with_evidence(
+        adapter,
+        project,
+        goal_context_id,
+        baseline_analysis_snapshot_id,
+        source_id,
+        choice,
+        EngineeringChoiceEvidenceState::Sufficient,
+    )
+}
+
+fn record_fixture_discovery_with_evidence(
+    adapter: &HostAdapter,
+    project: &str,
+    goal_context_id: &str,
+    baseline_analysis_snapshot_id: &str,
+    source_id: &str,
+    choice: FixtureEngineeringChoice<'_>,
+    evidence_state: EngineeringChoiceEvidenceState,
+) -> String {
     let source_id = parse_source_identity(source_id);
     let choices = vec![EngineeringChoice {
         choice_id: choice.id.into(),
@@ -270,7 +290,7 @@ fn record_fixture_discovery(
         source_basis: vec![source_id],
         effect_categories: vec![choice.effect_category],
         relationship: EngineeringChoiceRelationship::Independent,
-        evidence_state: EngineeringChoiceEvidenceState::Sufficient,
+        evidence_state,
     }];
     let material_boundary_review = complete_material_boundary_review(&choices, source_id);
     let discovery = adapter
@@ -9821,4 +9841,150 @@ fn compatibility_recovery_names_exact_evidence_and_never_publishes_failed_checkp
     }
     let response = call(&mut adapter, "checkpoint_record", valid);
     assert_eq!(response["result"]["isError"], false, "{response}");
+}
+
+#[test]
+fn completed_discovery_evidence_preserves_unresolved_user_authority() {
+    for evidence_state in [
+        EngineeringChoiceEvidenceState::ResearchRequired,
+        EngineeringChoiceEvidenceState::PrototypeRequired,
+        EngineeringChoiceEvidenceState::Sufficient,
+    ] {
+        let (_temporary, mut adapter, project) = setup();
+        let turn = "Implement the bounded reporting feature.";
+        let goal = structured(&call(
+            &mut adapter,
+            "context_record",
+            json!({
+                "project_id":project, "user_turn":turn, "statement":turn,
+                "role":"goal", "work_transition":"start_new"
+            }),
+        ))
+        .clone();
+        let baseline = structured(&call(
+            &mut adapter,
+            "repository_analyze",
+            json!({"project_id":project}),
+        ))
+        .clone();
+        let discovery = record_fixture_discovery_with_evidence(
+            &adapter,
+            &project,
+            goal["context_item_id"].as_str().unwrap(),
+            baseline["analysis_snapshot_id"].as_str().unwrap(),
+            baseline["repository_source_id"].as_str().unwrap(),
+            FixtureEngineeringChoice {
+                id: "report-policy",
+                affected_scope: "report output",
+                effect_category: EngineeringEffectCategory::UserVisibleBehaviorOrDefault,
+            },
+            evidence_state,
+        );
+        let judgment = json!({
+            "choice_id":"report-policy", "disposition":"unresolved_user_owned_outcome",
+            "basis_summary":"Investigation does not choose the public reporting policy.",
+            "authority_counterfactual":"Both public outputs satisfy the Goal; no current specification, contract, Decision or delegation chooses between them.",
+            "materially_varying_outcomes":["default report output"], "contains_user_owned_outcome":true,
+            "user_owned_outcomes":["default report output"],
+            "ownership_rationale":"The alternatives change the public default rather than private implementation.",
+            "ownership_source_ids":[baseline["repository_source_id"]],
+            "alternative_accounting":unresolved_alternative_accounting("report-policy", &["first","second"], &baseline["repository_source_id"]),
+            "learning_authority":{"state":"inactive"},
+            "learning_value":{"state":"routine","rationale":"Learning participation is inactive."}
+        });
+        let pending = structured(&call(&mut adapter, "materiality_review", json!({
+            "action":"record", "project_id":project, "engineering_choice_discovery_candidate_id":discovery,
+            "rationale":"The original bounded investigation remains necessary.",
+            "learning_participation":{"state":"inactive"}, "judgments":[judgment]
+        }))).clone();
+        assert_eq!(
+            pending["workflow"]["stage"],
+            if evidence_state == EngineeringChoiceEvidenceState::Sufficient {
+                "question_candidate"
+            } else {
+                "research_or_prototype"
+            },
+            "{pending}"
+        );
+        let mut completed = judgment.clone();
+        completed["evidence_completion_basis"] = json!(["The bounded scratch comparison establishes both implementations; the public default remains a user choice."]);
+        let revision = json!({
+            "action":"revise", "project_id":project, "review_candidate_id":pending["review_candidate_id"],
+            "rationale":"Investigation is complete without settling the remaining public policy.", "learning_participation":{"state":"inactive"}, "judgments":[completed]
+        });
+        for (field, invalid) in [
+            ("evidence_completion_basis", json!([])),
+            (
+                "contract_basis",
+                json!(["An investigation is not a policy contract."]),
+            ),
+            (
+                "research_basis",
+                json!(["This generic authority field is not legal for an unresolved outcome."]),
+            ),
+        ] {
+            let mut rejected = revision.clone();
+            rejected["judgments"][0][field] = invalid;
+            let result = call(&mut adapter, "materiality_review", rejected);
+            assert_eq!(result["result"]["isError"], true, "{result}");
+        }
+        let result = call(&mut adapter, "materiality_review", revision);
+        if evidence_state == EngineeringChoiceEvidenceState::Sufficient {
+            assert_eq!(result["result"]["isError"], true, "{result}");
+            assert!(structured(&result)["error"]
+                .as_str()
+                .unwrap()
+                .contains("evidence_completion_basis is only valid"));
+            continue;
+        }
+        assert_eq!(result["result"]["isError"], false, "{result}");
+        let resolved_evidence = structured(&result);
+        assert_eq!(
+            resolved_evidence["review_candidate_id"],
+            pending["review_candidate_id"]
+        );
+        assert_eq!(
+            resolved_evidence["workflow"]["stage"], "question_candidate",
+            "{resolved_evidence}"
+        );
+        assert_eq!(
+            resolved_evidence["workflow"]["required_next_action"]["action"],
+            "submit_question_from_materiality"
+        );
+        assert_eq!(resolved_evidence["workflow"]["blocks_ordinary_work"], true);
+        let candidates = adapter
+            .operations()
+            .candidate_basis(parse_project(&project))
+            .unwrap();
+        let review = candidates
+            .candidates
+            .iter()
+            .find_map(|c| c.content.as_ref()?.materiality_review.as_ref())
+            .unwrap();
+        let dimension = &review.dimensions[0];
+        assert!(!dimension.basis.research_basis.is_empty());
+        assert!(dimension
+            .basis
+            .kinds
+            .contains(&WorkAuthorityBasisKind::NoSettlingAuthority));
+        assert!(dimension.basis.kinds.contains(&match evidence_state {
+            EngineeringChoiceEvidenceState::ResearchRequired =>
+                WorkAuthorityBasisKind::ResearchEvidence,
+            EngineeringChoiceEvidenceState::PrototypeRequired =>
+                WorkAuthorityBasisKind::PrototypeEvidence,
+            _ => unreachable!(),
+        }));
+        assert!(dimension.basis.decision_basis.is_empty());
+        let canonical = structured(&call(
+            &mut adapter,
+            "canonical_inspect",
+            json!({"project_id":project}),
+        ))
+        .clone();
+        assert!(!canonical["records"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["kind"] == "decision"));
+    }
 }

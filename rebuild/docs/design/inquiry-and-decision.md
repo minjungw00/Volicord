@@ -276,6 +276,9 @@ fact를 먼저 확인한 뒤 다음 순서로 분류한다.
   bounded research/prototype Source와 evidence-completion basis가 들어온 뒤에만 그 prospective
   authority를 적용한다. Evidence가 user-owned material policy를 드러내면 같은 revision에서
   unresolved user-owned outcome으로 분류해 Question lifecycle로 보낸다.
+  이 전환에서도 검증된 evidence-completion basis와 Research/PrototypeEvidence kind를
+  보존한다. 완료된 조사는 사용자 정책의 settling authority가 아니므로 unresolved
+  disposition과 NoSettlingAuthority는 유지하며 Decision 전 ordinary work를 허용하지 않는다.
 - Research/prototype는 현재 tracked repository write authority를 제공하지 않는다. Evidence는
   read-only inspection, repository 밖 scratch 또는 별도 disposable worktree에서 수집한다.
   Original Project/Goal/Discovery/baseline chain을 유지하며 blocked research/prototype를 새
