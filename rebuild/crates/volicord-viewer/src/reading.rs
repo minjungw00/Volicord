@@ -1290,6 +1290,7 @@ fn render_document_body(
         }
     }
     if let Some(w) = work {
+        html.push_str(&format!("<div class=\"reader-metadata-groups\"><section class=\"reader-metadata-group\" data-metadata-group=\"work\" aria-label=\"{}\"><p class=\"metadata-heading\">{}</p>",text(r.locale,"Work record","작업 기록"),text(r.locale,"Work record","작업 기록")));
         html.push_str(&format!(
             "<p class=\"record-strip\"><span class=\"record-status-label\">{}</span><span class=\"work-badge work-state-badge\" data-state=\"{}\"><span class=\"state-dot\" aria-hidden=\"true\"></span>{}</span></p>",
             text(r.locale, "Recorded state", "기록된 상태"),
@@ -1297,8 +1298,12 @@ fn render_document_body(
             understanding_work_state_label(w.state, r.locale)
         ));
         work_event_times(html, r, w);
+        html.push_str(&format!("</section><section class=\"reader-metadata-group\" data-metadata-group=\"publication\" aria-label=\"{}\"><p class=\"metadata-heading\">{}</p>",text(r.locale,"Explanation and repository","설명과 저장소"),text(r.locale,"Explanation and repository","설명과 저장소")));
     }
     render_applicability(html, r, answers, snapshot);
+    if work.is_some() {
+        html.push_str("</section></div>");
+    }
     if let Some(d) = decision {
         html.push_str(&format!("<p class=\"lead\" data-statement-role=\"verified-canonical\">{}</p><p class=\"record-strip\">{}</p>", escape(&decision_choice_attribution(&d.decision, r.locale)), brief_decision_state_label(d.decision.state, r.locale)));
     }
@@ -2423,10 +2428,19 @@ fn render_applicability(
     snapshot: bool,
 ) {
     let basis = &answers.applicability;
-    if basis.generated_at_unix_micros.is_none() && basis.explained_snapshots.is_empty() {
-        return;
-    }
+    use volicord_projections::ExplanationState as E;
     use volicord_projections::RepositoryComparisonState as C;
+    let article_state = match answers.explanation_state {
+        E::Current => text(r.locale, "Available", "읽을 수 있음"),
+        E::Stale => text(r.locale, "Basis changed", "근거 변경됨"),
+        E::Missing => text(r.locale, "Not recorded", "기록 없음"),
+        E::Deleted => text(r.locale, "Deleted", "삭제됨"),
+        E::Withheld => text(r.locale, "Withheld", "보류됨"),
+        E::Unavailable => text(r.locale, "Unavailable", "이용 불가"),
+        E::Unsupported => text(r.locale, "Unsupported format", "지원하지 않는 형식"),
+        E::Corrupt => text(r.locale, "Integrity unavailable", "무결성 확인 불가"),
+    };
+    html.push_str(&format!("<div class=\"reading-metadata\"{}><p class=\"publication-status\" data-publication-state=\"{:?}\"><span class=\"record-status-label\">{}</span><span class=\"publication-state-badge\">{article_state}</span></p>",publication_scope(answers),answers.explanation_state,text(r.locale,"Explanation state","설명 상태")));
     let label = match basis.repository_comparison {
         C::VerifiedAtRead => text(r.locale, "Repository matched", "저장소 일치"),
         C::Changed => text(r.locale, "Repository changed", "저장소 변경됨"),
@@ -2434,8 +2448,7 @@ fn render_applicability(
         C::NotChecked => text(r.locale, "Repository not compared", "저장소 미비교"),
     };
     html.push_str(&format!(
-        "<div class=\"reading-metadata\"{}><details class=\"applicability\"{} data-comparison-state=\"{}\"><summary class=\"comparison-status\"><svg class=\"comparison-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M8 5V3H3v13h3M8 7h13v14H8z\"/><path data-comparison-icon=\"verified_at_read\" d=\"m11 14 2 2 5-5\"/><path data-comparison-icon=\"changed\" d=\"m12 11 5 5m0-5-5 5\"/><path data-comparison-icon=\"unavailable\" d=\"M14.5 10v5m0 2v1\"/><path data-comparison-icon=\"not_checked\" d=\"M11 14h7\"/></svg><span data-comparison-label>{}</span></summary><p class=\"comparison-detail\">{}</p><dl>",
-        publication_scope(answers),
+        "<details class=\"applicability\"{} data-comparison-state=\"{}\"><summary class=\"comparison-status\"><svg class=\"comparison-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M8 5V3H3v13h3M8 7h13v14H8z\"/><path data-comparison-icon=\"verified_at_read\" d=\"m11 14 2 2 5-5\"/><path data-comparison-icon=\"changed\" d=\"m12 11 5 5m0-5-5 5\"/><path data-comparison-icon=\"unavailable\" d=\"M14.5 10v5m0 2v1\"/><path data-comparison-icon=\"not_checked\" d=\"M11 14h7\"/></svg><span data-comparison-label>{}</span></summary><p class=\"comparison-detail\">{}</p><dl>",
         publication_scope(answers),
         serde_json::to_value(basis.repository_comparison)
             .ok()

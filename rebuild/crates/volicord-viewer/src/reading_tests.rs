@@ -673,6 +673,16 @@ fn related_decisions_share_work_outline_and_keep_canonical_meaning(
                     1,
                     "no appended Decision page"
                 );
+                assert_eq!(html.matches("class=\"reader-metadata-groups\"").count(), 1);
+                for scope in ["work", "publication"] {
+                    assert_eq!(
+                        html.matches(&format!("data-metadata-group=\"{scope}\""))
+                            .count(),
+                        1,
+                        "Work and publication metadata are separate peer groups"
+                    );
+                }
+                assert!(html.contains("class=\"publication-status\""));
                 let mut seen = std::collections::BTreeSet::new();
                 for d in p
                     .selected_work_decisions

@@ -45,6 +45,10 @@ async function inspect(page,c,url,width,mode,language){
  assert.deepEqual(await page.evaluate(fragmentErrors),[],'unique exact fragments throughout actual public document');
  assert.equal(await doc.locator('.document-nav').count(),1,'one page-level Work TOC');
  assert.equal(await doc.locator('article.doc').count(),0,'no appended/nested Decision page');
+ const metadataPeers=doc.locator('.doc-head > .reader-metadata-groups > .reader-metadata-group');
+ assert.deepEqual(await metadataPeers.evaluateAll(ns=>ns.map(n=>n.dataset.metadataGroup)),['work','publication'],'Work records and explanation/repository metadata are explicit peers');
+ assert.equal(await metadataPeers.nth(0).locator('.work-dates').count(),1);
+ assert.equal(await metadataPeers.nth(1).locator('.reading-metadata > .publication-status').count(),1,'document readability is separate from repository comparison');
  if(c.decisions!==undefined)assert.equal(await doc.locator('.decision-reading').count(),c.decisions);
  const groups=await doc.locator(':scope > .work-reading-group').evaluateAll(ns=>ns.map(n=>n.dataset.readingGroup));
  assert.deepEqual(groups,await doc.locator('.decision-reading').count()?['work','decisions','checks','records']:['work','checks','records'],'Work explanation, related Decisions, checks and originals are sibling groups');

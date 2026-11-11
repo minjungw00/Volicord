@@ -3997,3 +3997,12 @@ existing paired comparison roles for independently grounded readable comparisons
 All outline child entries share one indentation under their peer captions.
 Top-level original instructions, evidence, timeline and verification disclosures
 share the bordered card treatment, with spacing rather than adjacent separator rules.
+
+Work headers present two peer metadata groups: the canonical Work's recorded state
+and event times, and the explanation's readability plus repository comparison and
+publication/check times. Neither group's state supplies the other. Narrow reading
+stacks these same peer groups. Missing publication metadata has explicit missing
+state/date labels, never substituted Work event times. Related Decision explanations
+put the original question before option comparisons and explain each alternative's
+expected result and actual applicable surface, rather than directing the reader
+to folded originals for the primary answer. Exact originals remain available.
