@@ -153,6 +153,22 @@ locations and the bounded unresolved scoped-check investigation are maintained i
 The original invariant rejection and the separately established diagnostic target
 contamination are distinct findings; non-reproduction establishes no causal fix.
 
+The gate may select an already installed complete Rustup toolchain with
+`--toolchain <installed-rustup-name>`. This is an owned execution input, not an
+ambient override: inherited `RUSTUP_TOOLCHAIN`, flags, caches and configuration
+remain refused before selection. Missing tools, paths and duplicate options refuse
+before admission; the runner neither installs nor silently falls back. Private
+context binds the canonical selection, actual Cargo/compiler/rustdoc/Clippy/rustfmt
+and compiler-library bytes. Children verify those identities; portable evidence
+retains only bounded names and hashes and the effective selection argument.
+Same-repository nested gates of an explicitly selected parent inherit that toolchain
+with a fresh target and cannot change it. The no-option default policy is unchanged.
+Independent synthetic fixtures may explicitly leave the parent's
+owned environment. Real installer/test/Clippy/fmt and contamination controls cover
+these boundaries. An alternate toolchain requires fresh exact-candidate gate
+evidence with unchanged commands, flags and acceptance limits; its success does
+not diagnose or erase a compiler failure in the original environment.
+
 Reconstruction CI also runs the runner/gate/entrypoint/archive/report self-tests;
 CI is an additional execution environment, not the local gate's execution owner.
 The gate does not reuse a different HEAD's CI or diagnostic result.

@@ -36,8 +36,19 @@ gate therefore refuses ambient ancestor/workspace/Cargo-home configurations and
 inherited compiler, target, runner, cache, profile or linker overrides. It preserves
 them rather than deleting or silently clearing them. Cargo's download cache remains
 available, while compiled outputs are new per gate and compiler cache wrappers are
-refused. A future supported configuration needs an explicit reviewed input policy;
-adding an unrestricted override would reopen this boundary. Ordinary focused checks
+refused. The explicit `gate --toolchain <installed-rustup-name>` policy admits only
+an already installed complete Rustup toolchain: actual Cargo, rustc, rustdoc, Clippy,
+rustfmt and compiler shared-library hashes are bound in the private build context.
+The canonical selection becomes owned `RUSTUP_TOOLCHAIN` only after ambient overrides
+have been rejected. Missing tools, uninstalled names, paths and duplicate options
+refuse before admission, without downloads or fallback. Portable gate configuration
+records the effective selection and bounded names/hashes, never installation paths.
+Same-repository nested gates of an explicitly selected parent retain this selection
+and refuse changing it; the no-option default policy is unchanged. Deliberate
+independent fixtures can leave parent ownership before creating a new context.
+No compiler flags, profiles or qualification thresholds are relaxed by selection.
+Other future configuration needs an explicit reviewed input policy; adding an
+unrestricted override would reopen this boundary. Ordinary focused checks
 continue to support existing Cargo configuration and target selection and do not
 require a full rebuild. The installer follows actual Cargo artifacts in both modes.
 A qualification checkout path containing whitespace is explicitly refused because

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+from unittest.mock import patch
 
 import gate_entrypoint_self_test as entry
 
@@ -62,7 +63,7 @@ path="src/viewer.rs"
     manifest.write_text(manifest.read_text().replace('[dependencies]\n', '[dependencies]\n' + family))
     dependency = workspace/'crates/dependency'
     (dependency/'src').mkdir(parents=True)
-    (dependency/'Cargo.toml').write_text('[package]\nname="control-dependency"\nversion="0.1.0"\nedition="2021"\n')
+    (dependency/'Cargo.toml').write_text('[package]\nname="control-dependency"\nversion="0.1.0"\nedition="2021"\n[workspace]\n')
     (dependency/'src/lib.rs').write_text('pub fn number() -> u8 { 7 }\n')
     (dependency/'build.rs').write_text('use std::{env, process::Command};\nfn main() -> Result<(), Box<dyn std::error::Error>> {\nlet rustc = env::var("RUSTC")?;\nlet mut command = if let Ok(wrapper) = env::var("RUSTC_WRAPPER") { let mut c = Command::new(wrapper); c.arg(&rustc); c } else { Command::new(&rustc) };\nif !command.arg("--version").status()?.success() { return Err("compiler probe failed".into()); }\nOk(())\n}\n')
     (crate/'tests').mkdir()
@@ -82,6 +83,7 @@ path="src/viewer.rs"
         + f'subprocess.run([{str(candidate / "rebuild/install.sh")!r}, "--prefix", {str(prefix)!r}, "--runtime-dir", {str(parent/"runtime")!r}], check=True)\n'
         + 'subprocess.run(["cargo", "test", "--manifest-path", "rebuild/Cargo.toml"], check=True)\n'
         + 'subprocess.run(["cargo", "clippy", "--manifest-path", "rebuild/Cargo.toml", "--all-targets", "--", "-D", "warnings"], check=True)\n'
+        + 'subprocess.run(["cargo", "fmt", "--manifest-path", "rebuild/Cargo.toml", "--all", "--", "--check"], check=True)\n'
         + f'out = Path({str(parent)!r})\n'
         + 'rows = []\n'
         + f'cases = [("late-flags", ["cargo", "build", "--manifest-path", "rebuild/Cargo.toml"], {{**os.environ, "RUSTFLAGS": "--cfg diagnostic_control"}}), ("foreign-source", ["cargo", "build", "--manifest-path", {str(foreign/"Cargo.toml")!r}], os.environ)]\n'
@@ -96,6 +98,7 @@ path="src/viewer.rs"
         + '    rows.append({"control": label, "argv": argv, "exit_code": result.returncode})\n'
         + '    assert result.returncode != 0 and "build boundary refused:" in result.stderr, (label, result.stderr)\n'
         + '(out/"compiler-controls.json").write_text(json.dumps(rows, indent=2)+"\\n")\n')
+    run_checked(['cargo', 'fmt', '--manifest-path', workspace/'Cargo.toml', '--all'], candidate, env)
     run_checked(['git', 'add', '.'], candidate, env)
     run_checked(['git', '-c', 'user.name=Build Control', '-c', 'user.email=build@example.invalid',
                  'commit', '-qm', 'build controls'], candidate, env)
@@ -108,7 +111,11 @@ path="src/viewer.rs"
     old = {p.name: p.read_bytes() for p in poison.iterdir()}
     # This ignored diagnostic target must remain untouched throughout all controls.
     (candidate / '.git/info/exclude').write_text('/rebuild/target/\n/rebuild/.cargo/\n')
-    arguments = ('gate', '--external-network', 'available', '--authorize-external-transmission',
+    import sys
+    sys.path.insert(0, str(ROOT / 'rebuild/validation/shared'))
+    import build_boundary
+    selected = Path(build_boundary.tool('rustc', env)['sysroot']).name
+    arguments = ('gate', '--toolchain', selected, '--external-network', 'available', '--authorize-external-transmission',
                  entry.AUTHORIZATION_ASSERTION, '--authorize-provider-source-transmission',
                  entry.PROVIDER_AUTHORIZATION_ASSERTION, '--provider-model', 'synthetic-model')
     outcomes = []
@@ -122,6 +129,10 @@ path="src/viewer.rs"
 
     refused('shared diagnostic target', {'CARGO_TARGET_DIR': str(poison.parent)})
     refused('compiler flags', {'RUSTFLAGS': '--cfg diagnostic_control'})
+    refused('ambient toolchain even with explicit selection', {'RUSTUP_TOOLCHAIN': selected})
+    shadow = parent/'shadow-bin'
+    entry.write_executable(shadow/'cargo-fmt', '#!/bin/sh\nexit 0\n')
+    refused('shadowed formatting dispatcher', {'PATH': str(shadow) + ':' + env['PATH']})
     refused('encoded flags', {'CARGO_ENCODED_RUSTFLAGS': '--cfg\x1fdiagnostic_control'})
     refused('compiler cache wrapper', {'RUSTC_WRAPPER': '/unavailable/diagnostic-wrapper'})
     refused('workspace wrapper', {'RUSTC_WORKSPACE_WRAPPER': '/unavailable/diagnostic-wrapper'})
@@ -149,6 +160,17 @@ path="src/viewer.rs"
     refused('ignored compiler input')
     ignored_source.unlink()
 
+    for label, options in (
+        ('path selection', ('--toolchain', '/unapproved/compiler')),
+        ('missing selection', ('--toolchain',)),
+        ('duplicate selection', ('--toolchain', selected, '--toolchain', selected)),
+        ('uninstalled selection', ('--toolchain', 'volicord-uninstalled-toolchain-control')),
+    ):
+        rejected = entry.invoke(candidate, env, 'gate', *options)
+        assert rejected.returncode == 2 and 'qualification build refused:' in rejected.stderr, (label, rejected.stderr)
+        assert not prefix.exists() and not final_marker.exists() and not v11_marker.exists()
+        outcomes.append({'control': label, 'exit_code': rejected.returncode})
+
     # Invoke the actual gate; its ordinary support calls run the actual installer
     # and Cargo test in the gate-owned target. An intentional support exit 37
     # prevents all real aggregate/external stages.
@@ -163,6 +185,41 @@ path="src/viewer.rs"
     assert fixture['status'] == 'passed', fixture
     context = json.loads((path/'build/context.json').read_text())
     assert context['initial_target_empty'] is True
+    assert context['selected_toolchain'] == {'requested': selected, 'canonical': selected}
+    assert context['owned_environment']['RUSTUP_TOOLCHAIN'] == selected
+    compiler = context['tools']['rustc']
+    assert {'cargo', 'rustc', 'rustdoc', 'clippy-driver', 'cargo-clippy', 'cargo-fmt', 'rustfmt'} <= compiler['toolchain_binaries'].keys()
+    assert compiler['compiler_libraries']
+    portable = admission['gate_configuration']['toolchain']
+    assert portable == build_boundary.portable_toolchain(context)
+    assert admission['gate_configuration']['argv'][-2:] == ['--toolchain', selected]
+    assert str(Path.home()) not in json.dumps(portable) and str(path) not in json.dumps(portable)
+    assert capsule['gate_configuration']['toolchain'] == portable
+    # A same-repository nested gate must retain the owned compiler after removing
+    # the parent's target/wrapper. Independent fixtures can explicitly leave it.
+    parent_env = env | context['owned_environment'] | {
+        build_boundary.CONTEXT: str(path/'build/context.json'),
+        build_boundary.CONTEXT_HASH: build_boundary.digest(path/'build/context.json')}
+    nested = build_boundary.prepare(candidate, parent/'nested-owned', parent_env)
+    nested_context = build_boundary.read_context(nested)
+    assert nested_context['selected_toolchain']['canonical'] == selected
+    assert nested_context['tools'] == context['tools']
+    assert nested['CARGO_TARGET_DIR'] != parent_env['CARGO_TARGET_DIR']
+    build_boundary.check(nested)
+    with patch.object(build_boundary, 'installed_toolchain', return_value={'requested': 'other', 'canonical': 'other'}):
+        try:
+            build_boundary.prepare(candidate, parent/'nested-changed', parent_env, toolchain='other')
+        except ValueError as error:
+            assert 'cannot change the parent toolchain' in str(error)
+        else:
+            raise AssertionError('nested compiler change was accepted')
+    detached = build_boundary.inherited_environment(parent_env)
+    assert build_boundary.CONTEXT not in detached and 'RUSTUP_TOOLCHAIN' not in detached
+    independent_root, _, _, _ = entry.make_candidate(parent/'independent-fixture')
+    assert independent_root != candidate
+    independent = build_boundary.prepare(independent_root, parent/'independent-default', parent_env)
+    assert build_boundary.read_context(independent)['selected_toolchain'] is None
+    assert 'RUSTUP_TOOLCHAIN' not in independent
     records = [json.loads(p.read_text()) for p in (path/'build/receipts').glob('*.json')]
     executions = [r for r in records if r['kind'] == 'execution_started']
     installed = [r for r in records if r['kind'] == 'installed_executables']

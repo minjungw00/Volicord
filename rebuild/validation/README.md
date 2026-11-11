@@ -54,6 +54,15 @@ contamination controls run inside `gate-entrypoint-self-test`, stopping before
 Final and external stages. The same record locates the original scoped-check
 failure and its bounded, unresolved investigation.
 
+`validate gate --toolchain <installed-rustup-name>` selects a complete, already
+installed Rustup toolchain as a gate-owned input. Ambient compiler overrides still
+refuse before admission. It records canonical selection and actual tool/library
+hashes, retains selection across same-repository nested gates and neither downloads
+nor falls back. Portable evidence exposes names/hashes without installation paths.
+Alternate-toolchain results need their own exact-candidate gate; they do not prove
+the cause of a compiler failure under another toolchain. The real build-boundary
+controls include installer, Cargo test, Clippy, fmt and existing negative cases.
+
 Build receipts retain the explicitly requested `dev`/`release` profile and Cargo's
 observed executable profile alongside the selected output hash. Before a runtime
 timing comparison, use `python3 -B rebuild/validation/shared/build_boundary.py

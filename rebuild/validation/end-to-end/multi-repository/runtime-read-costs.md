@@ -483,3 +483,25 @@ authorization and every workload limit are unchanged. Public events do not estab
 why the model repeated a call, and the clearer instruction does not guarantee future
 compliance. Fresh changed-candidate evidence is still required; the original failure
 records are not rewritten or filtered into success.
+
+The subsequent `47a00cd1b863e34f73ee2059990edd8de0f39914` gate passed all 17
+support checks and all four ordered Final commands. The release installation
+compiler then terminated with `SIGILL` compiling Operations under rustc 1.97.1 /
+LLVM 22.1.6. The compiler observer preserves exit -4, exact arguments and dependencies;
+the surrounding build failed rather than publishing a successful installation.
+Disassembly identifies `ud2` at the reported LLVM `getNumRegisters` cold path. This
+does not establish unsupported CPU instructions, hardware failure or an LLVM defect.
+Provider and official V11 stages did not run. Original and copied failed archives
+were independently verified and preserved.
+
+One isolated compiler-unit debugger experiment initially stopped at ordinary Rust
+jobserver `SIGUSR1`; its exit 90 is not a compiler-fault reproduction. The corrected
+bounded experiment passed jobserver signals unchanged and completed with exit 0.
+Both used separate outputs and `save-temps`; neither changed the failed gate's inputs
+or outputs. This is non-reproduction under changed diagnostic conditions, not causal
+repair. A separate Operations-only release build with declared baseline Rust 1.85
+also passed; it is compatibility diagnostic evidence, not a full toolchain or gate
+qualification. The native Viewer startup failure remains a separate unresolved
+historical observation. Explicit installed-toolchain selection permits a fresh
+controlled gate comparison without ambient overrides, relaxed optimization, weaker
+limits or relabelling these earlier failures.

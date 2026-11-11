@@ -96,20 +96,74 @@ def identity(path):
     return {'path': str(path), 'sha256': digest(path)}
 
 
-def tool(name):
-    path = shutil.which(name)
+def tool(name, env=None):
+    env = os.environ if env is None else env
+    path = shutil.which(name, path=env.get('PATH'))
     if path is None:
         raise ValueError(f'required build tool unavailable: {name}')
-    result = subprocess.run([path, '-vV'], capture_output=True, text=True, check=True)
+    result = subprocess.run([path, '-vV'], env=env, capture_output=True, text=True, check=True)
     # Rustup proxies share bytes; retain selected compiler/driver bytes as well.
     value = {**identity(path), 'version': result.stdout}
     if name == 'rustc':
-        sysroot = Path(subprocess.run([path, '--print', 'sysroot'], capture_output=True,
+        sysroot = Path(subprocess.run([path, '--print', 'sysroot'], env=env, capture_output=True,
                                      text=True, check=True).stdout.strip()).resolve()
         value['sysroot'] = str(sysroot)
         value['toolchain_binaries'] = {name: identity(sysroot / 'bin' / name)
-            for name in ('rustc', 'rustdoc', 'clippy-driver') if (sysroot / 'bin' / name).is_file()}
+            for name in ('cargo', 'rustc', 'rustdoc', 'clippy-driver', 'cargo-clippy', 'cargo-fmt', 'rustfmt')
+            if (sysroot / 'bin' / name).is_file()}
+        value['compiler_libraries'] = {p.name: identity(p) for p in sorted((sysroot / 'lib').iterdir())
+            if p.is_file() and p.name.startswith(('libLLVM', 'librustc_driver'))}
+        if env.get('RUSTUP_TOOLCHAIN'):
+            paths, invoked = {}, {}
+            for name in value['toolchain_binaries']:
+                dispatcher = shutil.which(name, path=env.get('PATH'))
+                if dispatcher is None:
+                    raise ValueError(f'required toolchain dispatcher unavailable: {name}')
+                invoked[name] = str(Path(dispatcher).absolute())
+                paths[name] = Path(dispatcher).resolve(strict=True)
+            identities = {path: identity(path) for path in set(paths.values())}
+            value['dispatchers'] = {name: {**identities[path], 'invoked_path': invoked[name]}
+                                    for name, path in paths.items()}
     return value
+
+
+def installed_toolchain(name, env):
+    """Resolve an explicit installed Rustup toolchain, without installing one."""
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', name):
+        raise ValueError('toolchain must be an installed Rustup name, not a path or option')
+    rustup = shutil.which('rustup', path=env.get('PATH'))
+    if rustup is None:
+        raise ValueError('explicit toolchain selection requires Rustup')
+    command = [rustup, 'which', '--toolchain', name, 'rustc']
+    compiler = Path(subprocess.run(command, env={**env, 'RUSTUP_AUTO_INSTALL': '0'},
+        capture_output=True, text=True, check=True).stdout.strip()).resolve(strict=True)
+    sysroot = compiler.parent.parent
+    home = Path(env.get('RUSTUP_HOME', str(Path.home() / '.rustup'))).resolve()
+    if compiler != sysroot / 'bin/rustc' or sysroot.parent != home / 'toolchains':
+        raise ValueError('selected compiler is outside the installed Rustup toolchains')
+    required = ('cargo', 'rustc', 'rustdoc', 'clippy-driver', 'cargo-clippy', 'cargo-fmt', 'rustfmt')
+    if any(not (sysroot / 'bin' / tool).is_file() for tool in required):
+        raise ValueError('selected toolchain requires installed Cargo, rustdoc, Clippy and rustfmt')
+    return {'requested': name, 'canonical': sysroot.name}
+
+
+def check_dispatchers(selected, env):
+    proxy = identity(shutil.which('rustup', path=env.get('PATH')))
+    for name, dispatcher in selected['dispatchers'].items():
+        if dispatcher['sha256'] not in (proxy['sha256'], selected['toolchain_binaries'][name]['sha256']):
+            raise ValueError(f'PATH shadows the selected toolchain dispatcher: {name}')
+
+
+def portable_toolchain(value):
+    """Expose bounded names and hashes; private installation paths stay local."""
+    selected = value['tools']['rustc']
+    name = Path(selected['sysroot']).name
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', name):
+        raise ValueError('selected toolchain name is not portable')
+    return {'canonical': name, 'selection': value.get('selected_toolchain'),
+            'binaries': {name: item['sha256'] for name, item in selected['toolchain_binaries'].items()},
+            'dispatchers': {name: item['sha256'] for name, item in selected.get('dispatchers', {}).items()},
+            'compiler_libraries': {name: item['sha256'] for name, item in selected['compiler_libraries'].items()}}
 
 
 def configurations(root, env):
@@ -164,9 +218,10 @@ def inherited_environment(env):
     return env
 
 
-def prepare(root, directory, environment):
+def prepare(root, directory, environment, *, toolchain=None):
     """Called before any maintained gate admission/support/build invocation."""
     root, directory = Path(root).resolve(), Path(directory).resolve()
+    parent = read_context(environment) if CONTEXT in environment else None
     env = inherited_environment(environment)
     allowed_cargo = {'CARGO_HOME', 'CARGO_TERM_COLOR', 'CARGO_TERM_PROGRESS_WHEN', 'CARGO_TERM_PROGRESS_WIDTH'}
     rejected = sorted(k for k, v in env.items() if v and (
@@ -180,8 +235,23 @@ def prepare(root, directory, environment):
     # Refuse rather than silently discard a diagnostic wrapper/flag/target override.
     if configs:
         raise ValueError('qualification refuses ambient Cargo/toolchain configuration: ' + ', '.join(p['path'] for p in configs))
+    inherited_selection = (parent.get('selected_toolchain')
+                           if parent and parent['root'] == str(root) else None)
+    if toolchain is None and inherited_selection:
+        toolchain = inherited_selection['canonical']
+    selection = installed_toolchain(toolchain, env) if toolchain is not None else None
+    if inherited_selection and selection['canonical'] != inherited_selection['canonical']:
+        raise ValueError('nested gate cannot change the parent toolchain')
+    if selection:
+        env['RUSTUP_TOOLCHAIN'] = selection['canonical']
     source = inputs(root)
-    cargo, rustc = tool('cargo'), tool('rustc')
+    cargo, rustc = tool('cargo', env), tool('rustc', env)
+    if selection:
+        check_dispatchers(rustc, env)
+        actual_cargo = subprocess.run([rustc['toolchain_binaries']['cargo']['path'], '-vV'],
+            env=env, capture_output=True, text=True, check=True).stdout
+        if Path(rustc['sysroot']).name != selection['canonical'] or cargo['version'] != actual_cargo:
+            raise ValueError('Cargo/compiler do not select the requested toolchain')
     host = next(line.removeprefix('host: ') for line in rustc['version'].splitlines() if line.startswith('host: '))
     target = directory / 'build/target'
     target.mkdir(parents=True, exist_ok=False)
@@ -195,10 +265,13 @@ def prepare(root, directory, environment):
              'RUSTUP_HOME': env.get('RUSTUP_HOME', str(Path.home() / '.rustup')),
              'CARGO_TARGET_DIR': str(target), 'RUSTC_WRAPPER': str(observer),
              'CARGO_TARGET_' + host.upper().replace('-', '_') + '_RUNNER': str(observer) + ' execute'}
+    if selection:
+        owned['RUSTUP_TOOLCHAIN'] = selection['canonical']
     head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=root, text=True, capture_output=True, check=True).stdout.strip()
     value = {'kind': 'qualification_build_inputs', 'attempt': directory.name, 'root': str(root),
              'candidate_head': head, 'source_sha256': source, 'configuration': configs,
-             'tools': {'cargo': cargo, 'rustc': rustc}, 'owned_environment': owned,
+             'tools': {'cargo': cargo, 'rustc': rustc}, 'selected_toolchain': selection,
+             'owned_environment': owned,
              'compiler_environment': compiler_environment(env | owned),
              'receipts': str(receipts), 'initial_target_empty': not any(target.iterdir()),
              'cargo_home': env.get('CARGO_HOME', str(Path.home() / '.cargo')),
@@ -236,7 +309,7 @@ def check(env=None):
     if configurations(root, env) != value['configuration'] or inputs(root) != value['source_sha256']:
         raise ValueError('gate build source/configuration changed')
     for name, expected in value['tools'].items():
-        if tool(name) != expected:
+        if tool(name, env) != expected:
             raise ValueError(f'gate build tool changed: {name}')
     return value
 

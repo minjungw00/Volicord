@@ -430,7 +430,16 @@ def run_gate(arguments: Sequence[str]) -> int:
     run_directory = new_run_directory("v11-gate")
     original_env = os.environ.copy()
     try:
-        environment = build_boundary.prepare(REPOSITORY_ROOT, run_directory, original_env)
+        remaining = list(arguments)
+        toolchain = None
+        if '--toolchain' in remaining:
+            index = remaining.index('--toolchain')
+            if remaining.count('--toolchain') != 1 or index + 1 == len(remaining):
+                raise ValueError('--toolchain requires exactly one installed Rustup name')
+            toolchain = remaining.pop(index + 1)
+            remaining.pop(index)
+        environment = build_boundary.prepare(REPOSITORY_ROOT, run_directory, original_env,
+                                             toolchain=toolchain)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         write_json(run_directory / "build-refusal.json", {"exit_code": 2, "reason": str(error)})
         print(f"qualification build refused: {error}; artifacts: {run_directory}", file=sys.stderr)
@@ -438,7 +447,7 @@ def run_gate(arguments: Sequence[str]) -> int:
     try:
         os.environ.clear()
         os.environ.update(environment)
-        return run_isolated_gate(arguments, run_directory)
+        return run_isolated_gate(remaining, run_directory)
     finally:
         os.environ.clear()
         os.environ.update(original_env)
@@ -457,6 +466,10 @@ def run_isolated_gate(arguments: Sequence[str], run_directory: Path) -> int:
         command_runner=gate_command_runner,
         runner_path=Path(__file__).resolve(),
     )
+    toolchain = build_boundary.portable_toolchain(build_boundary.read_context())
+    admission['gate_configuration']['toolchain'] = toolchain
+    if toolchain['selection']:
+        admission['gate_configuration']['argv'].extend(('--toolchain', toolchain['canonical']))
     write_json(run_directory / "admission.json", admission)
 
     final_summary: dict[str, object] | None = None
@@ -682,7 +695,7 @@ def usage() -> int:
         "    [--external-network <state>] "
         "[--authorize-external-transmission <assertion>]\n"
         "    [--authorize-provider-source-transmission <assertion>] [--provider-model <model>]\n"
-        "  rebuild/scripts/validate gate [--external-network <state>] "
+        "  rebuild/scripts/validate gate [--toolchain <installed-rustup-name>] [--external-network <state>] "
         "[--authorize-external-transmission <assertion>] "
         "[--authorize-provider-source-transmission <assertion>] [--provider-model <model>]",
         file=sys.stderr,
