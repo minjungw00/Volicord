@@ -1437,7 +1437,7 @@ fn render_document_body(
         html.push_str("</section>");
     }
     if grouped && !has_verification && !authored_verification {
-        html.push_str(&format!("<p class=\"reading-group-empty\">{}</p>",text(r.locale,"No verification explanation or report is recorded for this reading. This does not establish that checks ran or passed.","이 읽기에 별도의 검증 설명이나 보고가 기록되지 않았습니다. 검사를 실행했거나 통과했다는 뜻은 아닙니다.")));
+        html.push_str(&format!("<p class=\"reading-group-empty\">{}</p>",text(r.locale,"No separate verification explanation or report is recorded in this section. This does not establish that checks ran or passed.","이 영역에 별도의 검증 설명이나 보고가 기록되지 않았습니다. 검사를 실행했거나 통과했다는 뜻은 아닙니다.")));
     }
     if grouped && limit_groups == 0 {
         html.push_str(&format!("<p class=\"reading-group-empty\">{}</p>",text(r.locale,"No separate explanation of limits is recorded in this section. This does not establish an absence of limitations; inspect the retained records and evidence for their actual scope and gaps.","이 영역에 별도로 작성된 한계 설명이 없습니다. 한계가 없다는 뜻은 아니며, 원문과 근거에서 기록된 범위와 공백을 확인할 수 있습니다.")));
