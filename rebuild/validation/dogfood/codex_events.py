@@ -135,11 +135,14 @@ def host_thread_settings(payload: dict[str, Any], meta: dict[str, Any]) -> bool:
         return False
     settings = payload["thread_settings"]
     text_fields = {"model", "model_provider_id", "service_tier", "approval_policy",
-        "approvals_reviewer", "reasoning_effort", "reasoning_summary", "personality"}
+        "approvals_reviewer", "reasoning_effort"}
+    optional_text_fields = {"reasoning_summary", "personality"}
+    required_fields = text_fields | {"cwd", "runtime_workspace_roots",
+        "permission_profile", "collaboration_mode", "disabled_plugin_ids"}
     if (not isinstance(settings, dict)
-            or set(settings) != text_fields | {"cwd", "runtime_workspace_roots",
-                "permission_profile", "collaboration_mode", "disabled_plugin_ids"}
-            or any(not nonempty(settings[field]) for field in text_fields)
+            or not required_fields <= set(settings) <= required_fields | optional_text_fields
+            or any(not nonempty(settings[field])
+                for field in text_fields | (set(settings) & optional_text_fields))
             or settings["cwd"] != meta.get("cwd")
             or not isinstance(settings["permission_profile"], dict)
             or not isinstance(settings["collaboration_mode"], dict)):

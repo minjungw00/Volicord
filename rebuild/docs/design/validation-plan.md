@@ -1732,6 +1732,11 @@ pre-marker activity remains indeterminate, and missing, late or conflicting
 activation retains its original failure classification. Collector-only recognition
 fixes use retained-observation reprocessing with the original Product candidate
 and raw bytes; they do not require replaying the user's measured conversations.
+The two display preferences `reasoning_summary` and `personality` may be omitted
+from the host settings record. Present values still require nonempty text; no
+default is inferred. Core settings, closed allowed keys and thread/workspace
+bindings remain mandatory. Omitted display preferences do not supply activation
+or excuse unknown pre-work events, a missing marker or late activity.
 Direct single-call MCP forwarding cells are correlated with native completion
 events only for static literal arguments and a unique matching operation/turn.
 Their invocation sequence is retained separately from completion; dynamic,

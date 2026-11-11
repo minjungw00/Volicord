@@ -826,6 +826,11 @@ Their closed payload shapes are checked before timing classification; a tool
 invocation, foreign binding, malformed definition or unknown pre-activation event
 still leaves timing indeterminate. Setup metadata supplies no activation identity
 and cannot excuse a missing, late, malformed or conflicting SessionStart marker.
+Only `reasoning_summary` and `personality` are optional display preferences;
+present values remain nonempty text. Core settings and the thread/workspace
+bindings remain required, unknown keys remain unsupported, and omitted values
+are never filled with invented defaults. Exercise these controls with
+`validate focused capture-transport -- python3 -B rebuild/validation/dogfood/capture_self_test.py`.
 Single static `text(await tools.mcp__volicord__operation({...}))` wrappers retain
 invocation/completion order under the same operation, arguments, turn and unique
 completion checks as assigned calls. Dynamic, conditional or multi-call wrappers

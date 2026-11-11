@@ -101,6 +101,54 @@ class ActivationBookkeepingTests(unittest.TestCase):
     def test_same_thread_catalog_and_settings_preserve_pre_work_activation(self):
         self.assertEqual(self.state(self.events()), "valid")
 
+    def test_omitted_display_preferences_preserve_pre_work_activation(self):
+        for omitted in ((), ("reasoning_summary",), ("personality",),
+                        ("reasoning_summary", "personality")):
+            with self.subTest(omitted=omitted):
+                events = self.events()
+                for field in omitted:
+                    del events[3]["payload"]["thread_settings"][field]
+                self.assertEqual(self.state(events), "valid")
+
+    def test_present_display_preferences_remain_typed_and_nonempty(self):
+        for field in ("reasoning_summary", "personality"):
+            for value in (None, "", " ", 1, False, [], {}):
+                with self.subTest(field=field, value=value):
+                    events = self.events()
+                    events[3]["payload"]["thread_settings"][field] = value
+                    self.assertEqual(self.state(events), "indeterminate")
+
+    def test_display_preference_omission_cannot_hide_missing_core_settings(self):
+        for field in self.events()[3]["payload"]["thread_settings"]:
+            if field in {"reasoning_summary", "personality"}:
+                continue
+            with self.subTest(field=field):
+                events = self.events()
+                for removed in ("reasoning_summary", "personality", field):
+                    del events[3]["payload"]["thread_settings"][removed]
+                self.assertEqual(self.state(events), "indeterminate")
+
+    def test_omitted_preferences_keep_binding_marker_and_timing_checks(self):
+        baseline = self.events()
+        for field in ("reasoning_summary", "personality"):
+            del baseline[3]["payload"]["thread_settings"][field]
+        for change in (lambda p: p.update(thread_id="foreign-thread"),
+                lambda p: p["thread_settings"].update(cwd="/other/workspace"),
+                lambda p: p["thread_settings"].update(runtime_workspace_roots=[]),
+                lambda p: p["thread_settings"].update(runtime_workspace_roots=["relative"]),
+                lambda p: p["thread_settings"].update(permission_profile=None),
+                lambda p: p["thread_settings"].update(unknown_setting="unknown")):
+            events = deepcopy(baseline)
+            change(events[3]["payload"])
+            self.assertEqual(self.state(events), "indeterminate")
+        events = deepcopy(baseline)
+        del events[4]
+        self.assertEqual(self.state(events), "absent")
+        events = deepcopy(baseline)
+        marker = events.pop(4)
+        events.insert(5, marker)
+        self.assertEqual(self.state(events), "late")
+
     def test_catalog_definitions_cannot_hide_calls_or_unknown_shapes(self):
         for change in (lambda p: p.update(role="assistant"),
                 lambda p: p.update(call_id="invocation"),
