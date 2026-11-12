@@ -177,7 +177,7 @@ async function nativeLinkNavigation(page, link, receipt) {
           if(mode==='live') {assert(prior,'browser position at actual element activation');assert(prior.meaning.length,'actual visible meaning at activation');}
           const claimId=(await element.getAttribute('href')).slice(1);
           const claim=page.locator('[id="'+claimId+'"]');
-          async function openSelectedEvidence() {
+          if(mode==='live') {
             assert.equal(await page.locator('body').getAttribute('data-source-open'),'false','element selection opens only its local explanation');
             assert.equal(await page.locator('.source-point[data-selected=true]').count(),0,'no implicit Source selection');
             assert.equal(await claim.getAttribute('data-active'),'true','exact local explanation selected');
@@ -222,7 +222,7 @@ async function nativeLinkNavigation(page, link, receipt) {
           assert.equal(await page.locator('[id="'+nativeId+'"]').getAttribute('data-selected-point'),boundPointId,'native origin keeps independently selected citation');
           const selectedStarted=Date.now();
           // Both consumers require explicit Source inspection after selection.
-          if(mode==='live') {
+          async function openSelectedEvidence() {
             await action.click();
             // Opening a family initially selects its first citation. The picker
             // belongs to that active point until the requested range is chosen.
