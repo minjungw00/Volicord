@@ -3898,6 +3898,17 @@ trailing roles also keep their authored order and unique native anchors. Human C
 prints each complete text diagram at its admitted caption before subsequent prose
 and supporting facts, using the same labels, guards and terminal-safe text.
 
+Ordinary Work preparation asks the active host to explain the reader problem,
+actual approach, supported mechanism and consequences in connected prose, with
+substantive authored topic headings where useful. A record ledger is not the main
+narrative. Investigation and implementation remain distinct. Named checks retain
+their execution/report-only basis, coverage, failures and unknown retests in the
+Verification/Limits roles. NextStep normally accompanies the narrative before the
+trailing supporting run; conclusion-changing caveats remain beside their claims.
+No fixed heading quota, generated empty section, reader-side rewriting/reordering
+or promotion of reported facts to verified behavior follows from this guidance.
+Historical publications keep their original text, plans and lifetimes.
+
 Ordinary diagram preparation selects the explanatory question before its kind:
 sequence for lifetime/order, state for transitions, and grounded evidence for both
 states before a before/after comparison. Structure or dependency is not temporal

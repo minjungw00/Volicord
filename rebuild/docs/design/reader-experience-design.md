@@ -1471,7 +1471,14 @@ unit position. Reader renders interleaved checks and material qualifications in
 that order, including caption placement. Only the trailing supporting sections
 can occupy the separate CE1 checks group, preserving their relative order as well.
 An article with no authored verification still exposes the independent recorded
-report. Supporting originals, full code and exact return identities remain intact.
+report. New Work authorship keeps the next-step explanation with the
+narrative before trailing verification/limits, so the peer checks group can carry
+those supporting sections. Meaningful authored topic headings improve scanning;
+an ongoing/completed state does not mechanically add or remove them. Direct
+explanation connects the reader problem, actual mechanism and consequences;
+report-only authority, unexecuted checks and unknown retests remain explicit in
+their proper context. Prior text is never restyled or reordered during reading. Supporting originals, full code and exact return identities remain
+intact.
 
 This repairs the reproduced record-read article's displaced verification and the
 same generic mixed-role shape. It adds no article-specific rule, heading inferred
