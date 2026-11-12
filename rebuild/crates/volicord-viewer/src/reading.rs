@@ -1231,20 +1231,14 @@ fn render_document_body(
             if let ViewerView::WorkContext {work,..}=&r.view { if !target.contains("work=") { target.push_str(&format!("#row-{work}")); } }
             escape(&target)
         }, back_label, if grouped {"<section class=\"work-reading-group\" data-reading-group=\"work\">"} else {""}, if decision.is_some() {format!("<p class=\"eyebrow\">{kind} · {}</p>",text(r.locale,"interpretation and observations","해석과 관측"))} else {String::new()}));
-    if current {
-        if let Some(name) = answers
-            .card_name()
-            .filter(|name| Some(*name) != answers.reading_title())
-        {
-            html.push_str(&format!(
-                "<p class=\"work-name\" data-publication-scope=\"name\" lang=\"{}\">{} · {}</p>",
-                escape(&content_language_tag(&r.requested_language)),
-                text(r.locale, "Work", "작업"),
-                escape(name)
-            ));
-        }
-    }
-    if let Some((index, title)) = answers
+    if let Some(name) = answers
+        .work_name
+        .as_ref()
+        .filter(|name| name.provenance.is_some())
+    {
+        let provenance = name.provenance.as_ref();
+        html.push_str(&format!("<h1 data-title-basis=\"generated-interpretation\" data-publication-scope=\"name\" data-realization=\"{}\" lang=\"{}\">{}</h1>",provenance.map(|p| p.realization_fingerprint.as_str()).unwrap_or_default(),escape(&content_language_tag(&r.requested_language)),escape(name.reading_title().unwrap_or_default())));
+    } else if let Some((index, title)) = answers
         .prose
         .iter()
         .enumerate()
@@ -1252,13 +1246,6 @@ fn render_document_body(
     {
         html.push_str(&format!("<div id=\"{}\" tabindex=\"-1\"{}><h1 data-title-basis=\"generated-interpretation\" data-question=\"Heading\" lang=\"{}\" data-content-language=\"{}\">{}</h1></div>",reader_claim_anchor(answers,index),publication_scope(answers),escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&title.text)));
         reader_inline_citations(html, r, answers, index);
-    } else if let Some(name) = answers
-        .work_name
-        .as_ref()
-        .filter(|name| name.provenance.is_some())
-    {
-        let provenance = name.provenance.as_ref();
-        html.push_str(&format!("<h1 data-title-basis=\"generated-interpretation\" data-publication-scope=\"name\" data-realization=\"{}\" lang=\"{}\">{}</h1>",provenance.map(|p| p.realization_fingerprint.as_str()).unwrap_or_default(),escape(&content_language_tag(&r.requested_language)),escape(name.reading_title().unwrap_or_default())));
     } else {
         html.push_str(&format!(
             "<h1 data-title-basis=\"neutral-label\" lang=\"{}\">{}</h1>",
@@ -1835,6 +1822,20 @@ fn render_evidence_index(html: &mut String, r: &ViewerRequest, answers: &ReaderA
         document_anchor(answers,"evidence-index"),publication_scope(answers),text(r.locale,"Evidence index", "근거 색인"),
         text(r.locale,"Start with the statement you want to check. Source ranges show observed bytes; original records show what was reported or chosen. Neither alone verifies every interpretation.",
             "확인할 문장에서 시작하세요. Source 범위는 관측된 바이트를, 원래 기록은 보고되거나 선택된 내용을 보여 줍니다. 어느 쪽도 그 자체로 모든 해석을 검증하지는 않습니다.")));
+    // The independently admitted Work name is the shared list/detail title.
+    // Keep the article's own heading and exact claim anchor deliberately readable
+    // without presenting a competing title or changing either publication basis.
+    if answers.card_name().is_some() {
+        if let Some((index, title)) = answers
+            .prose
+            .iter()
+            .enumerate()
+            .find(|(_, a)| a.question == "Heading")
+        {
+            html.push_str(&format!("<div class=\"article-heading-original\" id=\"{}\" tabindex=\"-1\"{}><p class=\"source-note\">{}</p><p data-question=\"Heading\" lang=\"{}\">{}</p></div>",reader_claim_anchor(answers,index),publication_scope(answers),text(r.locale,"Original article heading","설명 원래 제목"),escape(&content_language_tag(&r.requested_language)),escape(&title.text)));
+            reader_inline_citations(html, r, answers, index);
+        }
+    }
     if answers.evidence_index.is_empty() {
         html.push_str(&format!("<p>{}</p>",text(r.locale,"No admitted article claims are available to index. Original records remain inspectable.", "색인할 수 있는 유효한 설명 문장이 없습니다. 원래 기록은 검사할 수 있습니다.")));
     }

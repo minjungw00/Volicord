@@ -287,3 +287,53 @@ fn purpose_classification_does_not_certify_an_invented_short_title(
     assert_eq!(w.reading.goal.original_text.as_deref(), Some(GOAL));
     Ok(())
 }
+
+#[test]
+fn independent_work_name_is_the_single_list_and_detail_title(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (mut w, r) = fixture()?;
+    let mut article = reading(&w, &r, "A differently authored article heading");
+    article
+        .content
+        .as_mut()
+        .ok_or("article")?
+        .realization
+        .paragraphs[0]
+        .question = ExplanationQuestion::Heading;
+    let mut name = reading(&w, &r, "Investigate the return value");
+    name.content.as_mut().ok_or("name")?.realization.paragraphs[0].question =
+        ExplanationQuestion::Heading;
+    w.reading.explanations = vec![article];
+    w.reading.name_explanations = vec![name];
+    for article_current in [true, false] {
+        w.reading.explanations[0].state = if article_current {
+            ExplanationState::Current
+        } else {
+            ExplanationState::Unavailable
+        };
+        let questions = work_answers(&w, "en", r.locale.fixed());
+        assert_eq!(questions.card_name(), Some("Investigate the return value"));
+        let answers = ReaderAnswers::new(
+            &questions,
+            r.project_id,
+            &format!("work:{}", w.work_item_id),
+            "en",
+            "article",
+        );
+        let mut html = String::new();
+        render_answers(&mut html, &r, &questions, Some(&w), false);
+        assert_eq!(html.matches("<h1 ").count(), 1);
+        assert!(html.contains("lang=\"en\">Investigate the return value</h1>"));
+        assert!(!html.contains("class=\"work-name\""));
+        if article_current {
+            let anchor = reader_claim_anchor(&answers, 0);
+            assert_eq!(html.matches(&format!("id=\"{anchor}\"")).count(), 1);
+            let original = html
+                .find("class=\"article-heading-original\"")
+                .ok_or("original heading")?;
+            assert!(html[..original].contains("class=\"reading-section evidence-index\""));
+            assert!(html[original..].contains("A differently authored article heading"));
+        }
+    }
+    Ok(())
+}

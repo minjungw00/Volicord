@@ -49,6 +49,13 @@ async function start(item,runtime){
      assert.ok(alignment.right<=27&&alignment.bottom<=27,'repository reading action stays at the lower right');
     }
 
+    if(geometry.rows){
+     const first=page.locator('.work-row').first(),name=await first.locator('h3').textContent(),returnUrl=page.url();
+     await first.click();
+     assert.equal(await page.locator('article.doc > .work-reading-group > .doc-head h1').textContent(),name,'the independent Work name is stable from row to detail');
+     assert.equal(await page.locator('.doc-head .work-name').count(),0,'no second competing Work title');
+     await page.goto(returnUrl);await frame(page);
+    }
     if(item.synthetic&&view==='work'&&width===320){
      const clamp=await page.addStyleTag({content:'.work-main p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}'});
      assert.ok((await clippedSummaries(page)).length,'controlled final-qualification clipping must be detected');
