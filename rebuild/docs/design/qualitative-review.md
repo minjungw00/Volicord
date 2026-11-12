@@ -423,6 +423,13 @@ their reason, bounds and inspection basis at the original field. Null/empty sect
 genuine returned absence. Omissions cannot suppress available contradictory identity or direction.
 Recomputed consistency diagnostics report return-internal role/key/scope/action contradictions;
 the independent observation-time observer remains the factual machine-policy owner.
+Whole-field omission counts use the enclosing serialized Product DTO, not this
+smaller private selection. In particular, `ExplanationProvenance` has sixteen
+serialized fields, including nullable `publication_id` and
+`realization_fingerprint`; its skipped request-local fingerprint is excluded.
+An exact same-object omission remains indeterminate, while a present wrong
+Project, language, direction or foreign field remains contradictory. Correcting
+this observer does not supply missing interaction or rewrite an earlier run.
 Its machine basis retains a per-Recall Goal revision/Source result, mutation invocation/completion
 coordinates, expected/actual revisions, replay disposition and separate correction authorization Source,
 plus any verified start/resume relationship or scoped uncertainty.

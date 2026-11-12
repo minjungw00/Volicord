@@ -12,6 +12,16 @@ ANSWER_DTO_FIELDS = frozenset({
 })
 ANSWER_DTO_OPTIONAL = frozenset({'work_name', 'work_summary'})
 
+# Serialized ExplanationProvenance, rather than the smaller private selection.
+# Option-valued publication_id is still serialized when null. The request-local
+# source_read_fingerprint is skipped by Product and is not a DTO member.
+PROVENANCE_DTO_FIELDS = frozenset({
+    'publication_id', 'project_id', 'subject', 'question', 'language',
+    'fingerprint', 'realization_fingerprint', 'generated_at_unix_micros',
+    'generator', 'generator_identity_status', 'semantic_approval_status',
+    'citations', 'evidence', 'uncited_evidence_count', 'source_status', 'conflicts',
+})
+
 
 def transport_omission(value):
     if not isinstance(value, dict) or set(value) != {'transport_omission'}:

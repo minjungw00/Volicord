@@ -282,6 +282,8 @@ class AnswerTests(unittest.TestCase):
             'project_id': correct['project_id'], 'subject': {'kind': 'work', 'identity': list(bytes.fromhex(work['work_item_id']))},
             'language': 'en', 'generator_identity_status': 'self_reported_not_independently_verified',
             'question': 'work', 'fingerprint': 'ab' * 32, 'generated_at_unix_micros': 1,
+            'publication_id': None, 'realization_fingerprint': 'cd' * 32,
+            'semantic_approval_status': 'not_established', 'citations': [], 'uncited_evidence_count': 0,
             'generator': {'host': 'fixture', 'session': 'fixture', 'agent': None, 'model': None},
             'source_status': [], 'conflicts': [],
             'evidence': [{'key': 'next_step', 'identity': action['checkpoint_id'], 'revision': 1,
@@ -290,6 +292,48 @@ class AnswerTests(unittest.TestCase):
             prose=[{'question': 'NextStep', 'role': 'generated_interpretation',
                 'text': 'Continue the task using the recorded action.', 'evidence_keys': ['next_step']}])
         return correct
+
+    def test_serialized_provenance_omission_counts_publication_fields(self):
+        value = self.generated_answer()
+        provenance = value['selected_work']['answers']['provenance']
+        # Current Product serializes sixteen provenance fields, including the
+        # nullable publication ID and exact-output fingerprint. The bounded
+        # Recall keeps six and explicitly omits the other ten.
+        kept = {'fingerprint', 'generator_identity_status', 'language',
+                'project_id', 'publication_id', 'source_status'}
+        self.assertEqual(len(provenance), 16)
+        for field in set(provenance) - kept:
+            del provenance[field]
+        provenance['transport_omission'] = {
+            'reason': 'serialized_byte_budget', 'omitted_field_count': 10,
+            'basis': 'inspect the authoritative record at this identity'}
+        _, fact = self.evaluate(value, cli=value)
+        self.assertEqual(fact['status'], 'indeterminate', fact)
+        for observation in fact['basis']['observations']:
+            self.assertEqual(observation['errors'], [])
+            omitted = {r['field'] for r in observation['transport_omissions']}
+            self.assertTrue({'subject', 'evidence'} <= omitted)
+        self.assertEqual(m.disposition('shared_answer_integrity', fact['status']),
+                         'qualitative_review_required')
+
+        for mutation in ('project', 'language', 'too_few', 'too_many', 'foreign_field'):
+            with self.subTest(mutation=mutation):
+                self.setUp()
+                wrong = copy.deepcopy(value)
+                provenance = wrong['selected_work']['answers']['provenance']
+                if mutation == 'project':
+                    provenance['project_id'] = 'ff' * 16
+                elif mutation == 'language':
+                    provenance['language'] = 'ko'
+                elif mutation == 'foreign_field':
+                    provenance['foreign_scope'] = 'ff' * 16
+                else:
+                    provenance['transport_omission']['omitted_field_count'] = (
+                        9 if mutation == 'too_few' else 11)
+                _, fact = self.evaluate(wrong)
+                self.assertEqual(fact['status'], 'confirmed_violation', fact)
+                self.assertEqual(m.disposition('shared_answer_integrity', fact['status']),
+                                 'hard_blocking')
 
     def dto_omitted_answer(self):
         value = self.generated_answer()
