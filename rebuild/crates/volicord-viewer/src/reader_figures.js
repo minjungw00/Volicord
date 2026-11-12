@@ -13,7 +13,7 @@ function createReaderFigures({lifetime,modal}) {
     node.dataset.selected='true';
     const text=document.createElement('span'),link=document.createElement('a');
     text.textContent=node.getAttribute('aria-label');link.href=node.getAttribute('href');
-    link.className='diagram-text-link paragraph-evidence-action';link.dataset.element=node.id;link.textContent=label('Read claim and evidence','주장과 근거 읽기');
+    link.className='diagram-text-link paragraph-evidence-action';link.dataset.element=node.id;link.textContent=label('Read element explanation','요소 설명 읽기');
     scene.selection.replaceChildren(text,link);scene.selection.hidden=false;
   }
   function clamp(scene) {

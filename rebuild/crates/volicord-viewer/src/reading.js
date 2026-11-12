@@ -298,9 +298,6 @@
         // this activation, even if a later activation uses the same element.
         history.replaceState({...state(),diagramBack:token},'');
         navigate(diagramLink.getAttribute('href'),next);
-        const chosen=document.getElementById(diagramLink.getAttribute('href').slice(1));
-        const evidence=chosen?.querySelector('a.evidence-link');
-        if(evidence)openEvidence(evidence,element,diagramReturns.get(token));
       }
     }
     const diagramReturn=event.target.closest('a.diagram-return');
@@ -323,7 +320,15 @@
     }
     const link = event.target.closest('a.evidence-link');
     if (link && plainLink) {
-      event.preventDefault();openEvidence(link);
+      event.preventDefault();
+      const claim=link.closest('.diagram-claim');
+      const element=claim&&document.getElementById(claim.dataset.element);
+      const prior=element&&diagramReturns.get(state().diagramReturn);
+      // Source inspection is explicit after local explanation selection. Keep
+      // the exact diagram origin/camera as the return even across range changes.
+      if(element?.closest('.admitted-diagram')===claim?.closest('.admitted-diagram')&&element){
+        openEvidence(link,element,prior?.element===element.id?prior:null);
+      } else openEvidence(link);
     }
   });
   lifetime.on(document,'keydown',event=>{

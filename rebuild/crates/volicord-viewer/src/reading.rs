@@ -766,19 +766,8 @@ fn render_diagrams(
                 )
             ));
         }
-        if matches!(
-            d.meaning,
-            volicord_projections::DiagramMeaning::Sequence { .. }
-        ) {
-            html.push_str(&caption);
-        }
+        html.push_str(&caption);
         html.push_str(&visual);
-        if !matches!(
-            d.meaning,
-            volicord_projections::DiagramMeaning::Sequence { .. }
-        ) {
-            html.push_str(&caption);
-        }
         html.push_str("<div class=\"diagram-claims\">");
         let connections = match &d.meaning {
             volicord_projections::DiagramMeaning::Sequence { groups, .. } => groups

@@ -958,9 +958,14 @@ short labels, execution order or repository-specific coordinates. Short authored
 spans and headings require ordinary preparation/composition/recording from permitted
 original evidence. A reference's fictional records never enter the Runtime.
 
-Live node/relation/message/guard selection opens its own exact publication-bound
-claim and first covering Source. The strip remains selected. Range selection comes
-before complete code; the original claim/provenance is deliberately expandable.
+Node/relation/message/guard selection first opens only its exact publication-bound
+local explanation below the figure. Its explicit Evidence action opens the bound
+Source family; selection alone performs no Source request or evidence-panel opening.
+The full figure description precedes the visual for every diagram kind, while the
+selected element explanation remains below it. The strip remains selected. Range
+selection comes before complete code; original claim/provenance is deliberately
+expandable. This supersedes immediate claim-plus-Source activation after the direct
+2026-11-12 reader feedback.
 Native/no-JS links preserve the same claim -> evidence -> return meanings. The primary
 return from diagram evidence reaches the exact originating element, including after
 choosing another covering range or reading a shared code payload. A secondary return

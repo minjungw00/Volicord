@@ -177,6 +177,14 @@ async function nativeLinkNavigation(page, link, receipt) {
           if(mode==='live') {assert(prior,'browser position at actual element activation');assert(prior.meaning.length,'actual visible meaning at activation');}
           const claimId=(await element.getAttribute('href')).slice(1);
           const claim=page.locator('[id="'+claimId+'"]');
+          if(mode==='live') {
+            assert.equal(await page.locator('body').getAttribute('data-source-open'),'false','element selection opens only its local explanation');
+            assert.equal(await page.locator('.source-point[data-selected=true]').count(),0,'no implicit Source selection');
+            assert.equal(await claim.getAttribute('data-active'),'true','exact local explanation selected');
+          }
+          const captionBefore=await figure.evaluate(n=>{const caption=n.querySelector(':scope > .diagram-caption,:scope > .shared-diagram-basis'),visual=n.querySelector(':scope > .diagram-full-view');return !!caption&&!!visual&&!!(caption.compareDocumentPosition(visual)&Node.DOCUMENT_POSITION_FOLLOWING);});
+          assert.equal(captionBefore,true,'figure description precedes its visual');
+
           if(config.capture_sources) await claim.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-detail.png`)});
           const native_navigation=[];
           if(config.native_navigation && mode==='live') {
@@ -213,10 +221,8 @@ async function nativeLinkNavigation(page, link, receipt) {
           assert(nativeId,'critical purpose is in the complete native family');
           assert.equal(await page.locator('[id="'+nativeId+'"]').getAttribute('data-selected-point'),boundPointId,'native origin keeps independently selected citation');
           const selectedStarted=Date.now();
-          // Live SVG activation already opens exact evidence. A second click
-          // would target the inert claim behind the narrow modal. Native
-          // reading deliberately follows the visible claim's Source action.
-          if(mode==='live'){const picker=boundPoint.locator('.evidence-choice-picker select');if(await picker.count()&&await picker.inputValue()!=='#'+nativeId+'!'+claimId)await picker.selectOption('#'+nativeId+'!'+claimId);}
+          // Both consumers require explicit Source inspection after selection.
+          if(mode==='live'){await action.click();const picker=boundPoint.locator('.evidence-choice-picker select');if(await picker.count()&&await picker.inputValue()!=='#'+nativeId+'!'+claimId)await picker.selectOption('#'+nativeId+'!'+claimId);}
           else {await action.click();if((await action.getAttribute('href')).slice(1)!==nativeId){const initial=page.locator(':target');await initial.locator('.native-range-selector>summary').click();await initial.locator('a[href="#'+nativeId+'"]').click();}}
           const pointId=boundPointId;
           const point=page.locator('[id="'+pointId+'"]');
@@ -251,7 +257,7 @@ async function nativeLinkNavigation(page, link, receipt) {
             if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-returned.png`)});
             return_ms=Date.now()-returnStarted;
             assert.equal(await figure.locator('.diagram-alternative,.diagram-relations,.diagram-timeline').count(),0,'one normal semantic scene');
-            await element.focus();await page.keyboard.press('Enter');
+            await element.focus();await page.keyboard.press('Enter');await action.click();
             const deep=page.url();await page.reload({waitUntil:'load'});
             await citationReady(point);
             assert.equal(page.url(),deep,'same exact publication/claim deep link');
@@ -267,7 +273,7 @@ async function nativeLinkNavigation(page, link, receipt) {
               const independent=await page.locator('[data-reader-publication]').evaluateAll((ns,id)=>ns.filter(n=>n.dataset.readerPublication!==id).map(n=>({id:n.id,publication:n.dataset.readerPublication,html:n.outerHTML})),failedPublication);
               assert(await page.locator('.appendix > .cited-code pre.code-region').count()>1,'multiple original cached Source payloads challenge publication-wide withholding');
               await page.route(/\/citation\?/,route=>route.fulfill({status:410,contentType:'application/json',body:JSON.stringify({reason,publication_readable:false})}));
-              await element.focus();await page.keyboard.press('Enter');
+              await element.focus();await page.keyboard.press('Enter');await action.click();
               await page.waitForFunction(id=>document.getElementById(id)?.dataset.unavailable==='true',await figure.getAttribute('id'));
               assert.equal(await figure.locator('svg,.diagram-alternative,.diagram-claim').count(),0,'known failure removes all cached diagram meanings');
               assert.equal(await page.locator('.appendix > .cited-code[data-reader-publication="'+failedPublication+'"] pre.code-region').count(),0);

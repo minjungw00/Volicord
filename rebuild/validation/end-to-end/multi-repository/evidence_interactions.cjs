@@ -4,10 +4,17 @@ const {citationReady,citationInspection,embeddedCode}=require('../../viewer-desi
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
 const settle=async page=>{await page.bringToFront();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));await pause(100);};
 async function complete(page){return citationReady(page.locator('.source-point[data-selected=true]'));}
+async function inspectElementSource(page,element){
+ const claimId=(await element.getAttribute('href')).slice(1);
+ const claim=page.locator(`[id="${claimId}"]`);
+ assert.equal(await page.locator('body').getAttribute('data-source-open'),'false','element activation stays in its local explanation');
+ await claim.locator('a.evidence-link').first().click();
+}
+
 async function readingControls(page,{figureId,elementId,width}){
  const figure=page.locator(`[id="${figureId}"]`),element=page.locator(`[id="${elementId}"]`),point=()=>page.locator('.source-point[data-selected=true]');
  const notes=[];
- async function open(){await element.focus();await page.keyboard.press('Enter');await complete(page);await settle(page);}
+ async function open(){await element.focus();await page.keyboard.press('Enter');await inspectElementSource(page,element);await complete(page);await settle(page);}
  if(width>760){
   await open();const pane=point().locator('xpath=..'),handle=pane.locator(':scope > .evidence-resizer');
   const help=await handle.getAttribute('aria-label');
@@ -36,7 +43,7 @@ async function readingControls(page,{figureId,elementId,width}){
 async function inspect(page,context,{address,figureId,elementId,claimId,sourceId,width}){
  const figure=page.locator(`[id="${figureId}"]`),element=page.locator(`[id="${elementId}"]`),point=()=>page.locator('.source-point[data-selected=true]');
  const notes=[];
- async function open(){await element.focus();await page.keyboard.press('Enter');await complete(page);await settle(page);}
+ async function open(){await element.focus();await page.keyboard.press('Enter');await inspectElementSource(page,element);await complete(page);await settle(page);}
  notes.push(...await readingControls(page,{figureId,elementId,width}));
  // Native modified activation keeps the current tab's selection, URL and scroll.
  await element.focus();await settle(page);
@@ -59,13 +66,13 @@ async function inspect(page,context,{address,figureId,elementId,claimId,sourceId
  // Expanded reading preserves the selected figure, pan/zoom and exact origin.
  await figure.locator('[data-diagram-action=reset]').click();await figure.locator('[data-diagram-action=in]').click();
  const expand=figure.locator('[data-diagram-action=expand]');await expand.click();assert.equal(await expand.getAttribute('aria-expanded'),'true');await figure.locator('[data-diagram-action=in]').click();assert.equal(await figure.locator('.diagram-scale').textContent(),'125%');
- await element.focus();await settle(page);const expandedBefore=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left}));await page.keyboard.press('Enter');await complete(page);await page.keyboard.press('Escape');await settle(page);
+ await element.focus();await settle(page);const expandedBefore=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left}));await page.keyboard.press('Enter');await inspectElementSource(page,element);await complete(page);await page.keyboard.press('Escape');await settle(page);
  assert.equal(await expand.getAttribute('aria-expanded'),'true');assert.equal(await element.evaluate(n=>n===document.activeElement),true);const expandedAfter=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left}));assert.ok(Math.abs(expandedBefore.top-expandedAfter.top)<3,'expanded visible return '+JSON.stringify({expandedBefore,expandedAfter}));await page.keyboard.press('Escape');await settle(page);assert.equal(await expand.getAttribute('aria-expanded'),'false');notes.push('expanded exact return');
  // A delayed real response cannot populate the newly chosen range or claim.
  await page.goto(address);await settle(page);
  const first=page.locator(`[id="${elementId}"]`);let held=false;
  await context.route('**/citation?*',async route=>{if(!held){held=true;await pause(700);}await route.continue().catch(()=>{});});
- await first.focus();await page.keyboard.press('Enter');
+ await first.focus();await page.keyboard.press('Enter');await inspectElementSource(page,first);
  const picker=point().locator('.evidence-choice-picker select');
  if(await picker.count()){
   const options=await picker.locator('option').evaluateAll(ns=>ns.map(n=>({value:n.value,selected:n.selected})));

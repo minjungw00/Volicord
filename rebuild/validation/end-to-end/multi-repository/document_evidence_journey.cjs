@@ -53,13 +53,14 @@ async function run(config){
     'whole declared corpus keeps compact article actions and exact accessible purpose/range');
    if(live)assert.equal(await page.locator('.project-navigation a[aria-current=page]').getAttribute('data-destination'),c.work?'work':'repository');
    else assert.equal(await page.locator('.project-navigation a').count(),3);
-   const figures=page.locator('.admitted-diagram');assert.equal(await figures.count(),publicAnswers.diagrams.length,'whole declared publication figures');
+   const figures=page.locator(`.admitted-diagram[data-reader-publication="${c.publication}"]`);assert.equal(await figures.count(),publicAnswers.diagrams.length,'whole exact declared publication figures, independently of other exported documents');
    if(c.diagram_ids)assert.ok(c.diagram_ids.length&&c.diagram_ids.every(id=>publicAnswers.diagrams.some(d=>d.id===id)),'requested real diagrams exist');
    for(const d of publicAnswers.diagrams.filter(d=>!c.diagram_ids||c.diagram_ids.includes(d.id))){
     // A tall figure's automatic "if needed" alignment centers its middle.
     // Ordinary vertical reading starts at its beginning; do not select, expand
     // or pan the canvas to manufacture a complete initial overview.
     const figure=page.locator(`.admitted-diagram[data-semantic-fingerprint="${d.semantic_fingerprint}"]`);await figure.evaluate(n=>n.scrollIntoView({block:'start'}));await settled(page);
+    assert.equal(await figure.evaluate(n=>{const description=n.querySelector(':scope > .diagram-caption,:scope > .shared-diagram-basis'),visual=n.querySelector(':scope > .diagram-full-view');return !!description&&!!visual&&!!(description.compareDocumentPosition(visual)&Node.DOCUMENT_POSITION_FOLLOWING);}),true,'authored figure description comes before the visual');
     const baseKey=prefix+'-'+d.id;await page.screenshot({path:path.join(config.output,baseKey+'-initial.png')});
     await figure.screenshot({path:path.join(config.output,baseKey+'-figure.png')});
     const entry=await observeOverview(figure,d);write(baseKey+'-entry.json',JSON.stringify(entry,null,2));assert.deepEqual(entry.errors,[],'ordinary figure entry');
@@ -85,11 +86,17 @@ async function run(config){
     const citation=unit.citations[citationIndex],expected=citationBytes(c,citation).toString('utf8');
     const figureId=await figure.getAttribute('id'),element=figure.locator(`a.diagram-element[id="${figureId}-${semantic.id}"]`),claimId=(await element.getAttribute('href')).slice(1),claim=page.locator(`[id="${claimId}"]`);
     await element.focus();await settled(page);const before=await element.evaluate(n=>({top:n.getBoundingClientRect().top,left:n.getBoundingClientRect().left,y:scrollY}));
+    let implicitRequests=0;const countImplicit=request=>{if(new URL(request.url()).pathname==='/citation')implicitRequests++;};
+    page.on('request',countImplicit);
     await page.keyboard.press('Enter');await settled(page);
+    page.off('request',countImplicit);assert.equal(implicitRequests,0,'element selection alone fetches no Source');
     const exactLink=claim.locator(`a.evidence-link[href$="-c${citationIndex+1}"]`);
     const href=await exactLink.count()?await exactLink.getAttribute('href'):await claim.locator('a.evidence-link').first().getAttribute('href');
     const point=await citationPoint(page,href),pointId=await point.getAttribute('id');let returnPoint=point;
     if(scripted){
+     assert.equal(await page.locator('body').getAttribute('data-source-open'),'false','local element description precedes explicit Source inspection');
+     assert.equal(await page.locator('.source-point[data-selected=true]').count(),0);
+     await claim.locator('a.evidence-link').first().click();
      await point.waitFor({state:'visible'});assert.equal(await point.getAttribute('data-reader-publication'),c.publication);
      assert.equal(await point.locator(':scope > .evidence-claim').textContent(),label.text,'selected heading is exact admitted action wording, without a generated prefix');
      assert.ok((await point.locator(':scope > .evidence-selection-context').innerText()).length,'qualified actor/order/guard context remains adjacent');

@@ -5649,6 +5649,13 @@ and scope with those originals, and test CLI/complete MCP/live/native reading.
 A transport/order pass or controlled fixture is no independent semantic or human
 verdict. Use focused logs and numeric exits; no aggregate or official V11 is implied.
 
+The 2026-11-12 selection control additionally requires no selected Source or
+citation request after a node/relationship activation: only the exact below-figure
+explanation opens. Its explicit action then opens the original exact Source family.
+All diagram kinds place their authored description above the visual. Live/native/
+offline controls retain native modified links, full bytes, origin/camera return,
+changed ranges and publication-loss behavior.
+
 ### User-activated Viewer entry
 
 Viewer's earlier scoped controls
