@@ -234,7 +234,28 @@
       }
     }
     if (!point && !restoredSource && navigationChanged && target?.matches('.diagram-claim')) {
-      target.dataset.active='true';target.focus({preventScroll:true});target.scrollIntoView({block:'nearest'});
+      target.dataset.active='true';target.focus({preventScroll:true});
+      const activation=diagramReturns.get(state().diagramReturn);
+      if(activation?.keepFigure && activation.element===target.dataset.element) {
+        // Ordinary element selection reveals its local explanation without
+        // replacing the visible graph with a fragment's top-aligned paragraph.
+        // Explicit explanation links and direct deep links still navigate there.
+        const hash=location.hash;
+        const restore=()=>{
+          if(selected || location.hash!==hash || !activation.trigger?.isConnected)return;
+          const active=document.activeElement;
+          if(active!==target && active!==activation.trigger && active!==document.body)return;
+          const figure=activation.trigger.closest('.admitted-diagram');
+          const viewport=activation.trigger.closest('.diagram-viewport');
+          if(viewport?.isConnected && !figures.restore(figure,activation.camera)) {
+            viewport.scrollLeft=activation.left;viewport.scrollTop=activation.top;
+          }
+          if(figure?.isConnected){figure.scrollLeft=activation.figureLeft;figure.scrollTop=activation.figureTop;}
+          window.scrollTo(0,activation.y);
+          window.scrollBy(0,activation.trigger.getBoundingClientRect().top-activation.triggerTop);
+        };
+        restore();lifetime.frame(()=>lifetime.frame(restore));
+      } else target.scrollIntoView({block:'nearest'});
     }
     if (!point && target?.matches('.diagram-element')) {
       const candidate=diagramReturns.get(state().diagramReturn);
@@ -292,7 +313,7 @@
         const claim=[...figure.querySelectorAll('.diagram-claim')].find(n=>n.getClientRects().length);
         const token=remember(diagramReturns,{camera:figures.capture(figure,id),element:id,trigger:element,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop,
           claim:claim?.id || null,figureLeft:figure.scrollLeft,figureTop:figure.scrollTop,
-          triggerTop:element.getBoundingClientRect().top});
+          triggerTop:element.getBoundingClientRect().top,keepFigure:diagramLink.matches('.diagram-element')});
         const next={...state(),diagramReturn:token};
         // Both the native Back destination and the new selected claim retain
         // this activation, even if a later activation uses the same element.

@@ -1379,6 +1379,13 @@ The diagram Move menu exposes its real relationships, conditions and participant
 selection retains their exact labels and a contextual evidence action. Native
 readable scale must leave its controls clear of the first diagram content.
 
+Ordinary live diagram-element selection reveals the local explanation while
+preserving the visible graph's outer page position and camera. The explicit
+“Read element explanation” link and a direct claim deep link may navigate to that
+explanation. Selecting an element still opens no Source; Source inspection and
+exact return remain separate explicit actions. Script-free anchors keep native
+fragment navigation rather than claiming scripted position preservation.
+
 A script-free export cannot demonstrate passive scroll tracking, pointer resizing
 or camera controls. Delivery must provide the installed live Viewer as the primary
 interactive review, with an explicit local launch path and separately named native

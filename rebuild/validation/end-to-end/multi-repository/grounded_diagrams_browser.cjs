@@ -175,6 +175,12 @@ async function nativeLinkNavigation(page, link, receipt) {
           await page.keyboard.press('Enter');
           const prior=await page.evaluate(()=>window.__diagramActivation);
           if(mode==='live') {assert(prior,'browser position at actual element activation');assert(prior.meaning.length,'actual visible meaning at activation');}
+          if(mode==='live') {
+            await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+            const selected=await figure.locator('.diagram-viewport').evaluate(n=>({y:scrollY,left:n.scrollLeft,top:n.scrollTop}));
+            fs.writeFileSync(path.join(output,`${c.key}-${width}-${mode}-local-selection-context.json`),JSON.stringify({prior,selected},null,2),{flag:'wx'});
+            for(const coordinate of ['y','left','top']) assert(Math.abs(selected[coordinate]-prior[coordinate])<=1,'element selection preserves the visible figure '+coordinate+' '+JSON.stringify({prior,selected}));
+          }
           const claimId=(await element.getAttribute('href')).slice(1);
           const claim=page.locator('[id="'+claimId+'"]');
           if(mode==='live') {
