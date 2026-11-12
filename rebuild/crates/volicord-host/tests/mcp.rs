@@ -3638,6 +3638,38 @@ fn mcp_pending_research_accepts_zero_known_alternatives_without_authority() {
                 true
             );
             let retained = structured(&call(&mut adapter,"materiality_review",json!({"action":"draft","project_id":project,"engineering_choice_discovery_candidate_id":discovery_id}))).clone();
+            // Bounded findings can revise an investigation that is still pending.
+            // The adapter owns evidence-kind assembly; overlapping disposition
+            // and completion evidence must not reject an otherwise valid review.
+            let mut evidence_revision = judgment.clone();
+            evidence_revision["evidence_completion_basis"] = json!([
+                "The bounded inspection is retained, but the credible alternative set is still unknown."
+            ]);
+            let revised = call(
+                &mut adapter,
+                "materiality_review",
+                draft_request(
+                    &retained,
+                    "Retain bounded findings without claiming that investigation is resolved.",
+                    draft_learning_participation(&retained, "inactive", json!({})),
+                    vec![evidence_revision],
+                ),
+            );
+            assert_eq!(revised["result"]["isError"], false, "{revised}");
+            assert_eq!(
+                structured(&revised)["review_candidate_id"],
+                structured(&review)["review_candidate_id"]
+            );
+            assert_eq!(
+                structured(&revised)["workflow"]["stage"],
+                "research_or_prototype"
+            );
+            assert_eq!(
+                structured(&revised)["workflow"]["blocks_ordinary_work"],
+                true
+            );
+            let retained = structured(&call(&mut adapter,"materiality_review",json!({"action":"draft","project_id":project,"engineering_choice_discovery_candidate_id":discovery_id}))).clone();
+            assert_eq!(retained["current_review"]["revision"], 2);
             // An invented accounting identity cannot fill an unknown set.
             judgment["alternative_accounting"] =
                 unresolved_alternative_accounting("uncertainty", &["invented"], &json!(source));

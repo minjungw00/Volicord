@@ -7305,18 +7305,21 @@ fn materiality_dimension_from_judgment(
         }
     };
     if value.get("evidence_completion_basis").is_some() {
-        match choice.evidence_state {
+        let completion_kind = match choice.evidence_state {
             EngineeringChoiceEvidenceState::Sufficient => {
                 return Err(HostError::new(
                     "evidence_completion_basis is only valid for a discovery-owned research/prototype requirement",
                 ));
             }
             EngineeringChoiceEvidenceState::ResearchRequired => {
-                kinds.push(WorkAuthorityBasisKind::ResearchEvidence);
+                WorkAuthorityBasisKind::ResearchEvidence
             }
             EngineeringChoiceEvidenceState::PrototypeRequired => {
-                kinds.push(WorkAuthorityBasisKind::PrototypeEvidence);
+                WorkAuthorityBasisKind::PrototypeEvidence
             }
+        };
+        if !kinds.contains(&completion_kind) {
+            kinds.push(completion_kind);
         }
     }
     if matches!(
