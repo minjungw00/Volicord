@@ -1419,8 +1419,9 @@ pub fn build_project_projection(
         "unresolved_work_grouping",
         &mut issues,
     );
-    let work_index = crate::reading::WorkHistoryIndex::new(reading_canonical);
-    let overview_selection = work_index.overview_selection(8);
+    // Project navigation stays complete even when the document reads one Work.
+    // Index references once, then retain the exact subject before materializing prose.
+    let mut work_index = crate::reading::WorkHistoryIndex::new(inputs.canonical);
     let work_count = work_index.0.len();
     let mut work_state_counts = BTreeMap::new();
     for group in work_index.0.values() {
@@ -1432,25 +1433,36 @@ pub fn build_project_projection(
             });
         *work_state_counts.entry(state).or_insert(0) += 1;
     }
+    let indexed_checkpoints = work_index.0.values().map(|g| g.checkpoints.len()).sum();
+    if let crate::WorkSelector::ExactWork(work) = inputs.selection {
+        work_index.0.retain(|identity, _| *identity == work);
+    }
+    let matches_state = |group: &crate::reading::WorkHistory<'_>| {
+        inputs.detail.work_state.is_none_or(|state| {
+            group
+                .checkpoints
+                .last()
+                .map_or(crate::UnderstandingWorkState::Open, |cp| {
+                    cp.work_state.into()
+                })
+                == state
+        })
+    };
+    let matched_work_count = work_index
+        .0
+        .values()
+        .filter(|group| matches_state(group))
+        .count();
+    let overview_selection = work_index.overview_selection(8);
     let work_offset = inputs
         .detail
         .work_page
         .saturating_mul(limit)
-        .min(work_count);
+        .min(matched_work_count);
     let page_ids = work_index
         .0
         .iter()
-        .filter(|(_, group)| {
-            inputs.detail.work_state.is_none_or(|state| {
-                group
-                    .checkpoints
-                    .last()
-                    .map_or(crate::UnderstandingWorkState::Open, |cp| {
-                        cp.work_state.into()
-                    })
-                    == state
-            })
-        })
+        .filter(|(_, group)| matches_state(group))
         .map(|(id, _)| id)
         .skip(work_offset)
         .take(limit)
@@ -1475,7 +1487,7 @@ pub fn build_project_projection(
     }
     let work_read_cost = WorkReadCost {
         classified_works: work_count,
-        indexed_checkpoints: work_index.0.values().map(|g| g.checkpoints.len()).sum(),
+        indexed_checkpoints,
         materialized_works: required_ids.len(),
         materialized_checkpoints: required_ids
             .iter()
@@ -1653,8 +1665,8 @@ pub fn build_project_projection(
         .into_iter()
         .filter_map(|id| materialized.remove(&id))
         .collect::<Vec<_>>();
-    let omitted = work_count.saturating_sub(work_offset + work_history.len());
-    if omitted > 0 {
+    let omitted = matched_work_count.saturating_sub(work_offset + work_history.len());
+    if omitted > 0 && !inputs.detail.catalogue_only {
         issues.push(bound_issue("work_history", omitted));
     }
     let mut decision_lifecycles = reading_canonical

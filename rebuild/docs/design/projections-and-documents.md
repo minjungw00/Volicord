@@ -3310,6 +3310,10 @@ page and citation URL; foreign subjects/publications still fail exact binding.
 Guarded confirmation remains restricted to the listener's configured Project.
 Work state totals are computed from the complete canonical Work index, before
 materialization/paging; a state shortcut filters that index before page selection.
+An exact Work document retains those Project-wide totals while restricting its
+history and prose to that Work. Scope exclusions are not payload omissions; read-cost
+metadata separately counts the complete reference index and selected materialization.
+Card-only catalogue requests do not report unrequested history as omitted content.
 This is a scoped list entry, not catalogue search/scale redesign. Existing list
 page size/order remain unchanged. No publication or Source is prepared on selection.
 

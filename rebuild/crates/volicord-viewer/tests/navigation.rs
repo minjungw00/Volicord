@@ -7,6 +7,240 @@ use volicord_operations::LocalOperations;
 use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerRequest, ViewerView};
 
 #[test]
+fn catalogue_does_not_count_unrequested_history_as_omitted_content(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture()?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let (p, _) = f.operations.project_catalogue_projection_profiled(
+        f.project,
+        &volicord_projections::WorkCatalogueQuery::default(),
+        "en",
+    )?;
+    assert_eq!(p.work_count, 4);
+    assert_eq!(
+        p.work_catalogue.as_ref().ok_or("catalogue")?.matched_count,
+        4
+    );
+    assert!(p.work_history.is_empty());
+    assert_eq!(p.work_read_cost.materialized_works, 0);
+    assert!(
+        !p.issues
+            .iter()
+            .any(|issue| issue.affected_scope == "work_history"),
+        "a card-only request did not ask for history bodies"
+    );
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn filtered_pages_report_only_the_matching_suffix_as_omitted_content(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::*;
+    let mut scenario: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+    scenario["works"][1]["checkpoints"][0]["work"] = "Completed".into();
+    let f = reading_fixture::fixture_scenario(scenario)?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let candidates = f.operations.candidate_basis(f.project)?;
+    let mut matching = [f.goals["older"], f.goals["same_title"]];
+    matching.sort();
+    for page in 0..=2 {
+        let p = build_project_projection(ProjectProjectionInputs {
+            canonical: &before,
+            selection: WorkSelector::Repository,
+            detail: ProjectionDetail {
+                work_page: page,
+                work_state: Some(UnderstandingWorkState::Completed),
+                ..Default::default()
+            },
+            requirements: ProjectionReadRequirements::default(),
+            metadata: &[],
+            analyses: &[],
+            analysis_issues: &[],
+            applicability: volicord_inquiry::ApplicabilityQuery {
+                project_id: f.project,
+                paths: Vec::new(),
+                components: Vec::new(),
+                work_contexts: Vec::new(),
+                current_assumptions: Vec::new(),
+                met_revisit_triggers: Vec::new(),
+            },
+            candidates: CandidateProjectionInput::Available(&candidates),
+            candidate_content_access: CandidateContentAccess::PolicyWithheld,
+            observed_at: before.project.updated_at,
+            bound: ProjectionBound {
+                max_items_per_section: 1,
+            },
+        })?;
+        assert_eq!(p.work_count, 4);
+        assert_eq!(
+            p.work_history
+                .iter()
+                .map(|w| w.work_item_id)
+                .collect::<Vec<_>>(),
+            matching.get(page).copied().into_iter().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            p.issues
+                .iter()
+                .filter(|issue| issue.affected_scope == "work_history")
+                .map(|issue| issue.omitted_count)
+                .sum::<usize>(),
+            usize::from(page == 0)
+        );
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn filtered_work_scope_does_not_report_other_states_as_omitted_content(
+) -> Result<(), Box<dyn std::error::Error>> {
+    use volicord_projections::{ProjectionDetail, UnderstandingWorkState, WorkSelector};
+    let f = reading_fixture::fixture()?;
+    let before = f.operations.canonical_basis(f.project)?;
+    for (selector, state, expected) in [
+        (
+            WorkSelector::Repository,
+            UnderstandingWorkState::Completed,
+            Some(f.goals["older"]),
+        ),
+        (
+            WorkSelector::ExactWork(f.goals["older"]),
+            UnderstandingWorkState::Completed,
+            Some(f.goals["older"]),
+        ),
+        (
+            WorkSelector::ExactWork(f.goals["older"]),
+            UnderstandingWorkState::Paused,
+            None,
+        ),
+        (
+            WorkSelector::Repository,
+            UnderstandingWorkState::Abandoned,
+            None,
+        ),
+    ] {
+        let (p, _) = f.operations.project_projection_detail_profiled(
+            f.project,
+            selector,
+            ProjectionDetail {
+                work_state: Some(state),
+                ..Default::default()
+            },
+        )?;
+        assert_eq!(p.work_count, 4);
+        assert_eq!(
+            p.work_history
+                .iter()
+                .map(|w| w.work_item_id)
+                .collect::<Vec<_>>(),
+            expected.into_iter().collect::<Vec<_>>()
+        );
+        assert!(
+            !p.issues
+                .iter()
+                .any(|issue| issue.affected_scope == "work_history"),
+            "{selector:?}/{state:?}: the complete matching scope has no omitted history"
+        );
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
+fn selected_work_keeps_project_navigation_totals_without_other_work_bodies(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture()?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let selected = f.operations.project_projection_selected(
+        f.project,
+        volicord_projections::WorkSelector::ExactWork(f.goals["older"]),
+    )?;
+    assert_eq!(selected.work_count, 4);
+    assert_eq!(selected.work_history.len(), 1);
+    assert_eq!(selected.work_history[0].work_item_id, f.goals["older"]);
+    assert_eq!(selected.work_read_cost.classified_works, 4);
+    assert_eq!(selected.work_read_cost.indexed_checkpoints, 164);
+    assert_eq!(selected.work_read_cost.materialized_works, 1);
+    assert!(
+        !selected
+            .issues
+            .iter()
+            .any(|issue| issue.affected_scope == "work_history"),
+        "other Works intentionally outside exact reading are not omitted payload"
+    );
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    // The fixture has one completed, one in-progress, one paused and one open Work.
+    // Equal titles and the long distractor history must not change those identities.
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        for view in [
+            ViewerView::Overview,
+            ViewerView::RepositoryExplanation,
+            ViewerView::Work { work: None },
+            ViewerView::Work {
+                work: Some(f.goals["older"]),
+            },
+            ViewerView::Work {
+                work: Some(f.goals["goal_only"]),
+            },
+        ] {
+            let html = viewer
+                .render(
+                    &ViewerRequest {
+                        project_id: f.project,
+                        locale,
+                        requested_language: "en".into(),
+                        view: view.clone(),
+                        guarded_request: None,
+                    },
+                    "project-totals",
+                )?
+                .html;
+            let navigation = html
+                .split("class=\"project-navigation\"")
+                .nth(1)
+                .ok_or("navigation")?
+                .split("</nav>")
+                .next()
+                .ok_or("navigation end")?;
+            assert!(
+                navigation.contains("<span class=\"nav-count\">4</span>"),
+                "{view:?}: Project total"
+            );
+            let states = html
+                .split("class=\"rail-states\"")
+                .nth(1)
+                .ok_or("states")?
+                .split("</div>")
+                .next()
+                .ok_or("states end")?;
+            for state in ["in_progress", "paused", "completed", "open"] {
+                let row = states
+                    .split(&format!("data-state=\"{state}\""))
+                    .nth(1)
+                    .ok_or("state shortcut")?
+                    .split("</a>")
+                    .next()
+                    .ok_or("shortcut end")?;
+                assert!(
+                    row.contains("<span class=\"nav-count\">1</span>"),
+                    "{view:?}: {state}"
+                );
+            }
+            if matches!(view, ViewerView::Work { work: Some(_) }) {
+                assert!(
+                    !html.contains(&f.decisions["other_work"].to_string()),
+                    "other Work Decision stays scoped"
+                );
+            }
+        }
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
 fn native_snapshot_context_is_independent_of_the_export_request(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let f = reading_fixture::fixture()?;
