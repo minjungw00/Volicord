@@ -45,14 +45,15 @@ fn row(
     );
     let article = match e.article {
         CatalogueArticle::Missing => text(r.locale, "Records only", "진행 기록만"),
-        CatalogueArticle::Recorded => text(
-            r.locale,
-            "Article recorded · checked on open",
-            "설명 기록 있음 · 열 때 확인",
-        ),
+        CatalogueArticle::Recorded => text(r.locale, "Explanation recorded", "설명 기록 있음"),
         CatalogueArticle::Unavailable => text(r.locale, "Article unavailable", "설명 사용 불가"),
     };
-    html.push_str(&format!("<a class=\"work-row\" id=\"row-{}\" data-work-link=\"{}\" data-work-id=\"{}\" data-work-state=\"{}\" href=\"{}\"><div class=\"work-main\"><div class=\"work-row-kicker\"><code>{}</code></div><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3><p lang=\"{}\">{}</p></div><div class=\"work-row-state\">{}<span class=\"catalogue-reading-status\"><span class=\"catalogue-status-icon\" data-article-state=\"{:?}\" title=\"{article}\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M6 3h8l4 4v14H6zM14 3v5h4M8 12h7m-7 4h5\"/></svg><span class=\"sr-only\">{article}</span></span><span class=\"catalogue-status-icon\" data-comparison-state=\"not_checked\" title=\"{}\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M8 5V3H3v13h3M8 7h13v14H8zM11 14h7\"/></svg><span class=\"sr-only\">{}</span></span></span></div><div class=\"work-row-date\">",e.id,e.id,e.id,work_state_key(e.state),escape(&target),e.id,if e.name.is_some(){escape(&content_language_tag(&r.requested_language))}else{locale_key(r.locale).into()},if e.name.is_some(){"generated-interpretation"}else{"neutral-label"},escape(name(e,r)),if e.summary.is_some(){escape(&content_language_tag(&r.requested_language))}else{locale_key(r.locale).into()},escape(summary(e,r)),reading::work_state_badge(e.state,r.locale),e.article,text(r.locale,"Repository not compared","저장소 미비교"),text(r.locale,"Repository not compared","저장소 미비교")));
+    let comparison = reading::repository_comparison_label(r.locale, e.repository_comparison);
+    let comparison_state = serde_json::to_value(e.repository_comparison)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    html.push_str(&format!("<a class=\"work-row\" id=\"row-{}\" data-work-link=\"{}\" data-work-id=\"{}\" data-work-state=\"{}\" href=\"{}\"><div class=\"work-main\"><div class=\"work-row-kicker\"><code>{}</code></div><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3><p lang=\"{}\">{}</p></div><div class=\"work-row-state\">{}<span class=\"catalogue-reading-status\"><span class=\"catalogue-status-icon\" data-article-state=\"{:?}\" title=\"{article}\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M6 3h8l4 4v14H6zM14 3v5h4M8 12h7m-7 4h5\"/></svg><span>{article}</span></span><span class=\"catalogue-status-icon\" data-comparison-state=\"{comparison_state}\" title=\"{comparison}\">{}<span>{comparison}</span></span></span></div><div class=\"work-row-date\">",e.id,e.id,e.id,work_state_key(e.state),escape(&target),e.id,if e.name.is_some(){escape(&content_language_tag(&r.requested_language))}else{locale_key(r.locale).into()},if e.name.is_some(){"generated-interpretation"}else{"neutral-label"},escape(name(e,r)),if e.summary.is_some(){escape(&content_language_tag(&r.requested_language))}else{locale_key(r.locale).into()},escape(summary(e,r)),reading::work_state_badge(e.state,r.locale),e.article,reading::repository_comparison_icon()));
     date(html, r, e.updated_at);
     html.push_str(&format!(
         "<small>{} {}</small></div><span class=\"row-arrow\" aria-hidden=\"true\">›</span></a>",

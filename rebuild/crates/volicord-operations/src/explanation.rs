@@ -859,7 +859,7 @@ impl LocalOperations {
         }
     }
 
-    fn retained_applicability(
+    pub(crate) fn retained_applicability(
         &self,
         canonical: &CanonicalReadBasis,
         retained: &RetainedExplanation,

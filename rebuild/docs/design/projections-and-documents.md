@@ -3433,10 +3433,17 @@ article and Source payloads are removed in SQLite before application decoding.
 All card scopes are validated before filtering, then only the page and one
 actual InProgress item are retained. This scans canonical/metadata/card records and revalidates card preparations,
 not a constant-time indexed service; SQLite still scans stored JSON rows.
-It prepares no articles, performs no currentness comparison and reads no Source
-bodies. Article metadata means only “recorded; checked on open”, not confirmed
-readability, review, completion or acceptance. Opening detail uses the existing
-exact publication and Source authority path.
+After filtering and paging, the visible page and independent current-Work card
+(at most nine distinct Works) validate only their selected recorded article through
+the existing permitted-publication path. This may fetch those bounded article
+payloads; it produces no articles and reads no retained Source bodies. Current-code
+analysis-basis sets share a request-local inventory comparison, using the same
+comparison authority and state icons as detail. Missing, denied or invalid articles
+supply no successful comparison. Status costs separately count selected article
+reads, encoded publication bytes and distinct repository-basis comparisons. They
+are independent of search, counts, order and the query continuation fingerprint.
+Article metadata says “explanation recorded”; it does not imply review, completion
+or acceptance. Exact Source-body availability remains a separate detail read.
 
 Overview uses the same recent ordering, at most five recent rows, the latest
 actual InProgress Work when available, and an explicitly recent fallback otherwise.

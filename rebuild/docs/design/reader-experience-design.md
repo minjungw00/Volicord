@@ -996,9 +996,12 @@ forms/links work without JavaScript and retain Project/UI/content-language scope
 Overview's current card requires actual InProgress state. Its recent fallback is
 labelled recent, never active. Purpose absence and zero Work are ordinary states.
 Projection owns exact query/admission/order/refresh semantics. Overview cards share their bottom-right reading action treatment.
-Catalogue rows distinguish Work state, provisional article availability and the
-not-yet-performed repository comparison with equally sized, labelled icons.
-Recorded article metadata never asserts read validity or a repository match.
+Catalogue rows distinguish Work state, recorded article availability and the
+request-local repository comparison with equally sized, visibly labelled icons.
+Only the selected page and current-Work card compare the actual permitted article
+basis; their labels and icon paths share the detail presentation. Recorded article
+metadata alone never asserts read validity or a repository match. The article
+label omits “checked on open”; it still does not imply review or acceptance.
 Not-compared uses neutral styling, distinct from a positive match; labels and
 shapes retain the meaning independently of color. Redundant ordering/search helper
 sentences do not displace these controls.

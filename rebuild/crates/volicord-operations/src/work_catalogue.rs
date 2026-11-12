@@ -96,7 +96,7 @@ impl LocalOperations {
         let visible = entries.iter().map(|e| serde_json::json!({"id":e.id.to_string(),"name":e.name,"summary":e.summary,"publications":e.publications.iter().map(|p| (&p.publication_id,&p.realization_fingerprint)).collect::<Vec<_>>(),"state":format!("{:?}",e.state),"created":e.created_at,"updated":e.updated_at,"checkpoints":e.checkpoint_count,"article":format!("{:?}",e.article)})).collect::<Vec<_>>();
         let basis = explanation_text_hash(&serde_json::json!({"project":project.to_string(),"language":language,"term":query.term.trim().to_lowercase(),"state":format!("{:?}",query.state),"order":format!("{:?}",query.order),"entries":visible}).to_string());
         entries.sort_by_key(|e| (e.updated_at.is_none(), Reverse(e.updated_at), e.id));
-        let current = entries
+        let mut current = entries
             .iter()
             .find(|e| e.state == UnderstandingWorkState::InProgress)
             .cloned();
@@ -131,11 +131,53 @@ impl LocalOperations {
             effective.page = 0;
         }
         effective.expected_basis = Some(basis.clone());
-        let entries = entries
+        let mut entries: Vec<_> = entries
             .into_iter()
             .skip(effective.page.saturating_mul(WORK_CATALOGUE_PAGE_SIZE))
             .take(WORK_CATALOGUE_PAGE_SIZE)
             .collect();
+        // Compare only visible publications, after filtering and paging. Reuse
+        // the same admitted publication and inventory comparison as detail;
+        // neither article production nor Source-body reading is requested.
+        let mut states = std::collections::BTreeMap::new();
+        let mut comparisons = std::collections::BTreeMap::new();
+        for entry in entries.iter_mut().chain(current.iter_mut()) {
+            if let Some(state) = states.get(&entry.id) {
+                entry.repository_comparison = *state;
+                continue;
+            }
+            if entry.article != CatalogueArticle::Recorded {
+                continue;
+            }
+            cost.article_status_reads += 1;
+            if let Ok((retained, _)) = self.permitted_publication_from(
+                canonical,
+                &records,
+                ExplanationSubject::Work(entry.id),
+                language,
+            ) {
+                cost.article_status_publication_bytes += serde_json::to_vec(&retained)
+                    .map_err(|e| Error::with_source("article status encoding failed", e))?
+                    .len();
+                let ids = retained
+                    .realization
+                    .citations()
+                    .filter(|c| c.use_kind == ExplanationSourceUse::CurrentCode)
+                    .map(|c| c.analysis_snapshot_id.clone())
+                    .collect::<std::collections::BTreeSet<_>>();
+                let state = if ids.is_empty() {
+                    RepositoryComparisonState::NotChecked
+                } else {
+                    *comparisons.entry(ids).or_insert_with(|| {
+                        cost.repository_comparisons += 1;
+                        self.retained_applicability(canonical, &retained, Vec::new())
+                            .repository_comparison
+                    })
+                };
+                entry.repository_comparison = state;
+            }
+            states.insert(entry.id, entry.repository_comparison);
+        }
         Ok(WorkCataloguePage {
             query: effective,
             basis,

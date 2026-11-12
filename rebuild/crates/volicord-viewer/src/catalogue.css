@@ -51,8 +51,14 @@
 .continue-card .card-bottom,.repository-card .card-bottom{margin-top:auto;padding-top:26px}
 .card-bottom>a{margin-left:auto;display:inline-flex;align-items:center;gap:7px}
 .catalog-controls{margin-bottom:18px}
-.catalogue-reading-status{display:inline-flex;gap:6px}
-.catalogue-status-icon{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:5px;background:#f0f2f4;color:#66717b}
+.catalogue-reading-status{display:grid;gap:4px;max-width:100%}
+.catalogue-status-icon{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:3px 8px;box-sizing:border-box;max-width:100%;border-radius:5px;background:#f0f2f4;color:#66717b;font-size:10px;line-height:1.6}.catalogue-status-icon>span{min-width:0;overflow-wrap:anywhere}
 .catalogue-status-icon svg{width:15px;height:15px;flex:none}
 .catalogue-status-icon[data-article-state=Recorded]{background:#edf6fd;color:#4b7896}
 .catalogue-status-icon[data-article-state=Unavailable]{background:#fff7e8;color:#805a1f}
+
+.catalogue-status-icon[data-comparison-state=verified_at_read]{background:#edf6fd;color:#4b7896}
+.catalogue-status-icon:is([data-comparison-state=changed],[data-comparison-state=unavailable]){background:#fff7e8;color:#805a1f}
+@media(min-width:761px){.work-list-header,.work-row{grid-template-columns:minmax(0,1fr) 170px 120px 18px}}
+@media(max-width:760px){.work-row{grid-template-columns:minmax(0,1fr) 126px}}
+@media(max-width:350px){.work-row{grid-template-columns:minmax(0,1fr) 113px}}

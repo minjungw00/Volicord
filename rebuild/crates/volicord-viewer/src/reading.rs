@@ -2426,6 +2426,23 @@ fn comparison_label(
     }
 }
 
+pub(super) fn repository_comparison_label(
+    locale: ViewerLocale,
+    state: volicord_projections::RepositoryComparisonState,
+) -> &'static str {
+    use volicord_projections::RepositoryComparisonState as C;
+    match state {
+        C::VerifiedAtRead => text(locale, "Repository matched", "저장소 일치"),
+        C::Changed => text(locale, "Repository changed", "저장소 변경됨"),
+        C::Unavailable => text(locale, "Comparison unavailable", "저장소 비교 불가"),
+        C::NotChecked => text(locale, "Repository not compared", "저장소 미비교"),
+    }
+}
+
+pub(super) fn repository_comparison_icon() -> &'static str {
+    "<svg class=\"comparison-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M8 5V3H3v13h3M8 7h13v14H8z\"/><path data-comparison-icon=\"verified_at_read\" d=\"m11 14 2 2 5-5\"/><path data-comparison-icon=\"changed\" d=\"m12 11 5 5m0-5-5 5\"/><path data-comparison-icon=\"unavailable\" d=\"M14.5 10v5m0 2v1\"/><path data-comparison-icon=\"not_checked\" d=\"M11 14h7\"/></svg>"
+}
+
 fn render_applicability(
     html: &mut String,
     r: &ViewerRequest,
@@ -2434,7 +2451,6 @@ fn render_applicability(
 ) {
     let basis = &answers.applicability;
     use volicord_projections::ExplanationState as E;
-    use volicord_projections::RepositoryComparisonState as C;
     let article_state = match answers.explanation_state {
         E::Current => text(r.locale, "Available", "읽을 수 있음"),
         E::Stale => text(r.locale, "Basis changed", "근거 변경됨"),
@@ -2446,19 +2462,15 @@ fn render_applicability(
         E::Corrupt => text(r.locale, "Integrity unavailable", "무결성 확인 불가"),
     };
     html.push_str(&format!("<div class=\"reading-metadata\"{}><div class=\"publication-status-row\"><p class=\"publication-status\" data-publication-state=\"{:?}\"><span class=\"record-status-label sr-only\">{}</span><span class=\"publication-state-badge\"><svg class=\"publication-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M6 3h8l4 4v14H6zM14 3v5h4\"/><path d=\"{}\"/></svg><span>{article_state}</span></span></p>",publication_scope(answers),answers.explanation_state,text(r.locale,"Explanation state","설명 상태"),if answers.explanation_state==E::Current {"m8 14 2 2 5-5"} else {"M8 12h7m-7 4h5"}));
-    let label = match basis.repository_comparison {
-        C::VerifiedAtRead => text(r.locale, "Repository matched", "저장소 일치"),
-        C::Changed => text(r.locale, "Repository changed", "저장소 변경됨"),
-        C::Unavailable => text(r.locale, "Comparison unavailable", "저장소 비교 불가"),
-        C::NotChecked => text(r.locale, "Repository not compared", "저장소 미비교"),
-    };
+    let label = repository_comparison_label(r.locale, basis.repository_comparison);
     html.push_str(&format!(
-        "<details class=\"applicability\"{} data-comparison-state=\"{}\"><summary class=\"comparison-status\"><svg class=\"comparison-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M8 5V3H3v13h3M8 7h13v14H8z\"/><path data-comparison-icon=\"verified_at_read\" d=\"m11 14 2 2 5-5\"/><path data-comparison-icon=\"changed\" d=\"m12 11 5 5m0-5-5 5\"/><path data-comparison-icon=\"unavailable\" d=\"M14.5 10v5m0 2v1\"/><path data-comparison-icon=\"not_checked\" d=\"M11 14h7\"/></svg><span data-comparison-label>{}</span></summary><p class=\"comparison-detail\">{}</p><dl>",
+        "<details class=\"applicability\"{} data-comparison-state=\"{}\"><summary class=\"comparison-status\">{}<span data-comparison-label>{}</span></summary><p class=\"comparison-detail\">{}</p><dl>",
         publication_scope(answers),
         serde_json::to_value(basis.repository_comparison)
             .ok()
             .and_then(|v| v.as_str().map(str::to_owned))
             .unwrap_or_default(),
+        repository_comparison_icon(),
         label,
         comparison_label(r.locale, snapshot, basis.repository_comparison)
     ));

@@ -2594,3 +2594,48 @@ fn authored_checks_and_caveats_stay_with_their_figure_across_public_consumers(
     assert_eq!(before, ops(&f)?.canonical_basis(project(&f)?)?);
     Ok(())
 }
+
+#[test]
+fn catalogue_and_detail_compare_the_same_permitted_article_basis() -> Result<(), Box<dyn Error>> {
+    for variant in ["matched", "changed", "unavailable", "deleted"] {
+        let temp = tempfile::tempdir()?;
+        let f = seed(temp.path(), "no_change")?;
+        record(&f, &mut HostAdapter::new(ops(&f)?))?;
+        match variant {
+            "changed" => fs::write(
+                temp.path().join("repo/main.py"),
+                "def value():\n    return 99\n",
+            )?,
+            "unavailable" => {
+                fs::rename(temp.path().join("repo"), temp.path().join("disconnected"))?
+            }
+            "deleted" => {
+                ops(&f)?.delete_explanations(project(&f)?, ExplanationSubject::Work(work(&f)?))?;
+            }
+            _ => {}
+        }
+        let canonical = ops(&f)?.canonical_basis(project(&f)?)?;
+        let page =
+            ops(&f)?.query_work_catalogue(project(&f)?, &WorkCatalogueQuery::default(), "en")?;
+        let projection = ops(&f)?
+            .project_projection_selected(project(&f)?, WorkSelector::ExactWork(work(&f)?))?;
+        let selected = projection.selected_work.ok_or("selected Work")?;
+        let detail = work_answers(&selected, "en", FixedLocale::English);
+        let work_id = work(&f)?;
+        let entry = page
+            .entries
+            .iter()
+            .find(|e| e.id == work_id)
+            .ok_or("entry")?;
+        assert_eq!(
+            entry.repository_comparison, detail.applicability.repository_comparison,
+            "{variant}"
+        );
+        assert_eq!(page.cost.source_body_reads, 0);
+        assert_eq!(page.cost.article_preparations, 0);
+        assert!(page.cost.article_status_reads <= 1);
+        assert!(page.cost.repository_comparisons <= 1);
+        assert_eq!(canonical, ops(&f)?.canonical_basis(project(&f)?)?);
+    }
+    Ok(())
+}

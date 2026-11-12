@@ -1,5 +1,6 @@
-//! Request-local catalogue metadata. No article or Source body is an input.
-use crate::{ExplanationProvenance, UnderstandingWorkState};
+//! Request-local catalogue metadata and bounded visible-row status. No Source body
+//! enters this projection; article admission and comparison belong to Operations.
+use crate::{ExplanationProvenance, RepositoryComparisonState, UnderstandingWorkState};
 use volicord_context::{CanonicalReadBasis, CanonicalRecordKind, ContextItemId};
 
 pub const WORK_CATALOGUE_PAGE_SIZE: usize = 8;
@@ -59,6 +60,8 @@ pub struct WorkCatalogueEntry {
     pub updated_at: Option<i64>,
     pub checkpoint_count: usize,
     pub article: CatalogueArticle,
+    /// Request-local comparison of the permitted article's actual code basis.
+    pub repository_comparison: RepositoryComparisonState,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -69,6 +72,10 @@ pub struct WorkCatalogueCost {
     pub storage_metadata_and_card_bytes: usize,
     pub article_preparations: usize,
     pub source_body_reads: usize,
+    /// Only the selected page plus the independent current-Work card.
+    pub article_status_reads: usize,
+    pub article_status_publication_bytes: usize,
+    pub repository_comparisons: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -111,6 +118,7 @@ pub fn work_catalogue_metadata(canonical: &CanonicalReadBasis) -> Vec<WorkCatalo
                 updated_at: latest.map(|c| c.recorded_at.as_unix_micros()).or(creation),
                 checkpoint_count: g.checkpoints.len(),
                 article: CatalogueArticle::Missing,
+                repository_comparison: RepositoryComparisonState::NotChecked,
             }
         })
         .collect()

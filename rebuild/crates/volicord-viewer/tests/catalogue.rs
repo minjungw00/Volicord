@@ -541,3 +541,91 @@ fn equal_recorded_dates_use_identity_ties_in_every_order_through_ordinary_record
     }
     Ok(())
 }
+
+#[test]
+fn article_comparison_work_is_bounded_after_paging() -> TestResult<()> {
+    let f = fixture(33)?;
+    for id in f.goals.values() {
+        let subject = ExplanationSubject::Work(*id);
+        let plan = f.operations.prepare_explanation(f.project, subject, "en")?;
+        let realization = f.operations.compose_subject_explanation(
+            f.project,
+            subject,
+            WorkExplanationDraft {
+                diagrams: vec![],
+                plan_fingerprint: plan.fingerprint,
+                language: "en".into(),
+                generator: ExplanationGenerator {
+                    host: "synthetic-catalogue-control".into(),
+                    session: "bounded-article-status".into(),
+                    agent: None,
+                    model: None,
+                },
+                paragraphs: [
+                    (
+                        ExplanationQuestion::Heading,
+                        "Bounded article status control",
+                    ),
+                    (
+                        ExplanationQuestion::Synopsis,
+                        "Synthetic canonical-only article for bounded status reads; no code claim.",
+                    ),
+                ]
+                .into_iter()
+                .map(|(question, value)| WorkReaderUnit {
+                    question,
+                    text: value.into(),
+                    evidence_keys: vec!["goal".into()],
+                    sources: vec![],
+                })
+                .collect(),
+            },
+        )?;
+        f.operations
+            .record_explanation(f.project, subject, "en", realization)?;
+    }
+    let first = f.operations.query_work_catalogue(
+        f.project,
+        &WorkCatalogueQuery {
+            term: "0".into(), // All 33 named controls; exclude the fixture's extra unnamed Goal.
+            order: WorkCatalogueOrder::Oldest,
+            ..Default::default()
+        },
+        "en",
+    )?;
+    assert_eq!(first.matched_count, 33);
+    let page = if first
+        .current
+        .as_ref()
+        .is_some_and(|current| first.entries.iter().any(|e| e.id == current.id))
+    {
+        f.operations.query_work_catalogue(
+            f.project,
+            &WorkCatalogueQuery {
+                term: "0".into(),
+                order: WorkCatalogueOrder::Oldest,
+                page: 1,
+                ..Default::default()
+            },
+            "en",
+        )?
+    } else {
+        first
+    };
+    assert_eq!(page.entries.len(), 8);
+    assert_eq!(
+        page.cost.article_status_reads,
+        9,
+        "current={:?}; page={:?}",
+        page.current.as_ref().map(|e| (e.id, e.article)),
+        page.entries
+            .iter()
+            .map(|e| (e.id, e.article))
+            .collect::<Vec<_>>()
+    );
+    assert!(page.cost.article_status_publication_bytes > 0);
+    assert_eq!(page.cost.repository_comparisons, 0);
+    assert_eq!(page.cost.source_body_reads, 0);
+    assert_eq!(page.cost.article_preparations, 0);
+    Ok(())
+}
