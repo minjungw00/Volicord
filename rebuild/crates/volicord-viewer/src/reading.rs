@@ -3099,20 +3099,25 @@ fn decision_detail(
             .as_deref()
             .unwrap_or(""),
     );
-    definition(
-        &mut records,
-        text(r.locale, "Reading basis", "읽기 근거"),
-        &format!("{:?}", d.reading),
-    );
-    definition(
-        &mut records,
-        text(
-            r.locale,
-            "Decision and exact Question basis",
-            "결정 및 정확한 질문 근거",
+    for (label, original) in [
+        (
+            text(r.locale, "Reading basis", "읽기 근거"),
+            format!("{:?}", d.reading),
         ),
-        &format!("{:?}", d.decision),
-    );
+        (
+            text(
+                r.locale,
+                "Decision and exact Question basis",
+                "결정 및 정확한 질문 근거",
+            ),
+            format!("{:?}", d.decision),
+        ),
+    ] {
+        records.push_str(&format!(
+            "<div><dt>{}</dt><dd><details class=\"raw-disclosure\"><summary>{}</summary><pre>{}</pre></details></dd></div>",
+            escape(label), text(r.locale, "Original record data", "원문 데이터"), escape(&original)
+        ));
+    }
     records.push_str("</dl>");
     for gap in d.known_link_gaps.iter().chain(&d.decision.known_limits) {
         empty_state(&mut records, gap);
