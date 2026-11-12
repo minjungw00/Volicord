@@ -177,7 +177,7 @@ async function nativeLinkNavigation(page, link, receipt) {
           if(mode==='live') {assert(prior,'browser position at actual element activation');assert(prior.meaning.length,'actual visible meaning at activation');}
           const claimId=(await element.getAttribute('href')).slice(1);
           const claim=page.locator('[id="'+claimId+'"]');
-          if(mode==='live') {
+          async function openSelectedEvidence() {
             assert.equal(await page.locator('body').getAttribute('data-source-open'),'false','element selection opens only its local explanation');
             assert.equal(await page.locator('.source-point[data-selected=true]').count(),0,'no implicit Source selection');
             assert.equal(await claim.getAttribute('data-active'),'true','exact local explanation selected');
@@ -230,6 +230,7 @@ async function nativeLinkNavigation(page, link, receipt) {
             const target='#'+nativeId+'!'+claimId;
             if(await picker.count() && await picker.inputValue()!==target) await picker.selectOption(target);
           }
+          if(mode==='live') await openSelectedEvidence();
           else {await action.click();if((await action.getAttribute('href')).slice(1)!==nativeId){const initial=page.locator(':target');await initial.locator('.native-range-selector>summary').click();await initial.locator('a[href="#'+nativeId+'"]').click();}}
           const pointId=boundPointId;
           const point=page.locator('[id="'+pointId+'"]');
@@ -264,7 +265,7 @@ async function nativeLinkNavigation(page, link, receipt) {
             if(config.capture_sources) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-returned.png`)});
             return_ms=Date.now()-returnStarted;
             assert.equal(await figure.locator('.diagram-alternative,.diagram-relations,.diagram-timeline').count(),0,'one normal semantic scene');
-            await element.focus();await page.keyboard.press('Enter');await action.click();
+            await element.focus();await page.keyboard.press('Enter');await openSelectedEvidence();
             const deep=page.url();await page.reload({waitUntil:'load'});
             await citationReady(point);
             assert.equal(page.url(),deep,'same exact publication/claim deep link');
