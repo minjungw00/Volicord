@@ -38,6 +38,8 @@ page and basis fields, including an exact Work opened from that list. These
 selectors remain Work-only and URL-bound; foreign subjects, invalid query values,
 duplicate parameters and retired selectors are rejected. A list's normalized
 query metadata is distinct from the selected Work identity.
+The catalogue form's explicit `project` parameter is accepted only when it equals
+the actual renderer's bound Project; foreign or duplicate Project parameters fail.
 
 Campaign capture checks the current clean candidate and frozen Viewer executable
 before/after capture, Runtime and Project. For disposable supporting proof only,

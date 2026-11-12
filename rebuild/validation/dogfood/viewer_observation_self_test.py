@@ -98,6 +98,20 @@ class ContextTests(unittest.TestCase):
             with self.subTest(view=view):
                 self.assertFalse(observer.valid_view(view))
 
+    def test_form_project_parameter_must_match_actual_display(self):
+        for locale in ('en','ko'):
+            value=display_fixture(self.manifest,locale)
+            value['context']['view']={'view':'work','page':'0','q':'','sort':'oldest'}
+            value['url']='http://127.0.0.1:3219/?'+urlencode({**value['context']['view'],'locale':locale,'language':locale,'project':value['context']['project_id']})
+            observer.for_manifest(self.manifest,value,locale,self.subjects)
+            for suffix in ('&project='+value['context']['project_id'],):
+                duplicate=copy.deepcopy(value);duplicate['url']+=suffix
+                with self.assertRaisesRegex(ValueError,'display URL/context mismatch'):
+                    observer.for_manifest(self.manifest,duplicate,locale,self.subjects)
+            foreign=copy.deepcopy(value);foreign['url']=foreign['url'].replace('project='+value['context']['project_id'],'project='+'f'*32)
+            with self.assertRaisesRegex(ValueError,'display URL/context mismatch'):
+                observer.for_manifest(self.manifest,foreign,locale,self.subjects)
+
     def test_same_campaign_subject_accepts_fresh_current_stale_and_changed_basis(self):
         for subject, identity in (("work", "1" * 32), ("decision", "3" * 32)):
             for n, state in enumerate(("current", "stale", "unavailable")):

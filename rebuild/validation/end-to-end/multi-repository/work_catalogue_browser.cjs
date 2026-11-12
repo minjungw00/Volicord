@@ -50,7 +50,9 @@ async function start(item,runtime){
   }
   if(item.synthetic){
    await page.setViewportSize({width:1440,height:900});await page.goto(address());
-   await page.locator('#work-search').fill('needle');await page.locator('.catalog-controls select').selectOption('oldest');await page.locator('.catalog-controls button').click();
+   await page.locator('#work-search').fill('needle');
+   await Promise.all([page.waitForURL(url=>url.searchParams.get('sort')==='oldest'&&url.searchParams.get('q')==='needle'),page.locator('.catalog-controls select').selectOption('oldest')]);
+   assert.equal(await page.locator('.sort-apply').isVisible(),false,'enhanced order is applied on selection');
    assert.equal(await page.locator('[data-result-count]').getAttribute('data-result-count'),String(Math.ceil(Object.keys(item.ids).length/2)));
    const expected=Array.from({length:Math.ceil(Object.keys(item.ids).length/2)},(_,n)=>item.ids[`control-${String(n*2).padStart(3,'0')}`]);
    const pages=Math.ceil(expected.length/8);const selected=[];for(let n=0;n<pages;n++){
@@ -60,7 +62,7 @@ async function start(item,runtime){
    assert.deepEqual(selected,expected);assert.ok(new URL(page.url()).searchParams.has('basis'));
    await page.locator('.filter-tab').filter({hasText:'Completed'}).click();
    assert.equal(await page.locator('[data-result-count]').getAttribute('data-result-count'),String(Object.keys(item.ids).filter(k=>Number(k.slice(8))%2===0&&Number(k.slice(8))%3===2).length));assert.equal(new URL(page.url()).searchParams.get('page'),'0');
-   await page.locator('#work-search').fill('no-such-needle');await page.locator('.catalog-controls button').click();assert.equal(await page.locator('.work-row').count(),0);
+   await page.locator('#work-search').fill('no-such-needle');await page.locator('.search-field button').click();assert.equal(await page.locator('.work-row').count(),0);
    const duplicate=await page.goto(address('overview',`&project=${item.empty}`)); // Duplicate parameters must be refused.
    assert.equal(duplicate.status(),400);
    await page.goto(listener.base+`?project=${item.empty}&view=overview`);assert.match(await page.locator('main').innerText(),/No Work has been recorded/);
@@ -72,7 +74,7 @@ async function start(item,runtime){
    result.measurements.push({case:item.key,workload:item.synthetic?`${item.count} Goals / ${Object.keys(item.ids).length*2} admitted card publications / ${Object.keys(item.ids).length} Checkpoints`:'genuine permitted retained records; sparse history',sample:n,milliseconds:performance.now()-started,html_bytes:body.length});
   }
   const native=await browser.newContext({javaScriptEnabled:false});const nojs=await native.newPage();await nojs.goto(address());
-  if(item.synthetic){await nojs.locator('#work-search').fill('needle');await nojs.locator('.catalog-controls button').click();assert.equal(await nojs.locator('[data-result-count]').getAttribute('data-result-count'),String(Math.ceil(Object.keys(item.ids).length/2)));await nojs.locator('.pagination a').filter({hasText:'2'}).click();assert.equal(await nojs.locator('.work-row').count(),8);}
+  if(item.synthetic){await nojs.locator('.catalog-controls select').selectOption('oldest');await nojs.locator('.sort-apply').click();assert.equal(new URL(nojs.url()).searchParams.get('sort'),'oldest','script-free order uses the explicit submit');await nojs.locator('#work-search').fill('needle');await nojs.locator('.search-field button').click();assert.equal(await nojs.locator('[data-result-count]').getAttribute('data-result-count'),String(Math.ceil(Object.keys(item.ids).length/2)));await nojs.locator('.pagination a').filter({hasText:'2'}).click();assert.equal(await nojs.locator('.work-row').count(),8);}
   if(item.synthetic){
    await nojs.setViewportSize({width:390,height:900});const row=nojs.locator('.work-row').first(),id=await row.getAttribute('id');
    await row.click();assert.equal(await nojs.locator('.recorded-timeline').count(),1);

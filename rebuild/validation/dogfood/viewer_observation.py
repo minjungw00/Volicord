@@ -123,8 +123,9 @@ def validate_capture(value, *, candidate_head, viewer_sha256, runtime_binding=No
     view=c['view'];require(valid_view(view), 'invalid Viewer view')
     parsed=local_url(value['url']);query=parse_qs(parsed.query,keep_blank_values=True)
     require(parsed.path=='/' and not parsed.fragment and all(len(v)==1 for v in query.values())
-        and set(query)<=set(view)|{'locale','language'}
+        and set(query)<=set(view)|{'locale','language','project'}
         and all(query.get(k,[v])==[v] for k,v in view.items())
+        and query.get('project',[c['project_id']])==[c['project_id']]
         and query.get('locale',['en'])==[c['locale']]
         and query.get('language',['en'])==[c['language']], 'display URL/context mismatch')
     for name in ['selected_work','selected_decision']:

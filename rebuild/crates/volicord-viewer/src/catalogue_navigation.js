@@ -6,6 +6,13 @@
  const storageKey='volicord:work-list-positions';
  const state=()=>history.state&&typeof history.state==='object'?history.state:{};
  const rows=()=>[...catalogue.querySelectorAll('.work-row')];
+ const controls=catalogue.querySelector('.catalog-controls');
+ if(controls){
+  catalogue.dataset.queryEnhanced='true';
+  lifetime.on(controls,'change',event=>{
+   if(event.target.matches('select[name=sort]'))controls.requestSubmit();
+  });
+ }
  const shape=value=>value&&typeof value.route==='string'&&value.route.length<4096&&typeof value.id==='string'&&/^row-[0-9a-f]{32}$/.test(value.id)&&Number.isFinite(value.top)&&Math.abs(value.top)<100000&&Number.isFinite(value.y)&&value.y>=0&&value.y<100000000;
  const valid=value=>shape(value)&&value.route===route;
  function positions(){try{const data=JSON.parse(sessionStorage.getItem(storageKey)||'[]');return Array.isArray(data)?data.filter(shape).slice(-24):[];}catch{return [];}}

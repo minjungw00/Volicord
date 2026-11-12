@@ -908,6 +908,11 @@ unnamed page section. Plain group-caption links and nested heading links both
 supply their rendered label as the passive cue; folded originals cannot replace
 the currently visible section.
 
+Choosing a Work ordering applies the complete current search and state selection
+as a read-only GET when scripting is active. The script-free form has an explicit
+order-application action. Changing order begins at the first result page and
+preserves the exact Project rather than silently retaining an old page or filter.
+
 In single-file exports the native fragment's enclosing page owns the visible
 mobile location and current-destination cue. Nested headings, figure elements,
 citations and shared code keep that owning Repository/Work context; they do not

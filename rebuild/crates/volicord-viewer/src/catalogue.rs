@@ -122,7 +122,7 @@ pub(super) fn index(
             }
         ));
     }
-    html.push_str(&format!("</select></label></form><p class=\"search-scope\" id=\"search-scope\">{}</p>",text(r.locale,"Searches permitted names and summaries in the requested content language. State counts cover the entire Project.","요청한 본문 언어의 허용된 이름·요약을 검색합니다. 상태별 수는 프로젝트 전체 기준입니다.")));
+    html.push_str(&format!("</select></label><button class=\"sort-apply\" type=\"submit\">{}</button></form><p class=\"search-scope\" id=\"search-scope\">{}</p>",text(r.locale,"Apply order","정렬 적용"),text(r.locale,"Searches permitted names and summaries in the requested content language. State counts cover the entire Project.","요청한 본문 언어의 허용된 이름·요약을 검색합니다. 상태별 수는 프로젝트 전체 기준입니다.")));
     html.push_str(&format!(
         "<nav class=\"status-filters\" aria-label=\"{}\">",
         text(r.locale, "Work state filter", "작업 상태 필터")
