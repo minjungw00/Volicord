@@ -222,7 +222,14 @@ async function nativeLinkNavigation(page, link, receipt) {
           assert.equal(await page.locator('[id="'+nativeId+'"]').getAttribute('data-selected-point'),boundPointId,'native origin keeps independently selected citation');
           const selectedStarted=Date.now();
           // Both consumers require explicit Source inspection after selection.
-          if(mode==='live'){await action.click();const picker=boundPoint.locator('.evidence-choice-picker select');if(await picker.count()&&await picker.inputValue()!=='#'+nativeId+'!'+claimId)await picker.selectOption('#'+nativeId+'!'+claimId);}
+          if(mode==='live') {
+            await action.click();
+            // Opening a family initially selects its first citation. The picker
+            // belongs to that active point until the requested range is chosen.
+            const picker=page.locator('.source-point[data-selected] > .evidence-choice-picker select');
+            const target='#'+nativeId+'!'+claimId;
+            if(await picker.count() && await picker.inputValue()!==target) await picker.selectOption(target);
+          }
           else {await action.click();if((await action.getAttribute('href')).slice(1)!==nativeId){const initial=page.locator(':target');await initial.locator('.native-range-selector>summary').click();await initial.locator('a[href="#'+nativeId+'"]').click();}}
           const pointId=boundPointId;
           const point=page.locator('[id="'+pointId+'"]');

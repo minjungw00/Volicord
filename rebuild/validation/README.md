@@ -1,5 +1,10 @@
 # Reconstruction validation assets
 
+`grounded_diagrams_browser.cjs` selects a requested non-first citation through
+the currently open evidence family's picker before checking the exact response
+and complete Source bytes. A picker is attached to the active citation, which
+can differ from the range selected by the control configuration.
+
 For current-host selected-answer transport, run `validate focused <label> --
 python3 -B rebuild/validation/dogfood/decision_transport_self_test.py` and the Host
 MCP `decision_selected_answers_persist_without_host_envelopes` test. They cover
