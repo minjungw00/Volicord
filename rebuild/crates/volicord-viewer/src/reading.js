@@ -10,13 +10,21 @@
     if (map.size > 128) map.delete(map.keys().next().value);
     return token;
   };
-  const state = () => history.state && typeof history.state === 'object' ? history.state : {};
+  let navigatingState = null;
+  const state = () => navigatingState || (history.state && typeof history.state === 'object' ? history.state : {});
   function navigate(hash, next = state()) {
     // Native fragment navigation updates :target as well as URL/history.
     // pushState alone leaves CSS targeting a previously selected element.
-    if (location.hash !== hash) location.hash = hash;
-    history.replaceState(next,'');
-    apply(); lifetime.frame(apply);
+    // A native fragment setter can dispatch popstate before replaceState.
+    // Those handlers need this activation's context, not the previous entry's.
+    const previous = navigatingState;
+    navigatingState = next;
+    try {
+      if (location.hash !== hash) location.hash = hash;
+      history.replaceState(next,'');
+      apply();
+    } finally { navigatingState = previous; }
+    lifetime.frame(apply);
   }
   const narrow = matchMedia('(max-width:1199px)');
   let selected = null;
