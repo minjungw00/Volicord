@@ -28,6 +28,7 @@ const CONCISE_EFFECT_REVIEW: &str = "Freeze Source-first conditions/state/effect
 
 /// One authoring contract for CLI/MCP preparation, independent of transport.
 /// These are investigation obligations, never prewritten subject answers.
+const DECISION_RESPONSE_AUTHORING: &str = "Explain the supplied response and its substantive reasons on their merits, separately from the working agent's recommendation. Relay, transmission-permission and authoring-context instructions are not reasons for the selected technical outcome. Keep their exact provenance in supporting records rather than turning them into the primary Decision narrative, unless the Decision itself concerns that context. Preserve original records; infer neither human authorship nor personal comprehension from a relay or an authorship assumption.";
 const ARTICLE_AUTHORING: &str = "Map originals to issue/impact, symptom, cause/hypothesis, choice/action, change/no-change, claim-to-check, outcome/state and remaining work; missing links stay missing. Lead with issue/outcome; connect findings to cause/action, not a mechanism list. Adapt to Work kind; no empty template. Ask what each check supports before names/stdout. Cases/reports/runs/repeats/completion/acceptance differ. Preserve reported versus executed, failed/paused/sparse/no-change results. Intent/choice, code effect and inference differ; invent no Decision reason or rejected alternative. Use logical paragraphs; explain terms, preserve facts/guards across languages. Keep result limits nearby, capture provenance in support. Review before compose; admission is not semantic/human approval.";
 /// Repository investigation is independent of a Work and precedes authoring.
 /// Inventory commitments are discovery inputs, not an architectural answer key.
@@ -934,6 +935,10 @@ fn finish_plan(basis: ExplanationBasis) -> Result<ExplanationPlan, String> {
     ) {
         plan.instructions.push(' ');
         plan.instructions.push_str(ARTICLE_AUTHORING);
+    }
+    if matches!(subject, ExplanationSubject::Decision(_)) {
+        plan.instructions.push(' ');
+        plan.instructions.push_str(DECISION_RESPONSE_AUTHORING);
     }
     if matches!(
         subject,

@@ -1137,6 +1137,12 @@ recommendation_rationale; no extra user-reason field is required. Absent user re
 stays absent. A retained contemporaneous recommendation reason remains readable
 when its technical Source is unavailable, with that independent verification limit.
 A fresh explanation of code cannot become the original agent's or user's intent.
+An authorized externally supplied response is explained through its substantive
+choice and reason, separately from the working agent's recommendation. Relay,
+transmission permission and instructions about assumed authorship are production
+context, not reasons for that technical choice. Exact originals and provenance
+remain inspectable in support; the primary narrative does not turn that context
+into a choice rationale or infer actual human authorship or comprehension.
 The original Question revision, post-choice recommendation visibility and authentic
 current-host Decision response contracts above remain authoritative.
 
