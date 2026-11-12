@@ -152,3 +152,5 @@
 .publication-state-badge{display:inline-flex;align-items:center;gap:6px;min-height:28px;box-sizing:border-box;padding:3px 8px;border:0;border-radius:5px;background:var(--wash);color:var(--muted);font-size:10px;font-weight:500;line-height:1.6}
 .publication-icon{width:15px;height:15px;flex:none}
 @media(max-width:640px){.doc[data-reading-layout="grouped"] .reader-metadata-groups{grid-template-columns:minmax(0,1fr)}}
+
+.doc[data-reading-layout="grouped"] .reading-metadata .applicability[data-comparison-state="not_checked"] > summary.comparison-status{background:#f0f2f4;color:#66717b}

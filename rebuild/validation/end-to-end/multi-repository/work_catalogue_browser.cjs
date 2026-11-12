@@ -37,6 +37,18 @@ async function start(item,runtime){
     const geometry=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,rows:document.querySelectorAll('.work-row').length,contents:document.querySelectorAll('.document-nav').length,nav:[...document.querySelectorAll('.project-navigation [aria-current=page]')].map(n=>n.dataset.destination),font:getComputedStyle(document.body).fontFamily,main:document.querySelector('main').getBoundingClientRect().toJSON()}));
     assert.ok(geometry.overflow<=1,JSON.stringify({width,view,...geometry}));assert.equal(geometry.contents,0);assert.deepEqual(geometry.nav,[view]);
     assert.deepEqual(await clippedSummaries(page),[],'complete independent summaries, including final qualifications');
+    assert.equal(await page.locator('#search-scope').count(),0,'redundant search explanation removed without a dangling description');
+    const readingStates=await page.locator('.work-row').evaluateAll(rows=>rows.map(row=>{
+     const icons=[...row.querySelectorAll('.catalogue-status-icon')];
+     return {count:icons.length,labels:icons.map(n=>n.textContent.trim()),sizes:icons.map(n=>{const b=n.querySelector('svg').getBoundingClientRect();return [b.width,b.height]}),comparison:icons.at(-1)?.dataset.comparisonState};
+    }));
+    for(const state of readingStates){assert.equal(state.count,2);assert.ok(state.labels.every(Boolean));assert.equal(state.comparison,'not_checked');assert.deepEqual(state.sizes,[[15,15],[15,15]]);}
+    if(view==='overview'&&geometry.rows){
+     assert.equal(await page.locator('.repository-card .card-bottom .button.primary').count(),1,'same card action hierarchy');
+     const alignment=await page.locator('.repository-card').evaluate(card=>{const button=card.querySelector('.card-bottom a').getBoundingClientRect(),box=card.getBoundingClientRect();return {right:box.right-button.right,bottom:box.bottom-button.bottom};});
+     assert.ok(alignment.right<=27&&alignment.bottom<=27,'repository reading action stays at the lower right');
+    }
+
     if(item.synthetic&&view==='work'&&width===320){
      const clamp=await page.addStyleTag({content:'.work-main p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}'});
      assert.ok((await clippedSummaries(page)).length,'controlled final-qualification clipping must be detected');
