@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from urllib.parse import urlencode
 import viewer_observation as observer
 import resource_observer
 
@@ -73,6 +74,30 @@ def prepared_context_directories(parent, name, manifest, *, campaign_root, decis
 
 
 class ContextTests(unittest.TestCase):
+    def test_current_work_catalogue_and_list_return_contexts(self):
+        views = [dict(view='work', page='0', q='', sort='recent'),
+            dict(view='work', page='2', q='작업', sort='name', state='paused', basis='sha256:'+'f'*64),
+            dict(view='work', page='0', q='', sort='recent', work='1'*32, **{'from':'list'})]
+        for view in views:
+            value = display_fixture(self.manifest, 'en')
+            value['context'].update(view=view, selected_work=view.get('work'))
+            value['url'] = 'http://127.0.0.1:3219/?' + urlencode({**view, 'locale':'en', 'language':'en'})
+            observer.for_manifest(self.manifest, value, 'en', self.subjects)
+            value['url'] += '&sort=oldest'
+            with self.assertRaisesRegex(ValueError, 'display URL/context mismatch'):
+                observer.for_manifest(self.manifest, value, 'en', self.subjects)
+
+    def test_catalogue_context_rejects_foreign_or_invalid_selectors(self):
+        for view in [dict(view='overview', q='x'), dict(view='repository', page='0'),
+                dict(view='work', page='1000000'), dict(view='work', page='-1'),
+                dict(view='work', state='invented'), dict(view='work', sort='invented'),
+                dict(view='work', q='가'*43), dict(view='work', q='a\n'),
+                dict(view='work', basis='f'*64), dict(view='work', work='1'*32, q=''),
+                dict(view='work', **{'from':'list'}), dict(view='work', work='1'*32, **{'from':'elsewhere'}),
+                dict(view='work', decision='3'*32)]:
+            with self.subTest(view=view):
+                self.assertFalse(observer.valid_view(view))
+
     def test_same_campaign_subject_accepts_fresh_current_stale_and_changed_basis(self):
         for subject, identity in (("work", "1" * 32), ("decision", "3" * 32)):
             for n, state in enumerate(("current", "stale", "unavailable")):

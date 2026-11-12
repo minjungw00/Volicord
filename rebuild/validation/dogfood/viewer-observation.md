@@ -33,6 +33,12 @@ Screenshots can contain displayed local content: retain them locally under the
 same authority as the original Viewer, independently of body-free MCP telemetry.
 No browser-wide page contents are harvested.
 
+Display validation accepts the current Work catalogue's search, state, order,
+page and basis fields, including an exact Work opened from that list. These
+selectors remain Work-only and URL-bound; foreign subjects, invalid query values,
+duplicate parameters and retired selectors are rejected. A list's normalized
+query metadata is distinct from the selected Work identity.
+
 Campaign capture checks the current clean candidate and frozen Viewer executable
 before/after capture, Runtime and Project. For disposable supporting proof only,
 explicit `--binary ABS_VIEWER --runtime ABS_RUNTIME --project PROJECT_ID` can

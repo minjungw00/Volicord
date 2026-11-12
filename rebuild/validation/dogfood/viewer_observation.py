@@ -20,6 +20,27 @@ def hex_value(value, length=64):
     return isinstance(value,str) and re.fullmatch('[0-9a-f]{'+str(length)+'}',value) is not None
 
 
+def valid_view(view):
+    if (not isinstance(view, dict) or view.get('view') not in {'overview', 'repository', 'work'}
+            or not all(isinstance(v, str) and len(v) <= 1024 for v in view.values())):
+        return False
+    if view['view'] != 'work':
+        return set(view) == {'view'}
+    if not set(view) <= {'view', 'work', 'page', 'q', 'state', 'sort', 'basis', 'from'}:
+        return False
+    query = {'page', 'q', 'state', 'sort', 'basis'}
+    if ('from' in view and (view['from'] != 'list' or 'work' not in view)
+            or 'work' in view and (not hex_value(view['work'], 32)
+                or bool(set(view) & query) and view.get('from') != 'list')):
+        return False
+    return (('page' not in view or re.fullmatch(r'[0-9]{1,6}', view['page']) is not None)
+        and ('state' not in view or view['state'] in {'open', 'in_progress', 'paused', 'completed', 'abandoned', 'superseded'})
+        and ('sort' not in view or view['sort'] in {'recent', 'oldest', 'name'})
+        and ('q' not in view or len(view['q'].encode('utf-8')) <= 128
+            and re.search(r'[\x00-\x1f\x7f-\x9f]', view['q']) is None)
+        and ('basis' not in view or re.fullmatch(r'sha256:[0-9a-fA-F]{64}', view['basis']) is not None))
+
+
 def local_url(value):
     parsed=urlparse(value)
     require(parsed.scheme=='http' and parsed.hostname in {'127.0.0.1','localhost','::1'}
@@ -99,9 +120,7 @@ def validate_capture(value, *, candidate_head, viewer_sha256, runtime_binding=No
         and isinstance(proc['boot_id'],str) and re.fullmatch(r'[0-9a-f-]{36}',proc['boot_id'])
         and isinstance(proc['executable_path'],str) and Path(proc['executable_path']).is_absolute(),
         'Viewer process/executable binding mismatch')
-    view=c['view'];require(isinstance(view,dict) and view.get('view') in {'overview','repository','work'}
-        and set(view)<= {'view','work','page'}
-        and all(isinstance(v,str) and len(v)<=1024 for v in view.values()), 'invalid Viewer view')
+    view=c['view'];require(valid_view(view), 'invalid Viewer view')
     parsed=local_url(value['url']);query=parse_qs(parsed.query,keep_blank_values=True)
     require(parsed.path=='/' and not parsed.fragment and all(len(v)==1 for v in query.values())
         and set(query)<=set(view)|{'locale','language'}
