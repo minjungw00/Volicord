@@ -903,6 +903,11 @@ activation focuses the heading below sticky surfaces; passive scrolling changes 
 the current-section cue, including the last short section. Native modifier links,
 fragments, history and script-free/export reads keep their ordinary meaning.
 
+For grouped Work reading, the initial cue names Work explanation rather than an
+unnamed page section. Plain group-caption links and nested heading links both
+supply their rendered label as the passive cue; folded originals cannot replace
+the currently visible section.
+
 In single-file exports the native fragment's enclosing page owns the visible
 mobile location and current-destination cue. Nested headings, figure elements,
 citations and shared code keep that owning Repository/Work context; they do not

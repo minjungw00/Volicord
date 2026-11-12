@@ -1725,7 +1725,16 @@ fn insert_contents(
     if entries.is_empty() && (!grouped || !work) {
         return;
     }
-    let mut contents = format!("<details class=\"document-nav\"{}{}><summary><span class=\"toc-label\">{}</span><span class=\"toc-cue\">{}</span><span class=\"toc-position\"></span><span aria-hidden=\"true\">⌄</span></summary><nav aria-label=\"{}\">",publication_scope(answers),if grouped {" data-overflow=\"true\""} else {""},text(r.locale,"Contents","목차"),text(r.locale,"On this page","이 문서의 내용"),text(r.locale,"Current document contents","현재 문서 목차"));
+    let entry_cue = if grouped {
+        if work {
+            text(r.locale, "Work explanation", "작업 설명")
+        } else {
+            text(r.locale, "Repository explanation", "저장소 설명")
+        }
+    } else {
+        text(r.locale, "On this page", "이 문서의 내용")
+    };
+    let mut contents = format!("<details class=\"document-nav\"{}{}><summary><span class=\"toc-label\">{}</span><span class=\"toc-cue\">{entry_cue}</span><span class=\"toc-position\"></span><span aria-hidden=\"true\">⌄</span></summary><nav aria-label=\"{}\">",publication_scope(answers),if grouped {" data-overflow=\"true\""} else {""},text(r.locale,"Contents","목차"),text(r.locale,"Current document contents","현재 문서 목차"));
     let groups = if grouped {
         let mut groups = vec![(
             "work",

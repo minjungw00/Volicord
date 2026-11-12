@@ -12,7 +12,7 @@ function createReaderOutline({lifetime,navigate,closeDrawer}) {
       for(const link of links){const node=document.getElementById(link.hash.slice(1));if(node?.getClientRects().length&&node.getBoundingClientRect().top<=clearance)current=link;}
       for(const link of links){if(link===current)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');}
       const cue=toc.querySelector('.toc-cue');
-      if(cue)cue.textContent=current?.querySelector('span:last-child')?.textContent||(ko?'이 문서의 내용':'On this page');
+      if(cue)cue.textContent=current?.querySelector('span:last-child')?.textContent?.trim()||current?.textContent?.trim()||(ko?'이 문서의 내용':'On this page');
       const count=toc.querySelector('.toc-position');if(count)count.textContent=links.length?`${links.indexOf(current)+1} / ${links.length}`:'';
     });
   }
