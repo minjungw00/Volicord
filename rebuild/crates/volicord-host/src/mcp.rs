@@ -4834,6 +4834,14 @@ fn materiality_judgment_schema(
     mut fields: Vec<(&'static str, Value)>,
     required_fields: &[&'static str],
 ) -> Value {
+    // Only the two pending research variants can honestly have no discovered
+    // alternatives yet. Inquiry still checks exact accounting against Discovery.
+    let pending_exploration = disposition == "exploratory_uncertainty"
+        && fields.iter().any(|(name, schema)| {
+            *name == "exploratory_disposition"
+                && matches!(schema["enum"].as_array().map(Vec::as_slice),
+                    Some([value]) if matches!(value.as_str(), Some("research_required" | "prototype_required")))
+        });
     let mut common = vec![
         (
             "choice_id",
@@ -4901,7 +4909,7 @@ fn materiality_judgment_schema(
                 ("source_supported_boundary", text_schema("Identify the current source passage/contract boundary and explain why the acknowledged differences remain permitted implementation discretion. Implementing internally is not evidence of ownership. Exact delegation uses the delegated disposition.", 1, 4096)),
             ], &["choice_id", "alternative_id", "externally_observable", "observation_rationale", "source_id", "source_supported_boundary"])
         })),
-        ("alternative_accounting", alternative_accounting_schema()),
+        ("alternative_accounting", alternative_accounting_schema(pending_exploration)),
         (
             "additional_source_ids",
             identity_array_schema(
@@ -4955,7 +4963,7 @@ fn materiality_judgment_schema(
     object_schema(common, &required)
 }
 
-fn alternative_accounting_schema() -> Value {
+fn alternative_accounting_schema(pending_exploration: bool) -> Value {
     let common = || {
         vec![
             (
@@ -4996,8 +5004,8 @@ fn alternative_accounting_schema() -> Value {
         };
     json!({
         "type":"array",
-        "minItems":1,
-        "description":"Exactly one identity-linked authority account for every alternative of every referenced discovered choice",
+        "minItems":if pending_exploration { 0 } else { 1 },
+        "description":"Exactly one identity-linked authority account for every alternative of every referenced discovered choice. Only pending research/prototype may be empty when the bound Discovery has no alternatives; this never grants implementation authority.",
         "items":{"oneOf":[
             variant("selected", Vec::new(), &[]),
             variant("unresolved", Vec::new(), &[]),

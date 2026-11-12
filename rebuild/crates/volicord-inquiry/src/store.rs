@@ -1834,7 +1834,9 @@ fn validate_materiality_review(review: &MaterialityReview) -> Result<(), Error> 
             }
             _ => {}
         }
-        if dimension.alternative_accounting.is_empty() {
+        if dimension.alternative_accounting.is_empty()
+            && !crate::work_authority::pending_exploration(dimension)
+        {
             return Err(Error::new(
                 ErrorKind::InvalidInput,
                 "every material dimension requires identity-linked discovered-alternative accounting",
@@ -2851,7 +2853,7 @@ pub(crate) fn validate_discovery_source_basis(
     Ok(())
 }
 
-fn validate_review_against_discovery(
+pub(crate) fn validate_review_against_discovery(
     review: &MaterialityReview,
     discovery_candidate: &CandidateRecord,
 ) -> Result<(), Error> {

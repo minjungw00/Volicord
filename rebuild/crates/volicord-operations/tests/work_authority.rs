@@ -1714,6 +1714,235 @@ fn fixture() -> Result<Fixture, Box<dyn std::error::Error>> {
     fixture_with_goal("Implement the bounded work-authority fixture.")
 }
 
+#[test]
+fn incomplete_discovery_can_record_research_without_inventing_alternatives(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (evidence, disposition) in [
+        (
+            EngineeringChoiceEvidenceState::ResearchRequired,
+            ExploratoryDisposition::ResearchRequired,
+        ),
+        (
+            EngineeringChoiceEvidenceState::PrototypeRequired,
+            ExploratoryDisposition::PrototypeRequired,
+        ),
+    ] {
+        for count in [0, 1] {
+            let f = fixture()?;
+            let source = f.baseline.repository_source.identity();
+            let mut choice = engineering_choice(
+                "investigate",
+                EngineeringEffectCategory::ImplementationInternal,
+                source,
+            );
+            choice.evidence_state = evidence;
+            choice.alternatives.truncate(count);
+            let mut pending = dimension(
+                "investigate",
+                MaterialityDisposition::ExploratoryUncertainty { disposition },
+                vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+                source,
+            );
+            pending.alternative_accounting.truncate(count);
+            pending.ownership.discretion_counterfactuals.truncate(count);
+            pending.basis.research_basis = vec!["Inspect the bounded uncertainty before selecting any implementation or product policy.".into()];
+            let recorded = review_with_choices(&f, vec![choice], vec![pending.clone()])?;
+            let state = readiness(&f, &recorded)?;
+            assert_eq!(state.stage, WorkAuthorityStage::ResearchOrPrototype);
+            assert!(state.blocking);
+            assert_eq!(
+                state.disposition,
+                WorkAuthorityDisposition::ResearchRequired
+            );
+            let reopened = LocalOperations::new(f.operations.layout().clone());
+            let before = reopened.canonical_basis(f.project_id)?;
+            assert!(before.active_questions.is_empty());
+            assert!(before.active_decisions.is_empty());
+            let retained =
+                volicord_inquiry::CandidateStore::open(reopened.layout().candidate_store())?
+                    .get(f.project_id, recorded.review_candidate_id)?;
+            let retained = retained
+                .content
+                .as_ref()
+                .and_then(|c| c.materiality_review.as_ref())
+                .ok_or("review")?;
+            assert_eq!(retained.dimensions[0].alternative_accounting.len(), count);
+            let blocked = reopened.work_readiness(
+                f.project_id,
+                f.goal_id,
+                f.baseline.identity,
+                recorded.review_candidate_id,
+                vec!["src/lib.rs".into()],
+                vec![],
+                vec![],
+                vec![],
+            )?;
+            assert_eq!(blocked.stage, WorkAuthorityStage::ResearchOrPrototype);
+            assert!(blocked.blocking);
+            // A prose claim of completion must not turn an empty discovered set
+            // into implementation authority on this same retained discovery.
+            if count == 0 {
+                pending.disposition = MaterialityDisposition::ExploratoryUncertainty {
+                    disposition: ExploratoryDisposition::ResolvedByResearch,
+                };
+                pending.basis.kinds = vec![WorkAuthorityBasisKind::ResearchEvidence];
+                assert!(reopened
+                    .revise_materiality_review(MaterialityReviewRevisionDraft {
+                        project_id: f.project_id,
+                        review_candidate_id: recorded.review_candidate_id,
+                        rationale: "Claimed completion still has no credible alternatives.".into(),
+                        learning_participation: LearningParticipation::Inactive,
+                        dimensions: vec![pending],
+                        learning_value_revision_bases: vec![],
+                    })
+                    .is_err());
+            }
+            let after = reopened.canonical_basis(f.project_id)?;
+            assert_eq!(before.project, after.project);
+            assert_eq!(before.context_items, after.context_items);
+            assert!(after.active_questions.is_empty());
+            assert!(after.active_decisions.is_empty());
+            assert!(after.checkpoint_history.is_empty());
+            // Authored structural evidence refines Discovery append-only at the
+            // same original Goal/baseline. This tests transition integrity and
+            // target nonmutation, not empirical research or semantic adequacy.
+            let complete = engineering_choice(
+                "investigate",
+                EngineeringEffectCategory::ImplementationInternal,
+                source,
+            );
+            let ordinary = agent_owned_dimension(
+                "investigate",
+                source,
+                LearningValueAssessment::Routine {
+                    rationale:
+                        "The bounded private approaches are now supported by fixture evidence."
+                            .into(),
+                },
+            );
+            let refined = review_with_choices(&f, vec![complete], vec![ordinary])?;
+            assert_ne!(
+                bound_discovery_id(&f, &recorded)?,
+                bound_discovery_id(&f, &refined)?
+            );
+            assert_eq!(
+                refined.baseline_analysis_snapshot_id,
+                recorded.baseline_analysis_snapshot_id
+            );
+            let frontier = reopened.workflow_for_work_basis(
+                f.project_id,
+                f.goal_id,
+                f.baseline.identity,
+                vec!["src/lib.rs".into()],
+                vec![],
+                vec![],
+                vec![],
+            )?;
+            assert_eq!(frontier.stage, WorkflowStage::ReadyForWork);
+            assert!(!frontier.blocks_ordinary_work);
+            assert!(
+                readiness(&f, &recorded)?.blocking,
+                "The original research review remains historical and blocked."
+            );
+            assert_eq!(
+                fs::read_to_string(f.repository.join("src/lib.rs"))?,
+                "pub fn value() -> u32 { 1 }\n"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn research_still_accounts_for_every_known_discovered_alternative(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for missing_count in [0, 1] {
+        let f = fixture()?;
+        let source = f.baseline.repository_source.identity();
+        let choice = engineering_choice(
+            "investigate",
+            EngineeringEffectCategory::ImplementationInternal,
+            source,
+        );
+        let mut pending = dimension(
+            "investigate",
+            MaterialityDisposition::ExploratoryUncertainty {
+                disposition: ExploratoryDisposition::ResearchRequired,
+            },
+            vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+            source,
+        );
+        pending.alternative_accounting.truncate(missing_count);
+        pending
+            .ownership
+            .discretion_counterfactuals
+            .truncate(missing_count);
+        pending.basis.research_basis =
+            vec!["Research cannot silently omit already discovered alternatives.".into()];
+        assert!(record_review_with_learning(
+            &f,
+            vec![choice],
+            vec![pending],
+            LearningParticipation::Inactive
+        )
+        .is_err());
+    }
+    let f = fixture()?;
+    let source = f.baseline.repository_source.identity();
+    let mut choice = engineering_choice(
+        "investigate",
+        EngineeringEffectCategory::ImplementationInternal,
+        source,
+    );
+    choice.evidence_state = EngineeringChoiceEvidenceState::ResearchRequired;
+    let mut pending = dimension(
+        "investigate",
+        MaterialityDisposition::ExploratoryUncertainty {
+            disposition: ExploratoryDisposition::ResearchRequired,
+        },
+        vec![WorkAuthorityBasisKind::NoSettlingAuthority],
+        source,
+    );
+    pending.basis.research_basis =
+        vec!["The two known alternatives still need bounded investigation.".into()];
+    let recorded = review_with_choices(&f, vec![choice], vec![pending])?;
+    let store = volicord_inquiry::CandidateStore::open(f.operations.layout().candidate_store())?;
+    let mut malformed = store.get(f.project_id, recorded.review_candidate_id)?;
+    let discovery = store.get(f.project_id, bound_discovery_id(&f, &recorded)?)?;
+    let body = malformed
+        .content
+        .as_mut()
+        .and_then(|c| c.materiality_review.as_mut())
+        .ok_or("review")?;
+    body.dimensions[0].alternative_accounting.clear();
+    body.dimensions[0]
+        .ownership
+        .discretion_counterfactuals
+        .clear();
+    let state = volicord_inquiry::evaluate_work_authority(
+        &f.operations.canonical_basis(f.project_id)?,
+        volicord_inquiry::WorkAuthorityCandidateBasis {
+            review: Some(&malformed),
+            discovery: Some(&discovery),
+            learning_deliberations: &[],
+        },
+        f.project_id,
+        f.goal_id,
+        f.baseline.identity,
+        &volicord_inquiry::ApplicabilityQuery {
+            project_id: f.project_id,
+            paths: vec!["src/lib.rs".into()],
+            components: vec![],
+            work_contexts: vec![],
+            current_assumptions: vec![],
+            met_revisit_triggers: vec![],
+        },
+    );
+    assert!(state.blocking);
+    assert_eq!(state.disposition, WorkAuthorityDisposition::ReviewInvalid);
+    Ok(())
+}
+
 fn fixture_with_goal(goal_statement: &str) -> Result<Fixture, Box<dyn std::error::Error>> {
     fixture_with_repository(goal_statement, "pub fn value() -> u32 { 1 }\n")
 }

@@ -292,12 +292,16 @@ fact를 먼저 확인한 뒤 다음 순서로 분류한다.
   disposition과 NoSettlingAuthority는 유지하며 Decision 전 ordinary work를 허용하지 않는다.
 - Research/prototype는 현재 tracked repository write authority를 제공하지 않는다. Evidence는
   read-only inspection, repository 밖 scratch 또는 별도 disposable worktree에서 수집한다.
-  Original Project/Goal/Discovery/baseline chain을 유지하며 blocked research/prototype를 새
-  baseline/Discovery로 대체하지 않는다. Repository mutation이 관찰되면 원래 baseline으로
+  Original Project/Goal/baseline과 기존 Discovery/Review 기록을 유지하며 blocked
+  research/prototype를 우회하려고 새 baseline/Discovery로 대체하지 않는다. 실제 bounded
+  evidence가 새 credible alternatives를 밝혔으면 같은 original Goal/baseline에 새 Discovery를
+  append하고 그 identity에 bind된 새 Review로 frontier를 전진시킬 수 있다. 이전 pending
+  Review는 historical chain으로 남으며 새 frontier를 대신하지 않는다. Repository mutation이 관찰되면 원래 baseline으로
   복구하기 전 evidence-completion revision을 거부한다. 이 검사는 filesystem write interception이나
   exclusive actor attribution이 아니며 host가 first-write boundary를 지킨다. Scratch 결과를
-  production에 반영하려면 원래 Review를 evidence로 resolve하고 정상 executable scope/readiness를
-  확보한 뒤 ordinary work로 적용한다. 사후 baseline은 이전 write를 certify하지 않는다.
+  production에 반영하려면 원래 Goal/baseline의 current Discovery에 연결된 Review에 실제
+  evidence와 authority assessment를 반영하고 정상 executable scope/readiness를 확보한 뒤
+  ordinary work로 적용한다. 사후 baseline은 이전 write를 certify하지 않는다.
 - material하게 다른 consequence가 남은 unresolved user-owned outcome은 선택하거나
   구현하기 전에 explicit user authority를 얻는다.
 
@@ -400,6 +404,13 @@ delegation와 commitment의 full nested schema는 기존 tool inputSchema에 남
 이 metadata 경로는 Runtime을 열거나 tool을 호출하지 않으며 별도 schema를 소유하지 않는다.
 큰 definition은 로컬 JSON reader로 필요한 subtree만 검사한다. SessionStart는 설치된
 MCP 실행 파일의 정확한 경로를 안내한다.
+
+Discovery가 research/prototype evidence 부족으로 아직 credible alternative를 하나도
+기록하지 못했으면 pending `research_required`/`prototype_required` Review만 empty alternative
+accounting과 empty discretion counterfactuals를 허용한다. 서버는 저장과 readiness에서 실제
+bound Discovery의 대안 집합과 정확히 비교하며, 이미 알려진 대안을 생략하거나 없는 identity를
+만들 수 없다. 이 상태는 ordinary work를 계속 block하며 user Decision이나 구현 authority를
+생성하지 않는다. Deferred/resolved/settling/agent-owned/delegated disposition에는 이 예외가 없다.
 
 `record_request`는 current review가 없으면 discovery identity를 가진 `record`, 있으면
 exact current review identity를 가진 `revise`를 prefill한다. Discovery/review revision,
@@ -504,7 +515,9 @@ analysis를 게시한 뒤 authority와 late path를 평가한다.
 첫 authoritative review는 exact baseline과 fresh review observation 사이 meaningful repository
 delta가 없어야 한다. 이 transition은 typed Local Operations path만 만들 수 있으며 generic
 Candidate submission으로 timing을 주장할 수 없다. Timely first review 뒤 exploratory research나
-prototype evidence가 alternatives를 바꾸면 같은 Candidate revision으로 재검토할 수 있다.
+prototype evidence가 기존 alternatives의 authority/evidence assessment를 바꾸면 같은 Review
+Candidate revision으로 재검토한다. Alternative identity 집합 자체가 바뀌면 원래 Goal/baseline의
+새 Discovery와 그에 연결된 새 Review를 append하며 이전 기록을 수정하거나 relabel하지 않는다.
 Maintained baseline/current fingerprint evidence가 dimension의 affected path 변경 뒤 disposition,
 authority anchor, blocking readiness 또는 affected-scope applicability 변경을 증명하면 Review는 late
 work-authority revision과 exact changed path를 보존한다. Delegated에서 repository fact/agent-owned로

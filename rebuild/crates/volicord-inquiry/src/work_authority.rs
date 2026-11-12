@@ -544,7 +544,19 @@ fn validate_discovery_boundary<'a>(
                 .into(),
         );
     }
+    crate::store::validate_review_against_discovery(review, candidate)
+        .map_err(|error| error.to_string())?;
     Ok(discovery)
+}
+
+pub(crate) fn pending_exploration(dimension: &MaterialityDimension) -> bool {
+    matches!(
+        dimension.disposition,
+        MaterialityDisposition::ExploratoryUncertainty {
+            disposition: ExploratoryDisposition::ResearchRequired
+                | ExploratoryDisposition::PrototypeRequired
+        }
+    )
 }
 
 pub(crate) fn unresolved_discovery_evidence(
@@ -1286,7 +1298,7 @@ pub(crate) fn validate_discretion_counterfactuals(
             return Err("implementation discretion counterfactual requires unique alternative identity, observation rationale, and a boundary grounded in ownership Source evidence".into());
         }
     }
-    if expected.is_empty() || observed != expected {
+    if (expected.is_empty() && !pending_exploration(dimension)) || observed != expected {
         return Err("implementation discretion counterfactual must cover every discovered alternative with source-grounded observation and bounded-discretion evidence".into());
     }
     Ok(())
@@ -1341,7 +1353,7 @@ fn validate_alternative_resolution_compatibility(
 ) -> Result<(), DimensionIssue> {
     use crate::DiscoveredAlternativeResolution as Resolution;
 
-    if dimension.alternative_accounting.is_empty() {
+    if dimension.alternative_accounting.is_empty() && !pending_exploration(dimension) {
         return Err(DimensionIssue::Invalid(
             "every discovered alternative requires identity-linked authority accounting".into(),
         ));

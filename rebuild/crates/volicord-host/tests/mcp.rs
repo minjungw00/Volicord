@@ -3566,6 +3566,107 @@ fn active_learning_keeps_exploratory_uncertainty_on_the_research_path() {
 }
 
 #[test]
+fn mcp_pending_research_accepts_zero_known_alternatives_without_authority() {
+    for evidence in ["research_required", "prototype_required"] {
+        for user_owned in [false, true] {
+            let (_temporary, mut adapter, project) = setup();
+            let turn = "Investigate the bounded uncertainty before implementing any outcome.";
+            let goal = structured(&call(&mut adapter, "context_record", json!({
+                "project_id":project,"user_turn":turn,"role":"goal","work_transition":"start_new","statement":turn
+            }))).clone();
+            let analyzed = structured(&call(
+                &mut adapter,
+                "repository_analyze",
+                json!({"project_id":project}),
+            ))
+            .clone();
+            let source = analyzed["repository_source_id"].as_str().expect("Source");
+            let discovery = call(
+                &mut adapter,
+                "engineering_choice_discovery",
+                json!({
+                    "action":"record","project_id":project,"goal_context_id":goal["context_item_id"],
+                    "baseline_analysis_snapshot_id":analyzed["analysis_snapshot_id"],
+                    "source_operation":"bounded-research-fixture","summary":"Unknown alternatives require evidence, not invented identities.",
+                    "choices":[{"choice_id":"uncertainty","summary":"Investigate the bounded outcome space", "affected_scope":["src"],
+                        "alternatives":[],"technical_consequences":["The observable outcome is not yet established"],
+                        "source_ids":[source],"effect_categories":["implementation_internal"],"relationship":{"state":"independent"},"evidence_state":evidence}],
+                    "material_boundary_review":complete_material_boundary_review_json(source,&[("implementation_internal", &["uncertainty"])]),
+                    "interaction_review":outside_interactions_json(source)
+                }),
+            );
+            assert_eq!(discovery["result"]["isError"], false, "{discovery}");
+            let discovery_id = structured(&discovery)["discovery_candidate_id"].clone();
+            let draft = structured(&call(&mut adapter,"materiality_review",json!({"action":"draft","project_id":project,"engineering_choice_discovery_candidate_id":discovery_id}))).clone();
+            let mut judgment = draft_judgment(
+                &draft,
+                "uncertainty",
+                &format!("exploratory_uncertainty_{evidence}"),
+                json!({
+                    "basis_summary":"Read-only bounded research is needed before any outcome selection.",
+                    "research_basis":["Inspect existing behavior using an external disposable fixture."],
+                    "contains_user_owned_outcome":user_owned,
+                    "user_owned_outcomes":if user_owned { json!(["The prospective user-visible outcome remains unresolved"]) } else { json!([]) },
+                        "ownership_source_ids":[source],
+                    "alternative_accounting":[],"discretion_counterfactuals":[],
+                    "learning_value":{"state":"routine","rationale":"No implementation selection or learning interruption is claimed."}
+                }),
+            );
+            if user_owned {
+                judgment
+                    .as_object_mut()
+                    .expect("judgment")
+                    .remove("bounded_implementation_discretion_rationale");
+            }
+            let review = call(
+                &mut adapter,
+                "materiality_review",
+                draft_request(
+                    &draft,
+                    "Preserve incomplete investigation without implementation authority.",
+                    draft_learning_participation(&draft, "inactive", json!({})),
+                    vec![judgment.clone()],
+                ),
+            );
+            assert_eq!(review["result"]["isError"], false, "{review}");
+            assert_eq!(
+                structured(&review)["workflow"]["stage"],
+                "research_or_prototype"
+            );
+            assert_eq!(
+                structured(&review)["workflow"]["blocks_ordinary_work"],
+                true
+            );
+            let retained = structured(&call(&mut adapter,"materiality_review",json!({"action":"draft","project_id":project,"engineering_choice_discovery_candidate_id":discovery_id}))).clone();
+            // An invented accounting identity cannot fill an unknown set.
+            judgment["alternative_accounting"] =
+                unresolved_alternative_accounting("uncertainty", &["invented"], &json!(source));
+            if !user_owned {
+                judgment["discretion_counterfactuals"] =
+                    discretion_counterfactuals("uncertainty", &["invented"], &json!(source));
+            }
+            let rejected = call(
+                &mut adapter,
+                "materiality_review",
+                draft_request(
+                    &retained,
+                    "Reject an invented alternative.",
+                    draft_learning_participation(&retained, "inactive", json!({})),
+                    vec![judgment],
+                ),
+            );
+            assert_eq!(rejected["result"]["isError"], true, "{rejected}");
+            assert!(
+                structured(&rejected)["error"]
+                    .as_str()
+                    .is_some_and(|e| e.contains("account exactly once")),
+                "{rejected}"
+            );
+        }
+    }
+}
+
+#[test]
 fn mcp_preserves_bounded_verbatim_current_task_delegation_for_inspection() {
     let (temporary, mut adapter, project) = setup();
     let goal_turn = "Implement the change; choose the internal module name.";
