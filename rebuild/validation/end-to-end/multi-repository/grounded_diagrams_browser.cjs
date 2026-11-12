@@ -19,7 +19,7 @@ const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),ch
 if(config.fontconfig) executionIdentities.fontconfig=hash(config.fontconfig);
 for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs','diagram_context.cjs','publication_coverage.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
 const sleep = ms => new Promise(r => setTimeout(r,ms));
-const {openEmbeddedCode,returnFromEmbeddedCode,citationResponse,criticalBytes,embeddedCode,citationInspection,citationReady}=require('../../viewer-design/product_review_controls.cjs');
+const {openEmbeddedCode,returnFromEmbeddedCode,citationResponse,criticalBytes,embeddedCode,citationInspection,citationReady,citationPoint}=require('../../viewer-design/product_review_controls.cjs');
 executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/product_review_controls.cjs'));
 const failureReasons=['expired','deleted','changed','withheld','comparison_unavailable','unavailable','missing','corrupt','unsupported'];
 async function nativeLinkNavigation(page, link, receipt) {
@@ -231,7 +231,15 @@ async function nativeLinkNavigation(page, link, receipt) {
             if(await picker.count() && await picker.inputValue()!==target) await picker.selectOption(target);
           }
           if(mode==='live') await openSelectedEvidence();
-          else {await action.click();if((await action.getAttribute('href')).slice(1)!==nativeId){const initial=page.locator(':target');await initial.locator('.native-range-selector>summary').click();await initial.locator('a[href="#'+nativeId+'"]').click();}}
+          else {
+            await action.click();
+            if((await action.getAttribute('href')).slice(1)!==nativeId) {
+              const initial=await citationPoint(page,await action.getAttribute('href'));
+              const native=await nativeEvidenceContext(initial);
+              await native.locator('.native-range-selector>summary').click();
+              await native.locator('a[href="#'+nativeId+'"]').click();
+            }
+          }
           const pointId=boundPointId;
           const point=page.locator('[id="'+pointId+'"]');
           if(mode==='live') {
