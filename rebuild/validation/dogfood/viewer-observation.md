@@ -97,10 +97,16 @@ Supply `--library-path` and existing fontconfig configuration when needed. It us
 the maintained Rust explanation seed, real public prepare/record/correct commands
 and the existing browser driver. Labeled fixture prose establishes structural
 state binding only. Both locales' absent/current/stale/regenerated Work states,
-Decision absence/current state, real 200% zoom, attach/detach and foreign-executable
+real 200% zoom, attach/detach and foreign-executable
 rejection retain full local evidence. The test cleans up only its owned Viewer
 and browser. It is neither an external authenticated probe nor a naturalistic
 campaign, human judgment or authoritative gate.
+
+The context-lifecycle driver authors only current explanation-format inputs and
+inspects the current grouped Work document, including unavailable states. Its
+fixture correction uses a distinct authorization Source; the Goal's supporting
+Sources remain unchanged. This is structural lifecycle evidence, with explicitly
+labeled fixture prose and no diagram-necessity or semantic-quality judgment.
 
 The person supplies a direct experience block, with optional explicit `LIMITS:`.
 No schema fields are requested; raw answer text stays exact and unreported limits

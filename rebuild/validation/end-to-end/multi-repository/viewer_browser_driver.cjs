@@ -417,9 +417,9 @@ async function contextLifecycle() {
     const selector=kind==='work'?'--work':'--decision';
     const plan=operation([kind,'explain','prepare',selector,identity,'--language',locale]).plan;
     const questions=kind==='work'?['purpose','reported_change','expected_effect','verification','next_step']:['user_rationale','recommendation','consequences','applicability'];
-    const response={format_kind:'volicord_explanation',format_version:1,plan_fingerprint:plan.fingerprint,language:locale,
+    const response={format_kind:'volicord_explanation',format_version:9,plan_fingerprint:plan.fingerprint,language:locale,diagrams:[],
       generator:{host:'display-context-fixture',session:'synthetic-structural-support',agent:null,model:null},
-      paragraphs:questions.map(question=>({question,text:`Labeled structural fixture ${locale} ${question}`,evidence_keys:plan.evidence.map(e=>e.key)}))};
+      paragraphs:questions.map(question=>({question,text:`Labeled structural fixture ${locale} ${question}`,citations:[],evidence_keys:plan.evidence.map(e=>e.key)}))};
     const input=path.join(config.output,`response-${sequence}.json`);fs.writeFileSync(input,JSON.stringify(response));
     operation([kind,'explain','record',selector,identity,'--language',locale,'--input',input]);
     return plan;
@@ -432,7 +432,7 @@ async function contextLifecycle() {
     await go(`${config.url}?view=${view}&${selector}=${identity}&locale=${locale}&language=${locale}`);
     await zoom(1);
     const surface=page.locator(idSelector(`${kind}-${identity}`));
-    const reading=surface.locator('.work-explanation,.answer-unavailable').first();
+    const reading=surface.locator(`:scope > article.doc[data-work-id="${identity}"]`);
     requireFact(await reading.count()===1&&await reading.isVisible(),'actual_reading_surface_unavailable');
     if(state==='current')requireFact((await ordinaryText(reading)).includes(`Labeled structural fixture ${locale}`),'current_answer_not_displayed');
     await capture(`${phase}-${kind}-${locale}.png`,reading);
@@ -448,9 +448,15 @@ async function contextLifecycle() {
     let plan;
     for(const locale of ['en','ko']){plan=record('work',work,locale);await display('current','work',work,locale,'current');}
     const goal=plan.evidence.find(e=>e.key==='goal');
-    operation(['advanced','records','correct-context',work,'--revision',String(goal.revision),'--source',goal.sources[0],'--text',goal.content+'.']);
+    const authorization=operation(['advanced','records','source','--host','display-context-fixture','--session','synthetic-correction','--text','Structural fixture authorization: append punctuation to the existing Goal.']);
+    requireFact(!goal.sources.includes(authorization.identity),'correction_authorization_reused_goal_source');
+    operation(['advanced','records','correct-context',work,'--revision',String(goal.revision),'--source',authorization.identity,'--text',goal.content+'.']);
     for(const locale of ['en','ko'])await display('stale','work',work,locale,'stale');
-    for(const locale of ['en','ko']){record('work',work,locale);await display('regenerated','work',work,locale,'current');}
+    for(const locale of ['en','ko']){
+      const regenerated=record('work',work,locale).evidence.find(e=>e.key==='goal');
+      requireFact(regenerated.identity===goal.identity&&regenerated.revision===goal.revision+1&&JSON.stringify(regenerated.sources)===JSON.stringify(goal.sources),'correction_changed_supporting_goal_sources');
+      await display('regenerated','work',work,locale,'current');
+    }
     for(const locale of ['en','ko']) {
       const before=phases[`current-work-${locale}`],after=phases[`regenerated-work-${locale}`];
       requireFact(before.context.canonical_read_fingerprint!==after.context.canonical_read_fingerprint&&before.dom_sha256!==after.dom_sha256,'changed_basis_reused');
@@ -460,7 +466,7 @@ async function contextLifecycle() {
     return {states:['unavailable','current','stale','regenerated-current'],locales:['en','ko'],fixture_generation:'labeled structural only',human_judgment:'not_established'};
   });
   await check('native_zoom_and_existing_tab_attachment',async()=>{
-    await go(`${config.url}?view=work&work=${work}&locale=en&language=en`);await zoom(1);await zoom(2);await capture('native-200-en.png',page.locator(workSelector('relay')).locator('.work-explanation').first());
+    await go(`${config.url}?view=work&work=${work}&locale=en&language=en`);await zoom(1);await zoom(2);await capture('native-200-en.png',page.locator(workSelector('relay')).locator(':scope > article.doc'));
     const render=await page.evaluate(()=>JSON.parse(document.querySelector('meta[name="volicord-observation"]').content).render_id);
     const argv=[config.capture_tool,'--binary',config.viewer,'--runtime',F.runtime,'--project',F.project,'--cdp-url',`http://127.0.0.1:${config.debug_port}`,'--page-url',page.url(),'--playwright-module',config.playwright,'--output',path.join(config.output,'attached-en')];
     const completed=spawnSync('python3',argv,{encoding:'utf8',timeout:40000,maxBuffer:32<<20,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
@@ -476,7 +482,7 @@ async function contextLifecycle() {
     result.wrong_executable_process={exit_code:rejected.status,signal:rejected.signal,error:rejected.error?.code||null};
     requireFact(rejected.status===1&&!rejected.error&&!fs.existsSync(path.join(config.output,'wrong-executable/display-context.json')),'wrong_executable_observation_accepted');
     await page.keyboard.press('Home');await frames();
-    await go(`${config.url}?view=work&work=${work}&locale=ko&language=ko`);await zoom(1);await zoom(2);await capture('native-200-ko.png',page.locator(workSelector('relay')).locator('.work-explanation').first());
+    await go(`${config.url}?view=work&work=${work}&locale=ko&language=ko`);await zoom(1);await zoom(2);await capture('native-200-ko.png',page.locator(workSelector('relay')).locator(':scope > article.doc'));
     return {observer_detached_browser_still_usable:true,wrong_executable_rejected:true,zoom:2,locales:['en','ko'],attached_render_id:render};
   });
 }
