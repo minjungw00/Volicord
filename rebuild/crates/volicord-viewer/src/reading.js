@@ -247,7 +247,10 @@
           if(active!==target && active!==activation.trigger && active!==document.body)return;
           const figure=activation.trigger.closest('.admitted-diagram');
           const viewport=activation.trigger.closest('.diagram-viewport');
-          if(viewport?.isConnected && !figures.restore(figure,activation.camera)) {
+          if(viewport?.isConnected) {
+            figures.restore(figure,activation.camera);
+            // Revealing a claim can change the available viewport slightly;
+            // selection must not turn that layout adjustment into recentering.
             viewport.scrollLeft=activation.left;viewport.scrollTop=activation.top;
           }
           if(figure?.isConnected){figure.scrollLeft=activation.figureLeft;figure.scrollTop=activation.figureTop;}
