@@ -118,6 +118,43 @@ class ResumeTests(unittest.TestCase):
             executable_work_scope=None, descriptor_scope_paths=[])
         self.assertEqual(facts["mode"], "verified_state_continuation")
 
+    def test_goal_receipt_identifies_start_without_claiming_handoff(self):
+        (self.root / "goal-only").mkdir()
+        descriptor = h.real_session_fixture("volicord", 2, "0" * 40, self.root / "goal-only")
+        start = h.load_codex_capture(self.root / "goal-only" / descriptor["evidence"]["captures"]["work"]["file"])
+        goal = next(c for c in start.successful_calls("context_record") if c.arguments.get("role") == "goal")
+        no_checkpoint = replace(start, tool_calls=tuple(c for c in start.tool_calls
+            if c.operation != "checkpoint_record"))
+        self.assertEqual(campaign.observed_work_item_ids(no_checkpoint, "start"), [goal.result["context_item_id"]])
+        self.assertFalse(h.terminal_checkpoint_call(no_checkpoint))
+        for result in ({**goal.result, "context_item_id": None},
+                {**goal.result, "project_id": "ff" * 16}, {**goal.result, "role": "learning"},
+                {**goal.result, "revision": True}):
+            changed = replace(goal, result=result)
+            with self.subTest(result=result), self.assertRaises(campaign.CampaignError):
+                campaign.observed_work_item_ids(replace(no_checkpoint, tool_calls=(changed,)), "start")
+        conflicting = replace(goal, call_id="another-goal", result={**goal.result, "context_item_id": "ff" * 16})
+        with self.assertRaises(campaign.CampaignError):
+            campaign.observed_work_item_ids(replace(no_checkpoint, tool_calls=(goal, conflicting)), "start")
+
+    def test_selected_work_identifies_checkpoint_free_resume_but_does_not_qualify_it(self):
+        capture = self.completed_no_write()
+        recall = capture.successful_calls("recall")[0]
+        changed = replace(recall, result={**recall.result, "checkpoint": None})
+        capture = replace(capture, tool_calls=tuple(changed if c is recall else c for c in capture.tool_calls))
+        self.assertEqual(campaign.observed_work_item_ids(capture, "resume"), [self.state["work_item_id"]])
+        self.failure(capture, "recall_identity_or_project_invalid", "evidence")
+        terminal = self.capture.successful_calls("checkpoint_record")[0]
+        later_checkpoint = replace(capture, tool_calls=(*capture.tool_calls, terminal))
+        self.assertEqual(campaign.observed_work_item_ids(later_checkpoint, "resume"), [self.state["work_item_id"]])
+        self.failure(later_checkpoint, "recall_identity_or_project_invalid", "evidence")
+        for result in ({k:v for k,v in changed.result.items() if k != "checkpoint"},
+                {**changed.result, "selected_work": None}, {**changed.result, "goal_basis": []},
+                {**changed.result, "read_only": False}):
+            bad = replace(changed, result=result)
+            with self.subTest(result=result), self.assertRaises(campaign.CampaignError):
+                campaign.observed_work_item_ids(replace(capture, tool_calls=(bad,)), "resume")
+
     def repeated_capture(self, count=2):
         """Authored control: same paused Work, explanation recorded between reads.
 

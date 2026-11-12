@@ -1755,6 +1755,14 @@ operator/steward artifacts and explicit rejected-attempt inputs, are copied with
 exact byte/hash identities. Source files and collector dependencies are rechecked
 before publication; drift rejects publication.
 
+Collection resolves a Work's identity from its successful canonical Goal receipt
+or Checkpoint, and a resume's selected Work with a consistent Recall Goal basis.
+A present Checkpoint must still match that Work; absent or malformed fields and
+conflicting Goal/Checkpoint identities remain integrity failures. An explicitly
+null Checkpoint does not erase a valid selected Work. Identity normalization does
+not supply a successful start handoff or resume continuation: those existing
+behavior checks retain missing-Checkpoint failures and their original evidence.
+
 Activation timing distinguishes typed host setup from actual work. Bounded
 `additional_tools` definition catalogs and same-thread/same-workspace
 `thread_settings_applied` envelopes may precede the repository-bound SessionStart

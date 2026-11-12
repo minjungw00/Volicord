@@ -1424,20 +1424,29 @@ def observed_project_ids(capture: Any) -> list[str]:
 
 
 def observed_work_item_ids(capture: Any, role: str) -> list[str]:
-    """Use durable start evidence or the resume's canonical Recall basis."""
+    """Resolve identity independently of successful handoff/continuation checks."""
     checkpoint_ids = [call.arguments.get("goal_context_id")
         for call in capture.successful_calls("checkpoint_record")]
     if role == "start":
-        ids = checkpoint_ids
+        goals = [call for call in capture.successful_calls("context_record")
+                 if call.arguments.get("role") == "goal"]
+        if any(call.result.get("role") != "goal"
+                or PROJECT_ID.fullmatch(str(call.result.get("project_id", ""))) is None
+                or call.result.get("project_id") != call.arguments.get("project_id")
+                or type(call.result.get("revision")) is not int
+                or call.result["revision"] < 1 for call in goals):
+            raise CampaignError("Work Goal receipt is malformed or conflicting")
+        ids = [call.result.get("context_item_id") for call in goals] + checkpoint_ids
     elif role == "resume":
         recalls = capture.successful_calls("recall")
         if not recalls or capture.transport_issues('recall'):
             raise CampaignError("fresh resume lacks complete canonical Recall evidence")
         import answer_observations
-        if any(answer_observations.recall_identity_errors(call.result, call.arguments.get('project_id'))
+        if any(answer_observations.recall_identity_errors(call.result,
+                call.arguments.get('project_id'), checkpoint_state='unknown')
                 for call in recalls):
             raise CampaignError("fresh resume Recall identity is malformed or conflicting")
-        ids = [call.result['checkpoint']['work_item_id'] for call in recalls] + checkpoint_ids
+        ids = [call.result['selected_work']['work_item_id'] for call in recalls] + checkpoint_ids
     else:
         raise CampaignError("unknown Work session role")
     if not ids or any(not isinstance(value, str) or PROJECT_ID.fullmatch(value) is None
@@ -1512,6 +1521,10 @@ def inspect_resume(capture: Any, descriptor: dict[str, Any], state: dict[str, An
             "recall_identity_or_project_invalid"
         )
     try:
+        import answer_observations
+        if any(answer_observations.recall_identity_errors(call.result, project_id)
+                for call in recalls):
+            raise CampaignError("fresh resume lacks required Checkpoint evidence")
         resumed_work_ids = observed_work_item_ids(capture, "resume")
     except CampaignError as error:
         raise ResumeContractError("recall_identity_or_project_invalid") from error
