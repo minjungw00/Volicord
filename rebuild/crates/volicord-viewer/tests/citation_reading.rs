@@ -2597,7 +2597,10 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
             let map = html.find("class=\"diagram-full-view\"").ok_or("map")?;
             let detail = html.find("class=\"diagram-claims\"").ok_or("detail")?;
             assert!(caption < detail && map < detail);
-            assert_eq!(caption < map, sequence, "temporal scope precedes the scene");
+            assert!(
+                caption < map,
+                "authored scope precedes every diagram kind, including non-temporal maps"
+            );
             if sequence {
                 assert!(!html.contains("class=\"diagram-timeline\""));
                 assert!(!html.contains("data-sequence-layout=\"stages\""));
