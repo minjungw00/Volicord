@@ -50,12 +50,12 @@ def production_context(repository: Path, session_id: str, source: str = "startup
         "Authorized explanation-only: no new Goal/Discovery/Decision/Checkpoint",
         "ordinary blockers remain",
         "MCP work_explanation produce",
-        "work_source for permitted relevant Sources",
+        "Permitted Sources: work_source",
         "work_explanation read_source",
-        "then author and record with exact bindings",
+        "author/record exact bindings",
         "Prepare/read/GET never generate or transmit",
         "no server-side model dispatch or generation quota",
-        "Missing host access/authority is a blocker",
+        "Missing host access/authority blocks",
         "Never infer user authority from agent recommendation",
         "transmit sources without separate exact provider authorization",
     ):
@@ -66,30 +66,30 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     assert "Pre-mutation success, inspection, prior Checkpoint or prose cannot certify later changes" in context
     assert "Use standalone bounded verification for terminal evidence" in context
     assert "mixed/ambiguous compound diagnostics cannot be sole terminal evidence" in context
-    assert "Read-only, explanation-only or no-write continuation needs no post-mutation verification" in context
-    assert "No-write research/prototype execution needs a completed bounded scratch experiment" in context
-    assert "exact invocation and actual numeric exit/termination" in context
+    assert "Read-only/explanation-only/no-write continuation needs no post-mutation verification" in context
+    assert "No-write research/prototype: completed bounded scratch experiment" in context
+    assert "exact invocation/numeric exit/termination" in context
     assert "Diagnostics may precede it" in context
-    assert "then preserve its basis with read-only inspection/reporting before Checkpoint" in context
-    assert "Later substantive diagnostics require a later bounded experiment with numeric completion" in context
-    assert "Checkpoint records no changed paths and terminal experiment evidence, never a superseded run" in context
-    assert "Never infer success from prose/output, hide failed/indeterminate experiments, or promote arbitrary successful commands to repository validation" in context
+    assert "only read-only inspection/reporting until Checkpoint" in context
+    assert "Later substantive diagnostics need a new bounded completed experiment" in context
+    assert "Checkpoint: no changed paths and terminal experiment evidence, never a superseded run" in context
+    assert "Preserve failed/indeterminate experiments; prose/output or arbitrary command success cannot certify repository validation" in context
     assert "call decision_record promptly" in context
     assert "existing valid presentation_receipt_id" in context
     assert "exact current user_turn" in context
     assert "No repeat confirmation of unchanged Questions" in context
-    assert "Explanation is not a Decision; clarify ambiguous answers" in context
+    assert "Explanation is not a Decision; clarify ambiguity" in context
     assert "Changed revisions or stale/invalid receipts require current presentation" in context
     assert "caller-supplied current-host response" in context
     assert "Never infer a Decision from recommendation or silence" in context
     assert "stronger confirmation only for existing high-risk effects" in context
     assert "Recall is not completion" in context
     assert "Complete requested tests/build/lint/verification to termination before completion; report blockers" in context
-    assert "Inspect/explain-only requests need no execution" in context
-    assert "Explicit learning/explanation participation stays active for this bounded Goal" in context
-    assert "exact current-host Source/verbatim statement, even for routine dimensions" in context
-    assert "Routine learning value requires no Learning Deliberation, Question, or Decision" in context
-    assert "default inactive; generic coding, agent explanation or ungrounded keywords cannot activate participation" in context.lower()
+    assert "Inspect/explain-only needs no execution" in context
+    assert "Learning: inactive unless the current user explicitly opts in" in context
+    assert "for this bounded Goal (exact Source/verbatim statement)" in context
+    assert "Routine opt-in needs no Learning Deliberation/Question/Decision" in context
+    assert "result/limitation explanation alone cannot activate learning or supply learning context" in context.lower()
     return context
 
 
@@ -141,7 +141,7 @@ class ProductionHookTests(unittest.TestCase):
                     if expected:
                         context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
                         self.assertIn(str(runtime), context)
-                        self.assertIn("Missing host access/authority is a blocker", context)
+                        self.assertIn("Missing host access/authority blocks", context)
                     self.assertEqual(inaccessible.read_bytes(), b"foreign-runtime-sentinel")
                     self.assertFalse(missing.exists())
 
