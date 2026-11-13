@@ -1146,6 +1146,12 @@ into a choice rationale or infer actual human authorship or comprehension.
 The original Question revision, post-choice recommendation visibility and authentic
 current-host Decision response contracts above remain authoritative.
 
+When the current answer explicitly gives a technical choice reason, the host
+preserves its bounded verbatim reason in `user_rationale` as well as the complete
+exact `user_turn`. A missing reason remains absent; the server does not extract or
+infer one from the answer, an agent recommendation or relay instructions. This
+prospective capture guidance does not repair omitted historical reason fields.
+
 ### Source-bound local check Checkpoints
 
 An explicitly requested local check can be reported in a same-Work pause Checkpoint

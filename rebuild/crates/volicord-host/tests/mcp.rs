@@ -839,6 +839,21 @@ fn record_host_question_decision(
             }),
         );
         assert_eq!(decision["result"]["isError"], false, "{decision}");
+        let basis = adapter
+            .operations()
+            .canonical_basis(parse_project(project))
+            .expect("canonical Decision basis");
+        assert!(
+            basis
+                .active_decisions
+                .iter()
+                .find(|d| d.decision.question_id.to_string() == question_id)
+                .expect("recorded choice without a supplied reason")
+                .decision
+                .user_rationale
+                .is_none(),
+            "the service does not invent a reason from the choice or recommendation"
+        );
     }
     adapter
         .operations()
@@ -1292,7 +1307,8 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
             "presentation_receipt_id":presentation_receipt_id,
             "alternative_key":"structured",
             "work_scope":"unresolved",
-            "user_turn":"Use the structured error",
+            "user_turn":"Use the structured error. It lets callers inspect the failure without parsing prose.",
+            "user_rationale":"It lets callers inspect the failure without parsing prose.",
         }),
     );
     let decision = structured(&decision);
@@ -1320,6 +1336,17 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         .decision
         .id
         .to_string();
+    assert_eq!(
+        canonical
+            .active_decisions
+            .iter()
+            .find(|d| d.decision.id.to_string() == decision_id)
+            .expect("recorded Decision")
+            .decision
+            .user_rationale
+            .as_deref(),
+        Some("It lets callers inspect the failure without parsing prose.")
+    );
 
     let revision_draft = structured(&call(
         &mut adapter,
