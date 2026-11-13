@@ -49,6 +49,12 @@ button,input,select {font:inherit}
 .rail-bottom p {margin:0}
 .rail-bottom p:first-child {font-size:11px;color:#69869a;margin-bottom:5px}
 .rail-bottom small {font-size:9px}
+.rail-language {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.rail-language>span {flex-basis:100%;font-size:11px;color:var(--muted)}
+.rail-language>a {display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--muted);font-size:12px}
+.rail-language>a:hover,.rail-language>a[aria-current] {color:var(--accent);border-color:#b9dff3;background:var(--wash)}
+.rail-language>a:focus-visible {outline:2px solid var(--focus);outline-offset:2px}
+.rail-language>p {font-size:12px}.rail-language>p small {display:block}
 .rail-close {display:none}
 .nav-backdrop[hidden] {display:none}
 main.shell.viewer-shell {box-sizing:border-box;margin:0 0 0 var(--rail-width);width:calc(100% - var(--rail-width));max-width:none;padding:48px 48px 64px;min-height:100vh;overflow-anchor:none}

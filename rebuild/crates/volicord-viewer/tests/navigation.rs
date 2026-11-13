@@ -7,6 +7,56 @@ use volicord_operations::LocalOperations;
 use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerRequest, ViewerView};
 
 #[test]
+fn sidebar_language_selection_keeps_work_and_query_but_refreshes_language_basis(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture()?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let html = viewer
+        .render(
+            &ViewerRequest {
+                project_id: f.project,
+                locale: ViewerLocale::English,
+                requested_language: "en".into(),
+                view: ViewerView::WorkContext {
+                    work: f.goals["older"],
+                    query: volicord_projections::WorkCatalogueQuery {
+                        term: "privacy".into(),
+                        expected_basis: Some("a".repeat(64)),
+                        ..Default::default()
+                    },
+                },
+                guarded_request: None,
+            },
+            "sidebar-language-test",
+        )?
+        .html;
+    let footer = html
+        .split("class=\"rail-language\"")
+        .nth(1)
+        .ok_or("language footer")?
+        .split("</nav>")
+        .next()
+        .ok_or("language navigation")?;
+    let korean = footer
+        .split("<a href=\"")
+        .skip(1)
+        .find(|part| part.contains("hreflang=\"ko\""))
+        .ok_or("Korean link")?
+        .split('"')
+        .next()
+        .ok_or("href")?
+        .replace("&amp;", "&");
+    assert!(korean.contains(&format!("project={}", f.project)));
+    assert!(korean.contains(&format!("work={}", f.goals["older"])));
+    assert!(korean.contains("from=list") && korean.contains("q=privacy"));
+    assert!(korean.contains("locale=ko") && korean.contains("language=ko"));
+    assert!(!korean.contains("basis="));
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    Ok(())
+}
+
+#[test]
 fn catalogue_does_not_count_unrequested_history_as_omitted_content(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let f = reading_fixture::fixture()?;

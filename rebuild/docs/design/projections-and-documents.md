@@ -3305,6 +3305,15 @@ from a microsecond field or substitutes the browser clock.
 
 ### Shared project navigation and heading projection
 
+The sidebar footer offers explicit English/Korean selection for live reading.
+Selection retains Project, destination, exact Work and list query, discarding the
+old language-bound catalogue basis before the new read. UI and requested article
+language switch together; neither read creates prose or extends retention.
+Single-language native exports display their actual retained language instead of
+offering links to unavailable translations. Overview actions share a subtle hover
+and focus response that respects reduced-motion preference. Catalogue status rows
+use the same gap between Work, explanation and repository indicators.
+
 The Reader's adopted sidebar replaces the former top destination links. Local
 Operations supplies a bounded identity-only Project choice list from the canonical
 store. Explicit live Project selection carries its exact identity through every

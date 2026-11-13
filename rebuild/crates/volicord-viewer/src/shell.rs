@@ -177,5 +177,47 @@ pub(super) fn start(
     } else {
         format!("<button class=\"nav-backdrop\" hidden type=\"button\" tabindex=\"-1\" aria-label=\"{close_label}\"></button>")
     };
-    html.push_str(&format!("</div></div><footer class=\"rail-bottom\"><p>{}</p><p>{}</p><small>{}: {}</small></footer></aside></details>{backdrop}<main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">",text(r.locale,"Read-only","읽기 전용"),if snapshot{text(r.locale,"Export-time local context","내보낸 시점의 로컬 맥락")}else{text(r.locale,"Retained local records","보존된 로컬 기록")},text(r.locale,"Canonical context revision","정식 맥락 리비전"),p.overview.canonical_revision));
+    html.push_str("</div></div><footer class=\"rail-bottom\">");
+    html.push_str(&format!(
+        "<nav class=\"rail-language\" aria-label=\"{}\"><span>{}</span>",
+        text(r.locale, "Language", "언어"),
+        text(r.locale, "Language", "언어")
+    ));
+    if snapshot {
+        html.push_str(&format!(
+            "<p lang=\"{}\">{}<small>{}</small></p>",
+            escape(&content_language_tag(&r.requested_language)),
+            escape(&r.requested_language),
+            text(
+                r.locale,
+                "This export contains one language.",
+                "이 내보내기에는 한 언어만 포함됩니다."
+            )
+        ));
+    } else {
+        for (language, locale, label) in [
+            ("en", super::ViewerLocale::English, "English"),
+            ("ko", super::ViewerLocale::Korean, "한국어"),
+        ] {
+            let mut selected = r.clone();
+            selected.locale = locale;
+            selected.requested_language = language.into();
+            match &mut selected.view {
+                ViewerView::WorkQuery { query } | ViewerView::WorkContext { query, .. } => {
+                    query.expected_basis = None
+                }
+                _ => {}
+            }
+            html.push_str(&format!(
+                "<a href=\"{}\" hreflang=\"{language}\" lang=\"{language}\"{}>{label}</a>",
+                escape(&href(&selected, &selected.view, false)),
+                if r.requested_language == language && r.locale == locale {
+                    " aria-current=\"true\""
+                } else {
+                    ""
+                }
+            ));
+        }
+    }
+    html.push_str(&format!("</nav><p>{}</p><p>{}</p><small>{}: {}</small></footer></aside></details>{backdrop}<main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">",text(r.locale,"Read-only","읽기 전용"),if snapshot{text(r.locale,"Export-time local context","내보낸 시점의 로컬 맥락")}else{text(r.locale,"Retained local records","보존된 로컬 기록")},text(r.locale,"Canonical context revision","정식 맥락 리비전"),p.overview.canonical_revision));
 }
