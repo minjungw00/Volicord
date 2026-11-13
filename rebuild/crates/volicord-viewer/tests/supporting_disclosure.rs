@@ -68,12 +68,13 @@ fn unrelated_pass_keeps_failure_visible_and_exact_details_disclosed(
                     .split("</article>")
                     .next()
                     .ok_or("article")?;
-                let warning =
-                    selected.contains("data-warning=\"failure\" data-severity=\"danger\"");
+                let warning = selected.contains("data-warning=\"failure\"");
                 assert_eq!(warning, key == "failed");
                 assert!(selected.contains("<details class=\"reading-section verification-report\""));
                 assert!(!selected.contains("verification-report\" open"));
                 if key == "failed" {
+                    assert!(selected.contains("data-warning=\"failure\" data-severity=\"caution\""));
+                    assert!(!selected.contains("data-warning=\"failure\" data-severity=\"danger\""));
                     let notice = selected
                         .split("data-warning=\"failure\"")
                         .nth(1)
@@ -81,6 +82,16 @@ fn unrelated_pass_keeps_failure_visible_and_exact_details_disclosed(
                         .split("</aside>")
                         .next()
                         .ok_or("notice end")?;
+                    assert!(notice.contains(if language == "en" {
+                        "Retest comparison not established"
+                    } else {
+                        "재검증 비교 미확인"
+                    }));
+                    assert!(notice.contains(if language == "en" {
+                        "Later passing reports are recorded."
+                    } else {
+                        "이후 통과 보고가 기록되어 있습니다."
+                    }));
                     assert!(
                         notice.contains("failure-check-links"),
                         "inspection actions stay inside the failure notice"
