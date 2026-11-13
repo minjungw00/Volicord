@@ -1109,6 +1109,45 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
 
 
 class FileBoundaryTests(unittest.TestCase):
+    def test_changed_projection_meaning_replays_from_unchanged_copied_raw_inputs(self):
+        import answer_projection
+        import campaign as c
+        import campaign_self_test as support
+        import result_lineage
+        import review_operations as ops
+        from review_operations_self_test import insufficient_draft, snapshot
+        binary = Path(c.load_campaign(self.root)['candidate_binary'])
+        with patch.object(harness, 'git_clean', return_value=True):
+            root, raw, bundles = support.prepared_batch(self.parent, 'projection-policy-campaign', binary)
+            # Authored alternate hash producer, not an old format/decoder or a
+            # measured historical implementation. Actual raw returns stay exact.
+            with patch.object(answer_projection, 'project', return_value={'authored_earlier_selection': True}):
+                c.collect_batch(root, raw, exporter=support.batch_exporter(bundles),
+                    documenter=support.documenter, snapshotter=support.snapshotter)
+        original = snapshot(root)
+        changed_producer = self.parent / 'later-projection-identity.py'
+        changed_producer.write_text('# Authored different current projection identity\n')
+        with patch.object(answer_projection, '__file__', str(changed_producer)):
+            evaluated = c.evaluate_campaign(root, self.parent / 'projection-policy-evaluation')
+            evaluation = Path(evaluated['evaluation'])
+            target = self.parent / 'projection-policy-review'
+            ops.prepare(root, target, reviewer_kind='agent', session_id='authored-policy-review',
+                evaluation_path=evaluation, include_raw=True)
+            preparation, _, _ = ops.load_package(target)
+            c.write_json(target / 'draft.json', insufficient_draft(target))
+            ops.record(target, target / 'draft.json')
+            qualification = self.parent / 'projection-policy-qualification'
+            policy.qualify(root, evaluation, qualification,
+                candidate=c.load_campaign(root)['candidate_head'], review_roots=[target])
+            published = result_lineage.publish(root, evaluation, [target],
+                qualification / 'qualification.json', output=self.parent / 'projection-policy-lineage')
+            copied = self.parent / 'projection-policy-independent-copy'
+            shutil.copytree(published['lineage_root'], copied)
+            with patch.object(c, 'load_evidence_set', side_effect=AssertionError('original campaign access')), \
+                    patch.object(policy, 'qualify', side_effect=AssertionError('original qualification access')):
+                self.assertFalse(result_lineage.verify(copied)['external_staging_paths_used'])
+        self.assertEqual(snapshot(root), original)
+
     def test_authored_rehearsal_dimensions_record_qualify_and_replay_without_staging(self):
         import rehearsal
         import campaign

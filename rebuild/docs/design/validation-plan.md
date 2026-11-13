@@ -2534,6 +2534,11 @@ raw captures and retained producer byte bindings still verify exactly. With the
 same projection producer, meaning hashes also recompute exactly. Current review
 meaning is derived anew for the append-only evaluation and review package; no
 historical hash is rewritten or promoted to current-policy authority.
+Copied result-lineage verification applies that same boundary before comparing
+review captures: verify the recorded collection and raw observation bindings,
+derive current meaning from those copied raw inputs, and compare it exactly with
+the current-policy review projection. The historical producer's meaning digest
+cannot substitute for this derivation or reject a legitimate policy change.
 Review packaging consumes the external immutable evaluation receipt rather than
 requiring registration by mutating the Campaign. One evaluator serves collection
 and re-evaluation; historical run bytes remain addressable, never rewritten.

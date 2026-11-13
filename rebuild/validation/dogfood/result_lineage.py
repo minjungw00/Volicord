@@ -218,7 +218,21 @@ def verify(root):
         and evidence_set.get("candidate_head") == index["candidate_head"],
         "result lineage evidence-set identity changed")
     import collection_runs
-    collection_runs.verify(root / 'source', evidence_set)
+    collection = collection_runs.verify(root / 'source', evidence_set)
+    import campaign
+    import explanation_evidence
+    from types import SimpleNamespace
+    def copied_capture(slot):
+        name = 'slots/' + evidence_set['works'][campaign.work_key(*slot[:2])]['work_slot_id'] \
+            + '/evidence/' + slot[2] + '.rollout.jsonl'
+        path = operations.safe_path(root / 'source', name)
+        data = operations.bounded_read(path)
+        review.require(evidence_set['artifacts'].get(name) == _binding(data),
+            'copied raw observation source binding changed')
+        return SimpleNamespace(capture=campaign.load_codex_capture(path))
+    mapped = {slot: copied_capture(slot) for slot in campaign.harness.current_session_slots()}
+    current_explanations = explanation_evidence.verify_collection_index(root / 'source', mapped,
+        evidence_set['explanation_evidence'], collection['producers'])
     evaluation_path = operations.safe_path(root, index["evaluation"]["path"])
     evaluation = evaluation_runs.load(evaluation_path)
     previous_path = root / 'evaluation/previous-evaluation.json'
@@ -276,11 +290,10 @@ def verify(root):
                     meaning = returned['body']['value']['returned_meaning']
                     if meaning is None or returned['transport'] == 'mcp' and returned['outcome'] != 'succeeded':
                         continue
-                    observed = [v for v in evidence_set['explanation_evidence']['measured_observations']
+                    observed = [v for v in current_explanations['measured_observations']
                         if v['raw_capture_sha256'] == origin['raw_sha256']
                         and v['sequence'] == returned['sequence'] and v['call_id'] == returned['call_id']
                         and v['transport'] == returned['transport']]
-                    import campaign
                     meaning_sha = operations.digest(campaign.json_bytes(meaning))
                     review.require(observed and all(v['review_meaning_sha256'] == meaning_sha
                         and v['operation'] == returned['operation'] and v['turn_id'] == returned['turn_id']

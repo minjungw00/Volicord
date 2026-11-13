@@ -843,7 +843,8 @@ def verify_collection_index(root, mapped, recorded, producers):
     import answer_projection
     same_projection = producers.get('rebuild/validation/dogfood/answer_projection.py') == binding(
         Path(answer_projection.__file__).read_bytes())
-    current = collection_index(root, mapped, include_review_meaning=same_projection)
+    current = collection_index(root, mapped)
+    comparable = copy.deepcopy(current)
     retained = json.loads(json.dumps(recorded))
     if not same_projection and isinstance(retained, dict):
         observations = retained.get('measured_observations')
@@ -856,11 +857,14 @@ def verify_collection_index(root, mapped, recorded, producers):
             if digest is not None and (not isinstance(digest, str)
                     or re.fullmatch(r'[0-9a-f]{64}', digest) is None):
                 raise api().CampaignError('invalid retained review meaning hash')
-    if retained != current:
+        for observation in comparable['measured_observations']:
+            observation.pop('review_meaning_sha256')
+    if retained != comparable:
         raise api().CampaignError('immutable explanation observation/lifecycle index changed')
+    return current
 
 
-def collection_index(root, mapped, *, include_review_meaning=True):
+def collection_index(root, mapped):
     import answer_projection
     measured = []
     for slot, value in sorted(mapped.items()):
@@ -876,9 +880,8 @@ def collection_index(root, mapped, *, include_review_meaning=True):
                 'raw_capture_sha256': capture.source_sha256, **{k: v for k, v in returned.items()
                     if k not in {'result', 'requested_project'}},
                 'returned_payload_sha256': binding(api().json_bytes(result))['sha256']}
-            if include_review_meaning:
-                common['review_meaning_sha256'] = binding(api().json_bytes(answer_projection.project(
-                    result, returned['operation'])))['sha256'] if returned['operation'] in answer_projection.SCHEMAS else None
+            common['review_meaning_sha256'] = binding(api().json_bytes(answer_projection.project(
+                result, returned['operation'])))['sha256'] if returned['operation'] in answer_projection.SCHEMAS else None
             if not isinstance(result, dict):
                 measured.append(common | {'state': 'unresolvable', 'limit': returned.get('limit') or 'returned JSON unavailable'})
                 continue
