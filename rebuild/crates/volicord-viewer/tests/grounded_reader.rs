@@ -2428,7 +2428,7 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
             "subordinate limit heading remains in its section rather than widening the compact contents"
         );
         let article = page
-            .find("How the constant reaches the caller</h2>")
+            .find("How the constant reaches the caller</h3>")
             .ok_or("authored topic")?;
         let verification = page
             .find("class=\"reading-section verification-reading\"")
@@ -2440,8 +2440,8 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
             .find("class=\"reading-section evidence-index\"")
             .ok_or("index")?;
         assert!(article < verification && verification < limits && limits < index);
-        assert!(page.contains("Execution was not observed</h3>"));
-        assert!(page.contains("No downstream coverage</h3>"));
+        assert!(page.contains("Execution was not observed</h4>"));
+        assert!(page.contains("No downstream coverage</h4>"));
         assert!(
             page[verification..limits].contains("No command was executed for this investigation.")
         );
@@ -2573,7 +2573,7 @@ fn authored_checks_and_caveats_stay_with_their_figure_across_public_consumers(
             .iter()
             .map(|(question, text)| {
                 let tag = if *question == "section_heading" {
-                    "h2"
+                    "h3"
                 } else {
                     "p"
                 };

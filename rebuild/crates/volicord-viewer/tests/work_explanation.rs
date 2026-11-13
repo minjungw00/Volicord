@@ -1601,8 +1601,8 @@ fn authored_sections_and_comparisons_reach_live_and_offline_without_enum_titles(
         .render_snapshot(&request, TimestampMicros::from_unix_micros(1))?
         .html;
     for page in [live, offline] {
-        assert!(page.contains(">What the observation can tell us</h2>"));
-        assert!(page.contains(">Boundaries that remain open</h2>"));
+        assert!(page.contains(">What the observation can tell us</h3>"));
+        assert!(page.contains(">Boundaries that remain open</h3>"));
         assert!(
             page.contains("<dl class=\"comparison-card\">") && page.contains("<dt class=\"unit\"")
         );
@@ -1611,7 +1611,7 @@ fn authored_sections_and_comparisons_reach_live_and_offline_without_enum_titles(
                 .ok_or("first")?
                 < page.find("Boundaries that remain open").ok_or("last")?
         );
-        assert!(!page.contains(">Change / investigation</h2>"));
+        assert!(!page.contains(">Change / investigation</h3>"));
     }
     Ok(())
 }
