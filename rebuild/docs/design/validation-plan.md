@@ -2567,7 +2567,12 @@ evaluation run/evaluator revision/policy, every recorded qualitative review, qua
 optional approval. The package copies the immutable artifacts with relative paths and excludes the
 qualification input file's absolute staging paths. `verify-result-lineage` performs independent
 hash/identity/policy/receipt verification and replays the qualification aggregate from packaged
-evaluation and recorded reviews using only copied contents. The same common criterion scope
+evaluation and recorded reviews using only copied contents.
+The exact campaign artifact inventory accompanies those copied sources and is
+verified before lifecycle preparation discovery. A missing inventory is a missing
+replay input, never an empty steward history; all inventoried files must remain
+present and hash-identical.
+The same common criterion scope
 also preserves unresolved required gaps when no review was recorded; insufficient replay input
 cannot support success. This checks semantic agreement, not external authentication or operator
 authorization. Therefore `/tmp` is allowed

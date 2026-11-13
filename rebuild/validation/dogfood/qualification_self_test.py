@@ -1146,7 +1146,47 @@ class FileBoundaryTests(unittest.TestCase):
             with patch.object(c, 'load_evidence_set', side_effect=AssertionError('original campaign access')), \
                     patch.object(policy, 'qualify', side_effect=AssertionError('original qualification access')):
                 self.assertFalse(result_lineage.verify(copied)['external_staging_paths_used'])
+                inventory = copied / 'source/evidence-inventory.json'
+                self.assertTrue(inventory.is_file())
+                inventory.unlink()
+                receipt = c.read_json(copied / 'receipt.json')
+                del receipt['artifacts']['source/evidence-inventory.json']
+                (copied / 'receipt.json').chmod(0o600)
+                c.write_json(copied / 'receipt.json', receipt)
+                with self.assertRaisesRegex(ValueError, 'copied source inventory'):
+                    result_lineage.verify(copied)
         self.assertEqual(snapshot(root), original)
+
+    def test_lineage_rechecks_source_inventory_before_publication(self):
+        import campaign as c
+        import result_lineage
+        import review_operations as ops
+        prefix = self.parent / self._testMethodName
+        qualification = prefix / 'qualification'
+        policy.qualify(self.root, self.evaluation, qualification,
+            candidate=c.load_campaign(self.root)['candidate_head'], review_roots=[])
+        inventory = self.root / 'evidence-inventory.json'
+        original = inventory.read_bytes()
+        original_mode = inventory.stat().st_mode & 0o777
+        inventory.chmod(0o600)
+        real_read = ops.bounded_read
+        reads = 0
+        def changed_at_final_read(path, *arguments, **options):
+            nonlocal reads
+            if path == inventory:
+                reads += 1
+                if reads == 2:
+                    path.write_bytes(original + b'\n')
+            return real_read(path, *arguments, **options)
+        try:
+            with patch.object(ops, 'bounded_read', side_effect=changed_at_final_read):
+                with self.assertRaisesRegex(ValueError, 'result source changed'):
+                    result_lineage.publish(self.root, self.evaluation, [],
+                        qualification / 'qualification.json', output=prefix / 'lineage')
+            self.assertFalse((prefix / 'lineage').exists())
+        finally:
+            inventory.write_bytes(original)
+            inventory.chmod(original_mode)
 
     def test_authored_rehearsal_dimensions_record_qualify_and_replay_without_staging(self):
         import rehearsal

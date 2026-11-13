@@ -85,6 +85,10 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
     # the private lineage, never the reviewer-safe package or technical archive.
     for name in manifest['artifacts']:
         files['source/' + name] = operations.bounded_read(campaign_root / name)
+    # Lifecycle preparation discovery is inventory-owned. Its absence must not
+    # silently turn retained steward history into an empty list in a copy.
+    files['source/evidence-inventory.json'] = operations.bounded_read(
+        campaign_root / 'evidence-inventory.json')
     if evaluation['previous_evaluation'] is not None:
         review.require(previous_evaluation is not None,
             'historical comparison requires the exact previous evaluation bytes')
@@ -168,6 +172,8 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
     # Recheck every source identity immediately before create-only publication.
     campaign.load_evidence_set(campaign_root)
     review.require(operations.bounded_read(campaign_root / "evidence-set.json") == evidence_data
+        and operations.bounded_read(campaign_root / 'evidence-inventory.json')
+            == files['source/evidence-inventory.json']
         and operations.bounded_read(evaluation_path) == evaluation_data
         and operations.bounded_read(qualification_path) == qualification_data,
         "result source changed during lineage publication")
@@ -218,8 +224,13 @@ def verify(root):
         and evidence_set.get("candidate_head") == index["candidate_head"],
         "result lineage evidence-set identity changed")
     import collection_runs
-    collection = collection_runs.verify(root / 'source', evidence_set)
     import campaign
+    try:
+        operations.bounded_read(root / 'source/evidence-inventory.json')
+        campaign.verify_inventory(root / 'source')
+    except (ValueError, OSError) as error:
+        raise ValueError(f'copied source inventory binding changed: {error}') from error
+    collection = collection_runs.verify(root / 'source', evidence_set)
     import explanation_evidence
     from types import SimpleNamespace
     def copied_capture(slot):
