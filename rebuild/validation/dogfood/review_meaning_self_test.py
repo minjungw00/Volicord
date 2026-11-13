@@ -122,6 +122,48 @@ class MeaningTests(unittest.TestCase):
         _, metadata = self.capture()
         self.assertFalse(metadata['semantic_complete'])
 
+    def test_current_reader_metadata_survives_capture_without_schema_gap(self):
+        work = self.answer['selected_work']; answers = work['answers']
+        work.update(reading_title='Bounded work title', creation_event={
+            'kind': 'created', 'recorded_at_unix_micros': 123,
+            'record_kind': 'context_item', 'record_identity': work['work_item_id'], 'revision': 1},
+            latest_work_record_event=None, verification_report={
+                'report_count_unit': 'checkpoint_verification_report',
+                'report_count_scope': 'selected_work_checkpoint_history',
+                'reported_test_count_basis': 'original_report_text_only',
+                'report_counts': {'total': 0, 'passed': 0, 'failed': 0, 'partial': 0, 'not_run': 0},
+                'checks': [], 'executions': []})
+        answers.update(evidence_index=[], cautions=[], sections=[], source_excerpts=[],
+            omitted_source_excerpt_count=0, embedded_source_scope=[], applicability={
+                'publication': 'unavailable', 'canonical_basis_current': None,
+                'source_ranges': [], 'explained_snapshots': [],
+                'generated_at_unix_micros': None, 'checked_at_unix_micros': 123,
+                'repository_comparison': 'not_checked', 'comparison_scope': None, 'limitation': 'missing'})
+        self.answer['checkpoint']['verification'] = [{
+            'state': 'not_run', 'outcome': None, 'source_id': None, 'scoped_run': None}]
+        for item in self.answer['goal_basis']:
+            item['revision'] = 1
+        data, metadata = self.capture()
+        returned = next(v for v in review_captures.validate(data)['records']
+                        if v.get('operation') == 'recall')['body']['value']['returned_meaning']
+        self.assertTrue(returned['semantic_complete'])
+        self.assertTrue(metadata['semantic_complete'])
+        selected = returned['value']['selected_work']
+        for field in ('creation_event', 'latest_work_record_event', 'reading_title', 'verification_report'):
+            self.assertEqual(selected[field], work[field])
+        self.assertEqual(selected['answers'], answers)
+        self.assertEqual(returned['value']['checkpoint']['verification'], self.answer['checkpoint']['verification'])
+        # Wrong types and unrecognized extensions remain explicit scoped gaps.
+        for obj, key, bad in ((work['creation_event'], 'revision', '1'),
+                (answers['applicability'], 'checked_at_unix_micros', '123'),
+                (work['verification_report']['report_counts'], 'failed', False)):
+            original = obj[key]; obj[key] = bad
+            self.assertFalse(a.project(self.answer, 'recall')['semantic_complete'])
+            obj[key] = original
+        answers['applicability']['unregistered_extension'] = 'not admitted'
+        self.assertTrue(any(o['reason'] == 'unsupported_typed_fields'
+                            for o in a.project(self.answer, 'recall')['omissions']))
+
     def test_multiple_nested_omissions_survive_json_key_order(self):
         # Independently authored incomplete DTO, not a copied rollout.
         result = {"project_id": "01" * 16, "selected_work": {"work_item_id": "02" * 16}}

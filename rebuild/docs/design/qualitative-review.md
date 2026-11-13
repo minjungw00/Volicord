@@ -426,6 +426,13 @@ observations, not proof of transport truncation. Typed selection preserves the
 exact list without appending synthetic omitted claims; required DTO members and
 explicit Product byte-budget markers still produce transport omissions. A complete
 capture does not establish useful or complete explanation content.
+Current typed fields also retain Work record events and verification reports,
+Goal revisions, applicability, cautions, article grouping, citation/window scope,
+independent Work card readings, publication identity and realization fingerprint,
+and the Decision's original Question context. These are actual returned values,
+not replacements from later canonical reads. Source excerpt text still passes the
+unchanged sensitive-body and size policy; arbitrary observation-region/execution
+extensions remain unsupported rather than becoming generic RPC body retention.
 Recomputed consistency diagnostics report return-internal role/key/scope/action contradictions;
 the independent observation-time observer remains the factual machine-policy owner.
 Whole-field omission counts use the enclosing serialized Product DTO, not this

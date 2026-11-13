@@ -31,7 +31,19 @@ STATUS = {k: optional(t) for k, t in {
     'observer': ('union', S, PRINCIPAL)}.items()}
 SUBJECT = {'kind': S, 'identity': [I]}
 GENERATOR = {'host': S, 'session': S, 'agent': nullable(S), 'model': nullable(S)}
-VERIFICATION = {'state': S, 'outcome': optional(S), 'source_id': optional(S), 'source': optional(S)}
+REFERENCE = {'checkpoint_id': S, 'checkpoint_revision': I, 'verification_index': I}
+SCOPED_RUN = {'work_item_id': S, 'work_revision': I,
+    'declaration': {'key': S, 'purpose': S, 'assertion': S, 'coverage': nullable(S),
+        'environment': nullable(S), 'target_paths': [S]},
+    **{k: S for k in ('operation_id', 'invocation_fingerprint', 'analysis_snapshot_id',
+        'repository_snapshot_id', 'repository_source_id')},
+    'started_at_unix_micros': I, 'ended_at_unix_micros': I,
+    'artifacts': [{'path': S, 'sha256': S}], 'target_unchanged_during_run': B,
+    'assertion_state': S, 'assertion_evidence': nullable({
+        'stream': S, 'start_byte': I, 'end_byte': I, 'sha256': S}),
+    'retest': nullable({**REFERENCE, 'source_id': S, 'target_relation': S, 'rationale': S})}
+VERIFICATION = {'state': S, 'outcome': optional(S), 'source_id': optional(S),
+    'source': optional(S), 'scoped_run': optional(SCOPED_RUN)}
 REVIEW = {'state': S, 'source_id': optional(S)}
 CONTENT = {k: optional(t) for k, t in {
     'acceptance': ('union', S, REVIEW), 'review': ('union', S, REVIEW),
@@ -52,6 +64,7 @@ PROVENANCE = {'project_id': S, 'subject': SUBJECT, 'question': S, 'language': S,
     'fingerprint': S, 'generated_at_unix_micros': I, 'generator': GENERATOR,
     'generator_identity_status': S, 'semantic_approval_status': optional(S), 'citations': optional([CITATION]), 'evidence': [EVIDENCE], 'uncited_evidence_count': optional(I),
     'source_status': [STATUS], 'conflicts': [CONFLICT]}
+PROVENANCE.update(publication_id=optional(S), realization_fingerprint=optional(S))
 ACTION = {'work_item_id': S, 'checkpoint_id': S, 'revision': I, 'field': S,
     'recorded_text': S, 'source_ids': [S], 'source_status': [STATUS]}
 CLAIM = {'question': S, 'text': S, 'role': S, 'evidence_keys': [S], 'citations': optional([CITATION]), 'recorded_action': optional(ACTION)}
@@ -64,6 +77,33 @@ DIAGRAM_MEANING = {'kind': S, 'nodes': optional([DIAGRAM_NODE]), 'participants':
 DIAGRAM = {'id': S, 'title': DIAGRAM_LABEL, 'caption_unit': I, 'semantic_fingerprint': S, 'meaning': DIAGRAM_MEANING}
 ANSWERS = {'diagrams': optional([DIAGRAM]), 'facts': [CLAIM], 'prose': [CLAIM], 'explanation_state': S,
     'diagnostic': nullable(S), 'provenance': nullable(PROVENANCE)}
+ANSWERS.update({k: optional(t) for k, t in {
+    'evidence_index': [{'unit_index': I, 'evidence_keys': [S], 'citations': [CITATION]}],
+    'cautions': [{'kind': S, 'checkpoint': nullable(REFERENCE), 'source_id': nullable(S), 'historical': B}],
+    'sections': [{'layer': S, 'heading_index': nullable(I), 'unit_indices': [I]}],
+    'applicability': {'publication': S, 'canonical_basis_current': nullable(B),
+        'source_ranges': [{'unit_index': I, 'citation_index': I, 'available': B,
+            'expires_at_unix_micros': optional(I), 'limitation': nullable(S)}],
+        'explained_snapshots': [{k: S for k in ('analysis_snapshot_id', 'repository_snapshot_id',
+            'repository_source_id', 'use_kind')}],
+        'generated_at_unix_micros': nullable(I), 'checked_at_unix_micros': nullable(I),
+        'repository_comparison': S, 'comparison_scope': nullable(S), 'limitation': nullable(S)},
+    'embedded_source_scope': [{'unit_index': I, 'state': S, 'included_citation_indices': [I],
+        'omitted_citation_indices': [I], 'unavailable_citation_indices': [I]}],
+    'omitted_source_excerpt_count': I,
+    'source_excerpts': [{'code_origin': nullable({'path': S, 'revision': S,
+        'start_byte': I, 'end_byte': I, 'start_line': I, 'end_line': I,
+        'file_sha256': S, 'verified_at_unix_micros': I}),
+        'citation': CITATION, 'work_revision': nullable(I), 'observed_at_unix_micros': I,
+        'text': S, 'displayed_end_byte': I, 'displayed_end_line': I, 'omitted_utf8_bytes': I,
+        'comparison': nullable(S), 'before_source_id': nullable(S),
+        'source_representation': nullable(S),
+        # Arbitrary Value extensions are not admitted as generic source/process
+        # bodies. Nonempty unknown shapes retain explicit omission metadata.
+        'observation_region': nullable({}), 'execution': nullable({})}],
+}.items()})
+ANSWERS['work_name'] = optional(ANSWERS)
+ANSWERS['work_summary'] = optional(ANSWERS)
 BASIS = {'record_kind': S, 'identity': S, 'revision': I, 'field': S,
     'source_ids': [S], 'source_status': [STATUS], 'available_revisions': [I],
     'analysis_snapshot_ids': [S], 'repository_snapshot_ids': [S]}
@@ -83,7 +123,41 @@ WORK_EVIDENCE = {'goal': READING, 'next_step': READING, 'result': nullable(READI
 WORK = {'work_item_id': S, 'checkpoint_ids': [S], 'answers': ANSWERS,
     **{k: optional(t) for k, t in {'state': S, 'source_ids': [S], 'decision_ids': [S],
         'open_question_ids': [S], 'changed_paths': [S], 'changed_components': [S], 'evidence': WORK_EVIDENCE}.items()}}
-CONTEXT = {'identity': S, 'role': S, 'statement': S, 'source_ids': [S]}
+WORK_EVENT = {'kind': S, 'recorded_at_unix_micros': I, 'record_kind': S,
+    'record_identity': S, 'revision': I}
+WORK.update(creation_event=optional(WORK_EVENT), latest_work_record_event=optional(WORK_EVENT),
+    reading_title=optional(S))
+
+
+def evidence_detail(schema):
+    return {'state': S, 'value': optional(schema)}
+
+
+STREAM_CAPTURE = {'observed_bytes': I, 'omitted_bytes': nullable(I),
+    'representation': S, 'capture_completeness': S}
+COMMAND_READING = {**{k: S for k in ('operation_id', 'analysis_snapshot_id',
+    'repository_snapshot_id', 'repository_source_id', 'target_state')},
+    **{k: I for k in ('work_revision', 'started_at_unix_micros', 'ended_at_unix_micros',
+        'retained_until_unix_micros')}, 'signal_number': nullable(I),
+    'timeout_detected': B, 'cancellation_requested': B, 'stdout': STREAM_CAPTURE, 'stderr': STREAM_CAPTURE}
+WORK['verification_report'] = optional({
+    'report_count_unit': S, 'report_count_scope': S, 'reported_test_count_basis': S,
+    'report_counts': {k: I for k in ('total', 'passed', 'failed', 'partial', 'not_run')},
+    'checks': [{'original': REFERENCE, 'reported_at_unix_micros': I, 'reported_state': S,
+        'original_outcome': nullable(S), 'source_id': nullable(S),
+        **{k: evidence_detail(S) for k in ('intended_check', 'assertion_result', 'declared_coverage', 'declared_environment')},
+        'scoped_run': evidence_detail(SCOPED_RUN), 'applicability': S,
+        'later_changed_checkpoint_ids': [S], 'retest_comparison': {'state': S,
+            'previous': optional(REFERENCE), **{k: optional(S) for k in (
+                'source_id', 'target_relation', 'earlier_assertion', 'later_assertion', 'reason')}}}],
+    'executions': [{'source_id': S, 'source_revision': I,
+        'source_status': {'availability': S, 'freshness': S, 'snapshot_basis': nullable(S)},
+        'command_label': S, 'invocation_fingerprint': S, 'capture_fingerprint': nullable(S),
+        'recorded_at_unix_micros': I, 'exit_code': nullable(I), 'termination': S, 'body_state': S,
+        'observation': evidence_detail(COMMAND_READING), 'observation_fingerprint': nullable(S),
+        'environment': evidence_detail(S), 'assertion_result': evidence_detail(S),
+        'checkpoint_reports': [REFERENCE]}]})
+CONTEXT = {'identity': S, 'role': S, 'statement': S, 'source_ids': [S], 'revision': optional(I)}
 CHECKPOINT = {k: optional(t) for k, t in {
     'identity': S, 'work_item_id': S, 'revision': I, 'kind': S, 'goal': S,
     'work_state': S, 'state_change': S, 'source_basis': [S], 'changed_source_basis': [S],
@@ -98,6 +172,11 @@ DECISION_EVIDENCE = {k: optional(t) for k, t in {
     'available_revisions': [I], 'user_rationale': S, 'recommendation_rationale': S,
     'user_source_basis': [S], 'recommendation_source_basis': [S], 'assumptions': [S],
     'known_limits': [S], 'question_uncertainty': [S], 'review_basis': [S], 'revisit_triggers': [S]}.items()}
+DECISION_EVIDENCE.update({k: optional(t) for k, t in {
+    'question_reference': {'identity': S, 'revision': I},
+    'question_context': {'identity': S, 'revision': I, 'prompt': S, 'source_ids': [S]},
+    'question_source_status': [{'identity': S, 'availability': nullable(S), 'freshness': S}],
+}.items()})
 DECISION = {k: optional(t) for k, t in {'identity': S, 'revision': I, 'state': S,
     'choice': ('union', S, {'kind': S, 'alternative_key': optional(S)}), 'chosen_alternative_key': S,
     'recommended_alternative_key': S, 'displayed_alternatives': [ALTERNATIVE], 'work_scope': SCOPE,
