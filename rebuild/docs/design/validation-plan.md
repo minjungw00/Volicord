@@ -1777,6 +1777,13 @@ from the host settings record. Present values still require nonempty text; no
 default is inferred. Core settings, closed allowed keys and thread/workspace
 bindings remain mandatory. Omitted display preferences do not supply activation
 or excuse unknown pre-work events, a missing marker or late activity.
+The optional `requested_approvals_reviewer` setting likewise requires nonempty
+text when present. It describes the requested setting separately from the
+effective reviewer; neither value establishes permission, trust or activation.
+Its absence supplies no default, and recognizing it does not relax the closed
+settings shape or thread/workspace/marker ordering checks. Corrections for this
+host bookkeeping field reprocess retained observations under the original Product
+candidate, with the changed collector identity recorded separately.
 Direct single-call MCP forwarding cells are correlated with native completion
 events only for static literal arguments and a unique matching operation/turn.
 Their invocation sequence is retained separately from completion; dynamic,

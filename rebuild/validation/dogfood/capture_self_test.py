@@ -118,6 +118,40 @@ class ActivationBookkeepingTests(unittest.TestCase):
                     events[3]["payload"]["thread_settings"][field] = value
                     self.assertEqual(self.state(events), "indeterminate")
 
+    def test_requested_reviewer_is_optional_setup_not_effective_authority(self):
+        for requested in ("user", "auto_review"):
+            events = self.events()
+            settings = events[3]["payload"]["thread_settings"]
+            settings["requested_approvals_reviewer"] = requested
+            for field in ("reasoning_summary", "personality"):
+                del settings[field]
+            self.assertEqual(self.state(events), "valid")
+
+    def test_requested_reviewer_remains_typed_and_nonempty(self):
+        for value in (None, "", " ", 1, False, [], {}):
+            with self.subTest(value=value):
+                events = self.events()
+                events[3]["payload"]["thread_settings"]["requested_approvals_reviewer"] = value
+                self.assertEqual(self.state(events), "indeterminate")
+
+    def test_requested_reviewer_cannot_supply_activation_or_hide_foreign_setup(self):
+        baseline = self.events()
+        baseline[3]["payload"]["thread_settings"]["requested_approvals_reviewer"] = "auto_review"
+        missing = deepcopy(baseline)
+        del missing[4]
+        self.assertEqual(self.state(missing), "absent")
+        late = deepcopy(baseline)
+        late.insert(5, late.pop(4))
+        self.assertEqual(self.state(late), "late")
+        for change in (lambda p: p.update(thread_id="foreign-thread"),
+                lambda p: p["thread_settings"].update(cwd="/other/repository"),
+                lambda p: p["thread_settings"].update(runtime_workspace_roots=[]),
+                lambda p: p["thread_settings"].pop("approvals_reviewer"),
+                lambda p: p["thread_settings"].update(unrecognized_setting="value")):
+            events = deepcopy(baseline)
+            change(events[3]["payload"])
+            self.assertEqual(self.state(events), "indeterminate")
+
     def test_display_preference_omission_cannot_hide_missing_core_settings(self):
         for field in self.events()[3]["payload"]["thread_settings"]:
             if field in {"reasoning_summary", "personality"}:
