@@ -2141,10 +2141,13 @@ fn normalize_coupled_artifact_review(
             repository_paths.dedup();
         }
     }
+    // Validate in caller order so an authoring location still names its input.
+    validate_coupled_artifact_review(review, scope)
+        .map_err(|error| error.at_authoring_field("coupled_artifact_review", None))?;
     review
         .assessments
         .sort_by_key(|assessment| assessment.category);
-    validate_coupled_artifact_review(review, scope)
+    Ok(())
 }
 
 fn validate_coupled_artifact_review(
@@ -2193,7 +2196,7 @@ fn validate_coupled_artifact_review(
         ));
     }
     let mut included_paths = BTreeSet::new();
-    for assessment in &review.assessments {
+    for (assessment_index, assessment) in review.assessments.iter().enumerate() {
         validate_text(
             "coupled-artifact assessment basis",
             &assessment.basis_summary,
@@ -2211,7 +2214,7 @@ fn validate_coupled_artifact_review(
                     return Err(Error::new(
                         ErrorKind::InvalidInput,
                         "each executable repository path must belong to exactly one coupled-artifact category",
-                    ));
+                    ).at_authoring_field(format!("coupled_artifact_review.assessments[{assessment_index}].disposition.repository_paths"), None));
                 }
             }
         }

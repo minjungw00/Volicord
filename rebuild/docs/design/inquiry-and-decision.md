@@ -428,6 +428,13 @@ Inquiry가 typed field location/choice identity를 보존하고 Operations/Host�
 supported correction action으로 전달한다. Validation은 Source/authority invariant를 완화하지 않으며
 failure가 Candidate mutation이나 work readiness로 보고되지 않는다.
 
+Caller-supplied coupled-artifact validation also retains its safe typed input
+location. A path assigned to two artifact categories reports the second
+assignment's `assessments` entry and `disposition.repository_paths` in caller
+order. Successful normalization may sort categories only after that validation;
+storage/provider error chains remain private. A rejected binding changes no
+Candidate; correction uses the current draft and existing authority checks.
+
 Draft는 current blocking reason/next operation과 inspect skeleton, 여섯 artifact category,
 current dimension/choice/alternative accounting state 및 interaction/result/closure identity를
 제공한다. 예측 가능한 artifact와 실제 commitment의 의미는 caller가 현재 authoritative

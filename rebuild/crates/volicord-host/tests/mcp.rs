@@ -1405,7 +1405,78 @@ fn mcp_workflow_guides_material_question_to_explicit_decision_and_ready_work() {
         ),
     );
     let revised = structured(&revised).clone();
-    let revised = structured(&bind_recorded_scope(&mut adapter, &revised, &["src"])).clone();
+    let mut scope_request = recorded_scope_request(&mut adapter, &revised, &["src"]);
+    scope_request["coupled_artifact_review"] = json!({
+        "assessments":(["implementation","focused_tests","public_or_internal_documentation",
+            "changelog_or_release_notes","schema_snapshot_or_generated_artifact","other_repository_owned_artifact"]
+            .into_iter().map(|category| json!({"category":category,
+                "disposition":if category == "implementation" { json!({"state":"included","repository_paths":["src"]}) }
+                    else { json!({"state":"no_coupled_artifact"}) },
+                "basis_summary":"This fixture has one implementation artifact; tests share its source file."})).collect::<Vec<_>>()),
+        "materiality_closure":{"state":"no_new_material_outcome","rationale":"The resolved current Decision covers this bounded fixture implementation.",
+            "commitments":[{"commitment_id":"private-test","description":"Preserve all reviewed outcomes within the selected implementation",
+                "repository_paths":["src"],"temporal_effect":{"state":"no_temporal_change","outcome_id":"fixture-TemporalAndLifetime","result_id":"unchanged",
+                    "rationale":"This implementation preserves the current temporal result."},
+                "outcome_binding":{"state":"private_equivalent","equivalence_rationale":"The selected implementation preserves the complete current reviewed outcome graph."}}]}
+    });
+    let mut duplicate = scope_request.clone();
+    let assessments = duplicate["coupled_artifact_review"]["assessments"]
+        .as_array_mut()
+        .expect("authored assessments");
+    assessments.reverse();
+    let duplicate_index = assessments
+        .iter()
+        .position(|a| a["category"] == "implementation")
+        .expect("implementation category");
+    assessments
+        .iter_mut()
+        .find(|a| a["category"] == "focused_tests")
+        .expect("focused-test category")["disposition"] =
+        json!({"state":"included","repository_paths":["src"]});
+    let review_candidate_id = adapter
+        .operations()
+        .candidate_basis(parse_project(&project))
+        .expect("current Candidate basis")
+        .candidates
+        .into_iter()
+        .find(|candidate| {
+            candidate.id.to_string()
+                == scope_request["review_candidate_id"]
+                    .as_str()
+                    .expect("review")
+        })
+        .expect("current review Candidate")
+        .id;
+    let before = adapter
+        .operations()
+        .inspect_workflow_candidate(parse_project(&project), review_candidate_id)
+        .expect("review before refusal");
+    let rejected = call(&mut adapter, "materiality_review", duplicate);
+    assert_eq!(rejected["result"]["isError"], true, "{rejected}");
+    let diagnostic = &structured(&rejected)["details"];
+    assert_eq!(diagnostic["diagnostic"], "authoring_semantic_validation");
+    assert_eq!(diagnostic["field_path"], format!("arguments.coupled_artifact_review.assessments[{duplicate_index}].disposition.repository_paths"));
+    assert_eq!(
+        diagnostic["problem"],
+        "each executable repository path must belong to exactly one coupled-artifact category"
+    );
+    assert_eq!(
+        diagnostic["bound_identities"]["goal_context_id"],
+        goal_context_id
+    );
+    assert_eq!(diagnostic["next_supported_action"]["action"], "draft");
+    assert_eq!(
+        serde_json::to_value(before).expect("before"),
+        serde_json::to_value(
+            adapter
+                .operations()
+                .inspect_workflow_candidate(parse_project(&project), review_candidate_id)
+                .expect("review after refusal")
+        )
+        .expect("after"),
+        "rejection does not mutate the Candidate"
+    );
+    let revised = structured(&call(&mut adapter, "materiality_review", scope_request)).clone();
     assert_eq!(revised["workflow"]["stage"], "ready_for_work");
     assert_eq!(revised["workflow"]["blocks_ordinary_work"], false);
     assert_eq!(
@@ -7389,6 +7460,11 @@ fn coupled_artifact_review(paths: &[&str]) -> CoupledArtifactReview {
 }
 
 fn bind_recorded_scope(adapter: &mut HostAdapter, recorded: &Value, paths: &[&str]) -> Value {
+    let request = recorded_scope_request(adapter, recorded, paths);
+    call(adapter, "materiality_review", request)
+}
+
+fn recorded_scope_request(adapter: &mut HostAdapter, recorded: &Value, paths: &[&str]) -> Value {
     let recorded = recorded
         .get("result")
         .and_then(|result| result.get("structuredContent"))
@@ -7432,7 +7508,7 @@ fn bind_recorded_scope(adapter: &mut HostAdapter, recorded: &Value, paths: &[&st
     request["paths"] = json!(paths);
     request["components"] = json!([]);
     request["work_contexts"] = json!([]);
-    call(adapter, "materiality_review", request)
+    request
 }
 fn structured(response: &Value) -> &Value {
     &response["result"]["structuredContent"]
