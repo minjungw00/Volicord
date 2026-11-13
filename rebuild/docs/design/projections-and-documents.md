@@ -3971,6 +3971,9 @@ illustrative rather than reported executions. One sentence per responsibility is
 not a completeness rule; neither length quotas nor padding establish useful content.
 Missing evidence remains missing. Ordinary authoring and explicit refinement use
 the same guidance and retention/admission boundaries; reading never fills gaps.
+Authoring guidance shares the bounded preparation envelope with complete facts
+and provenance. Its wording must stay concise enough for supported large evidence
+shapes; clearer detail guidance cannot raise that envelope or displace evidence.
 
 ### Explicit diagram applicability outcome
 
