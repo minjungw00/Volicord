@@ -997,7 +997,7 @@ intents remain readable; missing historical assessment remains missing.
 
 ### Complete citation provenance sharing — current format 10
 
-The sole current `volicord_explanation` writer/decoder uses version 10. Earlier
+The sole `volicord_explanation` writer/decoder uses exact current format version 10. Earlier
 version-9 statements describe their recorded implementation stage, not a second
 supported decoder. Check kind/version before interpreting domain fields; any
 other version is Unsupported. Preserve original bytes and receipts. There is no

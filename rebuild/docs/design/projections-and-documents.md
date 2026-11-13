@@ -2804,7 +2804,7 @@ that rule or budget/publication constraints; hiding a link removes no dependency
 
 ### Grounded concept and sequence publications
 
-The sole writer and decoder use exact-current `volicord_explanation` version 9.
+The sole writer and decoder use exact-current `volicord_explanation` version 10.
 The current grounded-display contract below supersedes the historical prose-span
 label representation described in this section. The earlier v8 added `diagrams` to the exact admitted
 publication, supporting concept relationships, components, guarded flowcharts, owned states and UML implementation sequences.
