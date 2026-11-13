@@ -1132,6 +1132,14 @@ bounded role and verbatim statement; it performs no text-based automatic Learnin
 classification. Conditional investigation instructions recorded as Goal remain
 Goal through scoped inspection and Recall. Genuine Learning still requires its
 separate current-user basis and existing participation/withdrawal operations.
+The ordinary host handoff explicitly keeps implementation/test/documentation
+delivery and result/remaining-limit explanations inactive unless the user separately
+opts into Learning participation. Those ordinary instructions cannot themselves
+supply a Learning Context. The handoff also routes requested check reports through
+the existing declared-run/record operations with observed assertions and exact
+prior-run links when comparable; a later pass or narrative repair claim alone
+does not establish retest equivalence. This is host guidance, not a text classifier
+or automatic participation transition.
 Command test observations supply no user choice, recommendation or Decision;
 Candidate research/learning content remains within named Candidate Inspection.
 
