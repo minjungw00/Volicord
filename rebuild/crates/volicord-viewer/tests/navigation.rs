@@ -38,10 +38,12 @@ fn sidebar_language_selection_keeps_work_and_query_but_refreshes_language_basis(
         .split("</nav>")
         .next()
         .ok_or("language navigation")?;
+    assert!(footer.contains("<select data-language-picker disabled aria-label="));
+    assert!(footer.contains("<noscript>"));
     let korean = footer
-        .split("<a href=\"")
+        .split("<option value=\"")
         .skip(1)
-        .find(|part| part.contains("hreflang=\"ko\""))
+        .find(|part| part.contains("lang=\"ko\""))
         .ok_or("Korean link")?
         .split('"')
         .next()

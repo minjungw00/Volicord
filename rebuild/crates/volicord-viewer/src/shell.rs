@@ -195,6 +195,19 @@ pub(super) fn start(
             )
         ));
     } else {
+        html.push_str(&format!(
+            "<select data-language-picker disabled aria-label=\"{}\">",
+            text(r.locale, "Language", "언어")
+        ));
+        if !((r.requested_language == "en" && r.locale == super::ViewerLocale::English)
+            || (r.requested_language == "ko" && r.locale == super::ViewerLocale::Korean))
+        {
+            html.push_str(&format!(
+                "<option selected disabled>{}</option>",
+                escape(&r.requested_language)
+            ));
+        }
+        let mut fallback = String::new();
         for (language, locale, label) in [
             ("en", super::ViewerLocale::English, "English"),
             ("ko", super::ViewerLocale::Korean, "한국어"),
@@ -208,16 +221,20 @@ pub(super) fn start(
                 }
                 _ => {}
             }
+            let target = escape(&href(&selected, &selected.view, false));
             html.push_str(&format!(
-                "<a href=\"{}\" hreflang=\"{language}\" lang=\"{language}\"{}>{label}</a>",
-                escape(&href(&selected, &selected.view, false)),
+                "<option value=\"{target}\" lang=\"{language}\"{}>{label}</option>",
                 if r.requested_language == language && r.locale == locale {
-                    " aria-current=\"true\""
+                    " selected"
                 } else {
                     ""
                 }
             ));
+            fallback.push_str(&format!(
+                "<a href=\"{target}\" hreflang=\"{language}\" lang=\"{language}\">{label}</a>"
+            ));
         }
+        html.push_str(&format!("</select><noscript>{fallback}</noscript>"));
     }
     html.push_str(&format!("</nav><p>{}</p><p>{}</p><small>{}: {}</small></footer></aside></details>{backdrop}<main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\">",text(r.locale,"Read-only","읽기 전용"),if snapshot{text(r.locale,"Export-time local context","내보낸 시점의 로컬 맥락")}else{text(r.locale,"Retained local records","보존된 로컬 기록")},text(r.locale,"Canonical context revision","정식 맥락 리비전"),p.overview.canonical_revision));
 }

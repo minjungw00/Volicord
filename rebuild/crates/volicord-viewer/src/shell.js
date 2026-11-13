@@ -5,6 +5,11 @@ function createReaderShell({lifetime,modal,contents}) {
  const backdrop=document.querySelector('.nav-backdrop');
  const mobile=matchMedia('(max-width:980px)'),ko=document.documentElement.lang==='ko';
  let previousFocus=null,updating=false;
+ const languagePicker=rail.querySelector('select[data-language-picker]');
+ if(languagePicker){
+  languagePicker.disabled=false;
+  lifetime.on(languagePicker,'change',()=>{if(languagePicker.value)location.assign(languagePicker.value);});
+ }
  const closeContents=()=>contents.close();
  function sync(restore=false){
   if(updating)return;updating=true;

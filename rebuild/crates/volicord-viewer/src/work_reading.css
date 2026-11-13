@@ -105,7 +105,7 @@
 .doc[data-reading-layout="grouped"] .related-decisions .decision-reading + .decision-reading{margin-top:12px}
 .doc[data-reading-layout="grouped"] .related-decisions .decision-reading > .related-decision{margin:0;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{min-height:48px;padding:12px 0}
-.doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary h3{font-size:18px;line-height:1.6;font-weight:650;color:var(--ink)}
+.doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary h3{font:inherit;color:inherit}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision[open]{padding-bottom:14px}
 .doc[data-reading-layout="grouped"] .related-decision-body > .article-section .unit-text,.doc[data-reading-layout="grouped"] .related-decision-body > .unit > .unit-text{font-size:14px;line-height:1.9;color:var(--body)}
 .doc[data-reading-layout="grouped"] .document-nav nav ol a{padding-left:28px}

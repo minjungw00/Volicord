@@ -51,9 +51,9 @@ button,input,select {font:inherit}
 .rail-bottom small {font-size:9px}
 .rail-language {display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:18px}
 .rail-language>span {flex-basis:100%;font-size:11px;color:var(--muted)}
-.rail-language>a {display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;text-decoration:none;color:var(--muted);font-size:12px}
-.rail-language>a:hover,.rail-language>a[aria-current] {color:var(--accent);border-color:#b9dff3;background:var(--wash)}
-.rail-language>a:focus-visible {outline:2px solid var(--focus);outline-offset:2px}
+.rail-language select {width:100%;min-height:36px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font:inherit;font-size:12px}
+.rail-language select:focus-visible,.rail-language noscript a:focus-visible {outline:2px solid var(--focus);outline-offset:2px}
+.rail-language noscript a {display:inline-block;margin-right:10px;font-size:12px}
 .rail-language>p {font-size:12px}.rail-language>p small {display:block}
 .rail-close {display:none}
 .nav-backdrop[hidden] {display:none}

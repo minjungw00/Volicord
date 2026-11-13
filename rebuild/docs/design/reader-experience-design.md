@@ -892,6 +892,14 @@ records, with explicit identity entry for further Projects; no Source/article re
 is required to select a Project. Equal display names retain distinct identities.
 Static exports contain their one Project and do not imply live Project switching.
 
+The sidebar footer selects the available reading/UI languages with one labeled
+native dropdown. Live selection preserves the Project, route, selected Work and
+catalogue query while dropping the previous language's catalogue basis. Without
+script, explicit language links remain available; an export truthfully identifies
+its one published language. Related Decision titles retain their heading semantics
+but inherit the smaller child-disclosure typography used by original/evidence
+subsections, below the peer document-section headings.
+
 At <=980px the same sidebar becomes a 280px drawer (at most viewport minus 36px),
 opened from a 56px header. Scripted modal focus, inert background, outside/Escape/
 route close and desktop resize clearing supplement native disclosure navigation.
