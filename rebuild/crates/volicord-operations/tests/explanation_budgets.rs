@@ -11,6 +11,225 @@ fn fixture() -> Result<reading_fixture::Fixture, Box<dyn std::error::Error>> {
         "metadata_heavy",
     )?)
 }
+
+#[test]
+fn canonical_evidence_pages_preserve_large_history_and_scope(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = reading_fixture::rich_scenario()?;
+    let work = input["works"]
+        .as_array_mut()
+        .ok_or("works")?
+        .iter_mut()
+        .find(|w| w["key"] == "relay")
+        .ok_or("relay")?;
+    let template = work["checkpoints"][0].clone();
+    work["checkpoints"] = json!((0..12)
+        .map(|i| {
+            let mut cp = template.clone();
+            cp["key"] = json!(format!("paged-{i}"));
+            cp["state_change"] =
+                json!(format!("Recorded step {i}: {}", "조건🙂\"\\\n".repeat(900)));
+            cp
+        })
+        .collect::<Vec<_>>());
+    let f = reading_fixture::fixture_scenario(input)?;
+    let before = f.operations.canonical_basis(f.project)?;
+    let privacy = f.operations.privacy_status(f.project)?;
+    let subject = ExplanationSubject::Work(f.goals["relay"]);
+    for language in ["en", "ko"] {
+        let raw = explanation_basis(&before, subject, language)?;
+        assert!(serde_json::to_vec(&raw.evidence)?.len() > EXPLANATION_PLAN_BYTE_LIMIT);
+        let plan = f
+            .operations
+            .prepare_explanation(f.project, subject, language)?;
+        assert!(serde_json::to_vec(&plan)?.len() <= EXPLANATION_PLAN_BYTE_LIMIT);
+        let references = plan
+            .evidence
+            .iter()
+            .filter(|e| e.content["content_kind"] == "paged_canonical_evidence")
+            .collect::<Vec<_>>();
+        assert!(references.len() >= 12);
+        for (index, item) in references.iter().enumerate() {
+            let mut offset = 0;
+            let mut fingerprint = None;
+            let mut encoded = String::new();
+            loop {
+                let page = f.operations.read_explanation_evidence_page(
+                    f.project,
+                    subject,
+                    language,
+                    &plan.fingerprint,
+                    &item.key,
+                    volicord_operations::ExplanationEvidencePage {
+                        offset,
+                        expected_fingerprint: fingerprint.as_deref(),
+                    },
+                )?;
+                let chunk = page["chunk"].as_str().ok_or("chunk")?;
+                assert!(chunk.len() <= 2048);
+                encoded.push_str(chunk);
+                fingerprint = Some(
+                    page["fingerprint"]
+                        .as_str()
+                        .ok_or("fingerprint")?
+                        .to_owned(),
+                );
+                match page["next_offset"].as_u64() {
+                    Some(next) => offset = next as usize,
+                    None => break,
+                }
+            }
+            assert_eq!(
+                encoded.len(),
+                item.content["byte_length"].as_u64().ok_or("length")? as usize
+            );
+            assert_eq!(explanation_text_hash(&encoded), item.content["sha256"]);
+            let expected = &raw
+                .evidence
+                .iter()
+                .find(|e| e.key == item.key)
+                .ok_or("original")?
+                .content;
+            assert_eq!(&serde_json::from_str::<Value>(&encoded)?, expected);
+            if index == 0 {
+                let middle = encoded.find('🙂').ok_or("multibyte fixture")? + 1;
+                assert!(f
+                    .operations
+                    .read_explanation_evidence_page(
+                        f.project,
+                        subject,
+                        language,
+                        &plan.fingerprint,
+                        &item.key,
+                        volicord_operations::ExplanationEvidencePage {
+                            offset: middle,
+                            expected_fingerprint: fingerprint.as_deref()
+                        }
+                    )
+                    .is_err());
+                let foreign = *f
+                    .goals
+                    .values()
+                    .find(|id| **id != f.goals["relay"])
+                    .ok_or("foreign Work")?;
+                assert!(f
+                    .operations
+                    .read_explanation_evidence_page(
+                        f.project,
+                        ExplanationSubject::Work(foreign),
+                        language,
+                        &plan.fingerprint,
+                        &item.key,
+                        volicord_operations::ExplanationEvidencePage {
+                            offset: 0,
+                            expected_fingerprint: None
+                        }
+                    )
+                    .is_err());
+            }
+            if index == 0 {
+                let actual = value(invoke(
+                    &f,
+                    &[
+                        "work",
+                        "explain",
+                        "read-evidence",
+                        "--work",
+                        &f.goals["relay"].to_string(),
+                        "--language",
+                        language,
+                        "--plan-fingerprint",
+                        &plan.fingerprint,
+                        "--evidence-key",
+                        &item.key,
+                    ],
+                )?)?;
+                assert_eq!(
+                    actual["chunk"].as_str().ok_or("CLI chunk")?,
+                    &encoded[..actual["next_offset"].as_u64().ok_or("CLI continuation")? as usize]
+                );
+                assert!(f
+                    .operations
+                    .read_explanation_evidence_page(
+                        f.project,
+                        subject,
+                        language,
+                        &plan.fingerprint,
+                        &item.key,
+                        volicord_operations::ExplanationEvidencePage {
+                            offset: 1,
+                            expected_fingerprint: None
+                        }
+                    )
+                    .is_err());
+                assert!(f
+                    .operations
+                    .read_explanation_evidence_page(
+                        f.project,
+                        subject,
+                        language,
+                        &plan.fingerprint,
+                        "goal",
+                        volicord_operations::ExplanationEvidencePage {
+                            offset: 0,
+                            expected_fingerprint: fingerprint.as_deref()
+                        }
+                    )
+                    .is_err());
+                assert!(f
+                    .operations
+                    .read_explanation_evidence_page(
+                        f.project,
+                        subject,
+                        "different",
+                        &plan.fingerprint,
+                        &item.key,
+                        volicord_operations::ExplanationEvidencePage {
+                            offset: 0,
+                            expected_fingerprint: None
+                        }
+                    )
+                    .is_err());
+                assert!(f
+                    .operations
+                    .read_explanation_evidence_page(
+                        f.project,
+                        subject,
+                        language,
+                        "sha256:wrong",
+                        &item.key,
+                        volicord_operations::ExplanationEvidencePage {
+                            offset: 0,
+                            expected_fingerprint: None
+                        }
+                    )
+                    .is_err());
+                assert!(f
+                    .operations
+                    .read_explanation_evidence_page(
+                        f.project,
+                        subject,
+                        language,
+                        &plan.fingerprint,
+                        "foreign",
+                        volicord_operations::ExplanationEvidencePage {
+                            offset: 0,
+                            expected_fingerprint: None
+                        }
+                    )
+                    .is_err());
+            }
+        }
+        // Paging is request transport only; historical publication metadata and
+        // the original complete canonical basis still validate the same prose.
+        let realization = response(&plan, 3000)?;
+        let retained = retain_explanation(&plan, realization, 123);
+        validate_retained_explanation(&raw, &retained)?;
+    }
+    assert_eq!(before, f.operations.canonical_basis(f.project)?);
+    assert_eq!(privacy, f.operations.privacy_status(f.project)?);
+    Ok(())
+}
 fn invoke(
     f: &reading_fixture::Fixture,
     args: &[&str],

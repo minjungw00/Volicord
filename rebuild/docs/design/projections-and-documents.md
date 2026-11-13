@@ -443,6 +443,27 @@ The preparation is bounded at 131,072 bytes and fails rather than silently trunc
 source material. Its SHA-256 fingerprints these inputs, scope, question, instructions
 and exact language. Unrelated Work/catalog insertion does not change this basis.
 
+Large historical Work fields use explicit lossless transport rather than repeating
+their complete bodies in preparation. `history:*`, `course:*`, `change:*`,
+`change_scope:*` and `limits:*` content above 1,024 compact-JSON UTF-8 bytes is a
+`paged_canonical_evidence` reference carrying the exact byte length and SHA-256.
+Every original evidence key, record identity/revision/field and Source list remains
+in preparation; current selected facts remain inline. This is neither missing
+evidence nor a semantic summary, and it removes no historical failures or limits.
+Read complete fields with `work explain read-evidence` or the `read_evidence`
+action of `work_explanation` / `decision_explanation`, joining exact `next_offset`
+chunks and checking length/hash before interpretation. Each page contains at most
+2,048 UTF-8 bytes. The plan fingerprint binds Project, subject, language and current
+dependencies; a separate field fingerprint is mandatory for continuation. Changed
+basis, mixed fields, invalid offsets and foreign requests fail explicitly.
+These reads do not access observed Source bodies, author, create intents, mutate
+canonical records, dispatch providers or renew retention. Fingerprints establish
+byte identity, never prose truth or proof of host comprehension. Retained publication
+metadata and its exact canonical validation remain unchanged; historical content
+is not rewritten or decoded through a second stored format. The complete reference
+manifest must still fit the unchanged preparation bound; unsupported shapes fail
+before generation.
+
 The current active host interprets this plan under its existing interaction authority.
 There is no production deterministic free-prose engine: the audit-heavy source cases
 showed that truthful first-384-character quotations do not answer the task, and the

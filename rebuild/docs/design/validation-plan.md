@@ -5812,3 +5812,25 @@ pre-expiry/cleanup/restart/stale-publication assertions. No TTL, clock, deadline
 Source authority, output bound or qualification budget is extended. A dedicated
 scheduling control checks nested shared setup and exclusive handoff. Preserve the
 original aggregate expiry failure separately from the repaired fixture's results.
+
+## Canonical explanation evidence paging — 2026-11-14
+
+An actual ordinary pipx continuation could not prepare its updated article:
+187,604 bytes exceeded the unchanged 131,072-byte preparation bound. Preserve that
+candidate's failed production and original history; a later fix does not upgrade it.
+Read-only diagnosis separated canonical evidence (137,930 bytes) and Source status
+metadata (45,213 bytes). Field scoping and scoped-run interning did not solve the
+complete shape; neither pruning nor a larger limit is the repair.
+
+Preparation now references large historical canonical fields with exact length/hash,
+while explicit Work/Decision evidence reads return bounded complete JSON pages.
+Authored controls must reconstruct every referenced original field, including
+multibyte and escaped text, through Operations and actual CLI; exercise the MCP
+live-request boundary; reject changed basis, foreign subject/language, mixed-field
+continuation, missing fingerprints and invalid byte offsets. Canonical data, Privacy
+state, admitted publication grounding and all byte bounds must remain unchanged.
+The preserved actual pipx basis also needs read-only preparation and exact page
+reconstruction, separately from actual host authorship or a new measured campaign.
+Its development diagnostic produced a 111,783-byte plan and reconstructed all 45
+referenced fields with exact byte/hash/JSON equality and unchanged canonical data.
+This is technical evidence only, not a replacement publication or human verdict.

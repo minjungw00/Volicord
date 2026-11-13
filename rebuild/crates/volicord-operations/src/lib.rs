@@ -16,7 +16,7 @@ mod explanation_assessment;
 mod explanation_production;
 pub use explanation_assessment::{DiagramAssessmentOutcome, ExplanationDiagramAssessment};
 mod explanation_sources;
-pub use explanation::ExplanationCitationSelection;
+pub use explanation::{ExplanationCitationSelection, ExplanationEvidencePage};
 pub use explanation_production::{ExplanationProductionFailure, ExplanationProductionReason};
 mod forgetting;
 mod guarded;

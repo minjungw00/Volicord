@@ -14,6 +14,8 @@ pub const EXPLANATION_BYTE_LIMIT: usize = 56_320;
 pub const EXPLANATION_MIN_RESPONSE_BYTE_CAPACITY: usize = 16_384;
 pub const EXPLANATION_PARAGRAPH_CHARACTER_LIMIT: usize = 16_384;
 pub const EXPLANATION_PLAN_BYTE_LIMIT: usize = 131_072;
+/// Larger historical fields remain available through exact, request-bound pages.
+pub const EXPLANATION_EVIDENCE_INLINE_BYTE_LIMIT: usize = 1_024;
 /// Independent bound for the complete compact retained envelope.
 pub const EXPLANATION_RETAINED_BYTE_LIMIT: usize = 164_864;
 /// File transport allows formatting; compact realization admission is independent.
@@ -901,10 +903,26 @@ fn finish_plan(basis: ExplanationBasis) -> Result<ExplanationPlan, String> {
         subject,
         question,
         requested_language,
-        evidence,
+        mut evidence,
         source_status,
         conflicts,
     } = basis;
+    // This changes only request transport. The complete canonical basis and the
+    // retained identity/revision/field/Source metadata are never pruned.
+    let mut paged = false;
+    for item in &mut evidence {
+        if ["history:", "course:", "change:", "change_scope:", "limits:"]
+            .iter()
+            .any(|prefix| item.key.starts_with(prefix))
+        {
+            let encoded = serde_json::to_vec(&item.content).map_err(|e| e.to_string())?;
+            if encoded.len() > EXPLANATION_EVIDENCE_INLINE_BYTE_LIMIT {
+                item.content = json!({"content_kind":"paged_canonical_evidence",
+                    "byte_length":encoded.len(),"sha256":format!("sha256:{:x}",Sha256::digest(&encoded))});
+                paged = true;
+            }
+        }
+    }
     let questions = match subject {
         ExplanationSubject::WorkName(_) => "Author exactly one heading naming this Work from its original Goal. Describe the requested problem/action, never claim an implementation or successful outcome. No technical Source is needed for a request-grounded name.",
         ExplanationSubject::WorkSummary(_) => "Author exactly one concise current-progress synopsis connecting the Goal to the actually reported approach/result and latest state. Use all selected field keys; summarize material qualifications rather than listing metadata. Without result, keep the report missing while describing supported progress. Preserve partial, failed, paused, abandoned and no-change outcomes. Review and acceptance are independent, including explicit resets; checks never imply completion or acceptance. Latest nonempty verification is a recorded fact, not current-code proof; verification_coverage marks a later meaningful change even with blank report. Preserve result_limits and current limits and next direction; a blank next_step has no older fallback. Canonical reports and checks establish reported meaning without command bodies. Claims about observed implementation/execution beyond these facts need their own permitted Source citations. Never invent an approach, completion or acceptance or extract article prose. This summary has independent admission and lifetime.",
@@ -946,6 +964,9 @@ fn finish_plan(basis: ExplanationBasis) -> Result<ExplanationPlan, String> {
     ) {
         plan.instructions.push(' ');
         plan.instructions.push_str(EFFECT_REVIEW);
+    }
+    if paged {
+        plan.instructions.push_str(" Historical content_kind=paged_canonical_evidence is a reference, not missing evidence or a summary. Explicitly read each needed complete field with read_evidence/read-evidence using its exact evidence_key and this plan fingerprint. Join compact-JSON UTF-8 chunks by next_offset, verify byte_length and sha256, and parse the complete JSON before interpreting it. Preserve material earlier failures, limits and changes; no hidden truncation, lifetime renewal or generation occurs on these reads.");
     }
     if matches!(
         subject,

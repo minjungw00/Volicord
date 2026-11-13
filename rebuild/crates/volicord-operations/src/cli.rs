@@ -371,10 +371,32 @@ fn explanation_command(kind: &'static str) -> Command {
                     ),
             )
         });
+        command = command.mut_subcommand("explain", |explain| {
+            explain.subcommand(
+                Command::new("read-evidence")
+                    .about("Read one exact canonical explanation field in bounded UTF-8 pages")
+                    .arg(subject())
+                    .arg(language())
+                    .arg(
+                        Arg::new("plan-fingerprint")
+                            .long("plan-fingerprint")
+                            .required(true),
+                    )
+                    .arg(Arg::new("evidence-key").long("evidence-key").required(true))
+                    .arg(Arg::new("expected-fingerprint").long("expected-fingerprint"))
+                    .arg(
+                        Arg::new("offset")
+                            .long("offset")
+                            .default_value("0")
+                            .value_parser(clap::value_parser!(usize)),
+                    ),
+            )
+        });
         if kind == "work" {
             command = command.mut_subcommand("explain", |explain| {
                 [
                     "prepare",
+                    "read-evidence",
                     "compose",
                     "record",
                     "delete",
@@ -1206,6 +1228,21 @@ fn dispatch_explanation_action(
         ),
     };
     match action {
+        "read-evidence" => operations.read_explanation_evidence_page(
+            project,
+            subject,
+            required(args, "language")?,
+            required(args, "plan-fingerprint")?,
+            required(args, "evidence-key")?,
+            crate::ExplanationEvidencePage {
+                offset: *args
+                    .get_one::<usize>("offset")
+                    .ok_or_else(|| Error::new("offset required"))?,
+                expected_fingerprint: args
+                    .get_one::<String>("expected-fingerprint")
+                    .map(String::as_str),
+            },
+        ),
         "production-assess" => operations.assess_explanation_diagrams(
             project,
             subject,

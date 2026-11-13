@@ -455,6 +455,13 @@ with the plan's evidence/instructions/language; callers must prepare afresh. No
 old-plan conversion, alternate retained decoder or version-dependent limit exists.
 Historical campaign bytes must not be rewritten to supply current preparation fields;
 fresh validation uses fresh disposable inputs, distinct from original observations.
+Large historical Work content can now travel as exact length/hash references with
+explicit canonical-evidence pages. This is current request transport: the fingerprint
+includes the references, every page revalidates the exact current plan, and field
+continuations bind their selector. Canonical bodies and the retained evidence
+identity/revision/field/Source metadata do not change. The stored explanation format,
+Source formats and independent reading validation are unchanged; old publications
+are neither converted nor rebound, and no alternate stored decoder is introduced.
 Repository preparation now commits to complete inventory and coverage sets with
 counts/hashes instead of embedding all paths. This changes ephemeral preparation
 fingerprints: earlier repository prose becomes Stale and requires explicit fresh

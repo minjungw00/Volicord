@@ -1875,6 +1875,51 @@ impl HostAdapter {
                 }
                 Ok(result)
             }
+            "read_evidence" => {
+                let request = self
+                    .explanation_requests
+                    .get(required_str(args, "generation_id")?)
+                    .ok_or_else(|| {
+                        HostError::new(
+                            "explanation request unavailable or expired; explicitly generate again",
+                        )
+                    })?;
+                if request.project != project || request.subject != subject {
+                    return Err(HostError::new("explanation request Project/Work mismatch"));
+                }
+                if let Some(id) = &request.production_id {
+                    self.operations
+                        .validate_explanation_production(
+                            project,
+                            subject,
+                            &request.language,
+                            id,
+                            &request.fingerprint,
+                        )
+                        .map_err(operation_error)?;
+                }
+                self.operations
+                    .read_explanation_evidence_page(
+                        project,
+                        subject,
+                        &request.language,
+                        &request.fingerprint,
+                        required_str(args, "evidence_key")?,
+                        volicord_operations::ExplanationEvidencePage {
+                            offset: args
+                                .get("offset")
+                                .and_then(Value::as_u64)
+                                .map(usize::try_from)
+                                .transpose()
+                                .map_err(|_| HostError::new("offset exceeds platform bound"))?
+                                .unwrap_or(0),
+                            expected_fingerprint: args
+                                .get("expected_fingerprint")
+                                .and_then(Value::as_str),
+                        },
+                    )
+                    .map_err(operation_error)
+            }
             "read_source" => {
                 let request_id = required_str(args, "generation_id")?;
                 let request = self
@@ -3122,6 +3167,29 @@ fn work_explanation_schema() -> Value {
             identity_schema("Explicitly observed same-Work Source"),
         ),
     ]);
+    let mut evidence_read = scope();
+    evidence_read.extend([
+        (
+            "action",
+            enum_schema(
+                "Read complete canonical evidence without generation or retention writes",
+                &["read_evidence"],
+            ),
+        ),
+        (
+            "generation_id",
+            identity_schema("Current ephemeral explanation request"),
+        ),
+        (
+            "evidence_key",
+            text_schema("Exact prepared canonical evidence key", 1, 512),
+        ),
+        ("offset", json!({"type":"integer","minimum":0})),
+        (
+            "expected_fingerprint",
+            text_schema("Exact field continuation fingerprint", 1, 128),
+        ),
+    ]);
     let mut record = scope();
     record.extend([
         (
@@ -3162,7 +3230,7 @@ fn work_explanation_schema() -> Value {
             &["verification"],
         ),
     ));
-    json!({"oneOf":[object_schema(assess,&["action","project_id","work_item_id","generation_id","assessment"]),object_schema(produce,&["action","project_id","work_item_id","language","reason"]),object_schema(status,&["action","project_id","work_item_id","language"]),object_schema(fail,&["action","project_id","work_item_id","generation_id","failure"]),object_schema(verification,&["action","project_id","work_item_id"]),object_schema(prepare,&["action","project_id","work_item_id","language"]),
+    json!({"oneOf":[object_schema(evidence_read,&["action","project_id","work_item_id","generation_id","evidence_key"]),object_schema(assess,&["action","project_id","work_item_id","generation_id","assessment"]),object_schema(produce,&["action","project_id","work_item_id","language","reason"]),object_schema(status,&["action","project_id","work_item_id","language"]),object_schema(fail,&["action","project_id","work_item_id","generation_id","failure"]),object_schema(verification,&["action","project_id","work_item_id"]),object_schema(prepare,&["action","project_id","work_item_id","language"]),
         object_schema(read,&["action","project_id","work_item_id","generation_id","source_id"]),
         object_schema(record,&["action","project_id","work_item_id","generation_id","realization"]),
         object_schema(compose,&["action","project_id","work_item_id","generation_id","draft"]),
@@ -3916,7 +3984,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::DestructiveClosed,
         ),
         "work_explanation" => (
-            "Work publications use explicit scope=name|summary|article (default article), with independent preparation, currentness, provenance and replacement for the same canonical Work. Publish name and summary from their own plans; article prose never substitutes for card identity. For ordinary authorized Work, produce explicitly persists host production intent and starts request-local authorship; status reads exact scope/language and restart recovery, fail records an observed interruption. Unchanged current bases skip without renewal; reason=refinement requests another edition. At initiation produce useful names and summaries; update summaries after meaningful progress and assess needed articles at switch/pause/completion. This creates no Learning, user Decision, provider authority or per-turn quota. On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected bodies with read_source, follows plan.instructions and question_grounding to select genuinely supporting canonical evidence_keys for EVERY paragraph alongside exact Source citations, and records its prose. Source citations never replace canonical keys; goal is not generic evidence for technical claims. Host-level transmission authorization is outside canonical Work facts: missing plan data does not prove absent consent. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
+            "Work publications use explicit scope=name|summary|article (default article), with independent preparation, currentness, provenance and replacement for the same canonical Work. Publish name and summary from their own plans; article prose never substitutes for card identity. For ordinary authorized Work, produce explicitly persists host production intent and starts request-local authorship; status reads exact scope/language and restart recovery, fail records an observed interruption. Unchanged current bases skip without renewal; reason=refinement requests another edition. At initiation produce useful names and summaries; update summaries after meaningful progress and assess needed articles at switch/pause/completion. This creates no Learning, user Decision, provider authority or per-turn quota. On an explicit current-user explanation request, generate connects the already authorized active host to exact Product Work facts and scoped Source inventory. It returns awaiting_host_interpretation, never claims model execution or complete prose. The host autonomously investigates relevant permitted callers/helpers/tests, retrieves selected observed bodies with read_source and paged canonical fields with read_evidence (exact generation/key, offset and continuation fingerprint), follows plan.instructions and question_grounding to select genuinely supporting canonical evidence_keys for EVERY paragraph alongside exact Source citations, and records its prose. Source citations never replace canonical keys; goal is not generic evidence for technical claims. Host-level transmission authorization is outside canonical Work facts: missing plan data does not prove absent consent. prepare is read-only and does not request generation. record requires a live request and exact retrieved citation bindings, revalidates current Work/repository/Source dependencies and retains only disposable local interpretation. Model/author identity stays self-reported; grounding is not semantic approval. delete removes retained explanations without canonical changes. Unavailable host/access means incomplete generation with read-only facts. No automatic background generation, provider transmission, canonical Decisions or Learning activation.",
             work_explanation_schema(),
             ToolBehavior::DestructiveClosed,
         ),

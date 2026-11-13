@@ -29,6 +29,60 @@ fn invoke(
     );
     Ok(serde_json::from_slice(&output.stdout)?)
 }
+fn canonical_content(
+    f: &reading_fixture::Fixture,
+    plan: &volicord_projections::ExplanationPlan,
+    evidence: &volicord_projections::ExplanationEvidence,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    if evidence.content["content_kind"] != "paged_canonical_evidence" {
+        return Ok(evidence.content.clone());
+    }
+    let work = plan.subject.work().ok_or("Work")?.to_string();
+    let mut offset = 0;
+    let mut fingerprint: Option<String> = None;
+    let mut bytes = String::new();
+    loop {
+        let mut args = vec![
+            "work".into(),
+            "explain".into(),
+            "read-evidence".into(),
+            "--work".into(),
+            work.clone(),
+            "--language".into(),
+            plan.requested_language.clone(),
+            "--plan-fingerprint".into(),
+            plan.fingerprint.clone(),
+            "--evidence-key".into(),
+            evidence.key.clone(),
+            "--offset".into(),
+            offset.to_string(),
+        ];
+        if let Some(ref fingerprint) = fingerprint {
+            args.extend(["--expected-fingerprint".into(), fingerprint.clone()]);
+        }
+        let page = invoke(f, &args.iter().map(String::as_str).collect::<Vec<_>>())?;
+        bytes.push_str(page["chunk"].as_str().ok_or("chunk")?);
+        fingerprint = Some(
+            page["fingerprint"]
+                .as_str()
+                .ok_or("fingerprint")?
+                .to_owned(),
+        );
+        match page["next_offset"].as_u64() {
+            Some(next) => offset = next as usize,
+            None => break,
+        }
+    }
+    assert_eq!(
+        bytes.len(),
+        evidence.content["byte_length"].as_u64().ok_or("length")? as usize
+    );
+    assert_eq!(
+        volicord_projections::explanation_text_hash(&bytes),
+        evidence.content["sha256"]
+    );
+    Ok(serde_json::from_str(&bytes)?)
+}
 fn contains_answer(value: &Value, kind: &str, state: &str, fingerprint: Option<&str>) -> bool {
     match value {
         Value::Object(fields) => {
@@ -316,7 +370,7 @@ fn work_preparation_keeps_change_meaning_before_later_verification_report(
             .find(|e| e.identity == checkpoint.id.to_string())
             .ok_or("lost same-Work change report")?;
         assert_eq!(
-            evidence.content["reported_change"],
+            canonical_content(&f, &plan, evidence)?["reported_change"],
             serde_json::json!(checkpoint.state_change)
         );
         assert_eq!(evidence.revision, checkpoint.revision);
@@ -334,15 +388,15 @@ fn work_preparation_keeps_change_meaning_before_later_verification_report(
         .checkpoint_history
         .iter()
         .any(|c| c.id.to_string() == e.identity && c.work_item_id != Some(work))));
-    assert!(plan
+    let scopes = plan
         .evidence
         .iter()
-        .any(|e| e.key.starts_with("change_scope:")
-            && !e.content["paths"]
-                .as_array()
-                .ok_or("paths")
-                .unwrap()
-                .is_empty()));
+        .filter(|e| e.key.starts_with("change_scope:"))
+        .map(|e| canonical_content(&f, &plan, e))
+        .collect::<Result<Vec<_>, _>>()?;
+    assert!(scopes.iter().any(|value| value["paths"]
+        .as_array()
+        .is_some_and(|paths| !paths.is_empty())));
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     let decision = f.operations.prepare_explanation(
         f.project,

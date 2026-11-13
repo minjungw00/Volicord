@@ -236,6 +236,60 @@ struct Fixture {
     work: ContextItemId,
     source: SourceId,
 }
+
+#[test]
+fn canonical_evidence_read_requires_the_exact_live_explanation_request(
+) -> Result<(), Box<dyn Error>> {
+    let mut f = Fixture::with_goal(&"정확한🙂 근거를 읽습니다. ".repeat(200))?;
+    let before = f.host.operations().canonical_basis(f.project)?;
+    let privacy = f.host.operations().privacy_status(f.project)?;
+    let generation = f.generate()?;
+    let mut args = f.args("read_evidence");
+    args["generation_id"] = generation["generation_id"].clone();
+    args["evidence_key"] = json!("goal");
+    let first = success(&mut f.host, args.clone())?;
+    assert_eq!(first["read_only"], true);
+    assert!(!first.to_string().contains("PRIVATE_TURN_SENTINEL"));
+    assert!(first["next_offset"].is_number());
+    args["offset"] = first["next_offset"].clone();
+    assert_eq!(call(&mut f.host, args.clone())["result"]["isError"], true);
+    args["expected_fingerprint"] = first["fingerprint"].clone();
+    let second = success(&mut f.host, args.clone())?;
+    assert_eq!(second["evidence_key"], "goal");
+    args["work_item_id"] = json!(ContextItemId::from_bytes([83; 16]).to_string());
+    assert_eq!(call(&mut f.host, args.clone())["result"]["isError"], true);
+    args["work_item_id"] = json!(f.work.to_string());
+    args["generation_id"] = json!("unknown-request");
+    assert_eq!(call(&mut f.host, args)["result"]["isError"], true);
+    assert_eq!(before, f.host.operations().canonical_basis(f.project)?);
+    assert_eq!(privacy, f.host.operations().privacy_status(f.project)?);
+    f.host.operations().record_current_host_user_context(
+        f.project,
+        "fixture".into(),
+        "changed-basis".into(),
+        "Record Project purpose: Demonstrate exact evidence paging".into(),
+        ContextItemRole::ProjectPurpose,
+        "Demonstrate exact evidence paging".into(),
+    )?;
+    let mut stale = f.args("read_evidence");
+    stale["generation_id"] = generation["generation_id"].clone();
+    stale["evidence_key"] = json!("goal");
+    assert_eq!(call(&mut f.host, stale)["result"]["isError"], true);
+    let mut produce = f.args("produce");
+    produce["language"] = json!("en");
+    produce["reason"] = json!("boundary");
+    let production = success(&mut f.host, produce.clone())?;
+    let mut read = f.args("read_evidence");
+    read["generation_id"] = production["generation_id"].clone();
+    read["evidence_key"] = json!("goal");
+    let privacy = f.host.operations().privacy_status(f.project)?;
+    success(&mut f.host, read.clone())?;
+    assert_eq!(privacy, f.host.operations().privacy_status(f.project)?);
+    produce["reason"] = json!("refinement");
+    success(&mut f.host, produce)?;
+    assert_eq!(call(&mut f.host, read)["result"]["isError"], true);
+    Ok(())
+}
 impl Fixture {
     fn new() -> Result<Self, Box<dyn Error>> {
         Self::with_goal("Explain value; investigate before recommending a change.")

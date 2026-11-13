@@ -22,6 +22,13 @@ pub struct ExplanationCitationSelection {
     pub offset: usize,
 }
 
+/// A continuation is bound to one exact canonical field, never only an offset.
+#[derive(Clone, Copy, Debug)]
+pub struct ExplanationEvidencePage<'a> {
+    pub offset: usize,
+    pub expected_fingerprint: Option<&'a str>,
+}
+
 fn purpose(subject: ExplanationSubject, language: &str) -> String {
     format!("explanation:{}:{language}", subject.key())
 }
@@ -345,6 +352,70 @@ impl LocalOperations {
     ) -> Result<ExplanationPlan, Error> {
         let canonical = self.canonical_basis(project)?;
         self.prepare_subject_explanation(&canonical, subject, language)
+    }
+
+    /// Exact canonical evidence transport, independent of Source-body access.
+    /// Recompute one basis once; no new Source, intent, prose or retention write.
+    pub fn read_explanation_evidence_page(
+        &self,
+        project: ProjectId,
+        subject: ExplanationSubject,
+        language: &str,
+        plan_fingerprint: &str,
+        evidence_key: &str,
+        page: ExplanationEvidencePage<'_>,
+    ) -> Result<serde_json::Value, Error> {
+        const CHUNK: usize = 2_048;
+        let ExplanationEvidencePage {
+            offset,
+            expected_fingerprint,
+        } = page;
+        let canonical = self.canonical_basis(project)?;
+        let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
+        if plan.fingerprint != plan_fingerprint {
+            return Err(Error::new("explanation evidence basis changed or belongs to another Project, subject or language; prepare again"));
+        }
+        let basis = match subject {
+            ExplanationSubject::Repository(_) => {
+                return Err(Error::new("canonical Work or Decision evidence required"))
+            }
+            _ => explanation_basis(&canonical, subject, language).map_err(Error::new)?,
+        };
+        let evidence = basis
+            .evidence
+            .iter()
+            .find(|item| item.key == evidence_key)
+            .ok_or_else(|| Error::new("evidence key does not belong to this explanation"))?;
+        let encoded = serde_json::to_string(&evidence.content)
+            .map_err(|e| Error::with_source("canonical evidence encoding failed", e))?;
+        let content_sha256 = explanation_text_hash(&encoded);
+        let fingerprint = explanation_text_hash(
+            &serde_json::json!({"plan":plan.fingerprint,
+            "evidence_key":evidence_key,"content_sha256":content_sha256})
+            .to_string(),
+        );
+        if (offset > 0 && expected_fingerprint.is_none())
+            || expected_fingerprint.is_some_and(|expected| expected != fingerprint)
+        {
+            return Err(Error::new(
+                "canonical evidence continuation requires the exact field fingerprint",
+            ));
+        }
+        if offset >= encoded.len() || !encoded.is_char_boundary(offset) {
+            return Err(Error::new("invalid canonical evidence UTF-8 byte offset"));
+        }
+        let mut end = offset.saturating_add(CHUNK).min(encoded.len());
+        while !encoded.is_char_boundary(end) {
+            end -= 1;
+        }
+        Ok(
+            serde_json::json!({"project_id":project.to_string(),"subject":subject,
+            "language":language,"plan_fingerprint":plan.fingerprint,"evidence_key":evidence_key,
+            "fingerprint":fingerprint,"content_sha256":content_sha256,"encoding":"compact_json_utf8",
+            "offset":offset,"chunk":&encoded[offset..end],"next_offset":(end<encoded.len()).then_some(end),
+            "state":if end==encoded.len(){"complete"}else{"partial"},"total_utf8_bytes":encoded.len(),
+            "remaining_utf8_bytes":encoded.len()-end,"chunk_byte_limit":CHUNK,"read_only":true}),
+        )
     }
     pub(crate) fn prepare_subject_explanation(
         &self,
