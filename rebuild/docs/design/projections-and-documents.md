@@ -3961,6 +3961,17 @@ supports them. Complete and bounded guidance preserve these obligations within t
 existing preparation ceiling. This changes new preparation hashes only; admitted
 format-9 publications retain their original preparation provenance and lifecycle.
 
+### Detailed explanation and concise synopsis
+
+Current Work and Repository authoring guidance distinguishes a concise synopsis
+from detailed explanation. Detail follows a concrete reader question or use case
+through relevant inputs/state, mechanism, supported reason, consequence and failure
+boundary. Grounded examples and contrasts may clarify those connections, explicitly
+illustrative rather than reported executions. One sentence per responsibility is
+not a completeness rule; neither length quotas nor padding establish useful content.
+Missing evidence remains missing. Ordinary authoring and explicit refinement use
+the same guidance and retention/admission boundaries; reading never fills gaps.
+
 ### Explicit diagram applicability outcome
 
 Normal article production must retain an explicit active-host diagram assessment
