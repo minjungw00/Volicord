@@ -336,6 +336,9 @@ body[data-reader-enhanced=true] .appendix .evidence-original:not([hidden]),body:
 .diagram-jump-list a{font-size:11px;line-height:1.6;overflow-wrap:anywhere}
 .diagram-jump-list li+li{margin-top:6px}
 .diagram-controls button:hover,.diagram-movement>summary:hover{background:var(--wash);color:var(--accent)}
+.diagram-scale-control{display:inline-flex;align-items:center;gap:2px;margin:0;color:var(--muted);font-size:11px}
+.diagram-scale-control input{box-sizing:border-box;width:58px;min-height:30px;margin:0;padding:3px 4px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);font:inherit;text-align:right}
+.diagram-scale-control input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .diagram-movement a[data-diagram-start]{font-size:11px;line-height:1.8;color:var(--muted);text-decoration:none;padding:4px 6px}
 .diagram-viewport:has(.spatial-world){height:400px;max-height:60dvh;background:#f7fbff;scrollbar-gutter:auto}
 .diagram-viewport>svg.spatial-world{margin:76px auto 12px;background:#fff}
@@ -349,7 +352,8 @@ body[data-reader-enhanced=true] .appendix .evidence-original:not([hidden]),body:
 .native-diagram-controls label:has(input:checked){background:var(--wash);color:var(--accent)}
 .native-diagram-controls label:has(input:focus-visible),.native-figure-toggle:focus-visible~.figure-panel-header{outline:2px solid var(--accent);outline-offset:2px}
 .admitted-diagram:not([data-camera-ready=true]) .native-diagram-controls{display:flex}
-.admitted-diagram:not([data-camera-ready=true]) .diagram-viewport>svg.spatial-world{zoom:calc((100cqw - 24px)/var(--map-wide-width))}
+.admitted-diagram:not([data-camera-ready=true]) .diagram-viewport>svg.spatial-world{zoom:clamp(.75,calc((100cqw - 24px)/var(--map-wide-width)),1)}
+.admitted-diagram:not([data-camera-ready=true]):has([data-native-scale=fit]:checked) .diagram-viewport>svg.spatial-world{zoom:min(1,calc((100cqw - 24px)/var(--map-wide-width)))}
 .admitted-diagram:not([data-camera-ready=true]):has([data-native-scale=read]:checked) .diagram-viewport>svg.spatial-world{zoom:.75}
 .admitted-diagram:not([data-camera-ready=true]):has([data-native-scale=full]:checked) .diagram-viewport>svg.spatial-world{zoom:1}
 .admitted-diagram:not([data-camera-ready=true]) .diagram-viewport:has(>svg.spatial-world){padding-top:76px}

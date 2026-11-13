@@ -155,6 +155,8 @@ async function nativeLinkNavigation(page, link, receipt) {
           assert.deepEqual(textFocus.errors,[],'all selectable guards and state owners have a non-color keyboard focus cue');
           if(textFocus.observations.length) await page.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-text-focus.png`)});
           if(config.precise_return && mode==='live') {
+            await figure.locator('[data-diagram-scale]').fill('100');
+            await figure.locator('[data-diagram-scale]').press('Enter');
             await figure.locator('[data-diagram-action=in]').click();
             assert.equal(await figure.locator('.diagram-scale').textContent(),'125%');
             await figure.locator('[data-diagram-action=reset]').click();

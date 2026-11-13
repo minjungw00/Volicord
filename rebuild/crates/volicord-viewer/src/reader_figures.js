@@ -36,10 +36,11 @@ function createReaderFigures({lifetime,modal}) {
     scene.svg.querySelector('.diagram-content')?.setAttribute('transform',`scale(${scene.scale})`);
     v.scrollLeft=x*scene.scale-v.clientWidth/2;v.scrollTop=y*scene.scale-v.clientHeight/2;clamp(scene);
     scene.figure.querySelector('.diagram-scale').textContent=Math.round(scene.scale*100)+'%';
+    scene.figure.querySelector('[data-diagram-scale]').value=String(Math.round(scene.scale*100));
   }
-  function fit(scene,all=false) {
-    scale(scene,Math.min(1,(scene.viewport.clientWidth-24)/scene.width,all?(scene.viewport.clientHeight-88)/scene.height:1));
-    scene.viewport.scrollTo(0,0);scene.entry=!all;
+  function fit(scene,all=false,minimum=0) {
+    scale(scene,Math.max(minimum,Math.min(1,(scene.viewport.clientWidth-24)/scene.width,all?(scene.viewport.clientHeight-88)/scene.height:1)));
+    scene.viewport.scrollTo(0,0);scene.entry=all?false:minimum?'readable':'width';
   }
   function inset(scene) {
     const controls=scene.figure.querySelector('.diagram-controls');
@@ -62,7 +63,7 @@ function createReaderFigures({lifetime,modal}) {
         scale(scene,scene.scale);
       }
     }
-    if(scene.entry&&scene.spatial)fit(scene);
+    if(scene.entry&&scene.spatial)fit(scene,false,scene.entry==='readable'?.75:0);
     else if(scene.selected)center(scene,anchor(scene,scene.selected));
     clamp(scene);
   }
@@ -99,7 +100,7 @@ function createReaderFigures({lifetime,modal}) {
     const svg=figure.querySelector('svg'),viewport=svg?.closest('.diagram-viewport');if(!svg||!viewport)continue;
     const spatial=svg.classList.contains('spatial-world');
     const controller=new AbortController();
-    const scene={figure,svg,viewport,spatial,controller,scale:1,entry:spatial,selected:null,
+    const scene={figure,svg,viewport,spatial,controller,scale:1,entry:spatial?'readable':false,selected:null,
       width:Number(svg.getAttribute('width')),height:Number(svg.getAttribute('height')),disconnect:null};
     scenes.set(figure,scene);figure.querySelector('.diagram-controls').hidden=false;
     figure.dataset.cameraReady='true';
@@ -150,6 +151,20 @@ function createReaderFigures({lifetime,modal}) {
       // Ordinary native arrow/page scrolling remains owned by the browser.
     });
   }
+  function enteredScale(input) {
+    const scene=scenes.get(input.closest('.admitted-diagram'));if(!scene)return;
+    const value=input.valueAsNumber;
+    if(!Number.isFinite(value)){input.value=String(Math.round(scene.scale*100));return;}
+    scene.entry=false;scale(scene,value/100);
+  }
+  lifetime.on(document,'change',event=>{
+    if(event.target.matches('[data-diagram-scale]'))enteredScale(event.target);
+  });
+  lifetime.on(document,'keydown',event=>{
+    if(event.key==='Enter'&&event.target.matches('[data-diagram-scale]')){
+      event.preventDefault();enteredScale(event.target);
+    }
+  });
   lifetime.on(document,'click',event=>{
     const close=event.target.closest('[data-figure-close]');if(close){closeExpansion(close.closest('.admitted-diagram'));return;}
     const start=event.target.closest('a[data-diagram-target]');

@@ -578,6 +578,14 @@ clean install
 
 ## Spatial reading comparison and selection boundary — 2026-10-30
 
+- 2026-11-13 current selection: after opening the actual 390/1440 default-fit
+  versus 75% comparison, the user selected “긴 도식은 기본 75%, 가로 맞춤 버튼
+  유지”. Initial spatial entry therefore uses available-width fit bounded below
+  by 75% and above by 100%. Explicit Fit width still shows the complete width,
+  including below 75%; resize retains the selected entry mode. Direct percentage
+  input controls the diagram camera within its existing 3–200% range, without
+  changing browser zoom, geometry, admitted meaning or evidence identity.
+
 - Process/entry change: authorized by the supplied request, “The user requires
   comparison and explicit selection before changing the default design.” The same
   request states, “A recommendation is not user approval.” The updated Reader entry

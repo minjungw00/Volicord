@@ -35,7 +35,7 @@ async function observeOverview(figure, diagram) {
     let belowReadingSize=0;
     for(const g of glyphs){const m=g.getScreenCTM();const size=parseFloat(getComputedStyle(g).fontSize)*Math.hypot(m.a,m.b);if(size<(g.closest('.diagram-node-kind,.diagram-label-support')?11.9:g.closest('.relation-wording,.diagram-condition,.world-support,.world-identifier')?12.9:15.9))belowReadingSize++;}
     const native=figure.querySelector('.native-diagram-controls');
-    const nativeFit=visible(native)&&native.querySelector('[data-native-scale=fit]')?.checked&&['read','full'].every(scale=>{const input=native.querySelector('[data-native-scale='+scale+']');return input&&!input.disabled&&visible(input.closest('label'));});
+    const nativeFit=visible(native)&&native.querySelector('[data-native-scale=auto]')?.checked&&['fit','read','full'].every(scale=>{const input=native.querySelector('[data-native-scale='+scale+']');return input&&!input.disabled&&visible(input.closest('label'));});
     const fitOrientation=svg?.classList.contains('spatial-world')&&((visible(figure.querySelector('[data-diagram-action=reset]'))&&visible(figure.querySelector('[data-diagram-action=in]')))||nativeFit);
     if(belowReadingSize&&!fitOrientation)errors.push('essential text scaled below native reading size');
     if(!glyphs.length)errors.push('no rendered labels');

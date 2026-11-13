@@ -3643,6 +3643,15 @@ the previous publication's fingerprints.
 
 ### Local spatial comparison and pending selection
 
+The user's 2026-11-13 selection refines initial spatial entry to readable fit:
+available-width fit clamped to 75–100%, with horizontal movement when needed.
+Explicit Fit width remains unrestricted by that reading floor. The camera keeps
+the chosen mode through resize and exact scale/location through evidence return.
+Percentage input uses the existing 3–200% camera range; empty/non-finite input
+restores the displayed actual value and bounded values update the local scene.
+Native script-free exports offer the same initial readable fit and explicit width,
+75% and 100% choices. This changes no geometry or retained publication bytes.
+
 The current shared E1/CE1 presentation is confirmed as reference by the user's
 2026-11-04 statement, “현재 상태를 우선 확정하겠습니다.” The
 [decision owner](open-decisions.md#spatial-reading-comparison-and-selection-boundary--2026-10-30)

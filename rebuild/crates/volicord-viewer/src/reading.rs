@@ -695,8 +695,9 @@ fn render_diagrams(
             "<button type=\"button\" data-diagram-action=\"fit\" aria-label=\"{}\">{}</button>",
             "<button type=\"button\" data-diagram-action=\"reset\">75%</button>",
             "<button type=\"button\" data-diagram-action=\"expand\" aria-controls=\"{}-viewport\" aria-expanded=\"false\">{}</button>",
-            "<output class=\"diagram-scale\" aria-live=\"polite\">100%</output></div>"),
-            text(r.locale,"Move","이동"),text(r.locale,"Move left","왼쪽 이동"),text(r.locale,"Move right","오른쪽 이동"),text(r.locale,"Move up","위로 이동"),text(r.locale,"Move down","아래로 이동"),text(r.locale,"Selected relationship","선택 관계"),text(r.locale,"Zoom out","축소"),text(r.locale,"Zoom in","확대"),text(r.locale,"Fit width","가로 맞춤"),text(r.locale,"Width","가로"),ns,"↗");
+            "<label class=\"diagram-scale-control\"><input type=\"number\" data-diagram-scale min=\"3\" max=\"200\" step=\"1\" value=\"100\" aria-label=\"{}\"><span aria-hidden=\"true\">%</span></label>",
+            "<output class=\"diagram-scale sr-only\" aria-live=\"polite\">100%</output></div>"),
+            text(r.locale,"Move","이동"),text(r.locale,"Move left","왼쪽 이동"),text(r.locale,"Move right","오른쪽 이동"),text(r.locale,"Move up","위로 이동"),text(r.locale,"Move down","아래로 이동"),text(r.locale,"Selected relationship","선택 관계"),text(r.locale,"Zoom out","축소"),text(r.locale,"Zoom in","확대"),text(r.locale,"Fit width","가로 맞춤"),text(r.locale,"Width","가로"),ns,"↗",text(r.locale,"Diagram scale in percent","도식 배율 · 퍼센트"));
         if !snapshot {
             visual.push_str(&controls);
         }
@@ -714,11 +715,12 @@ fn render_diagrams(
                         text(r.locale, "Figure view", "도식 보기")
                     ));
                     for (value, label) in [
+                        ("auto", text(r.locale, "Readable fit", "읽기 맞춤")),
                         ("fit", text(r.locale, "Fit width", "가로 맞춤")),
                         ("read", text(r.locale, "Read at 75%", "읽기 75%")),
                         ("full", "100%"),
                     ] {
-                        visual.push_str(&format!("<label><input type=\"radio\" name=\"{ns}-native-scale\" data-native-scale=\"{value}\"{}>{label}</label>",if value=="fit" {" checked"} else {""}));
+                        visual.push_str(&format!("<label><input type=\"radio\" name=\"{ns}-native-scale\" data-native-scale=\"{value}\"{}>{label}</label>",if value=="auto" {" checked"} else {""}));
                     }
                     visual.push_str(&format!("<label for=\"{ns}-native-expand\">↗<span class=\"visually-hidden\">{}</span></label></fieldset>",text(r.locale,"Expand figure","도식 크게 보기")));
                 }
