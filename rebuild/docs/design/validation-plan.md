@@ -2525,6 +2525,15 @@ machine-only evaluation). A later evaluator HEAD may inspect an older candidate;
 only fresh evidence can establish the behavior of a different Product candidate.
 It retains five Work observations and three repository-journey observations, with
 the exact `3 journey / 5 Work / 3 resume-pair / 8 session` coverage projection.
+Collection-time `review_meaning_sha256` values remain immutable claims of the
+retained, hash-verified projection producer. When that producer differs from the
+current evaluator, verify the observation coordinates, raw/payload/answer hashes
+and lifecycle index independently of those derived meaning hashes; validate their
+recorded shape without treating them as current-policy meaning. The manifest,
+raw captures and retained producer byte bindings still verify exactly. With the
+same projection producer, meaning hashes also recompute exactly. Current review
+meaning is derived anew for the append-only evaluation and review package; no
+historical hash is rewritten or promoted to current-policy authority.
 Review packaging consumes the external immutable evaluation receipt rather than
 requiring registration by mutating the Campaign. One evaluator serves collection
 and re-evaluation; historical run bytes remain addressable, never rewritten.

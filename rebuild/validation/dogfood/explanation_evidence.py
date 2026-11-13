@@ -10,6 +10,7 @@ import copy
 import datetime as dt
 import hashlib
 import json
+import re
 import evidence_purpose
 from pathlib import Path
 import secrets
@@ -832,7 +833,34 @@ def _measured_cli_operation(command, argv, unique):
         'result': result}]
 
 
-def collection_index(root, mapped):
+def verify_collection_index(root, mapped, recorded, producers):
+    """Verify observations independently of a later review projection policy.
+
+    The manifest and retained producers must already have passed their immutable
+    byte bindings. A historical meaning hash is a producer claim, not a hash of
+    the raw return under every future review policy.
+    """
+    import answer_projection
+    same_projection = producers.get('rebuild/validation/dogfood/answer_projection.py') == binding(
+        Path(answer_projection.__file__).read_bytes())
+    current = collection_index(root, mapped, include_review_meaning=same_projection)
+    retained = json.loads(json.dumps(recorded))
+    if not same_projection and isinstance(retained, dict):
+        observations = retained.get('measured_observations')
+        if not isinstance(observations, list):
+            raise api().CampaignError('invalid retained explanation observations')
+        for observation in observations:
+            if not isinstance(observation, dict):
+                raise api().CampaignError('invalid retained explanation observation')
+            digest = observation.pop('review_meaning_sha256', 'missing')
+            if digest is not None and (not isinstance(digest, str)
+                    or re.fullmatch(r'[0-9a-f]{64}', digest) is None):
+                raise api().CampaignError('invalid retained review meaning hash')
+    if retained != current:
+        raise api().CampaignError('immutable explanation observation/lifecycle index changed')
+
+
+def collection_index(root, mapped, *, include_review_meaning=True):
     import answer_projection
     measured = []
     for slot, value in sorted(mapped.items()):
@@ -847,9 +875,10 @@ def collection_index(root, mapped):
                 # immutable index responsibility independent of that observer.
                 'raw_capture_sha256': capture.source_sha256, **{k: v for k, v in returned.items()
                     if k not in {'result', 'requested_project'}},
-                'returned_payload_sha256': binding(api().json_bytes(result))['sha256'],
-                'review_meaning_sha256': binding(api().json_bytes(answer_projection.project(result, returned['operation'])))['sha256']
-                    if returned['operation'] in answer_projection.SCHEMAS else None}
+                'returned_payload_sha256': binding(api().json_bytes(result))['sha256']}
+            if include_review_meaning:
+                common['review_meaning_sha256'] = binding(api().json_bytes(answer_projection.project(
+                    result, returned['operation'])))['sha256'] if returned['operation'] in answer_projection.SCHEMAS else None
             if not isinstance(result, dict):
                 measured.append(common | {'state': 'unresolvable', 'limit': returned.get('limit') or 'returned JSON unavailable'})
                 continue

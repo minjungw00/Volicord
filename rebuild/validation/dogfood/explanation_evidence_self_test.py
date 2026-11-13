@@ -66,6 +66,26 @@ class MeasuredExecutionTests(unittest.TestCase):
                 # The authored readback contains both a Work and a Decision answer.
                 self.assertEqual([v['exit_code'] for v in measured], [0, 0, 0, 0])
                 self.assertTrue(all(v['raw_call_id'] == 'test' for v in measured))
+                import answer_projection
+                producers = {'rebuild/validation/dogfood/answer_projection.py':
+                    e.binding(Path(answer_projection.__file__).read_bytes())}
+                mapped = {('volicord', 'A', 'start'): SimpleNamespace(capture=capture)}
+                e.verify_collection_index(Path(temporary), mapped, index, producers)
+                changed = copy.deepcopy(index)
+                changed['measured_observations'][0]['review_meaning_sha256'] = '00' * 32
+                with self.assertRaises(c.CampaignError):
+                    e.verify_collection_index(Path(temporary), mapped, changed, producers)
+                historical = {name: {'bytes': 1, 'sha256': '00' * 32} for name in producers}
+                # A changed interpretation permits only the producer's meaning
+                # hash to differ; raw coordinates and all content bindings stay exact.
+                e.verify_collection_index(Path(temporary), mapped, changed, historical)
+                for key, value in [('returned_payload_sha256', '00' * 32),
+                        ('raw_call_id', 'foreign-call'), ('exit_code', 1),
+                        ('review_meaning_sha256', 'invalid')]:
+                    altered = copy.deepcopy(changed)
+                    altered['measured_observations'][0][key] = value
+                    with self.subTest(field=key), self.assertRaises(c.CampaignError):
+                        e.verify_collection_index(Path(temporary), mapped, altered, historical)
             # A numeric failure cannot acquire a successful Product receipt.
             failed = helper.command(source, [json.dumps({'output': json.dumps(result), 'exit_code': 143}) for result in returned])
             self.assertTrue(all(v['result'] is None and v['exit_code'] == 143 for v in e.measured_cli_operations(failed)))

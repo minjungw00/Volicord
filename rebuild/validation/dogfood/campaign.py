@@ -2915,10 +2915,10 @@ def load_evidence_set(root: Path) -> dict[str, Any]:
         for slot in harness.current_session_slots()}
     if any(evidence_purpose.capture_purpose(v.capture) != manifest["evidence_purpose"] for v in mapped.values()):
         raise CampaignError("retained capture authorship/purpose differs from campaign")
-    if manifest.get("explanation_evidence") != explanation_evidence.collection_index(root, mapped):
-        raise CampaignError("immutable explanation observation/lifecycle index changed")
+    collection = collection_runs.verify(root, manifest)
+    explanation_evidence.verify_collection_index(root, mapped,
+        manifest.get("explanation_evidence"), collection['producers'])
     integrity_check("project_binding", verify_retained_repository_states, root, manifest)
-    collection_runs.verify(root, manifest)
     return manifest
 
 

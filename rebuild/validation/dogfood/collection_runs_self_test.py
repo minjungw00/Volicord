@@ -113,6 +113,33 @@ class CollectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runs.verify_publication(self.output)
 
+    def test_later_projection_policy_reads_unchanged_collection_and_rejects_tampering(self):
+        import answer_projection
+        self.process()
+        manifest = c.load_evidence_set(self.output)
+        measured = manifest['explanation_evidence']['measured_observations']
+        self.assertTrue(any(row['review_meaning_sha256'] for row in measured))
+        before = runs.tree_identity(self.output)
+        changed_projection = self.parent / 'changed-projection.py'
+        changed_projection.write_text('# A later evaluator projection implementation\n')
+        with patch.object(answer_projection, '__file__', str(changed_projection)), patch.object(
+                answer_projection, 'project', return_value={'later_policy': True}):
+            self.assertEqual(c.load_evidence_set(self.output), manifest)
+            self.assertEqual(runs.verify_publication(self.output)['state'], 'verified')
+            evaluation = c.evaluate_campaign(self.output, self.parent / 'later-policy-evaluation')
+            self.assertTrue(evaluation['run_id'])
+            self.assertEqual(c.read_json(self.parent / 'later-policy-evaluation/evaluation.json')[
+                'candidate_head'], manifest['candidate_head'])
+            self.assertEqual(runs.tree_identity(self.output), before)
+            # Producer-only hashes remain immutable, even when interpretation changes.
+            path = self.output / 'evidence-set.json'
+            path.chmod(0o600)
+            altered = copy.deepcopy(manifest)
+            altered['explanation_evidence']['measured_observations'][0]['review_meaning_sha256'] = '00' * 32
+            c.write_json(path, altered)
+            with self.assertRaises(c.CampaignError):
+                c.load_evidence_set(self.output)
+
     def test_wrong_candidate_binary_retains_normalization_stops_dependents(self):
         self.binary.write_bytes(b'changed executable')
         result, observed = self.process()
