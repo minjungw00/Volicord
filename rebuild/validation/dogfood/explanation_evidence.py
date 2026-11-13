@@ -159,9 +159,10 @@ def validate_response(plan, response):
     capacity = plan['retention_budget']['response_byte_capacity']
     if size > capacity:
         raise api().CampaignError(f'explanation compact realization JSON is {size} bytes; prepared response capacity {capacity}; preserve grounding and seek Product support for this evidence shape')
-    if (not isinstance(response, dict) or set(response) != {'format_kind', 'format_version',
+    if (not isinstance(response, dict) or set(response) - {'citation_contexts', 'citation_sources'} != {'format_kind', 'format_version',
             'plan_fingerprint', 'language', 'generator', 'paragraphs', 'diagrams'}
-            or response['format_kind'] != 'volicord_explanation' or response['format_version'] != 9
+            or response['format_kind'] != 'volicord_explanation'
+            or type(response['format_version']) is not int or response['format_version'] != 10
             or response['plan_fingerprint'] != plan['fingerprint']
             or response['language'] != plan['requested_language']):
         raise api().CampaignError('explanation response format/plan/language mismatch')
@@ -175,7 +176,7 @@ def validate_response(plan, response):
         raise api().CampaignError('invalid self-reported explanation generator')
     paragraphs, keys = response['paragraphs'], {e['key'] for e in plan['evidence']}
     allowed = ((WORK_QUESTIONS | {'observation', 'comparison', 'reading_point', 'flow_step'}) if plan['subject']['kind'] == 'work' else DECISION_QUESTIONS) | {'heading', 'synopsis', 'limits', 'section_heading', 'narrative', 'comparison_condition', 'comparison_result'}
-    if (not isinstance(paragraphs, list) or not paragraphs
+    if (not isinstance(paragraphs, list) or not paragraphs or len(paragraphs) > 32
             or any(not isinstance(p, dict) or set(p) != {'question', 'text', 'evidence_keys', 'citations'}
                 or p['question'] not in allowed or not isinstance(p['text'], str) or not p['text'].strip()
                 or len(p['text']) > PARAGRAPH_CHARACTER_LIMIT
@@ -183,6 +184,8 @@ def validate_response(plan, response):
                 or not all(isinstance(k, str) and k in keys for k in p['evidence_keys']) for p in paragraphs)
             or any(not isinstance(p.get('citations'), list) for p in paragraphs)):
         raise api().CampaignError('explanation required claims/grounding missing or malformed')
+
+    expanded_response_paragraphs(response)  # Independently check the current wire references.
 
     for index, paragraph in enumerate(paragraphs):
         role = paragraph['question']
@@ -193,11 +196,78 @@ def validate_response(plan, response):
             raise api().CampaignError('article heading exceeds Product bound')
 
 
+def expanded_response_paragraphs(response):
+    """Independent current-wire comparison view, never a production decoder.
+
+    Receipts/hashes keep their original compact bytes; public readback carries
+    complete citations. No historical conversion or evidence lookup occurs here.
+    """
+    def invalid():
+        raise api().CampaignError('invalid current explanation citation provenance')
+    if (response.get('format_kind') != 'volicord_explanation'
+            or type(response.get('format_version')) is not int or response['format_version'] != 10):
+        invalid()
+    contexts, sources = response.get('citation_contexts', []), response.get('citation_sources', [])
+    paragraphs = response.get('paragraphs')
+    if (not isinstance(contexts, list) or not isinstance(sources, list)
+            or not isinstance(paragraphs, list) or len(paragraphs) > 32
+            or len(compact_bytes(response)) > RESPONSE_BYTE_LIMIT):
+        invalid()
+    context_fields = {'analysis_snapshot_id', 'repository_snapshot_id', 'repository_source_id'}
+    source_fields = {'context', 'source_id', 'source_revision', 'observation_fingerprint', 'locator', 'field', 'use_kind'}
+    for context in contexts:
+        if (not isinstance(context, dict) or set(context) != context_fields
+                or any(not isinstance(v, str) for v in context.values())):
+            invalid()
+    for source in sources:
+        if (not isinstance(source, dict) or set(source) != source_fields
+                or type(source['context']) is not int or not 0 <= source['context'] < len(contexts)
+                or type(source['source_revision']) is not int or source['source_revision'] < 1
+                or any(not isinstance(source[k], str) for k in source_fields - {'context', 'source_revision'})
+                or source['field'] not in {'body', 'stdout', 'stderr'}
+                or source['use_kind'] not in {'current_code', 'before_code', 'observed_execution'}):
+            invalid()
+    used_sources, used_contexts, expanded = [], [], []
+    coordinate_names = ('start_byte', 'end_byte', 'start_line', 'end_line', 'range_sha256',
+                        'claim_start_byte', 'claim_end_byte', 'claim_sha256')
+    for paragraph in paragraphs:
+        if (not isinstance(paragraph, dict) or not isinstance(paragraph.get('citations'), list)
+                or len(paragraph['citations']) > 32):
+            invalid()
+        citations = []
+        for item in paragraph['citations']:
+            if (not isinstance(item, list) or len(item) != 9
+                    or any(type(item[i]) is not int or item[i] < 0 for i in (0, 1, 2, 3, 4, 6, 7))
+                    or any(not isinstance(item[i], str) for i in (5, 8))
+                    or item[0] >= len(sources)):
+                invalid()
+            source_index = item[0]
+            source = sources[source_index]
+            context_index = source['context']
+            if source_index not in used_sources:
+                if source_index != len(used_sources): invalid()
+                used_sources.append(source_index)
+            if context_index not in used_contexts:
+                if context_index != len(used_contexts): invalid()
+                used_contexts.append(context_index)
+            citation = {k: v for k, v in source.items() if k != 'context'}
+            citation.update(contexts[context_index])
+            citation.update(zip(coordinate_names, item[1:], strict=True))
+            citations.append(citation)
+        expanded.append(dict(paragraph, citations=citations))
+    if (len(used_sources) != len(sources) or len(used_contexts) != len(contexts)
+            or len({json.dumps(v, sort_keys=True) for v in sources}) != len(sources)
+            or len({json.dumps(v, sort_keys=True) for v in contexts}) != len(contexts)):
+        invalid()
+    return expanded
+
+
 def validate_lifecycle(preparation, response, receipt, after):
     """Source-independent linkage; hashes do not certify prose or authorship."""
     plan = preparation['plan']
     validate_plan(plan, preparation['project_id'], preparation['subject'], preparation['language'])
     validate_response(plan, response)
+    expanded_paragraphs = expanded_response_paragraphs(response)
     retained = receipt.get('explanation')
     stripped = copy.deepcopy(plan['evidence'])
     for evidence in stripped:
@@ -235,7 +305,7 @@ def validate_lifecycle(preparation, response, receipt, after):
         ('conflicts', plan['conflicts']), ('generator', response['generator']),
         ('generator_identity_status', retained['generator_identity_status']),
         ('semantic_approval_status', 'not_established'),
-        ('citations', [c for p in response['paragraphs'] for c in p['citations']]),
+        ('citations', [c for p in expanded_paragraphs for c in p['citations']]),
         ('generated_at_unix_micros', retained['generated_at_unix_micros'])))):
         raise api().CampaignError('explanation readback provenance differs from exact receipt')
     if answers.get('diagrams') != response['diagrams']:
@@ -243,7 +313,7 @@ def validate_lifecycle(preparation, response, receipt, after):
     prose = answers.get('prose')
     if not isinstance(prose, list) or len(prose) != len(response['paragraphs']):
         raise api().CampaignError('explanation returned claims omitted')
-    for paragraph, returned in zip(response['paragraphs'], prose, strict=True):
+    for paragraph, returned in zip(expanded_paragraphs, prose, strict=True):
         if (not isinstance(returned, dict) or returned.get('text') != paragraph['text']
                 or returned.get('evidence_keys') != paragraph['evidence_keys']
                 or returned.get('citations') != paragraph['citations']
@@ -297,7 +367,7 @@ def reader_applicability(plan, response=None, *, source_reads=(), verification_r
     if response is not None:
         # Current format/bindings only. Historical bytes remain immutable and can
         # still supply record/presentation evidence without becoming a replay.
-        if response.get('format_kind') != 'volicord_explanation' or response.get('format_version') != 9:
+        if response.get('format_kind') != 'volicord_explanation' or response.get('format_version') != 10:
             claims['article'] = result('unsupported', 'non_current_explanation_format')
         else:
             validate_response(plan, response)

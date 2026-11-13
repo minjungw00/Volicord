@@ -23,6 +23,7 @@ mod diagram;
 mod diagram_presentation;
 mod documents;
 mod explanation;
+mod explanation_wire;
 pub use diagram::*;
 pub use diagram_presentation::*;
 mod catalogue;

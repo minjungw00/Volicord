@@ -18,6 +18,34 @@ use volicord_viewer::{ViewerAdapter, ViewerLocale, ViewerRequest, ViewerServer, 
 mod code_text;
 use code_text::code_texts;
 
+// Construct typed authored inputs; only the current Product encoder owns wire
+// sharing. These test paragraph fields are domain values, not an old decoder.
+fn authored_input(
+    fingerprint: &Value,
+    language: &str,
+    host: &str,
+    session: &str,
+    paragraphs: Vec<Value>,
+) -> Result<Value, Box<dyn Error>> {
+    Ok(serde_json::to_value(ExplanationRealization {
+        format_kind: EXPLANATION_KIND.into(),
+        format_version: EXPLANATION_VERSION,
+        plan_fingerprint: fingerprint.as_str().ok_or("fingerprint")?.into(),
+        language: language.into(),
+        generator: ExplanationGenerator {
+            host: host.into(),
+            session: session.into(),
+            agent: None,
+            model: None,
+        },
+        paragraphs: paragraphs
+            .into_iter()
+            .map(serde_json::from_value)
+            .collect::<Result<_, _>>()?,
+        diagrams: Vec::new(),
+    })?)
+}
+
 fn seed(root: &Path, comparison: &str) -> Result<Value, Box<dyn Error>> {
     seed_with_goal(root, comparison, "Explain why value returns 5, using observed code and any retained comparison. Do not infer execution success.")
 }
@@ -1389,10 +1417,13 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             citation["claim_sha256"] = json!(explanation_text_hash(text));
             citation
         }).collect::<Vec<_>>()} else {vec![]}})).collect();
-    let realization = json!({"format_kind":"volicord_explanation","format_version":volicord_projections::EXPLANATION_VERSION,"diagrams":[],
-        "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
-        "generator":{"host":"authored-structural-control","session":"representative-reader","agent":null,"model":null},
-        "paragraphs":paragraphs});
+    let realization = authored_input(
+        &generation["plan"]["fingerprint"],
+        "en",
+        "authored-structural-control",
+        "representative-reader",
+        paragraphs,
+    )?;
     call(
         &mut host,
         "work_explanation",
@@ -1585,9 +1616,9 @@ fn representative_production_code_preserves_grounding_across_public_readers(
             "source_id":expected["source_id"]}),
         )?;
     }
-    let mut edited = realization;
+    let mut edited: ExplanationRealization = serde_json::from_value(realization)?;
     let changed_claim = format!("Observed implementation: {text}");
-    edited["paragraphs"][1]["text"] = json!(changed_claim);
+    edited.paragraphs[1].text = changed_claim.clone();
     let record_args = |realization| {
         json!({"action":"record","project_id":f["project"],
         "work_item_id":f["work"],"generation_id":next["generation_id"],"realization":realization})
@@ -1598,12 +1629,9 @@ fn representative_production_code_preserves_grounding_across_public_readers(
         .ok_or("response")?;
     assert_eq!(rejected["result"]["isError"], true);
     assert_eq!(privacy, operations.privacy_status(project(&f)?)?);
-    for citation in edited["paragraphs"][1]["citations"]
-        .as_array_mut()
-        .ok_or("citations")?
-    {
-        citation["claim_end_byte"] = json!(changed_claim.len());
-        citation["claim_sha256"] = json!(explanation_text_hash(&changed_claim));
+    for citation in &mut edited.paragraphs[1].citations {
+        citation.claim_end_byte = changed_claim.len();
+        citation.claim_sha256 = explanation_text_hash(&changed_claim);
     }
     call(&mut host, "work_explanation", record_args(edited))?;
     let current =
@@ -1765,10 +1793,14 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
         json!({"question":"verification","text":"No executed verification was recorded.","evidence_keys":["goal"],"citations":[]}),
         json!({"question":"next_step","text":"No recorded next action is supplied.","evidence_keys":["next_step"],"citations":[]}),
     ]);
-    let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"diagrams":[],
-        "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
-        "generator":{"host":"independent-shared-range-control","session":"authored-source-claims",
-            "agent":null,"model":null},"paragraphs":paragraphs});
+    let expected_paragraphs = paragraphs.clone();
+    let realization = authored_input(
+        &generation["plan"]["fingerprint"],
+        "en",
+        "independent-shared-range-control",
+        "authored-source-claims",
+        paragraphs,
+    )?;
     let recorded = call(
         &mut host,
         "work_explanation",
@@ -1844,7 +1876,7 @@ fn shared_source_cards_retain_every_paragraph_claim_and_isolate_other_ranges(
                 assert!(point.contains(&explanation_text_hash(claim)));
                 assert!(point.contains("class=\"return panel-close\""));
                 let citation: ExplanationCitation = serde_json::from_value(
-                    realization["paragraphs"][ordinal - 1]["citations"][0].clone(),
+                    expected_paragraphs[ordinal - 1]["citations"][0].clone(),
                 )?;
                 let expected = serde_json::to_string(&citation)?
                     .replace('&', "&amp;")
@@ -1978,7 +2010,13 @@ fn seed_authored_reading_browser_runtime() -> Result<(), Box<dyn Error>> {
             ("next_step", if language == "ko" { "다음 행동은 기록되지 않았습니다." } else { "No next action is recorded." }),
             ("limits", if language == "ko" { "두 파일 구간만 관측했습니다. 주변 코드와 의미적 승인은 확인되지 않았습니다." } else { "Only two file regions were observed. Surrounding code and semantic approval remain unavailable." }),
         ].into_iter().map(|(question, text)| json!({"question":question,"text":text,"evidence_keys":[if question == "next_step" { "next_step" } else { "goal" }], "citations":if matches!(question,"heading"|"synopsis"|"reported_change"|"comparison") { citations.iter().cloned().map(|mut citation|{citation["claim_start_byte"]=json!(0);citation["claim_end_byte"]=json!(text.len());citation["claim_sha256"]=json!(explanation_text_hash(text));citation}).collect::<Vec<_>>() } else { vec![] }})).collect();
-        let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"diagrams":[],"plan_fingerprint":generation["plan"]["fingerprint"],"language":language,"generator":{"host":"authored-structural-control","session":"representative-browser","agent":null,"model":null},"paragraphs":paragraphs});
+        let realization = authored_input(
+            &generation["plan"]["fingerprint"],
+            language,
+            "authored-structural-control",
+            "representative-browser",
+            paragraphs,
+        )?;
         call(
             &mut host,
             "work_explanation",
@@ -2057,10 +2095,14 @@ fn command_observation_is_independent_of_checkpoint_verification_on_public_reade
         object.extend(json!({"locator":"bounded observation","field":"stdout","start_byte":0,"end_byte":output.len(),
             "start_line":1,"end_line":1,"range_sha256":explanation_text_hash(output),"claim_start_byte":0,
             "claim_end_byte":text.len(),"claim_sha256":explanation_text_hash(text),"use_kind":"observed_execution"}).as_object().ok_or("fields")?.clone());
-        let realization = json!({"format_kind":EXPLANATION_KIND,"format_version":EXPLANATION_VERSION,"diagrams":[],
-            "plan_fingerprint":generation["plan"]["fingerprint"],"language":"en",
-            "generator":{"host":"authored-control","session":"scope-test","agent":null,"model":null},
-            "paragraphs":[{"question":"observation","text":text,"evidence_keys":["goal"],"citations":[citation]}]});
+        let realization = authored_input(
+            &generation["plan"]["fingerprint"],
+            "en",
+            "authored-control",
+            "scope-test",
+            vec![json!({"question":"observation","text":text,
+            "evidence_keys":["goal"],"citations":[citation]})],
+        )?;
         let mut args = base.clone();
         args["action"] = json!("record");
         args.as_object_mut().ok_or("args")?.remove("language");

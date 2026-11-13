@@ -3427,56 +3427,65 @@ fn explanation_realization_schema() -> Value {
     let integer =
         |description: &str| json!({"type":"integer","minimum":0,"description":description});
     let digest = |description: &str| text_schema(description, 71, 71);
-    let citation_fields = vec![
-        ("source_id", identity_schema("Exact retrieved Source")),
-        ("source_revision", integer("Source revision")),
-        (
-            "observation_fingerprint",
-            digest("Returned retrieval fingerprint"),
-        ),
-        (
-            "analysis_snapshot_id",
-            digest_identity_schema("Selected Analysis identity"),
-        ),
-        (
-            "repository_snapshot_id",
-            digest_identity_schema("Selected Repository identity"),
-        ),
-        (
-            "repository_source_id",
-            identity_schema("Canonical repository Source"),
-        ),
-        (
-            "locator",
-            text_schema("Exact file path or command label", 1, 4096),
-        ),
-        (
-            "field",
-            enum_schema("Permitted body field", &["body", "stdout", "stderr"]),
-        ),
-        ("start_line", integer("First one-based line")),
-        ("end_line", integer("Last one-based line")),
-        ("start_byte", integer("Inclusive UTF-8 evidence offset")),
-        ("end_byte", integer("Exclusive UTF-8 evidence offset")),
-        ("range_sha256", digest("Hash of exact evidence range")),
-        (
-            "claim_start_byte",
-            integer("Inclusive UTF-8 paragraph offset"),
-        ),
-        (
-            "claim_end_byte",
-            integer("Exclusive UTF-8 paragraph offset"),
-        ),
-        ("claim_sha256", digest("Hash of exact new claim wording")),
-        (
-            "use_kind",
-            enum_schema(
-                "Evidence role, never semantic approval",
-                &["current_code", "before_code", "observed_execution"],
+    let context = object_schema(
+        vec![
+            (
+                "analysis_snapshot_id",
+                digest_identity_schema("Selected Analysis identity"),
             ),
-        ),
-    ];
-    let citation_required: Vec<_> = citation_fields.iter().map(|(name, _)| *name).collect();
+            (
+                "repository_snapshot_id",
+                digest_identity_schema("Selected Repository identity"),
+            ),
+            (
+                "repository_source_id",
+                identity_schema("Canonical repository Source"),
+            ),
+        ],
+        &[
+            "analysis_snapshot_id",
+            "repository_snapshot_id",
+            "repository_source_id",
+        ],
+    );
+    let source = object_schema(
+        vec![
+            ("context", integer("Zero-based citation_contexts index")),
+            ("source_id", identity_schema("Exact retrieved Source")),
+            ("source_revision", integer("Source revision")),
+            (
+                "observation_fingerprint",
+                digest("Returned retrieval fingerprint"),
+            ),
+            (
+                "locator",
+                text_schema("Exact file path or command label", 1, 4096),
+            ),
+            (
+                "field",
+                enum_schema("Permitted body field", &["body", "stdout", "stderr"]),
+            ),
+            (
+                "use_kind",
+                enum_schema(
+                    "Evidence role, never semantic approval",
+                    &["current_code", "before_code", "observed_execution"],
+                ),
+            ),
+        ],
+        &[
+            "context",
+            "source_id",
+            "source_revision",
+            "observation_fingerprint",
+            "locator",
+            "field",
+            "use_kind",
+        ],
+    );
+    let citation = json!({"type":"array","minItems":9,"maxItems":9,
+        "description":"Exact typed tuple [citation_sources index, start_byte, end_byte, start_line, end_line, range_sha256, claim_start_byte, claim_end_byte, claim_sha256]; use compose to derive it. Position types and exact references are checked before any record.",
+        "items":{"oneOf":[integer("Non-negative index or UTF-8/line coordinate"),digest("Exact range or claim hash")]}});
     let paragraph = object_schema(
         vec![
             (
@@ -3521,7 +3530,7 @@ fn explanation_realization_schema() -> Value {
             ),
             (
                 "citations",
-                json!({"type":"array","maxItems":32,"description":"Exact evidence-to-new-wording bindings; empty when only recorded facts support the paragraph","items":object_schema(citation_fields,&citation_required)}),
+                json!({"type":"array","maxItems":32,"description":"Exact compact evidence-to-new-wording bindings; empty for record-only units","items":citation}),
             ),
         ],
         &["question", "text", "evidence_keys", "citations"],
@@ -3559,6 +3568,14 @@ fn explanation_realization_schema() -> Value {
                     &["host", "session", "agent", "model"],
                 ),
             ),
+            (
+                "citation_contexts",
+                json!({"type":"array","maxItems":1024,"description":"First-use exact Analysis/Repository context table; omit only when no citations","items":context}),
+            ),
+            (
+                "citation_sources",
+                json!({"type":"array","maxItems":1024,"description":"First-use exact Source provenance table; all entries must be used, with no duplicate or aliased provenance","items":source}),
+            ),
             ("diagrams", grounded_diagrams_schema()),
             (
                 "paragraphs",
@@ -3586,6 +3603,8 @@ fn work_explanation_draft_schema() -> Value {
     if let Some(properties) = schema["properties"].as_object_mut() {
         properties.remove("format_kind");
         properties.remove("format_version");
+        properties.remove("citation_contexts");
+        properties.remove("citation_sources");
     }
     schema["required"] = json!(["plan_fingerprint", "language", "generator", "paragraphs"]);
     schema["description"] = json!("New host-authored content from original evidence. Follow plan.instructions: author task-specific section_heading and supporting units in reader order; short single-topic answers may be unheaded. No empty headings or fixed enum template. Article composition requires one heading and synopsis; independent name/summary scope requires only its own unit. No prior-output salvage.");

@@ -1051,8 +1051,10 @@ fn citation_metadata_uses_response_headroom_without_expanding_source_authority(
     // Authored size control: repeated valid bindings reproduce citation overhead,
     // not additional facts, independently approved meaning, or live generation.
     realization.paragraphs[1].citations = vec![citation; 24];
+    let expanded_bytes = serde_json::to_vec(&realization.paragraphs)?.len();
     let bytes = serde_json::to_vec(&realization)?.len();
-    assert!(bytes > 16_384 && bytes <= 32_768);
+    assert!(expanded_bytes > 16_384 && expanded_bytes <= 32_768);
+    assert!(bytes < expanded_bytes && bytes <= EXPLANATION_BYTE_LIMIT);
     assert_eq!(
         generation["plan"]["retention_budget"]["retained_byte_limit"],
         164_864
@@ -1214,14 +1216,20 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
     assert_eq!(page(&mut f.host, foreign)["result"]["isError"], true);
     assert_eq!(doc["diagrams"], original["realization"]["diagrams"]);
     // Independent retained inspection, not compact_publication as the oracle.
-    for (unit, expected) in doc["units"].as_array().ok_or("units")?.iter().zip(
-        original["realization"]["paragraphs"]
-            .as_array()
-            .ok_or("original units")?,
-    ) {
-        assert_eq!(unit["question"], expected["question"]);
-        assert_eq!(unit["text"], expected["text"]);
-        assert_eq!(unit["evidence_keys"], expected["evidence_keys"]);
+    let stored: ExplanationRealization = serde_json::from_value(original["realization"].clone())?;
+    assert_eq!(stored, realized);
+    for (unit, expected) in doc["units"]
+        .as_array()
+        .ok_or("units")?
+        .iter()
+        .zip(&stored.paragraphs)
+    {
+        assert_eq!(unit["question"], serde_json::to_value(expected.question)?);
+        assert_eq!(unit["text"], expected.text);
+        assert_eq!(
+            unit["evidence_keys"],
+            serde_json::to_value(&expected.evidence_keys)?
+        );
         let mut expanded = Vec::new();
         for claim in unit["citations"].as_array().ok_or("citations")? {
             let mut c =
@@ -1231,7 +1239,7 @@ fn complete_publication_pages_preserve_independent_units_bindings_and_lifetimes(
             }
             expanded.push(c);
         }
-        assert_eq!(json!(expanded), expected["citations"]);
+        assert_eq!(json!(expanded), serde_json::to_value(&expected.citations)?);
     }
     assert_eq!(
         doc["units"].as_array().ok_or("units")?.len(),

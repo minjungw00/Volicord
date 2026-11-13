@@ -3984,6 +3984,18 @@ format-9 publications retain their original preparation provenance and lifecycle
 
 ### Detailed explanation and concise synopsis
 
+The current retained explanation representation is version 10, superseding the
+earlier version-9 encoding statements without changing their display-role meaning.
+It shares repeated citation provenance in first-use context/Source tables and
+stores exact evidence/claim coordinates and hashes in typed citation tuples.
+Every original citation field is restored before validation and reader use; there
+is no prose, figure, evidence-range or fingerprint truncation. Complete encoded
+JSON still shares the 56,320-byte realization limit; retained/file limits remain
+independent and unchanged. Compose creates this representation mechanically;
+host-authored ephemeral drafts still use explicit Source selections, not table or
+hash arithmetic. Current-only rejection and explicit regeneration belong to the
+[versioning owner](versioning-policy.md#complete-citation-provenance-sharing--current-format-10).
+
 Ordinary switch/pause/completion follow-up exposes separate actionable authoring
 routes for each subject. Work `produce` covers only its independent Work scopes.
 Repository reading is inspected through `repository_understanding` with

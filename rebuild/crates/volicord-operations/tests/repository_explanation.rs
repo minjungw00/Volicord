@@ -147,7 +147,7 @@ fn source_rich_repository_publication_preserves_content_above_40_kib_and_refuses
         let mut unit = realization.paragraphs[0].clone();
         unit.text = format!(
             "Observed claim {index}: greet appends a supplied name. {}",
-            "현재 Source 관측은 실행 결과나 사용자 선택을 증명하지 않습니다. ".repeat(11)
+            "현재 Source 관측은 실행 결과나 사용자 선택을 증명하지 않습니다. ".repeat(18)
         );
         unit.citations[0].claim_end_byte = unit.text.len();
         unit.citations[0].claim_sha256 = explanation_text_hash(&unit.text);

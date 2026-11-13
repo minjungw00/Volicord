@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use volicord_context::{CanonicalReadBasis, ContextItemId, ContextItemRole, DecisionId};
 
 pub const EXPLANATION_KIND: &str = "volicord_explanation";
-pub const EXPLANATION_VERSION: u32 = 9;
+pub const EXPLANATION_VERSION: u32 = 10;
 /// Complete claim bindings and prose share this limit; retention stays independent.
 pub const EXPLANATION_BYTE_LIMIT: usize = 56_320;
 /// Preserve the response space guaranteed before citation metadata grew.
@@ -219,7 +219,7 @@ pub struct ExplanationCitation {
     pub use_kind: ExplanationSourceUse,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExplanationSourceUse {
     CurrentCode,
@@ -230,8 +230,7 @@ pub enum ExplanationSourceUse {
 pub fn explanation_text_hash(text: &str) -> String {
     format!("sha256:{:x}", Sha256::digest(text.as_bytes()))
 }
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExplanationRealization {
     pub diagrams: Vec<crate::GroundedDiagram>,
     pub format_kind: String,

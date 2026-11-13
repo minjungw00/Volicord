@@ -5,7 +5,7 @@ Local pinned code-origin annotations use the independent exact-current
 `CodeOrigin` kind. It stores only verification metadata for an exact command
 observation fingerprint/field/range/hash. Non-current or corrupt annotations supply
 no origin or syntax authority. This adds no alternative Source/explanation decoder:
-canonical schema 18, portable bundle 11, SourceObservation 4, explanation 9 and
+canonical schema 18, portable bundle 11, SourceObservation 4, explanation 10 and
 privacy SQL schema 2 retain their existing representations and meaning. The new
 Derived kind is not a provider SemanticAnnotation. Existing publications and
 Sources are never converted or rewritten; origin is separately permitted read-time
@@ -805,10 +805,12 @@ remains request-owned; static context follows the owning fragment page.
 The citation-window control follows the shared validator's crate-visible signature
 without changing the observed function or Source-reading limits.
 
-### Independently authored display roles — current format 9
+### Independently authored display roles — introduced in format 9
 
 The explicit 2026-10-29 replacement decision in `open-decisions.md` supersedes the
-current-v8 statements above. The sole writer/decoder uses exact-current `volicord_explanation` version 9.
+current-v8 statements above. These display-role semantics were introduced in
+`volicord_explanation` version 9 and remain in current version 10 below; its
+lossless wire representation supersedes the earlier version-9 writer/decoder.
 Older and newer formats are Unsupported before domain decode; there is no v8
 fallback, nested compatibility format or migration. Original retained bytes,
 receipts and exports are not rewritten. The existing seven-case/eleven-publication
@@ -992,3 +994,33 @@ production/Project/subject/language/preparation and the host's typed outcome plu
 rationale and exact investigated Source identities. No retained-publication field, explanation fingerprint, canonical schema,
 Source/bundle format or compatibility decoder changes. Earlier publications and
 intents remain readable; missing historical assessment remains missing.
+
+### Complete citation provenance sharing — current format 10
+
+The sole current `volicord_explanation` writer/decoder uses version 10. Earlier
+version-9 statements describe their recorded implementation stage, not a second
+supported decoder. Check kind/version before interpreting domain fields; any
+other version is Unsupported. Preserve original bytes and receipts. There is no
+conversion, legacy read branch, fallback publication or read-side regeneration.
+An explicit new publication needs current permitted preparation and evidence.
+
+This is a lossless representation change, not a meaning or budget change.
+`citation_contexts` stores exact Analysis/Repository/Repository-Source identities;
+`citation_sources` stores context index, Source identity/revision, observation
+fingerprint, locator, field and use kind. Each paragraph citation is a typed
+nine-position tuple: source index, start byte, end byte, start line, end line,
+range hash, claim start byte, claim end byte, claim hash. Every field is restored
+to the same complete in-memory citation before existing grounding, Source,
+freshness, lifecycle, diagram and publication checks. Tables use canonical first
+occurrence order; unused, duplicate or noncanonical tables and invalid references
+are rejected. Existing 32-unit/32-citation bounds apply before alias expansion.
+No table is needed for a record-only realization without citations.
+
+Complete encoded realization, retained envelope and file input limits remain
+56,320, 164,864 and 65,536 bytes. Prose, diagrams and all provenance share those
+same limits; reference tables do not waive any retained field. Current canonical,
+bundle, Analysis, SourceObservation, Privacy, production intent/assessment and
+generated-document metadata formats do not change. Live/CLI/MCP/native/offline
+readers and exports consume the fully restored facts and exact citations. Earlier
+stored interpretations remain original unsupported Derived state for this reader;
+canonical history and independently permitted Source evidence are not rewritten.

@@ -5834,3 +5834,31 @@ reconstruction, separately from actual host authorship or a new measured campaig
 Its development diagnostic produced a 111,783-byte plan and reconstructed all 45
 referenced fields with exact byte/hash/JSON equality and unchanged canonical data.
 This is technical evidence only, not a replacement publication or human verdict.
+
+
+## Lossless explanation citation representation — 2026-11-14
+
+Actual complete Tree-sitter and pipx repository drafts exceeded the unchanged
+56,320-byte realization bound, with repeated citation provenance dominating the
+serialized body. Keep those original refusals, prose, diagrams and selected ranges.
+Format 10 shares complete context/Source metadata and uses fixed typed citation
+tuples; this changes representation, not evidence authority or content budgets.
+
+Controls must compare every expanded citation field and complete prose/diagram
+meaning after deterministic roundtrip, including multiple contexts, repeated Sources,
+multibyte claims and different evidence-use roles. Reject non-current envelopes
+before domain decoding, invalid tuple length/types, missing/out-of-bounds references,
+duplicate/unused/noncanonical tables, and excessive logical unit/citation counts
+before alias expansion. Preserve the existing realization, preparation, retained
+body and Source limits. Ephemeral host drafts still select explicit Source ranges.
+
+Exercise actual Operations composition/recording, CLI and complete MCP publication
+reassembly, current retained-body reads after restart, Viewer live/native/offline
+evidence navigation and applicable document generation. Independently inspect full
+expanded bindings; compact tuples are not public reading identities. Existing wrong
+Source/revision/range/claim, deletion/expiry and replaced-publication controls remain
+required. A read-only replay of an old permitted draft is support evidence only;
+representation success cannot replace actual authorship, a fresh candidate campaign,
+independent semantic review or human observations. Preserve deeper diagram admission
+errors revealed after the byte barrier is removed and label any authored correction
+separately from its unchanged original.

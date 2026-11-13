@@ -117,7 +117,7 @@ def lifecycle(kind='work', language='en', before_state='unavailable'):
     reserve = e.retention_metadata_bytes(plan)
     plan['retention_budget'] = {'response_byte_limit': e.RESPONSE_BYTE_LIMIT, 'retained_byte_limit': e.RETAINED_BYTE_LIMIT,
         'metadata_byte_reserve': reserve, 'response_byte_capacity': min(e.RESPONSE_BYTE_LIMIT, e.RETAINED_BYTE_LIMIT - reserve)}
-    response = {'format_kind': 'volicord_explanation', 'format_version': 9, 'diagrams': [],
+    response = {'format_kind': 'volicord_explanation', 'format_version': 10, 'diagrams': [],
         'plan_fingerprint': plan['fingerprint'], 'language': language,
         'generator': {'host': 'authored fixture', 'session': 'fixture-only', 'agent': None, 'model': None},
         'paragraphs': [{'question': q, 'text': '구조 검사 예제입니다.' if language == 'ko' else 'Structural example only.',
@@ -373,7 +373,7 @@ class ReaderApplicabilityTests(unittest.TestCase):
         self.assertEqual(value['article']['state'], 'unsupported')
         self.assertEqual(value['record_reading']['state'], 'eligible_for_assessment')
         self.assertEqual(response['format_version'], 2)
-        self.assertEqual(original['format_version'], 9)
+        self.assertEqual(original['format_version'], 10)
 
     def test_campaign_inspection_consumes_applicability_without_rewriting_inputs(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -428,6 +428,51 @@ class ReaderApplicabilityTests(unittest.TestCase):
         self.assertEqual(comparison['state'], 'eligible_for_assessment')
         self.assertTrue(any(g['source_id'] == '06' * 16 and
             g['reason'] == 'missing_before_state' for g in comparison['gaps']))
+
+
+class CitationWireTests(unittest.TestCase):
+    def fixture(self):
+        preparation, response, receipt, after = lifecycle()
+        context = {'analysis_snapshot_id': 'a' * 64, 'repository_snapshot_id': 'b' * 64,
+                   'repository_source_id': '02' * 16}
+        source = {'context': 0, 'source_id': '03' * 16, 'source_revision': 2,
+                  'observation_fingerprint': 'sha256:' + 'c' * 64,
+                  'locator': 'src/example.py', 'field': 'body', 'use_kind': 'before_code'}
+        item = [0, 12, 48, 2, 4, 'sha256:' + 'd' * 64, 0, 5, 'sha256:' + 'e' * 64]
+        response.update(citation_contexts=[context], citation_sources=[source])
+        response['paragraphs'][0]['citations'] = [item, list(item)]
+        expected = dict(context, **{k: v for k, v in source.items() if k != 'context'},
+                        start_byte=12, end_byte=48, start_line=2, end_line=4,
+                        range_sha256='sha256:' + 'd' * 64, claim_start_byte=0,
+                        claim_end_byte=5, claim_sha256='sha256:' + 'e' * 64)
+        after['selected_work']['answers']['prose'][0]['citations'] = [expected, expected]
+        after['selected_work']['answers']['provenance']['citations'] = [expected, expected]
+        return preparation, response, receipt, after, expected
+
+    def test_complete_public_readback_compares_expanded_facts_to_compact_receipt(self):
+        p, response, receipt, after, expected = self.fixture()
+        original = copy.deepcopy(response)
+        self.assertEqual(e.expanded_response_paragraphs(response)[0]['citations'], [expected, expected])
+        e.validate_lifecycle(p, response, receipt, after)
+        self.assertEqual(response, original)
+        after['selected_work']['answers']['prose'][0]['citations'][0] = dict(expected, locator='wrong.py')
+        with self.assertRaisesRegex(ValueError, 'changed recorded claims'):
+            e.validate_lifecycle(p, response, receipt, after)
+
+    def test_invalid_and_old_references_never_become_public_citations(self):
+        _, original, _, _, _ = self.fixture()
+        for mutation in [lambda r: r.update(format_version=9),
+                         lambda r: r.update(format_version=10.0),
+                         lambda r: r['paragraphs'][0]['citations'][0].__setitem__(0, 1),
+                         lambda r: r['paragraphs'][0]['citations'][0].pop(),
+                         lambda r: r['paragraphs'][0]['citations'][0].__setitem__(1, True),
+                         lambda r: r['citation_sources'][0].update(context=1),
+                         lambda r: r['citation_sources'].append(dict(r['citation_sources'][0])),
+                         lambda r: r['citation_contexts'].append(dict(r['citation_contexts'][0])),
+                         lambda r: r['paragraphs'][0].update(citations=[r['paragraphs'][0]['citations'][0]] * 33)]:
+            response = copy.deepcopy(original); mutation(response)
+            with self.assertRaisesRegex(ValueError, 'citation provenance'):
+                e.expanded_response_paragraphs(response)
 
 
 class LifecycleTests(unittest.TestCase):

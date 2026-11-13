@@ -417,7 +417,7 @@ async function contextLifecycle() {
     const selector=kind==='work'?'--work':'--decision';
     const plan=operation([kind,'explain','prepare',selector,identity,'--language',locale]).plan;
     const questions=kind==='work'?['purpose','reported_change','expected_effect','verification','next_step']:['user_rationale','recommendation','consequences','applicability'];
-    const response={format_kind:'volicord_explanation',format_version:9,plan_fingerprint:plan.fingerprint,language:locale,diagrams:[],
+    const response={format_kind:'volicord_explanation',format_version:10,plan_fingerprint:plan.fingerprint,language:locale,diagrams:[],
       generator:{host:'display-context-fixture',session:'synthetic-structural-support',agent:null,model:null},
       paragraphs:questions.map(question=>({question,text:`Labeled structural fixture ${locale} ${question}`,citations:[],evidence_keys:plan.evidence.map(e=>e.key)}))};
     const input=path.join(config.output,`response-${sequence}.json`);fs.writeFileSync(input,JSON.stringify(response));
