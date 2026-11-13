@@ -3984,6 +3984,18 @@ format-9 publications retain their original preparation provenance and lifecycle
 
 ### Detailed explanation and concise synopsis
 
+Ordinary switch/pause/completion follow-up exposes separate actionable authoring
+routes for each subject. Work `produce` covers only its independent Work scopes.
+Repository reading is inspected through `repository_understanding` with
+`reading_focus=repository_explanation`; needed, authorized repository-wide prose
+uses the pinned local CLI `repository explain prepare/compose/record` route and
+its exact analysis/Source investigation. Related Decision prose uses
+`decision_explanation produce` with actual Work-related canonical identities.
+These routes neither execute automatically nor grant Source/model authority,
+create a Work/Question/Decision, impose an authoring quota or block ordinary work.
+Missing evidence/authority and failed production remain explicit; current bases
+skip without renewal. Existing publications and independent lifetimes are unchanged.
+
 Current Work and Repository authoring guidance distinguishes a concise synopsis
 from detailed explanation. Detail follows a concrete reader question or use case
 through relevant inputs/state, mechanism, supported reason, consequence and failure

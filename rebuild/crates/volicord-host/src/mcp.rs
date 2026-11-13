@@ -84,9 +84,20 @@ pub const HOST_TOOL_NAMES: [&str; 28] = [
 ];
 
 fn work_production_followup(project: ProjectId, work: ContextItemId, reason: &str) -> Value {
-    json!({"tool":"work_explanation","action":"produce","project_id":project.to_string(),"work_item_id":work.to_string(),"reason":reason,
+    let mut followup = json!({"tool":"work_explanation","action":"produce","project_id":project.to_string(),"work_item_id":work.to_string(),"reason":reason,
         "scopes":if reason == "boundary" {vec!["summary","article"]} else {vec!["name","summary"]},
-        "instruction":"The authorized active host authors useful independent names at initiation and summaries after meaningful progress, in the actually requested language. At switch/pause/completion assess needed Work/repository/related Decision explanations and diagrams. Invoke produce explicitly for each needed scope, inspect status after record, and preserve failures. Unchanged current bases skip; refinement explicitly requests another edition. This follow-up starts no generation or retention and is not a per-turn or per-Checkpoint quota, work blocker, Learning activation or provider grant."})
+        "instruction":"The authorized active host authors useful independent names at initiation and summaries after meaningful progress, in the actually requested language. At switch/pause/completion assess needed Work, repository and related Decision explanations and diagrams. Invoke Work produce explicitly for each needed Work scope; use the separate repository CLI and Decision routes at that boundary. Inspect status after record and preserve failures. Unchanged current bases skip; refinement explicitly requests another edition. This follow-up starts no generation or retention and is not a per-turn or per-Checkpoint quota, work blocker, Learning activation or provider grant."});
+    if reason == "boundary" {
+        followup["repository_reading"] = json!({
+            "inspect":{"tool":"repository_understanding","arguments":{"project_id":project.to_string(),"reading_focus":"repository_explanation"}},
+            "authoring":{"interface":"local_cli","project_id":project.to_string(),"analysis_basis":"Use this handoff's current_analysis_snapshot_id; prepare revalidates the exact analysis","commands":["repository explain prepare","repository explain compose","repository explain record"]},
+            "instruction":"Inspect repository prose independently of this Work. If needed and authorized, use the pinned CLI route with this Project, the exact analysis and requested language. Follow preparation instructions, investigate repository-wide responsibilities and flows through permitted Sources, then explicitly compose/record prose and needed diagrams. Work produce does not create repository prose. Missing authority or evidence remains incomplete; do not invent a Goal, Question, consent or content. Reads never author, capture or renew."});
+        followup["related_decision_reading"] = json!({
+            "tool":"decision_explanation","action":"produce","project_id":project.to_string(),
+            "selection":"Only actual canonical Decisions related to this Work; use each exact decision_id and requested language",
+            "instruction":"Assess independently available explanations and needed diagrams; preserve the recorded question, alternatives, recommendation, actual choice and reasons. Missing prose is not missing Decision authority. No fabricated relation or new Decision."});
+    }
+    followup
 }
 
 fn server_instructions() -> String {

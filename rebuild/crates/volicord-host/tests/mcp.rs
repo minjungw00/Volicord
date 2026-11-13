@@ -6355,6 +6355,75 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
         json!(["implemented.rs"]),
         "{checkpoint}"
     );
+    let production = &checkpoint["explanation_production"];
+    assert_eq!(production["reason"], "boundary");
+    assert_eq!(production["scopes"], json!(["summary", "article"]));
+    let repository_route = &production["repository_reading"];
+    assert_eq!(
+        repository_route["inspect"]["tool"],
+        "repository_understanding"
+    );
+    assert_eq!(
+        repository_route["inspect"]["arguments"]["project_id"],
+        project
+    );
+    assert_eq!(repository_route["authoring"]["interface"], "local_cli");
+    assert_eq!(
+        repository_route["authoring"]["commands"],
+        json!([
+            "repository explain prepare",
+            "repository explain compose",
+            "repository explain record"
+        ])
+    );
+    assert_eq!(
+        production["related_decision_reading"]["tool"],
+        "decision_explanation"
+    );
+    assert_eq!(
+        production["related_decision_reading"]["project_id"],
+        project
+    );
+    let privacy_before_read = adapter
+        .operations()
+        .privacy_status(project_id)
+        .expect("privacy");
+    let before_read = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("before read");
+    let repository_read = call(
+        &mut adapter,
+        repository_route["inspect"]["tool"]
+            .as_str()
+            .expect("read tool"),
+        repository_route["inspect"]["arguments"].clone(),
+    );
+    assert_eq!(
+        repository_read["result"]["isError"], false,
+        "{repository_read}"
+    );
+    assert_eq!(structured(&repository_read)["project_id"], project);
+    let after_read = adapter
+        .operations()
+        .canonical_basis(project_id)
+        .expect("after read");
+    assert_eq!(
+        before_read.context_items.len(),
+        after_read.context_items.len()
+    );
+    assert_eq!(before_read.sources.len(), after_read.sources.len());
+    assert_eq!(
+        before_read.checkpoint_history.len(),
+        after_read.checkpoint_history.len()
+    );
+    assert_eq!(
+        privacy_before_read,
+        adapter
+            .operations()
+            .privacy_status(project_id)
+            .expect("privacy after read")
+    );
     assert_eq!(
         checkpoint["pre_existing_dirty_paths"],
         json!(["pre-existing.txt"]),
