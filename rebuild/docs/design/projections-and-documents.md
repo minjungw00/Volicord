@@ -3335,6 +3335,14 @@ catalogue and missing-identity pages have no invented document contents. This
 presentation and ephemeral list metadata change requires no retained-format,
 canonical schema, admission, fingerprint or generated-metadata revision.
 
+Work and Repository articles expose explanation, related Decisions when present,
+verification/limits and originals as peer level-two groups. Authored explanation
+sections are level three; verification and limit category headings are level three
+and their authored subheadings level four. The related Decision disclosure remains
+level three with its own subordinate article headings. Typography follows those
+levels, including the same larger peer heading size and spacing. This presentation
+never rewrites admitted heading wording or reclassifies a prose unit by keywords.
+
 Single-file native exports resolve current destination from the actual fragment
 target's page ancestry, including every nested Source origin/shared payload and
 return. The header and accessible current-page text project that same owner;

@@ -481,6 +481,16 @@ fn publication_scope(answers: &ReaderAnswers<'_>) -> String {
         .unwrap_or_default()
 }
 fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>, index: usize) {
+    reader_unit_at_level(html, r, answers, index, None);
+}
+
+fn reader_unit_at_level(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    index: usize,
+    heading_level: Option<u8>,
+) {
     let answer = &answers.prose[index];
     let language = if matches!(&answer.role, volicord_projections::AnswerRole::Unavailable) {
         locale_key(r.locale)
@@ -494,7 +504,13 @@ fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>
         _ => "div",
     };
     let tag = if answer.question == "SectionHeading" {
-        if answers
+        if let Some(level) = heading_level {
+            match level {
+                3 => "h3",
+                4 => "h4",
+                _ => "h2",
+            }
+        } else if answers
             .sections
             .iter()
             .skip(volicord_projections::article_supporting_start(
@@ -519,7 +535,7 @@ fn reader_unit(html: &mut String, r: &ViewerRequest, answers: &ReaderAnswers<'_>
         .position(|section| section.heading_index == Some(index))
         .map(|number| format!(" data-section-number=\"{:02}\"", number + 1))
         .unwrap_or_default();
-    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"{}{}><{tag} class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),publication_scope(answers),section_number,escape(&answer.question),escape(&content_language_tag(language)),escape(language),escape(&answer.text)));
+    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"{}{}><{tag} class=\"unit-text\"{} data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),publication_scope(answers),section_number,if heading_level.is_some() && answer.question == "SectionHeading" {" data-toc-entry"} else {""},escape(&answer.question),escape(&content_language_tag(language)),escape(language),escape(&answer.text)));
     reader_inline_citations(html, r, answers, index);
     html.push_str(&format!("</{outer}>"));
 }
@@ -1017,6 +1033,7 @@ fn render_article_sections(
     sections: &[volicord_projections::ArticleSection],
     work: bool,
     snapshot: bool,
+    heading_level: Option<u8>,
 ) {
     for section in sections {
         let role = match section.layer {
@@ -1026,7 +1043,7 @@ fn render_article_sections(
         };
         html.push_str(&format!("<section class=\"article-section{role}\">"));
         if let Some(index) = section.heading_index {
-            reader_unit(html, r, answers, index);
+            reader_unit_at_level(html, r, answers, index, heading_level);
         }
         let mut flow_open = false;
         for &index in &section.unit_indices {
@@ -1292,9 +1309,12 @@ fn render_document_body(
     html.push_str("</header>");
     opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
+    if grouped {
+        html.push_str(&format!("<h2 class=\"reading-group-heading\" data-toc-group-heading id=\"{}\" tabindex=\"-1\">{}</h2>",document_anchor(answers,"reading"),if work.is_some() {text(r.locale,"Work explanation","작업 설명")} else {text(r.locale,"Repository explanation","저장소 설명")}));
+    }
     html.push_str(&format!(
         "<div id=\"{}\" class=\"work-section-stack\" tabindex=\"-1\">",
-        document_anchor(answers, "reading")
+        document_anchor(answers, if grouped { "reading-body" } else { "reading" })
     ));
     if !current {
         for (index, _) in answers
@@ -1320,6 +1340,7 @@ fn render_document_body(
         &answers.sections[..supporting_start],
         work.is_some(),
         snapshot,
+        grouped.then_some(3),
     );
     html.push_str("</div>");
     if !related.is_empty() {
@@ -1380,6 +1401,7 @@ fn render_document_body(
                     &answers.sections[offset..end],
                     work.is_some(),
                     snapshot,
+                    grouped.then_some(3),
                 );
                 offset = end;
                 continue;
@@ -1399,6 +1421,7 @@ fn render_document_body(
             &answers.sections[offset..end],
             work.is_some(),
             snapshot,
+            grouped.then_some(4),
         );
         html.push_str("</section>");
         offset = end;
@@ -3176,7 +3199,15 @@ fn decision_detail(
     {
         reader_unit(&mut content, r, &reader, index);
     }
-    render_article_sections(&mut content, r, &reader, &reader.sections, false, snapshot);
+    render_article_sections(
+        &mut content,
+        r,
+        &reader,
+        &reader.sections,
+        false,
+        snapshot,
+        None,
+    );
     // Nested reading preserves admitted units and indices, not another page.
     content = content
         .replace("<h3", "<h5")

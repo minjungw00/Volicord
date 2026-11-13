@@ -477,9 +477,10 @@ fn repository_analysis_failures_stay_visible_above_optional_coverage(
             "reading",
         );
         let opening = html
-            .split(&format!("<div id=\"{reading}\""))
+            .split(&format!("id=\"{reading}\""))
             .next()
             .ok_or("opening")?;
+        assert!(html.contains(&format!("data-toc-group-heading id=\"{reading}\"")));
         assert_eq!(opening.contains("data-warning=\"analysis\""), warning);
         assert!(opening.contains("Scope: the cited Sources"));
         assert!(!opening.contains("Exact authored coverage detail"));

@@ -12,10 +12,12 @@
 .doc[data-reading-layout="grouped"] .doc-head > .work-dates{margin-top:8px}
 .doc[data-reading-layout="grouped"] .record-status-label{font-size:10px;color:var(--muted)}
 .work-state-badge{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:5px;padding:3px 8px;font-size:10px;line-height:1.6;font-weight:500;white-space:nowrap}
-.doc[data-reading-layout="grouped"] .article-section > .unit:has(h2){counter-increment:none;padding-left:0}
-.doc[data-reading-layout="grouped"] .article-section > .unit:has(h2)::before{content:none}
-.doc[data-reading-layout="grouped"] .article-section > .unit[data-section-number]{padding-left:39px}
-.doc[data-reading-layout="grouped"] .article-section > .unit[data-section-number]::before{content:attr(data-section-number)}
+.doc[data-reading-layout="grouped"] .article-section > .unit:has(:is(h2,h3,h4)){counter-increment:none;padding-left:0}
+.doc[data-reading-layout="grouped"] .article-section > .unit:has(:is(h2,h3,h4))::before{content:none}
+.doc[data-reading-layout="grouped"] .article-section > .unit[data-section-number]{position:relative;padding-left:39px}
+.doc[data-reading-layout="grouped"] .article-section > .unit[data-section-number]::before{content:attr(data-section-number);position:absolute;left:0;top:3px;width:23px;border-top:1px solid var(--accent);padding-top:3px;font:10px/1.6 "SFMono-Regular",Consolas,monospace;color:var(--accent)}
+.doc[data-reading-layout="grouped"] .article-section > .unit > h3.unit-text{font-size:18px;line-height:1.6;font-weight:700;color:var(--ink);margin:0}
+.doc[data-reading-layout="grouped"] .article-section > .unit > h4.unit-text{font-size:16px;line-height:1.6;font-weight:650;color:var(--ink);margin:0}
 .doc[data-reading-layout="grouped"] .unit + .unit{margin-top:20px}
 .doc[data-reading-layout="grouped"] .unit > .evidence-actions{justify-content:flex-end;gap:0;margin-top:4px}
 .doc[data-reading-layout="grouped"] :is(.paragraph-evidence-action,.notice-actions .inspection-action){display:inline-flex;align-items:center;background:none;border:0;border-radius:4px;box-shadow:none;color:#7890a1;font-size:11px;font-weight:400;line-height:1.6;padding:5px 8px;min-height:28px;width:auto;text-decoration:none}
@@ -103,19 +105,20 @@
 .doc[data-reading-layout="grouped"] .related-decisions .decision-reading + .decision-reading{margin-top:12px}
 .doc[data-reading-layout="grouped"] .related-decisions .decision-reading > .related-decision{margin:0;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{min-height:48px;padding:12px 0}
+.doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary h3{font-size:18px;line-height:1.6;font-weight:650;color:var(--ink)}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision[open]{padding-bottom:14px}
 .doc[data-reading-layout="grouped"] .related-decision-body > .article-section .unit-text,.doc[data-reading-layout="grouped"] .related-decision-body > .unit > .unit-text{font-size:14px;line-height:1.9;color:var(--body)}
 .doc[data-reading-layout="grouped"] .document-nav nav ol a{padding-left:28px}
 .notice-report-options q{display:block;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--body);font-size:12px;line-height:1.8}
 /* The Work's explanation, related choices, checks and originals are peers. */
-.doc[data-reading-layout="grouped"] .reading-group-heading{font-size:18px;line-height:1.6;font-weight:700;color:var(--ink);letter-spacing:-.3px;margin:0 0 20px;padding:0}
+.doc[data-reading-layout="grouped"] .reading-group-heading{font-size:22px;line-height:1.5;font-weight:700;color:var(--ink);letter-spacing:-.65px;margin:0 0 24px;padding:0}
 .doc[data-reading-layout="grouped"] .work-reading-group > .related-decisions{margin-top:0}
 .doc[data-reading-layout="grouped"] .work-reading-group[data-reading-group="decisions"],.doc[data-reading-layout="grouped"] .work-reading-group[data-reading-group="checks"],.doc[data-reading-layout="grouped"] .work-reading-group[data-reading-group="records"]{margin-top:40px;padding-top:0;border-top:0}
 .doc[data-reading-layout="grouped"] .reading-group-empty{margin:0 0 16px;color:var(--muted);font-size:13px;line-height:1.9}
 .doc[data-reading-layout="grouped"] .document-nav .toc-caption:has(>a){padding:0}
 .doc[data-reading-layout="grouped"] .document-nav .toc-caption > a{min-height:28px;padding:4px 12px;font-size:11px;font-weight:600;color:#8299aa}
 
-.doc[data-reading-layout="grouped"] [data-reading-group="checks"] > .reading-section > .reading-layer-heading{font-size:15px;margin:0 0 16px}
+.doc[data-reading-layout="grouped"] [data-reading-group="checks"] > .reading-section > .reading-layer-heading{font-size:18px;margin:0 0 20px}
 
 /* One publication metadata treatment across repository, Work and Decision. */
 .doc[data-reading-layout="grouped"] .reading-metadata{display:grid;gap:8px;margin:12px 0 20px;color:var(--muted)}
@@ -138,7 +141,7 @@
 .doc[data-reading-layout="grouped"] .related-decision-body .article-section > .unit:has(h4){position:relative;margin:24px 0 14px;padding-left:39px}
 .doc[data-reading-layout="grouped"] .related-decision-body .article-section > .unit:has(h4):first-child{margin-top:0}
 .doc[data-reading-layout="grouped"] .related-decision-body .article-section > .unit[data-section-number]:has(h4)::before{position:absolute;left:0;top:2px;width:23px;border-top:1px solid var(--accent);padding-top:3px;font:10px/1.6 "SFMono-Regular",Consolas,monospace;color:var(--accent)}
-.doc[data-reading-layout="grouped"] .related-decision-body .unit h4.unit-text{margin:0;font-size:14px;line-height:1.6;color:var(--ink)}
+.doc[data-reading-layout="grouped"] .related-decision-body .unit h4.unit-text{margin:0;font-size:16px;line-height:1.6;color:var(--ink)}
 .doc[data-reading-layout="grouped"] .reader-metadata-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}
 .doc[data-reading-layout="grouped"] .reader-metadata-group{min-width:0;padding:14px;border:1px solid var(--line);border-radius:8px}
 .doc[data-reading-layout="grouped"] .metadata-heading{margin:0 0 10px;font-size:11px;font-weight:600;color:var(--muted)}
