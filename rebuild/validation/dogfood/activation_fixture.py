@@ -86,10 +86,12 @@ def production_context(repository: Path, session_id: str, source: str = "startup
     assert "Recall is not completion" in context
     assert "Complete requested tests/build/lint/verification to termination before completion; report blockers" in context
     assert "Inspect/explain-only needs no execution" in context
-    assert "Learning: inactive unless the current user explicitly opts in" in context
-    assert "for this bounded Goal (exact Source/verbatim statement)" in context
-    assert "Routine opt-in needs no Learning Deliberation/Question/Decision" in context
-    assert "result/limitation explanation alone cannot activate learning or supply learning context" in context.lower()
+    assert "Learning: assess the full request" in context
+    assert "Explicit bounded requests to reason together about important trade-offs" in context
+    assert "need no keyword" in context
+    assert "exact Source/statement and matching Learning/Preference Context" in context
+    assert "Routine dimensions need no Deliberation/Question/Decision" in context
+    assert "Code/tests/docs or result reports alone stay inactive" in context
     return context
 
 

@@ -626,6 +626,13 @@ broad Goal로 복제해 Learning/Preference/Constraint 의미를 보존하는 �
 아니다. Proficiency, behavior, conversation style, prior choice나 explanation depth로 추론하지 않는다.
 Review revision은 state를 바꿀 수 있지만 Project/Goal/baseline 밖의 영구 preference로 승격하지 않는다.
 
+Explicit participation은 `Learning`이라는 단어의 사용 여부가 아니라 current request 전체의
+의미로 평가한다. 중요한 대안과 trade-off를 함께 검토하고 판단 과정을 이해하려는 bounded
+요청은 그 exact Source/statement와 일치하는 Learning 또는 Preference Context로 보존한다.
+일반 code/tests/docs 전달이나 결과·한계 보고만의 요청에서 participation을 추론하지 않는다.
+Active participation과 각 dimension의 learning value는 독립적이며, 모든 dimension이 routine인
+경우에도 명시된 participation과 재개 시 복구할 Context를 없애지 않는다.
+
 Active participation의 각 dimension은 `learning_authority.assessed`로 learning request가 없어도
 해당 material outcome이 independently user-owned인지를 명시적으로 판단한다. Closed assessment는
 independent-user-authority boolean, exact current choice identities와 material outcomes, non-empty

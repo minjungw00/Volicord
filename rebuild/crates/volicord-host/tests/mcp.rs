@@ -3154,8 +3154,31 @@ fn aggregate_schema_diagnostic_reports_independent_discovery_problems() {
 
 #[test]
 fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
+    for (user_turn, role, statement, non_interruption) in [
+        (
+            "Improve the parser. Teach me meaningful architecture and flow choices, but do not interrupt me for routine wording or test synchronization details",
+            "learning",
+            "Teach me meaningful architecture and flow choices",
+            "do not interrupt me for routine wording or test synchronization details",
+        ),
+        (
+            "Improve the parser. Explain the important alternatives and trade-offs, make important technical choices with me, and handle routine details without interrupting me.",
+            "preference",
+            "Explain the important alternatives and trade-offs, make important technical choices with me",
+            "handle routine details without interrupting me",
+        ),
+    ] {
+        assert_routine_participation_recovers(user_turn, role, statement, non_interruption);
+    }
+}
+
+fn assert_routine_participation_recovers(
+    user_turn: &str,
+    role: &str,
+    statement: &str,
+    non_interruption: &str,
+) {
     let (_temporary, mut adapter, project) = setup();
-    let user_turn = "Improve the parser. Teach me meaningful architecture and flow choices, but do not interrupt me for routine wording or test synchronization details";
     let goal = structured(&call(
         &mut adapter,
         "context_record",
@@ -3165,13 +3188,13 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
     let learning = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":user_turn,"role":"learning","statement":"Teach me meaningful architecture and flow choices"}),
+        json!({"project_id":project,"user_turn":user_turn,"role":role,"statement":statement}),
     ))
     .clone();
     let constraint = structured(&call(
         &mut adapter,
         "context_record",
-        json!({"project_id":project,"user_turn":user_turn,"role":"constraint","statement":"do not interrupt me for routine wording or test synchronization details"}),
+        json!({"project_id":project,"user_turn":user_turn,"role":"constraint","statement":non_interruption}),
     ))
     .clone();
     let analyzed = structured(&call(
@@ -3237,6 +3260,9 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
     assert!(guidance.contains("even when every current dimension is routine"));
     assert!(guidance.contains("requires no Learning Deliberation, Question, or canonical Decision"));
     assert!(guidance.contains("inactive is the default"));
+    assert!(guidance.contains("Assess the complete current request semantically"));
+    assert!(guidance.contains("without any Learning keyword"));
+    assert!(guidance.contains("matching Learning or Preference Context"));
     assert!(guidance.contains("generic coding, agent-generated explanation, or keywords without current-host user provenance do not activate it"));
     assert!(tool["inputSchema"].to_string().contains(guidance));
     assert_eq!(
@@ -3248,7 +3274,7 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
         "active",
         json!({
             "user_turn_source_id":learning["source_id"],
-            "verbatim_statement":"Teach me meaningful architecture and flow choices"
+            "verbatim_statement":statement
         }),
     );
     let mut request = draft_request(
@@ -3312,6 +3338,21 @@ fn active_learning_respects_non_interruption_for_routine_wording_and_tests() {
         .expect("Candidate array")
         .iter()
         .any(|candidate| candidate["learning_deliberation"].is_object()));
+    let runtime = adapter.operations().layout().root().to_path_buf();
+    drop(adapter);
+    let mut fresh = HostAdapter::new(LocalOperations::new(
+        RuntimeLayout::new(runtime).expect("restart runtime"),
+    ));
+    let recalled = structured(&call(&mut fresh, "recall", json!({"project_id":project}))).clone();
+    let recovered = recalled["behaviorally_relevant_context"]
+        .as_array()
+        .expect("recovered behavioral Context")
+        .iter()
+        .find(|item| item["identity"] == learning["context_item_id"])
+        .expect("explicit participation Context survives restart");
+    assert_eq!(recovered["role"], role);
+    assert_eq!(recovered["statement"], statement);
+    assert_eq!(recovered["source_ids"][0], learning["source_id"]);
 }
 
 #[test]
