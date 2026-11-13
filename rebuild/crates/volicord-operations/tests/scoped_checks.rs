@@ -221,6 +221,21 @@ fn comparison_requires_explicit_identity_coverage_environment_and_measured_targe
             ..
         }
     ));
+    let catalogue = f.ops.query_work_catalogue(
+        f.project,
+        &volicord_projections::WorkCatalogueQuery::default(),
+        "en",
+    )?;
+    assert_eq!(
+        catalogue
+            .entries
+            .iter()
+            .find(|e| e.id == f.work)
+            .ok_or("Work catalogue entry")?
+            .unresolved_failed_reports,
+        0,
+        "the exact comparable passing retest resolves the same failure in list and detail"
+    );
     assert!(f
         .ops
         .read_work_verification(f.project, f.other)?

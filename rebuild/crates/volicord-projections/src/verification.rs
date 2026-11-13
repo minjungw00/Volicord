@@ -509,6 +509,18 @@ fn compare_retest(
             EvidenceDetail::Observed(r) => Some(r),
             _ => None,
         });
+    compare_retest_runs(run, prior)
+}
+
+fn compare_retest_runs(run: &ScopedCheckRun, prior: Option<&ScopedCheckRun>) -> RetestComparison {
+    let Some(link) = &run.retest else {
+        return RetestComparison::Unresolved;
+    };
+    let reference = VerificationReference {
+        checkpoint_id: link.checkpoint_id.to_string(),
+        checkpoint_revision: link.checkpoint_revision,
+        verification_index: link.verification_index,
+    };
     let failure = |reason| RetestComparison::NotComparable {
         previous: reference.clone(),
         reason,
@@ -562,4 +574,61 @@ fn compare_retest(
         earlier_assertion: prior.assertion_state,
         later_assertion: run.assertion_state,
     }
+}
+
+/// Metadata-only catalogue count. Reuse the detail comparison rules without
+/// constructing WorkReading, execution streams or quadratic later-change lists.
+pub(crate) fn unresolved_failed_report_count(
+    checkpoints: &[&volicord_context::Checkpoint],
+) -> usize {
+    use std::collections::{BTreeMap, BTreeSet};
+    let facts = checkpoints
+        .iter()
+        .flat_map(|cp| {
+            cp.verification
+                .iter()
+                .enumerate()
+                .map(move |(index, fact)| ((cp.id, cp.revision, index, fact.source_id), fact))
+        })
+        .collect::<BTreeMap<_, _>>();
+    let resolved = facts
+        .values()
+        .filter_map(|fact| {
+            let run = fact.scoped_run.as_ref()?;
+            let link = run.retest.as_ref()?;
+            let key = (
+                link.checkpoint_id,
+                link.checkpoint_revision,
+                link.verification_index,
+                Some(link.source_id),
+            );
+            let prior = facts.get(&key).and_then(|fact| fact.scoped_run.as_ref());
+            matches!(
+                compare_retest_runs(run, prior),
+                RetestComparison::Comparable {
+                    later_assertion: AssertionState::Passed,
+                    ..
+                }
+            )
+            .then_some(key)
+        })
+        .collect::<BTreeSet<_>>();
+    let last_change = checkpoints
+        .iter()
+        .rposition(|cp| crate::reading::has_reported_change(cp));
+    checkpoints
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| last_change.is_none_or(|last| *index >= last))
+        .map(|(_, cp)| {
+            cp.verification
+                .iter()
+                .enumerate()
+                .filter(|(index, fact)| {
+                    fact.state == VerificationState::Failed
+                        && !resolved.contains(&(cp.id, cp.revision, *index, fact.source_id))
+                })
+                .count()
+        })
+        .sum()
 }

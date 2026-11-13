@@ -59,6 +59,8 @@ pub struct WorkCatalogueEntry {
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
     pub checkpoint_count: usize,
+    /// Failed reports without historical applicability or an explicit comparable passing retest.
+    pub unresolved_failed_reports: usize,
     pub article: CatalogueArticle,
     /// Request-local comparison of the permitted article's actual code basis.
     pub repository_comparison: RepositoryComparisonState,
@@ -117,6 +119,9 @@ pub fn work_catalogue_metadata(canonical: &CanonicalReadBasis) -> Vec<WorkCatalo
                 created_at: creation,
                 updated_at: latest.map(|c| c.recorded_at.as_unix_micros()).or(creation),
                 checkpoint_count: g.checkpoints.len(),
+                unresolved_failed_reports: crate::verification::unresolved_failed_report_count(
+                    &g.checkpoints,
+                ),
                 article: CatalogueArticle::Missing,
                 repository_comparison: RepositoryComparisonState::NotChecked,
             }

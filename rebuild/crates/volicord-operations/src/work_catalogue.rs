@@ -93,7 +93,7 @@ impl LocalOperations {
         }
         // Hash only authorized visible fields, exact publication identities and
         // query scope. Forbidden prose and article bytes never affect this token.
-        let visible = entries.iter().map(|e| serde_json::json!({"id":e.id.to_string(),"name":e.name,"summary":e.summary,"publications":e.publications.iter().map(|p| (&p.publication_id,&p.realization_fingerprint)).collect::<Vec<_>>(),"state":format!("{:?}",e.state),"created":e.created_at,"updated":e.updated_at,"checkpoints":e.checkpoint_count,"article":format!("{:?}",e.article)})).collect::<Vec<_>>();
+        let visible = entries.iter().map(|e| serde_json::json!({"id":e.id.to_string(),"name":e.name,"summary":e.summary,"publications":e.publications.iter().map(|p| (&p.publication_id,&p.realization_fingerprint)).collect::<Vec<_>>(),"state":format!("{:?}",e.state),"created":e.created_at,"updated":e.updated_at,"checkpoints":e.checkpoint_count,"unresolved_failed_reports":e.unresolved_failed_reports,"article":format!("{:?}",e.article)})).collect::<Vec<_>>();
         let basis = explanation_text_hash(&serde_json::json!({"project":project.to_string(),"language":language,"term":query.term.trim().to_lowercase(),"state":format!("{:?}",query.state),"order":format!("{:?}",query.order),"entries":visible}).to_string());
         entries.sort_by_key(|e| (e.updated_at.is_none(), Reverse(e.updated_at), e.id));
         let mut current = entries

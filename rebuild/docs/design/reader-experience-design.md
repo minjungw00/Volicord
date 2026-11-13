@@ -1328,6 +1328,12 @@ expanded, with quiet links to the exact original records. Missing-article diagno
 and unresolved adverse facts remain at entry. A routine successful comparison may
 move into supporting provenance; changed/unavailable comparison must remain visible.
 
+Work catalogue rows expose the same amber failed-report indicator and count as
+Work detail, separately from explanation readability and repository comparison.
+The count uses the same explicit comparable-retest rules and historical change
+applicability, without constructing Work articles or reading execution bodies for
+the list. An unrelated later pass does not clear an unresolved failure.
+
 One quiet paragraph/caption/selected-element action opens an actual range directly.
 Its same-pane chooser retains every originally covering citation and the exact
 claim/return binding. The common evidence header, selected explanation, range family,

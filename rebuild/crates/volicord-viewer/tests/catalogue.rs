@@ -7,6 +7,72 @@ use volicord_projections::*;
 use volicord_viewer::*;
 
 #[test]
+fn catalogue_failure_warning_matches_detail_without_materializing_work() -> TestResult<()> {
+    use serde_json::json;
+    for historical in [false, true] {
+        let mut input: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+        input["prior_checkpoint_count"] = json!(0);
+        input["later_checkpoint_count"] = json!(0);
+        input["works"][0]["checkpoints"] = json!([
+            {"key":"failed","work":"Paused","verification":"Failed","state_change":null,"paths":[]},
+            {"key":"unrelated","work":"InProgress","verification":"Passed",
+             "state_change":if historical {Some("Later implementation change")} else {None},
+             "paths":if historical {vec!["python/worker.py"]} else {vec![]}}
+        ]);
+        let f = reading_fixture::fixture_scenario(input)?;
+        let expected = usize::from(!historical);
+        let catalogue =
+            f.operations
+                .query_work_catalogue(f.project, &WorkCatalogueQuery::default(), "en")?;
+        let entry = catalogue
+            .entries
+            .iter()
+            .find(|e| e.id == f.goals["older"])
+            .ok_or("Work row")?;
+        assert_eq!(entry.unresolved_failed_reports, expected);
+        assert_eq!(catalogue.cost.article_preparations, 0);
+        assert_eq!(catalogue.cost.source_body_reads, 0);
+        let report = f.operations.read_work_verification(f.project, entry.id)?;
+        assert_eq!(
+            report
+                .checks
+                .iter()
+                .filter(|c| c.reported_state == ReportedCheckState::Failed
+                    && c.applicability != VerificationApplicability::HistoricalAfterRecordedChange)
+                .count(),
+            expected
+        );
+        let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+        for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+            let request = ViewerRequest {
+                project_id: f.project,
+                locale,
+                requested_language: "en".into(),
+                view: ViewerView::WorkQuery {
+                    query: WorkCatalogueQuery::default(),
+                },
+                guarded_request: None,
+            };
+            let (page, profile) = viewer.render_profiled(&request, "test")?;
+            let row = page
+                .html
+                .split(&format!("id=\"row-{}\"", entry.id))
+                .nth(1)
+                .ok_or("row")?
+                .split("</a>")
+                .next()
+                .ok_or("row end")?;
+            assert_eq!(
+                row.contains("data-unresolved-failed-reports=\"1\""),
+                !historical
+            );
+            assert_eq!(profile.projection.work_read_cost.materialized_works, 0);
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn catalogue_searches_the_authorized_dataset_before_paging_and_never_prepares_articles(
 ) -> TestResult<()> {
     let f = fixture(33)?;
