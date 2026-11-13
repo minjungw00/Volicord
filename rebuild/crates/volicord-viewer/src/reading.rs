@@ -1290,11 +1290,25 @@ fn render_document_body(
     if let Some(w) = work {
         html.push_str(&format!("<section class=\"reader-metadata-group\" data-metadata-group=\"work\" aria-label=\"{}\"><p class=\"metadata-heading\">{}</p>",text(r.locale,"Work record","작업 기록"),text(r.locale,"Work record","작업 기록")));
         html.push_str(&format!(
-            "<p class=\"record-strip\"><span class=\"record-status-label sr-only\">{}</span><span class=\"work-badge work-state-badge\" data-state=\"{}\"><svg class=\"work-record-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M9 4H5v17h14V4h-4M9 3h6v4H9zM8 12h8m-8 4h6\"/></svg>{}</span></p>",
+            "<p class=\"record-strip\"><span class=\"record-status-label sr-only\">{}</span><span class=\"work-badge work-state-badge\" data-state=\"{}\"><svg class=\"work-record-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M9 4H5v17h14V4h-4M9 3h6v4H9zM8 12h8m-8 4h6\"/></svg>{}</span>",
             text(r.locale, "Recorded state", "기록된 상태"),
             understanding_work_state_key(w.state),
             understanding_work_state_label(w.state, r.locale)
         ));
+        let failed_reports = w
+            .reading
+            .verification_report
+            .checks
+            .iter()
+            .filter(|check| {
+                check.reported_state == volicord_projections::ReportedCheckState::Failed
+                    && !verification::historical_check(check, &w.reading.verification_report)
+            })
+            .count();
+        if failed_reports > 0 {
+            html.push_str(&format!("<a class=\"verification-status-badge\" data-unresolved-failed-reports=\"{failed_reports}\" href=\"#{}\" title=\"{}\"><svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M12 3 2 21h20zM12 9v5m0 3v1\"/></svg><span>{} · {failed_reports}</span></a>",document_anchor(answers,"checks"),text(r.locale,"Failed report resolution is not established. Explanation availability does not establish verification success.","실패 보고의 해결 여부가 확인되지 않았습니다. 설명을 읽을 수 있다는 상태는 검증 통과를 뜻하지 않습니다."),text(r.locale,"Failed reports need review","실패 보고 확인 필요")));
+        }
+        html.push_str("</p>");
         work_event_times(html, r, w);
         html.push_str("</section>");
     }

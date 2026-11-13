@@ -3479,6 +3479,14 @@ do not claim a live searchable complete dataset.
 
 ### Work detail origin and recorded timeline
 
+Work state, explanation availability and recorded verification outcomes remain
+independent. A currently permitted explanation may explain an unsuccessful or
+incompletely verified Work. The Work metadata therefore carries a separate amber
+warning icon, report count and verification-section link when failed reports lack
+the maintained comparable-passing-retest or historical-after-change qualification.
+It does not turn the explanation's validity icon into a test verdict. Counts remain
+Checkpoint reports, never tests; unrelated later passes do not clear the warning.
+
 Work links from the live catalogue carry `from=list` and the same typed query,
 state, order, page and visible basis, alongside exact Project/Work/UI/content
 language identities. The origin never supplies a URL, authority or a different

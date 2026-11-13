@@ -549,8 +549,38 @@ fn failure_notices_own_actions_and_preserve_exact_report_targets(
                 );
             }
             assert!(html.contains("data-warning=\"history\""));
+            assert_eq!(
+                html.matches("class=\"verification-status-badge\"").count(),
+                1
+            );
+            assert!(html.contains(&format!(
+                "data-unresolved-failed-reports=\"{}\"",
+                w.reading.verification_report.checks.len()
+            )));
+            assert!(
+                html.contains("Explanation availability does not establish verification success.")
+                    || html.contains("설명을 읽을 수 있다는 상태는 검증 통과를 뜻하지 않습니다.")
+            );
         }
     }
+    let mut historical = w.clone();
+    for check in &mut historical.reading.verification_report.checks {
+        check.applicability = VerificationApplicability::HistoricalAfterRecordedChange;
+    }
+    let request = ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::English,
+        view: ViewerView::Work { work: Some(id) },
+        requested_language: "en".into(),
+        guarded_request: None,
+    };
+    let mut historical_html = String::new();
+    work_detail(&mut historical_html, &request, &p, &historical, false);
+    assert!(!historical_html.contains("class=\"verification-status-badge\""));
+    assert!(
+        historical_html.contains("Historical"),
+        "historical failed originals remain inspectable"
+    );
     // Distinct unnamed reports at the same instant must remain distinguishable
     // without inventing names or substituting a semantic summary for the report.
     for (index, prefix) in [
