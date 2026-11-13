@@ -1462,7 +1462,7 @@ class WorkflowTests(unittest.TestCase):
         manifest = c.load_evidence_set(self.root)
         contexts = prepared_context_directories(self.parent, self._testMethodName, manifest, campaign_root=self.root)
         target = self.parent / (self._testMethodName + "-observations")
-        for subject, foreign in (("work", "a" * 32), ("work", "b" * 32), ("decision", "d" * 32)):
+        for subject, foreign in (("work", "a" * 32), ("work", "b" * 32)):
             path = next(p / "display-context.json" for p in contexts
                 if json.loads((p / "display-context.json").read_bytes())["context"]["selected_" + subject] is not None)
             original = path.read_bytes(); value = json.loads(original)
@@ -1478,6 +1478,20 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(prompts, [])
             self.assertFalse(target.exists())
             path.write_bytes(original)
+
+        # Decisions are embedded in their Work; no valid current display context
+        # has a selected Decision. Exercise the retired selector explicitly.
+        path = contexts[0] / "display-context.json"
+        original = path.read_bytes(); value = json.loads(original)
+        value["context"]["selected_decision"] = "d" * 32
+        path.write_bytes(ops.encoded(value))
+        prompts = []
+        with self.assertRaisesRegex(ValueError, "standalone Decision selection is retired"):
+            human_review.capture_viewer_observations(self.root, target, context_paths=contexts,
+                input_fn=lambda: self.fail("retired selector must fail before a human answer"), output_fn=prompts.append)
+        self.assertEqual(prompts, [])
+        self.assertFalse(target.exists())
+        path.write_bytes(original)
 
     def test_conversational_human_judgment_generates_reviewable_draft(self):
         target = self.target()
