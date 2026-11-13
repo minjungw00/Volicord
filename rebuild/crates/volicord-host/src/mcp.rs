@@ -3184,7 +3184,10 @@ fn work_explanation_schema() -> Value {
             "evidence_key",
             text_schema("Exact prepared canonical evidence key", 1, 512),
         ),
-        ("offset", json!({"type":"integer","minimum":0})),
+        (
+            "offset",
+            json!({"type":"integer","minimum":0,"description":"UTF-8 byte offset into the exact canonical field; start at zero, then use returned next_offset with expected_fingerprint"}),
+        ),
         (
             "expected_fingerprint",
             text_schema("Exact field continuation fingerprint", 1, 128),

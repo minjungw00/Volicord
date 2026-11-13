@@ -7735,6 +7735,25 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "work_item_id",
                     "scope",
                     "generation_id",
+                    "evidence_key",
+                    "offset",
+                    "expected_fingerprint",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "generation_id",
+                    "evidence_key",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "scope",
+                    "generation_id",
                     "assessment",
                 ],
                 &[
@@ -7842,6 +7861,24 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             ),
         ],
         "decision_explanation" => vec![
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "decision_id",
+                    "generation_id",
+                    "evidence_key",
+                    "offset",
+                    "expected_fingerprint",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "decision_id",
+                    "generation_id",
+                    "evidence_key",
+                ],
+            ),
             shape(
                 &[
                     "action",
