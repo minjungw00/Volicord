@@ -1341,6 +1341,11 @@ Work detail, separately from explanation readability and repository comparison.
 The count uses the same explicit comparable-retest rules and historical change
 applicability, without constructing Work articles or reading execution bodies for
 the list. An unrelated later pass does not clear an unresolved failure.
+When a later pass is actually recorded, the primary warning explains that the
+remaining uncertainty is the explicit retest comparison, alongside those recorded
+outcomes. It uses a comparison caution rather than implying that the later pass
+is absent or that the current Work is known to fail. Original failures and their
+individual evidence actions remain available without upgrading comparability.
 
 One quiet paragraph/caption/selected-element action opens an actual range directly.
 Its same-pane chooser retains every originally covering citation and the exact

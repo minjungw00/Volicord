@@ -558,10 +558,53 @@ fn failure_notices_own_actions_and_preserve_exact_report_targets(
                 w.reading.verification_report.checks.len()
             )));
             assert!(
-                html.contains("Explanation availability does not establish verification success.")
-                    || html.contains("설명을 읽을 수 있다는 상태는 검증 통과를 뜻하지 않습니다.")
+                html.contains("Read recorded outcomes separately from explanation availability.")
+                    || html.contains("기록된 결과와 설명의 읽기 상태를 구분해 확인하세요.")
             );
         }
+    }
+    let mut later_pass = w.clone();
+    let after = later_pass
+        .reading
+        .verification_report
+        .checks
+        .iter()
+        .map(|c| c.reported_at_unix_micros)
+        .max()
+        .ok_or("checks")?
+        + 1;
+    let latest = later_pass
+        .reading
+        .verification_report
+        .checks
+        .last_mut()
+        .ok_or("check")?;
+    latest.reported_state = ReportedCheckState::Passed;
+    latest.reported_at_unix_micros = after;
+    for locale in [ViewerLocale::English, ViewerLocale::Korean] {
+        let request = ViewerRequest {
+            project_id: f.project,
+            locale,
+            view: ViewerView::Work { work: Some(id) },
+            requested_language: "en".into(),
+            guarded_request: None,
+        };
+        let mut html = String::new();
+        work_detail(&mut html, &request, &p, &later_pass, false);
+        assert!(html.contains(text(
+            locale,
+            "Retest comparison not established",
+            "재검증 비교 미확인"
+        )));
+        assert!(html.contains(text(
+            locale,
+            "Later passing reports are recorded.",
+            "이후 통과 보고가 기록되어 있습니다."
+        )));
+        assert!(
+            html.contains("data-warning=\"failure\""),
+            "an unrelated pass cannot erase the original failed report"
+        );
     }
     let mut historical = w.clone();
     for check in &mut historical.reading.verification_report.checks {

@@ -2249,8 +2249,41 @@ fn opening_context(
             }
             actions.push_str("</div></details></div>");
         }
-        reading_notice(html, "failure", "danger", text(r.locale,"Unresolved verification failure", "해결 여부가 확인되지 않은 검증 실패"),
-            text(r.locale,"A failed report remains unresolved. A later unrelated pass does not establish a retest or current coverage.","실패 보고의 해결 여부가 확인되지 않았습니다. 무관한 후속 통과는 재검증이나 현재 coverage를 확정하지 않습니다."), &actions);
+        let later_pass = work.is_some_and(|w| {
+            let report = &w.reading.verification_report;
+            report.checks.iter().any(|earlier| {
+                earlier.reported_state == volicord_projections::ReportedCheckState::Failed
+                    && !verification::historical_check(earlier, report)
+                    && report.checks.iter().any(|later| {
+                        later.reported_state == volicord_projections::ReportedCheckState::Passed
+                            && later.reported_at_unix_micros > earlier.reported_at_unix_micros
+                    })
+            })
+        });
+        reading_notice(
+            html,
+            "failure",
+            if later_pass { "caution" } else { "danger" },
+            if later_pass {
+                text(
+                    r.locale,
+                    "Retest comparison not established",
+                    "재검증 비교 미확인",
+                )
+            } else {
+                text(
+                    r.locale,
+                    "Recorded verification failure",
+                    "기록된 검증 실패",
+                )
+            },
+            if later_pass {
+                text(r.locale,"Later passing reports are recorded. These earlier failed reports remain in the review list because an explicit comparison of check identity, coverage and execution conditions is not established. Read the recorded outcomes alongside this comparison limit.","이후 통과 보고가 기록되어 있습니다. 검사 이름·확인 범위·실행 조건을 비교할 명시적 연결 근거가 충분하지 않아 이전 실패 보고가 확인 목록에 남아 있습니다. 기록된 결과와 이 비교 한계를 함께 읽으세요.")
+            } else {
+                text(r.locale,"A failed report is recorded without an established comparable passing retest. The original outcome and its applicability remain inspectable.","실패 보고가 기록되어 있으며 비교 가능한 후속 통과는 확인되지 않았습니다. 원래 결과와 적용 범위는 실패 보고에서 확인할 수 있습니다.")
+            },
+            &actions,
+        );
     }
     if failed.iter().any(historical)
         && !answers
@@ -3609,5 +3642,5 @@ pub(super) fn failed_report_badge(
     let (tag, link) = target.map_or(("span", String::new()), |href| {
         ("a", format!(" href=\"{}\"", escape(href)))
     });
-    format!("<{tag} class=\"verification-status-badge\" data-unresolved-failed-reports=\"{count}\"{link} title=\"{}\"><svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M12 3 2 21h20zM12 9v5m0 3v1\"/></svg><span>{} · {count}</span></{tag}>",text(locale,"Failed report resolution is not established. Explanation availability does not establish verification success.","실패 보고의 해결 여부가 확인되지 않았습니다. 설명을 읽을 수 있다는 상태는 검증 통과를 뜻하지 않습니다."),text(locale,"Failed reports need review","실패 보고 확인 필요"))
+    format!("<{tag} class=\"verification-status-badge\" data-unresolved-failed-reports=\"{count}\"{link} title=\"{}\"><svg viewBox=\"0 0 24 24\" width=\"15\" height=\"15\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M12 3 2 21h20zM12 9v5m0 3v1\"/></svg><span>{} · {count}</span></{tag}>",text(locale,"Comparison of the failed report with a passing retest is not established. Read recorded outcomes separately from explanation availability.","실패 보고와 통과한 재검증 사이의 비교 근거가 확인되지 않았습니다. 기록된 결과와 설명의 읽기 상태를 구분해 확인하세요."),text(locale,"Failed reports need review","실패 보고 확인 필요"))
 }
