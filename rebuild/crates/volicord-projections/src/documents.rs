@@ -1738,6 +1738,35 @@ fn validate_claim_grounding(
                 .iter()
                 .map(|entity| entity.analysis_snapshot),
         )
+        // A readable Repository publication can retain an older, exact analysis
+        // basis after a new analysis replaces the current topology. Its admitted
+        // evidence, rather than its claim or subject ID alone, witnesses that
+        // historical membership. This never selects historical topology.
+        .chain(
+            projection
+                .repository_explanations
+                .iter()
+                .filter_map(|reading| {
+                    let retained = reading
+                        .content
+                        .as_ref()
+                        .filter(|_| reading.state == crate::ExplanationState::Current)?;
+                    let crate::ExplanationSubject::Repository(id) = retained.subject else {
+                        return None;
+                    };
+                    retained
+                        .evidence
+                        .iter()
+                        .any(|e| {
+                            e.key == "repository_basis"
+                                && e.record_kind == "analysis_snapshot"
+                                && e.identity == id.to_string()
+                                && e.revision == 1
+                                && e.field == "repository_scope"
+                        })
+                        .then_some(id)
+                }),
+        )
         .collect::<BTreeSet<_>>();
     for claim in body.sections.iter().flat_map(|section| &section.claims) {
         if claim.source_basis.is_empty()

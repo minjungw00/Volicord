@@ -4021,6 +4021,13 @@ unknown IDs remain rejected and conflicting freshness remains unknown. This
 read-only metadata grants no Source-body access. The guide retains the exact
 Repository publication provenance in its existing metadata and final read barrier;
 other document kinds do not claim to use a Repository publication they omit.
+An admitted Repository publication may retain an earlier exact Analysis Snapshot
+basis after a newer analysis replaces the displayed topology. Its retained
+`repository_basis` analysis evidence witnesses that historical membership for
+document grounding and metadata; a subject ID or claim alone does not. The
+generator does not reload or select historical topology and does not label the
+earlier basis as the current repository analysis. Missing or mismatched witnesses
+still reject unknown analysis references.
 Stale, withheld, expired or unavailable publications supply only their actual
 availability message, with no older-publication fallback. Existing field, claim,
 publication and output-byte bounds and durable formats are unchanged.

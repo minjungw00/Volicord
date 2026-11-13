@@ -1958,6 +1958,70 @@ fn independent_publication_expiry_and_damaged_admission_links_remain_blocking(
 }
 
 #[test]
+fn repository_documents_keep_verified_publication_basis_after_analysis_refresh(
+) -> Result<(), Box<dyn Error>> {
+    let f = fixture()?;
+    let id = source(&observe(&f, "main.py", None)?)?;
+    let subject = ExplanationSubject::Repository(f.analysis);
+    f.ops
+        .record_explanation(f.project, subject, "en", response(&f, id)?)?;
+    fs::write(f.root.join("extra.py"), "def other():\n    return 2\n")?;
+    let next = f
+        .ops
+        .analyze(f.project, vec!["secret.py".into()])?
+        .value
+        .ok_or("new analysis missing")?
+        .analysis
+        .identity;
+    assert_ne!(next, f.analysis);
+    let request = DocumentRequest {
+        requested_language: "en".into(),
+        fixed_locale: FixedLocale::English,
+        generated_at: volicord_context::TimestampMicros::from_unix_micros(1),
+        generator: GeneratorIdentity {
+            generator: "historical-publication-control".into(),
+            agent: None,
+            model: None,
+        },
+        requested_destinations: vec![],
+    };
+    let mut projection = f.ops.project_projection(f.project)?;
+    assert_eq!(projection.repository_analysis.analysis_snapshot, Some(next));
+    assert!(projection
+        .resume
+        .snapshots
+        .iter()
+        .all(|s| s.analysis_snapshot != f.analysis));
+    assert!(projection
+        .repository_map
+        .entities
+        .iter()
+        .all(|e| e.analysis_snapshot != f.analysis));
+    let documents = f.ops.documents_from_projection(&projection, &request)?;
+    let guide = documents.project_architecture_guide;
+    assert!(guide.markdown.content.contains("greet builds a greeting"));
+    assert!(guide.metadata.analysis_snapshots.contains(&f.analysis));
+    assert!(guide.metadata.analysis_snapshots.contains(&next));
+    assert_eq!(guide.metadata.explanations[0].subject, subject);
+    // Neither an old subject ID nor prose grants analysis membership when the
+    // independently retained preparation witness is missing or mismatched.
+    for reading in &mut projection.repository_explanations {
+        if let Some(content) = &mut reading.content {
+            content
+                .evidence
+                .retain(|e| e.record_kind != "analysis_snapshot");
+        }
+    }
+    let error = generate_documents(&projection, &request)
+        .err()
+        .ok_or("unknown analysis admitted")?;
+    assert!(error
+        .to_string()
+        .contains(&format!("unknown Analysis Snapshot {}", f.analysis)));
+    Ok(())
+}
+
+#[test]
 fn architecture_documents_consume_complete_repository_reading_without_a_work(
 ) -> Result<(), Box<dyn Error>> {
     let f = fixture()?;
