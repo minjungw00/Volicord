@@ -163,6 +163,10 @@ async function inspect(page,c,url,width,mode,language){
   await evidence.evaluate(n=>{for(let p=n.parentElement;p;p=p.parentElement)if(p.matches('details'))p.open=true;});
   await evidence.press('Enter');if(mode==='live')await frames(page);
   const point=page.locator(`[id="${href.slice(1)}"]`);assert.equal(await point.isVisible(),true,'exact Source target reachable');
+  const selectedCode=await point.getAttribute('data-cited-code');
+  await page.locator(`[id="${selectedCode}"]`).waitFor({state:'visible'});
+  assert.deepEqual(await page.locator('.appendix > .cited-code:visible').evaluateAll(ns=>ns.map(n=>n.id)),[selectedCode],
+   'only the exact selected Source window is visible across all publication panes');
   const back=point.locator('a.return').first();assert.equal(await back.getAttribute('href'),'#'+origin);
   await back.press('Enter');if(mode==='live')await frames(page);
   if(mode==='live')assert.equal(await evidence.evaluate(n=>document.activeElement===n),true,'Source focus returns to the exact activating evidence action');

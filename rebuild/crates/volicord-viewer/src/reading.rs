@@ -2587,7 +2587,8 @@ fn render_source_excerpts(
     if provenance.citations.is_empty() {
         return;
     }
-    html.push_str(&format!("<aside class=\"appendix\" role=\"region\" aria-label=\"{}\" data-reading-role=\"cited-source\" data-statement-role=\"observed-fact\">", text(r.locale,"Evidence","근거")));
+    let pane = format!("reader-{}-evidence", answers.namespace);
+    html.push_str(&format!("<aside class=\"appendix\" id=\"{pane}\" role=\"region\" aria-label=\"{}\" data-reading-role=\"cited-source\" data-statement-role=\"observed-fact\">", text(r.locale,"Evidence","근거")));
     let mut seen = std::collections::BTreeMap::new();
     let mut payloads = String::new();
     let mut metadata_blocks = String::new();
@@ -2740,7 +2741,7 @@ fn render_source_excerpts(
                         context.push_str(&format!("<p class=\"source-note\">{}</p>",text(r.locale,"Bounded file observation: surrounding code was not retained. Coordinates refer to the repository file; missing context remains unobserved.","제한된 파일 관측: 주변 코드는 보존되지 않았습니다. 좌표는 저장소 파일 기준이며 누락된 맥락은 관측되지 않았습니다.")));
                     }
                     if first_payload {
-                        selected_styles.push_str(&format!(".appendix:has(>.cited-code[data-code-key=\"{code_key}\"]:target,>.cited-code[data-code-key=\"{code_key}\"] :target)>[data-point-key=\"{point_key}\"]{{display:block}}"));
+                        selected_styles.push_str(&format!("#{pane}:has(>.cited-code[data-code-key=\"{code_key}\"]:target,>.cited-code[data-code-key=\"{code_key}\"] :target)>[data-point-key=\"{point_key}\"]{{display:block}}"));
                         payloads.push_str(&format!("<details class=\"cited-code evidence-disclosure\" id=\"{range}\" data-code-key=\"{code_key}\" data-source-id=\"{}\" data-range-sha256=\"{}\" data-default-point=\"{anchor}\" open{}><summary>{}</summary>",escape(&c.source_id),escape(&c.range_sha256),publication_scope(answers),text(r.locale,"Complete cited code","인용된 전체 코드")));
                         if let Some(origin) = &e.code_origin {
                             payloads.push_str(&format!("<p class=\"source-note code-origin\">{}: {}:{}–{} · {} {} · {} · {} {}–{}</p>",
@@ -2842,7 +2843,7 @@ fn render_source_excerpts(
                 html.push_str(&format!("<details><summary>{}</summary><p>{}: {}</p><pre>{}</pre></details>",text(r.locale,"Source identity · observed scope","Source identity · 관측 범위"),text(r.locale,"Source observed at","근거 관측 시각"),escape(&observed),escape(&format!("output: {}\nsubject: {:?}\ncitation: {c:#?}\nCanonical Work revision: {:?}\nobserved at (Unix microseconds): {:?}",provenance.realization_fingerprint,provenance.subject,excerpt.map(|e|e.work_revision),excerpt.map(|e|e.observed_at_unix_micros)))));
             }
             metadata_blocks.push_str(&format!("<details class=\"source-metadata evidence-disclosure\" id=\"{anchor}-observation-data\" data-point-key=\"{point_key}\" data-source-context=\"{anchor}\" data-source-id=\"{}\"{}><summary>{}</summary>{metadata}</details>",escape(&c.source_id),publication_scope(answers),text(r.locale,"Observation information and limits","관측 정보와 한계")));
-            selected_styles.push_str(&format!(".appendix:has(>[data-point-key=\"{point_key}\"]:target,>[data-point-key=\"{point_key}\"] :target)>:is(.cited-code[data-code-key=\"{code_key}\"],[data-point-key=\"{point_key}\"]){{display:block}}"));
+            selected_styles.push_str(&format!("#{pane}:has(>[data-point-key=\"{point_key}\"]:target,>[data-point-key=\"{point_key}\"] :target)>:is(.cited-code[data-code-key=\"{code_key}\"],[data-point-key=\"{point_key}\"]){{display:block}}"));
         }
     }
     if answers.omitted_source_excerpt_count > 0 {

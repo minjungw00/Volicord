@@ -3078,7 +3078,9 @@ records remain in that order, with the contextual header available during scroll
 
 Pane-local point/code ordinals compact derived CSS selection only. They are neither
 Source keys nor transport selectors. CSS resolves targets within their own pane;
-permission still belongs to the original publication and Source readers. Physical
+each generated rule is qualified by that pane's rendering namespace so another
+publication's equal local ordinals cannot reveal an unrelated code window.
+Permission still belongs to the original publication and Source readers. Physical
 code keys include every `same_source_range` field, excluding only claim coordinates
 and hash. Equal text, overlapping windows or a different Source/revision/observation
 never establish authority or permit a union. Expiry removes all payloads for that
