@@ -421,6 +421,11 @@ member. Missing required fields become `_semantic_omission = transport_omission`
 typed values/fields have explicit markers/counts. Product `transport_omission` objects retain
 their reason, bounds and inspection basis at the original field. Null/empty sections remain
 genuine returned absence. Omissions cannot suppress available contradictory identity or direction.
+Absent question/topic names inside a returned claim list are semantic coverage
+observations, not proof of transport truncation. Typed selection preserves the
+exact list without appending synthetic omitted claims; required DTO members and
+explicit Product byte-budget markers still produce transport omissions. A complete
+capture does not establish useful or complete explanation content.
 Recomputed consistency diagnostics report return-internal role/key/scope/action contradictions;
 the independent observation-time observer remains the factual machine-policy owner.
 Whole-field omission counts use the enclosing serialized Product DTO, not this

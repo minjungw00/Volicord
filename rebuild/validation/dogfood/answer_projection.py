@@ -189,22 +189,9 @@ def select(value, schema, path='', *, validating=False, root=False):
             result[UNKNOWN] = value[UNKNOWN]
     elif unknown and not root:
         result[UNKNOWN] = len(unknown)
-    if schema is WORK or schema is DECISION:
-        answers = result.get('answers')
-        if isinstance(answers, dict):
-            def require_questions(field, required, any_question=False):
-                claims = answers.get(field)
-                if not isinstance(claims, list):
-                    return
-                present = {c.get('question') for c in claims if isinstance(c, dict) and isinstance(c.get('question'), str)}
-                missing = not (required & present) if any_question else not required <= present
-                if missing and not any(isinstance(c, dict) and MARKER in c for c in claims):
-                    claims.append({MARKER: 'transport_omission'})
-            if schema is WORK:
-                require_questions('facts', {'RecordedNextStep', 'NextStepAvailability'}, True)
-            if answers.get('explanation_state') == 'current':
-                required = {'Purpose', 'ReportedChange', 'ExpectedEffect', 'Verification', 'NextStep'} if schema is WORK else {'UserRationale', 'Recommendation', 'Consequences', 'Applicability'}
-                require_questions('prose', required)
+    # Topic coverage belongs to semantic review, not transport reconstruction.
+    # Preserve the actual claim list, including empty lists and absent topics.
+    # Only missing DTO members or explicit Product markers establish omissions.
     return result
 
 

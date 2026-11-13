@@ -245,6 +245,32 @@ class MeaningTests(unittest.TestCase):
         self.assertFalse(missing['semantic_complete'])
         self.assertEqual(missing['omissions'], [{'pointer': '', 'reason': 'unresolvable_observation'}])
 
+    def test_absent_topics_do_not_invent_transport_claims_in_actual_capture(self):
+        _, _, _, after = lifecycle()
+        generated = after['selected_work']['answers']
+        self.answer['selected_work']['answers'] = copy.deepcopy(generated)
+        answers = self.answer['selected_work']['answers']
+        # Actual authored topics need not use a prescribed full topic inventory.
+        answers['prose'] = [c for c in answers['prose']
+                            if c['question'] not in {'ExpectedEffect', 'NextStep'}]
+        answers['facts'] = []
+        data, metadata = self.capture()
+        returned = next(v for v in review_captures.validate(data)['records']
+                        if v.get('operation') == 'recall')['body']['value']['returned_meaning']
+        self.assertEqual(returned['value']['selected_work']['answers']['prose'], answers['prose'])
+        self.assertEqual(returned['value']['selected_work']['answers']['facts'], [])
+        self.assertTrue(returned['semantic_complete'])
+        self.assertTrue(metadata['semantic_complete'])
+        # A genuine Product marker remains incomplete, without supplying prose.
+        answers['prose'].append({'transport_omission': {
+            'reason': 'serialized_byte_budget', 'omitted_count': 1,
+            'basis': 'Inspect the exact canonical record'}})
+        data, metadata = self.capture()
+        self.assertFalse(metadata['semantic_complete'])
+        returned = next(v for v in review_captures.validate(data)['records']
+                        if v.get('operation') == 'recall')['body']['value']['returned_meaning']
+        self.assertTrue(any(o['reason'] == 'transport_omission' for o in returned['omissions']))
+
     def test_genuine_absence_is_distinct_from_missing_transport(self):
         value = {'project_id': self.answer['project_id'], 'selected_work': None, 'next_step': None,
             'checkpoint': None, 'goal_basis': [], 'decisions': []}
