@@ -604,7 +604,13 @@ fn observed_changed_equal_and_missing_before_code_reach_every_reader() -> Result
             2 // article plus exact evidence-index quotation behind disclosure
         );
         assert!(
-            page.contains("aria-label=\"Choose an exact range from this explanation's evidence · ")
+            page.split("aria-label=\"")
+                .skip(1)
+                .filter_map(|attribute| attribute.split('"').next())
+                .map(code_text::decoded_html_text)
+                .any(|label| label
+                    .starts_with("Choose an exact range from this explanation's evidence · ")),
+            "the parsed accessible instruction survives safe attribute escaping"
         );
         assert!(page.contains("data-citation-targets=\"[&quot;#reader-"));
         assert!(!page.contains("<small class=\"source-label\">"));

@@ -21,12 +21,16 @@ pub fn code_texts(html: &str) -> Vec<String> {
                     _ => {}
                 }
             }
-            text.replace("&#13;", "\r")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&quot;", "\"")
-                .replace("&#39;", "'")
-                .replace("&amp;", "&")
+            decoded_html_text(&text)
         })
         .collect()
+}
+
+pub fn decoded_html_text(text: &str) -> String {
+    text.replace("&#13;", "\r")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
 }

@@ -5998,6 +5998,13 @@ after an explicitly comparable pass; negative controls keep selected failures an
 unrelated-pass/comparison-unknown alerts. Failed originals, comparison details,
 canonical state and the CLI/MCP facts remain unchanged.
 
+The first official aggregate rejected a raw-string assertion expecting a literal
+apostrophe in the evidence action's HTML attribute. Preserve that failed aggregate
+and exact test ELF. The escaped attribute decodes to the same accessible instruction;
+the control must compare decoded label text while retaining exact Source targets,
+code, claim and bilingual checks. This test correction supplies no passing gate;
+the next clean candidate still requires its own authoritative execution.
+
 ## Source-independent collector revision witnesses — 2026-11-15
 
 A copied result passed with original campaign/Runtime paths denied, but a stronger
