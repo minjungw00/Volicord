@@ -2750,6 +2750,10 @@ alone cannot. Missing witnesses still reject unknown Source references, and
 conflicting freshness is Unknown. This changes neither catalogue/output limits
 nor Source-body read permission, retention, graph/history or independent article
 lifetimes. Document metadata and grounding validation use the same witness set.
+Selected Work code topology retains its exact canonical Source-status witnesses
+when it is attached to Work reading, including Sources outside the Work-only
+canonical scope or display catalogue. Topology identity alone does not establish
+membership or currentness; unavailable and unknown states remain explicit.
 
 ### Publication-scoped reader fragments
 

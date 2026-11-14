@@ -142,3 +142,89 @@ fn known_work_sources_outside_catalogue_keep_documents_grounded_without_widening
     );
     Ok(())
 }
+
+#[test]
+fn selected_code_sources_retain_canonical_witnesses_outside_the_display_catalogue(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let f = reading_fixture::fixture_scenario(reading_fixture::rich_scenario()?)?;
+    for selection in [
+        WorkSelector::LatestWork,
+        WorkSelector::ExactWork(f.goals["older"]),
+    ] {
+        let mut p = f
+            .operations
+            .project_projection_selected(f.project, selection)?;
+        let work = p.selected_work.as_ref().ok_or("selected Work")?;
+        let id = *work
+            .reading
+            .code_source_basis
+            .first()
+            .ok_or("selected code Source")?;
+        let witness = work
+            .reading
+            .evidence_source_status
+            .iter()
+            .find(|s| s.source_id == id && s.availability.is_some())
+            .ok_or("selected code lacks its canonical Source witness")?;
+        let actual_freshness = witness.freshness;
+        let topology = p.current_work_topology.clone();
+        let history_count = p.work_history.len();
+        p.source_catalog.retain(|s| s.source.id != id);
+        let catalogue_count = p.source_catalog.len();
+        for (language, locale) in [("en", FixedLocale::English), ("ko", FixedLocale::Korean)] {
+            let request = DocumentRequest {
+                requested_language: language.into(),
+                fixed_locale: locale,
+                generated_at: TimestampMicros::from_unix_micros(1),
+                generator: GeneratorIdentity {
+                    generator: "authored-code-source-control".into(),
+                    agent: None,
+                    model: None,
+                },
+                requested_destinations: vec![],
+            };
+            let docs = generate_documents(&p, &request)?;
+            for document in [
+                &docs.project_architecture_guide,
+                &docs.decision_report,
+                &docs.implementation_plan,
+                &docs.handoff_resume,
+            ] {
+                let sources = document
+                    .metadata
+                    .used_sources
+                    .iter()
+                    .filter(|s| s.source_id == id)
+                    .collect::<Vec<_>>();
+                assert!(!sources.is_empty(), "code basis must survive export");
+                assert!(sources.iter().all(|s| s.freshness == actual_freshness));
+                assert!(!document.markdown.content.is_empty() && !document.html.content.is_empty());
+            }
+            assert_eq!(p.source_catalog.len(), catalogue_count);
+            assert_eq!(p.current_work_topology, topology);
+            assert_eq!(p.work_history.len(), history_count);
+            source_state(&mut p, id, None, SourceFreshness::Unknown);
+            let rejected = generate_documents(&p, &request)
+                .err()
+                .ok_or("code ID alone supplied membership")?;
+            assert!(rejected
+                .to_string()
+                .contains(&format!("unknown Source {id}")));
+            // Restore only the existing canonical witness for the next language.
+            let canonical = f
+                .operations
+                .project_projection_selected(f.project, selection)?;
+            let original = canonical
+                .selected_work
+                .as_ref()
+                .ok_or("Work")?
+                .reading
+                .evidence_source_status
+                .iter()
+                .find(|s| s.source_id == id)
+                .ok_or("original witness")?;
+            source_state(&mut p, id, original.availability, original.freshness);
+        }
+    }
+    Ok(())
+}

@@ -1564,6 +1564,24 @@ pub fn build_project_projection(
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
+        // Code topology is selected after canonical Work reading and has its
+        // own Source basis. Retain exact canonical witnesses even when those
+        // rows fall outside the bounded display catalogue or Work-only scope.
+        // A topology ID without a canonical row still has unknown availability.
+        let known = work
+            .reading
+            .evidence_source_status
+            .iter()
+            .map(|source| source.source_id)
+            .collect::<BTreeSet<_>>();
+        work.reading.evidence_source_status.extend(
+            crate::reading::reading_sources(inputs.canonical, &work.reading.code_source_basis)
+                .into_iter()
+                .filter(|source| !known.contains(&source.source_id)),
+        );
+        work.reading
+            .evidence_source_status
+            .sort_by_key(|source| source.source_id);
         work.reading.code_availability = if current_work_topology.entities.is_empty() {
             crate::ReadingAvailability::Unavailable
         } else if work
