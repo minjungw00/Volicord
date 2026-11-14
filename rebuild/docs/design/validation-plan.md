@@ -1708,6 +1708,14 @@ required. Static integration is rechecked at collection; it does not attest that
 the host executed the hook. Native non-Codex or malformed captures remain rejected.
 This is cooperative host-recorded evidence, not a cryptographic host attestation.
 
+A `task_complete` or `task_completed` event with a non-null `error` records an
+interruption, not successful completion, even when commands earlier in that turn
+passed. Original error bytes remain unchanged. A later successful turn uses the
+existing recovered-work contract: fresh verification and a successful terminal
+Checkpoint must follow the interruption. A terminal event name, a frontend exit
+or a later readback cannot upgrade the failed turn. Existing lifecycle states
+and capture formats suffice; no canonical or review wire schema changes follow.
+
 `collect-batch` maps all eight rollouts before publication. It checks host
 provenance, exact frozen first-turn transport identity, workspace and descendant
 revision, distinct session IDs, actual SessionStart activation, same-Work

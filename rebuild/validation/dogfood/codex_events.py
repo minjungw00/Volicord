@@ -1690,6 +1690,17 @@ class TurnLifecycle:
                    for turn in self.turns)
 
 
+def successful_task_completion(payload: dict[str, Any]) -> bool:
+    """A terminal event name alone does not establish successful completion.
+
+    Current hosts also emit task_complete with an error for usage/service
+    failures. Any non-null error, including malformed false-like values, must
+    not become success. The original error stays in the immutable capture.
+    """
+    return (payload.get("type") in {"task_complete", "task_completed"}
+            and payload.get("error") is None)
+
+
 def normalize_turn_lifecycle(events: list[dict[str, Any]]) -> TurnLifecycle:
     """Use ordered starts; identity-less completion closes only the active turn.
 
@@ -1731,7 +1742,8 @@ def normalize_turn_lifecycle(events: list[dict[str, Any]]) -> TurnLifecycle:
                 issues.append("terminal_identity_conflict")
                 continue
             turns[active] = replace(turns[active], end_sequence=sequence,
-                                    state="interrupted" if kind == "turn_aborted" else "completed")
+                                    state="completed" if successful_task_completion(payload)
+                                    else "interrupted")
             active = None
     state = (
         "indeterminate" if issues or not turns else
@@ -2542,7 +2554,7 @@ def parse_codex_capture(raw_bytes: bytes) -> CodexCapture:
                 current_turn = str(turn_id)
                 known_turn_ids.add(str(turn_id))
                 task_sequences.append(sequence)
-        elif envelope == "event_msg" and payload_type in {"task_complete", "task_completed"}:
+        elif envelope == "event_msg" and successful_task_completion(payload):
             completed_task_sequences.append(sequence)
         elif envelope == "event_msg" and payload_type == "context_compacted":
             compacted_sequences.append(sequence)

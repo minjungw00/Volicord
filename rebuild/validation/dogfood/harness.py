@@ -14003,6 +14003,20 @@ def self_test() -> int:
     assert recovered.turn_lifecycle.state == "completed_after_interruption"
     assert [turn.state for turn in recovered.turn_lifecycle.turns] == ["completed", "interrupted", "completed"]
     assert_current_work_intake_passes(current_transport_fixture, recovered, "recovered interruption")
+    for terminal_kind in ("task_complete", "task_completed"):
+        error_recovery = copy.deepcopy(recovery_events)
+        final_start = next(index for index, event in enumerate(error_recovery)
+                           if event.get("payload", {}).get("type") == "task_started"
+                           and event["payload"].get("turn_id") == recovered.turn_lifecycle.turns[-1].turn_id)
+        error_recovery.insert(final_start, {"type": "event_msg", "payload": {
+            "type": terminal_kind, "turn_id": "interrupted-turn", "last_agent_message": None,
+            "error": {"message": "Usage limit reached", "codex_error_info": "usage_limit_exceeded"}}})
+        explicit_error_recovery = recovery_capture(error_recovery)
+        assert explicit_error_recovery.turn_lifecycle.state == "completed_after_interruption"
+        assert [t.state for t in explicit_error_recovery.turn_lifecycle.turns] == ["completed", "interrupted", "completed"]
+        assert final_start not in explicit_error_recovery.completed_task_sequences
+        assert_current_work_intake_passes(current_transport_fixture, explicit_error_recovery,
+                                         "recovered errored completion")
     late_output = {"type": "response_item", "payload": {
         "type": "custom_tool_call_output", "call_id": "interrupted-command",
         "output": [{"type": "input_text", "text": 'Script completed\nWall time 0.1 seconds\nOutput:\n{"output":"late output", "exit_code":0}'}],

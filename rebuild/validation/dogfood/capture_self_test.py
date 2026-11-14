@@ -66,6 +66,65 @@ class CaptureProvenanceTests(unittest.TestCase):
                     load_codex_capture(path)
 
 
+class FailedTurnCompletionTests(unittest.TestCase):
+    """A terminal host event may report failure rather than successful work."""
+
+    load = CaptureProvenanceTests.load
+
+    def completed_events(self, kind="task_complete"):
+        events = [json.loads(line) for line in
+                  (HERE / "fixtures/current-codex-execution-evidence.jsonl").read_text().splitlines()]
+        events.append({"type": "event_msg", "payload": {
+            "type": kind, "turn_id": "sanitized-execution-turn", "error": None}})
+        return events
+
+    def test_error_completion_cannot_qualify_even_after_successful_commands(self):
+        import harness
+        for kind in ("task_complete", "task_completed"):
+            events = self.completed_events(kind)
+            baseline = self.load(events)
+            harness.require_completed_work(baseline)
+            self.assertTrue(any(c.exit_code == 0 for c in baseline.commands))
+            for error in ({"message": "Usage limit reached", "codex_error_info": "usage_limit_exceeded"},
+                          {}, "unavailable", False):
+                with self.subTest(kind=kind, error=error):
+                    changed = deepcopy(events)
+                    changed[-1]["payload"].update(error=error, last_agent_message=None)
+                    capture = self.load(changed)
+                    self.assertEqual(capture.turn_lifecycle.state, "terminal_incomplete")
+                    self.assertEqual(capture.turn_lifecycle.turns[-1].state, "interrupted")
+                    self.assertNotIn(len(changed) - 1, capture.completed_task_sequences)
+                    with self.assertRaises(harness.WorkCaptureContractError) as caught:
+                        harness.require_completed_work(capture)
+                    self.assertEqual(caught.exception.basis, "terminal_incomplete")
+
+    def test_recovery_preserves_error_and_requires_fresh_terminal_work(self):
+        import harness
+        events = self.completed_events()
+        events.extend([
+            {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "limited"}},
+            {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "limited",
+                "last_agent_message": None, "error": {"codex_error_info": "usage_limit_exceeded"}}},
+        ])
+        failed_sequence = len(events) - 1
+        failed = self.load(events)
+        self.assertEqual(failed.turn_lifecycle.state, "terminal_incomplete")
+        with self.assertRaises(harness.WorkCaptureContractError):
+            harness.require_completed_work(failed)
+        events.extend([
+            {"type": "event_msg", "payload": {"type": "task_started", "turn_id": "recovered"}},
+            {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "recovered", "error": None}},
+        ])
+        capture = self.load(events)
+        self.assertEqual(capture.turn_lifecycle.state, "completed_after_interruption")
+        self.assertEqual(capture.turn_lifecycle.last_interruption, failed_sequence)
+        self.assertNotIn(failed_sequence, capture.completed_task_sequences)
+        self.assertIn(len(events) - 1, capture.completed_task_sequences)
+        with self.assertRaises(harness.WorkCaptureContractError) as caught:
+            harness.require_completed_work(capture)
+        self.assertEqual(caught.exception.basis, "recovery_terminal_checkpoint_missing")
+
+
 class ActivationBookkeepingTests(unittest.TestCase):
     """Sanitized host schemas retain conservative activation timing controls."""
 
@@ -805,7 +864,7 @@ class CurrentExecutionTests(unittest.TestCase):
 
 def check_capture_regressions():
     suite = unittest.TestSuite(unittest.defaultTestLoader.loadTestsFromTestCase(cls)
-                               for cls in (CaptureProvenanceTests, ActivationBookkeepingTests,
+                               for cls in (CaptureProvenanceTests, FailedTurnCompletionTests, ActivationBookkeepingTests,
                                            McpCompletionTests, CurrentExecutionTests))
     result = unittest.TextTestRunner().run(suite)
     if not result.wasSuccessful():

@@ -542,6 +542,15 @@ from post-session steward plans/responses/receipts/readbacks. Neither later mate
 nor a current final bundle proves what the Product returned earlier. Generator
 identity and response-input authorship remain explicitly unverified.
 
+Host completion events can carry errors. A non-null `error` on `task_complete`
+or `task_completed` is an interruption and is excluded from successful completion
+sequences. Later success preserves that interruption and still requires the
+existing fresh-verification/terminal-Checkpoint recovery evidence. The original
+capture and earlier passing commands remain inspectable; neither can erase the
+failed turn. `capture_self_test.py` challenges both event names, false-like error
+values, earlier successful commands, and a later read-only completion; the full
+Dogfood self-test also accepts genuine recovered terminal work after such errors.
+
 ### Naturalistic workload selection
 
 The existing 3 journeys / 5 Works / 3 resume pairs / 8 sessions fit five ordinary
