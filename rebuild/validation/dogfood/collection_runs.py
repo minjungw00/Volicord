@@ -317,6 +317,35 @@ def tree_identity(root):
     return {p.relative_to(root).as_posix(): binding(p) for p in paths if p.is_file()}
 
 
+def reprocessing_basis(source, campaign, raw_paths):
+    """Use the retained first input without resetting a collected campaign."""
+    c = api()
+    if campaign['terminal_outcome'] is not None:
+        raise c.CampaignError('reprocessing requires an immutable non-stopped source')
+    if campaign['collection_state'] == 'pending':
+        c.verify_frozen_campaign(source, campaign, verify_executables=False)
+        return source, campaign, c.load_inventory(source)
+    if campaign['collection_state'] != 'collected':
+        raise c.CampaignError('reprocessing requires a pending or collected source')
+    previous = c.load_evidence_set(source)
+    run = c.read_json(source / 'collection/run.json')
+    if run['mode'] != 'live':
+        raise c.CampaignError('use the original live campaign for a later collection')
+    if sorted(c.harness.sha256(p) for p in raw_paths) != sorted(x['sha256'] for x in previous['raw_inputs']):
+        raise c.CampaignError('reprocessing requires the same collected raw inputs')
+    inputs = source / 'collection/inputs/source'
+    frozen = c.read_json(inputs / 'campaign.json')
+    if (frozen.get('collection_state') != 'pending' or frozen.get('terminal_outcome') is not None
+            or any(frozen.get(key) != campaign.get(key) for key in (
+                'campaign_id', 'campaign_root', 'candidate_head', 'candidate_artifacts', 'candidate_binary'))):
+        raise c.CampaignError('retained pre-collection campaign binding changed')
+    # The original root still owns repository/Runtime identity and frozen tasks.
+    # Only the new staging tree uses the retained pending input as its basis.
+    c.verify_frozen_campaign(source, frozen, verify_executables=False)
+    c.verify_inventory(inputs)
+    return inputs, frozen, c.load_inventory(inputs)
+
+
 def reprocess(source, raw_paths, output, *, source_sha256, rejected=(),
               exporter=None, documenter=None, snapshotter=None):
     """One immutable source; failures publish normalization plus one causal blocker."""
@@ -328,9 +357,7 @@ def reprocess(source, raw_paths, output, *, source_sha256, rejected=(),
     campaign = c.load_campaign(source)
     if c.harness.sha256(source / "campaign.json") != source_sha256:
         raise c.CampaignError("source campaign hash mismatch")
-    c.verify_frozen_campaign(source, campaign, verify_executables=False)
-    if campaign["collection_state"] != "pending" or campaign["terminal_outcome"] is not None:
-        raise c.CampaignError("reprocessing requires an immutable pending source, not a stopped Product campaign")
+    basis_root, basis_campaign, basis_inventory = reprocessing_basis(source, campaign, raw_paths)
     value, files, producers = request(source, raw_paths, mode="reprocess", rejected=rejected)
     verify_collector_revision(value)
     mapped = c.map_batch_rollouts(source, raw_paths)
@@ -342,10 +369,10 @@ def reprocess(source, raw_paths, output, *, source_sha256, rejected=(),
     stage = Path(tempfile.mkdtemp(prefix=".collection-", dir=output.parent))
     runtime_copies, runtime_before, repositories = {}, {}, {}
     try:
-        for name in c.load_inventory(source)["artifacts"]:
-            c.copy_exact(source / name, stage / name)
-        c.write_json(stage / "evidence-inventory.json", c.load_inventory(source))
-        staged = copy.deepcopy(campaign)
+        for name in basis_inventory["artifacts"]:
+            c.copy_exact(basis_root / name, stage / name)
+        c.write_json(stage / "evidence-inventory.json", basis_inventory)
+        staged = copy.deepcopy(basis_campaign)
         staged["campaign_root"] = str(stage)
         c.save_campaign(stage, staged)
         retain(stage, value, files, producers)

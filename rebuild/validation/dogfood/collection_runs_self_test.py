@@ -101,6 +101,46 @@ class CollectionTests(unittest.TestCase):
             self.process(source_sha256='00' * 32)
         self.assertFalse(self.output.exists())
 
+    def collect_original(self):
+        with patch.object(harness, 'git_head', return_value='12' * 20):
+            c.collect_batch(self.source, self.raw, exporter=fixtures.batch_exporter(self.bundles),
+                documenter=fixtures.documenter, snapshotter=fixtures.snapshotter)
+        self.before = runs.tree_identity(self.source)
+        self.hash = harness.sha256(self.source / 'campaign.json')
+
+    def test_collected_live_source_reprocesses_without_resetting_original(self):
+        self.collect_original()
+        original = c.load_evidence_set(self.source)
+        result, observed = self.process()
+        self.assertEqual(result['collection_state'], 'collected')
+        self.assertEqual(len(observed), 3)
+        self.assertEqual(c.load_evidence_set(self.source), original)
+        retained = self.output / 'collection/inputs/source'
+        self.assertEqual(c.read_json(retained / 'campaign.json')['collection_state'], 'collected')
+        self.assertEqual(c.read_json(retained / 'collection/inputs/source/campaign.json')['collection_state'], 'pending')
+        self.assertEqual(c.load_evidence_set(self.output)['raw_inputs'], original['raw_inputs'])
+        self.assertEqual(runs.verify_publication(self.output)['state'], 'verified')
+        copied = self.parent / 'copied-collected-source-publication'
+        shutil.copytree(self.output, copied)
+        self.source.rename(self.parent / 'original-live-source-unavailable')
+        self.output.rename(self.parent / 'original-reprocessing-output-unavailable')
+        self.assertEqual(runs.verify_publication(copied)['state'], 'verified')
+
+    def test_collected_source_rejects_different_raw_bytes_before_reads(self):
+        self.collect_original()
+        self.raw[0].write_bytes(self.raw[0].read_bytes() + b'\n')
+        with self.assertRaisesRegex(c.CampaignError, 'same collected raw inputs'):
+            self.process()
+        self.assertFalse(self.output.exists())
+
+    def test_collected_source_rejects_changed_original_input(self):
+        self.collect_original()
+        path = self.source / 'collection/inputs/source/campaign.json'
+        path.write_bytes(path.read_bytes() + b'\n')
+        with self.assertRaisesRegex(c.CampaignError, 'hash mismatch|changed'):
+            self.process()
+        self.assertFalse(self.output.exists())
+
     def test_recorded_producer_inventory_survives_current_dependency_addition(self):
         self.process()
         actual = runs.producer_paths()

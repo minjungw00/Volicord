@@ -399,6 +399,17 @@ still needs the authoritative gate in §3.1. Focused success is not an aggregate
 | Human observation | Personally inspected en/ko live displays, accessibility/responsiveness, multi-Work and applicable Decision comprehension | Same captured display/evidence and recorded human scope; bounded reuse only as allowed by qualitative-review owner | New displayed state, changed evidence, required omission or conflict needs actual personal observation/resolution | Personally inspect required surfaces and give judgments; agent-authored support cannot satisfy this |
 | Final qualification | Exact candidate technical evidence plus immutable campaign, evaluation, reviews, topology and required human criteria | Maintained consumer verifies original inputs; copied lineage replays only packaged claims | Missing technical evidence stays `not_provided`/unresolved; verified failed evidence blocks; invalid/inapplicable evidence rejects. Required Learning/human/coverage gaps and hard findings remain effective | Explicit replacement/Phase 9 approval only after complete qualification; no such approval is implied by preparation |
 
+After an original live campaign has been collected, a separate explanation-only
+refinement may be materialized by `reprocess-collection` from that same original
+live root. Verify its complete evidence set and require the exact same eight raw
+input hashes. Seed only the new staging tree from its retained pre-collection
+input; retain the collected source and all its artifacts as provenance. Never
+reset the source to `pending`, relocate its repository/Runtime bindings, or count
+later authored prose as first-output success. A previously reprocessed publication
+is an output, not a replacement for the original live source. The run's existing
+input and producer hashes bind this additional observation; no new conversation or
+Product candidate is inferred.
+
 Preparation and qualification consume retained evidence; neither invokes a nested
 gate nor reacquires provider authority to read it. Preserve actual verifier errors
 and prerequisite states. A successful archive check establishes recorded integrity,
