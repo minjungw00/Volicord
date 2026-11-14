@@ -5884,3 +5884,10 @@ projects and independently validates the copied steward lifecycle. Preserve the
 initial incomplete authored draft refusal. Full current-plan and exact record
 publication metadata must survive as well; diagnostics print only stage states,
 byte counts and bounded omission paths rather than entire evidence bodies.
+
+The complete MCP measurement oracle likewise compares the exact original compact
+record/response before expanding a separate current-wire view for public units,
+citations and byte windows. A flat-citation assumption previously rejected valid
+current records; retain that reproduction. Exercise original/public tampering and
+unchanged-input controls, plus actual CLI en/ko record/readback into this oracle.
+This repairs measurement tooling only, with no Product replay or decoder fallback.

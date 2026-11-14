@@ -165,6 +165,19 @@ def run(config):
                     actual = json.loads(e.bound(root, directory / 'response.json'))
                     assert projected['stages']['response']['value'] == actual
                     assert projected['stages']['record']['value']['semantic_complete']
+                    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'end-to-end/multi-repository'))
+                    from complete_read_measure import original
+                    readback = json.loads(e.bound(root, directory / 'after.json'))
+                    answers = e.subject_answers(readback, item['subject'])['answers']
+                    public = directory / 'measurement-public.json'
+                    public.write_bytes(c.json_bytes(answers))
+                    compared, _, windows = original({'realization': str(directory / 'response.json'),
+                        'recording_receipt': str(directory / 'record.json'), 'public': str(public),
+                        'repository': str(repository)})
+                    for unit, returned in zip(compared['paragraphs'], answers['prose'], strict=True):
+                        assert all(unit[key] == returned[key] for key in ('text', 'evidence_keys', 'citations'))
+                        assert returned['question'] == ''.join(word.title() for word in unit['question'].split('_'))
+                    assert windows and all(window[-1] == original_file for window in windows)
             (root / 'realization-bindings.json').write_text('{}')
             try:
                 prepare()

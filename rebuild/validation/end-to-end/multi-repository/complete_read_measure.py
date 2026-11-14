@@ -16,9 +16,13 @@ import os
 from pathlib import Path
 import statistics
 import subprocess
+import sys
 import threading
 import time
 from citation_originals import citation_bytes
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "dogfood"))
+from explanation_evidence import expanded_response_paragraphs
 
 
 def write(path, value):
@@ -117,6 +121,9 @@ def original(case):
         assert public["provenance"]["publication_id"] == receipt["publication_id"]
         case["expected_publication_id"] = receipt["publication_id"]
     assert retained["realization"] == realization
+    # Compare original wire bytes first; only the independent comparison view
+    # expands current shared provenance. Public readers are never their own oracle.
+    realization = dict(realization, paragraphs=expanded_response_paragraphs(realization))
     for key in ("project_id", "subject", "question", "generated_at_unix_micros",
                 "generator_identity_status", "semantic_approval_status"):
         assert public["provenance"][key] == retained[key]

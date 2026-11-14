@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from citation_originals import citation_bytes
+from complete_read_measure import original
 
 HERE = Path(__file__).resolve().parent
 
@@ -108,6 +109,36 @@ class Originals(unittest.TestCase):
         (self.root / "Focused assertion").write_bytes(self.body)
         self.reject(self.case, dict(self.citation, field="body"))
         self.reject(self.case, dict(self.citation, field="body", use_kind="current_code", locator="../escape"))
+
+    def test_current_wire_measurement_compares_original_facts_and_bytes(self):
+        from explanation_evidence_self_test import CitationWireTests
+        _, response, receipt, after, citation = CitationWireTests().fixture()
+        body = b'original source bytes\n'
+        path = self.root / citation['locator']; path.parent.mkdir(); path.write_bytes(body)
+        text = response['paragraphs'][0]['text'].encode()
+        coordinates = [0, len(body), 1, 1, digest(body), 0, len(text), digest(text)]
+        for item in response['paragraphs'][0]['citations']:
+            item[1:] = coordinates
+        citation.update(zip(('start_byte','end_byte','start_line','end_line','range_sha256',
+            'claim_start_byte','claim_end_byte','claim_sha256'), coordinates, strict=True))
+        public = after['selected_work']['answers']
+        public['prose'][0]['citations'] = [citation, citation]
+        public['provenance']['citations'] = [citation, citation]
+        case = {'repository': str(self.root)}
+        for name, value in [('realization',response),('recording_receipt',receipt),('public',public)]:
+            target = self.root / (name + '.json'); target.write_text(json.dumps(value))
+            case[name] = str(target)
+        before = {name: Path(case[name]).read_bytes() for name in ('realization','recording_receipt','public')}
+        compared, _, windows = original(case)
+        for unit, returned in zip(compared['paragraphs'], public['prose'], strict=True):
+            for key in ('text', 'evidence_keys', 'citations'):
+                self.assertEqual(unit[key], returned[key])
+            self.assertEqual(returned['question'], ''.join(word.title() for word in unit['question'].split('_')))
+        self.assertEqual(windows[0][-1], body)
+        self.assertEqual(before, {name: Path(case[name]).read_bytes() for name in before})
+        public['provenance']['citations'][0] = dict(citation, locator='wrong.py')
+        Path(case['public']).write_text(json.dumps(public))
+        with self.assertRaises(AssertionError): original(case)
 
 
 if __name__ == "__main__":
