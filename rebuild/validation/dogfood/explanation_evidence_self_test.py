@@ -459,6 +459,60 @@ class CitationWireTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'changed recorded claims'):
             e.validate_lifecycle(p, response, receipt, after)
 
+    def test_current_wire_is_complete_in_measured_and_steward_review_projections(self):
+        import answer_projection as projection
+        import review_captures
+        _, response, receipt, _, _ = self.fixture()
+        selected = projection.select(response, projection.RESPONSE)
+        self.assertEqual(selected, response)
+        self.assertEqual(projection.omissions(selected), [])
+        receipt['publication_id'] = '03' * 16
+        receipt['explanation']['publication_id'] = '03' * 16
+        returned = projection.project(receipt, 'explanation_record')
+        self.assertTrue(returned['semantic_complete'])
+        self.assertEqual(returned['value']['explanation']['realization'], response)
+        self.assertEqual(returned['value'], receipt)
+        self.assertEqual(projection.validate(copy.deepcopy(returned)), returned)
+        self.assertEqual(review_captures.body_projection(returned)['state'], 'retained')
+        old = copy.deepcopy(returned); old['schema_version'] = 1
+        with self.assertRaisesRegex(ValueError, 'unsupported returned answer projection'):
+            projection.validate(old)
+
+    def test_current_diagram_roles_and_paged_evidence_references_survive_selection(self):
+        import answer_projection as projection
+        preparation, response, _, _, _ = self.fixture()
+        role = {'text': 'Authored role', 'unit': 0, 'start_byte': 0, 'end_byte': 5}
+        response['diagrams'] = [{'id': 'support', 'title': role, 'caption_unit': 0,
+            'semantic_fingerprint': 'sha256:' + 'f' * 64,
+            'meaning': {'kind': 'state', 'owner': role,
+                'nodes': [{'id': 'state', 'kind': 'state', 'label': role, 'identifier': None}],
+                'relations': [{'id': 'edge', 'kind': 'transition', 'from': 'state', 'to': 'state',
+                    'label': role, 'condition': role}]}}]
+        selected = projection.select(response, projection.RESPONSE)
+        self.assertEqual(selected, response)
+        self.assertEqual(projection.omissions(selected), [])
+        reference = {'content_kind': 'paged_canonical_evidence', 'byte_length': 8000,
+                     'sha256': 'sha256:' + 'a' * 64}
+        preparation['plan']['evidence'][0]['content'] = reference
+        preparation['plan']['question_grounding'] = [{'question': 'observation', 'required_any_evidence_keys': ['goal']}]
+        prepared = projection.project({'operation': 'explanation_prepare', 'plan': preparation['plan']},
+                                      'explanation_prepare')
+        self.assertTrue(prepared['semantic_complete'])
+        self.assertEqual(prepared['value']['plan']['evidence'][0]['content'], reference)
+        self.assertEqual(prepared['value']['plan']['question_grounding'], preparation['plan']['question_grounding'])
+
+    def test_review_tuple_errors_and_unapproved_fields_remain_explicit_omissions(self):
+        import answer_projection as projection
+        _, response, _, _, _ = self.fixture()
+        original = copy.deepcopy(response)
+        response['paragraphs'][0]['citations'][0].pop()
+        self.assertTrue(projection.omissions(projection.select(response, projection.RESPONSE)))
+        response = original
+        response['citation_sources'][0]['body'] = 'UNAPPROVED_SOURCE_BODY'
+        selected = projection.select(response, projection.RESPONSE)
+        self.assertTrue(projection.omissions(selected))
+        self.assertNotIn('UNAPPROVED_SOURCE_BODY', json.dumps(selected))
+
     def test_invalid_and_old_references_never_become_public_citations(self):
         _, original, _, _, _ = self.fixture()
         for mutation in [lambda r: r.update(format_version=9),

@@ -1024,3 +1024,19 @@ generated-document metadata formats do not change. Live/CLI/MCP/native/offline
 readers and exports consume the fully restored facts and exact citations. Earlier
 stored interpretations remain original unsupported Derived state for this reader;
 canonical history and independently permitted Source evidence are not rewritten.
+
+
+### Reviewer returned-meaning representation — current schema 2
+
+The private review plane's returned-meaning envelope uses exact-current schema 2.
+Its one current selector preserves explanation-10 context/Source tables and typed
+nine-position citations in response/record observations, while ordinary public
+reading citations keep their full named fields. Invalid shape and unknown fields
+remain explicit omissions; no Source body, authority or byte limit is enlarged.
+This changes collector/reviewer representation, not Product Runtime formats or
+behavior. Keep historical schema-1 projections and their original verdicts; the
+current decoder rejects them rather than converting or writing them back.
+A current collector may reprocess unchanged original captures under a separately
+bound producer/policy and publish new evidence/reviews. Preserve the observed
+Product candidate and its applicable technical gate; collector repair alone does
+not manufacture a new Product execution or require replaying its conversations.

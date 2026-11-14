@@ -401,6 +401,19 @@ supplies omitted actual interaction. Privacy or size omissions require `insuffic
 with explicit inspected omission/availability evidence and limits, never automatic Product
 failure or silent satisfaction. This changes structural admissibility, not semantic scoring.
 
+Returned-meaning schema `2` retains the current explanation-10 response and
+record representation: context/Source provenance tables and fixed nine-position
+citation tuples. Public reading citations remain complete named-field objects.
+Current diagram labels/identifiers/state owner, paged canonical-evidence references,
+role-grounding metadata and the record wrapper publication ID are also retained.
+Both paths preserve every actual returned coordinate/hash/provenance field; an
+index is never relabeled as canonical identity. Malformed tuples and unapproved
+fields retain explicit omissions under unchanged privacy/size bounds.
+Earlier schema-1 projections remain original historical evidence. Current tooling
+does not decode or rewrite them as schema 2. A collector correction reprocesses
+unchanged original captures into a new immutable collection/review binding;
+it does not replay Product sessions or upgrade earlier observations.
+
 `answer_projection.py` owns typed return selection. `body.value.returned_meaning`
 binds schema, requested operation, selected `value`, `omissions`, `consistency_errors`
 and `semantic_complete`. Recall retains Project, selected Work identity, Checkpoint membership,

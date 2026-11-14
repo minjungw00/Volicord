@@ -36,7 +36,7 @@ def run(config):
         c.write_json(c.inventory_path(root), c.load_inventory(root))
         def prepare():
             return e.prepare(root, [raw], languages=['en', 'ko'], work_ids=[work], decision_ids=[decision])
-        def complete(prepared):
+        def complete(prepared, *, observed_source=None):
             for item in prepared['explanations']:
                 p = json.loads(e.bound(root, e.entry_path(root, item['identity']) / 'preparation.json'))
                 plan = p['plan']
@@ -53,6 +53,31 @@ def run(config):
                     'paragraphs': [{'question': q, 'text': '구조 검증 예제.' if p['language'] == 'ko' else 'Structural support example.',
                         'citations': [], 'evidence_keys': [work_keys[q] if p['subject']['kind'] == 'work' else q]} for q in sorted(
                             e.WORK_QUESTIONS if p['subject']['kind'] == 'work' else e.DECISION_QUESTIONS)]}
+                if observed_source is not None and p['subject']['kind'] == 'work':
+                    draft = {k: response[k] for k in ('plan_fingerprint', 'language', 'generator', 'diagrams')}
+                    draft['paragraphs'] = [{k: v for k, v in unit.items() if k != 'citations'} | {'sources': []}
+                                           for unit in response['paragraphs']]
+                    text = ('포함된 TypeScript 파일을 현재 코드로 관측했습니다. 이 관측은 실행 결과를 증명하지 않습니다.'
+                            if p['language'] == 'ko' else
+                            'The included TypeScript file was observed as current code; this does not prove execution.')
+                    selection = {'source_id': observed_source['source_id'], 'field': 'body',
+                                 'use_kind': 'current_code', 'start_byte': 0,
+                                 'end_byte': observed_source['bytes'], 'claim': None}
+                    draft['paragraphs'][0:0] = [
+                        {'question': 'heading', 'text': ('관측한 TypeScript 코드 읽기' if p['language'] == 'ko'
+                            else 'Read observed TypeScript code'), 'evidence_keys': ['goal'], 'sources': [selection]},
+                        {'question': 'synopsis', 'text': text, 'evidence_keys': ['goal'], 'sources': [selection]}]
+                    draft['paragraphs'].append({'question': 'observation', 'text': text, 'evidence_keys': ['goal'],
+                        'sources': [{'source_id': observed_source['source_id'], 'field': 'body',
+                                     'use_kind': 'current_code', 'start_byte': 0,
+                                     'end_byte': observed_source['bytes'], 'claim': None}]})
+                    draft_path = root / ('cited-draft-' + p['language'] + '.json')
+                    draft_path.write_bytes(c.json_bytes(draft))
+                    composed, _ = e.invoke(binary, runtime, project, ['work', 'explain', 'compose',
+                        '--work', work, '--input', str(draft_path)])
+                    response = composed['realization']
+                    assert response['citation_contexts'] and response['citation_sources']
+                    assert len(response['paragraphs'][-1]['citations'][0]) == 9
                 response_path = root / 'host-response.json'; response_path.write_bytes(c.json_bytes(response))
                 e.record(root, p['identity'], response_path)
         with patch.object(c, 'load_campaign_for_mutation', return_value=campaign), \
@@ -118,6 +143,28 @@ def run(config):
                 raise AssertionError('later incomplete obligation fell back to older success')
             complete(pending)
             e.require_ready(root, campaign, mapped)
+            # Actual current cited CLI compose/record/read -> measured/steward
+            # typed projection. No model, naturalistic claim or wider Source scope.
+            analysis, _ = e.invoke(binary, runtime, project, ['analyze'])
+            observed, _ = e.invoke(binary, runtime, project, ['work', 'source', 'observe',
+                '--work', work, '--analysis', analysis['analysis_snapshot'],
+                '--path', 'runtime/query_boundary.ts', '--retain-seconds', '3600'])
+            source_read, _ = e.invoke(binary, runtime, project, ['work', 'source', 'read',
+                '--work', work, '--source', observed['source_id']])
+            original_file = (repository / 'runtime/query_boundary.ts').read_bytes()
+            assert source_read['observation']['detail']['body'].encode() == original_file
+            cited = prepare()
+            complete(cited, observed_source={'source_id': observed['source_id'], 'bytes': len(original_file)})
+            e.require_ready(root, campaign, mapped)
+            for item in cited['explanations']:
+                if item['subject']['kind'] == 'work':
+                    directory = e.entry_path(root, item['identity'])
+                    data, metadata = review.project(root, directory / 'preparation.json', evidence_set_sha256='b' * 64)
+                    projected = review.validate(data)
+                    assert metadata['semantic_complete'], {'before_state': projected['before_state'], 'stages': {name: {'state': body['state'], 'reason': body['reason'], 'bytes': body['source_body_bytes'], 'omissions': body.get('value', {}).get('omissions', [])[:6]} for name, body in projected['stages'].items()}}
+                    actual = json.loads(e.bound(root, directory / 'response.json'))
+                    assert projected['stages']['response']['value'] == actual
+                    assert projected['stages']['record']['value']['semantic_complete']
             (root / 'realization-bindings.json').write_text('{}')
             try:
                 prepare()

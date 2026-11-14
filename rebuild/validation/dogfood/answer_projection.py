@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MARKER = '_semantic_omission'
 UNKNOWN = '_unretained_field_count'
 
@@ -54,7 +54,8 @@ CONTENT = {k: optional(t) for k, t in {
     'paths': [S], 'source_ids': [S], 'reported_change': S,
     'review_basis': [S], 'revisit_triggers': [S], 'scope': S,
     'work_contexts': [S], 'kind': S, 'goal': S, 'next_step': S,
-    'open_questions': [{'identity': S, 'revision': I}], 'forgotten_source_count': I}.items()}
+    'open_questions': [{'identity': S, 'revision': I}], 'forgotten_source_count': I,
+    'content_kind': S, 'byte_length': I, 'sha256': S}.items()}
 EVIDENCE = {'key': S, 'record_kind': S, 'identity': S, 'revision': I,
     'field': S, 'sources': [S], 'content': nullable(('union', S, CONTENT, [CONTENT]))}
 CONFLICT = {'from': ('union', S, SUBJECT, [I]), 'relation': S, 'to': ('union', S, SUBJECT, [I])}
@@ -68,10 +69,11 @@ PROVENANCE.update(publication_id=optional(S), realization_fingerprint=optional(S
 ACTION = {'work_item_id': S, 'checkpoint_id': S, 'revision': I, 'field': S,
     'recorded_text': S, 'source_ids': [S], 'source_status': [STATUS]}
 CLAIM = {'question': S, 'text': S, 'role': S, 'evidence_keys': [S], 'citations': optional([CITATION]), 'recorded_action': optional(ACTION)}
-DIAGRAM_LABEL = {'unit': I, 'start_byte': I, 'end_byte': I}
-DIAGRAM_NODE = {'id': S, 'kind': S, 'label': DIAGRAM_LABEL}
+DIAGRAM_LABEL = {'text': S, 'unit': I, 'start_byte': I, 'end_byte': I}
+DIAGRAM_NODE = {'id': S, 'kind': S, 'label': DIAGRAM_LABEL, 'identifier': nullable(DIAGRAM_LABEL)}
 DIAGRAM_EDGE = {'id': S, 'kind': S, 'from': S, 'to': S, 'label': DIAGRAM_LABEL}
 DIAGRAM_MEANING = {'kind': S, 'nodes': optional([DIAGRAM_NODE]), 'participants': optional([DIAGRAM_NODE]),
+    'owner': optional(DIAGRAM_LABEL),
     'relations': optional([{**DIAGRAM_EDGE, 'condition': nullable(DIAGRAM_LABEL)}]),
     'groups': optional([{'order': S, 'condition': nullable(DIAGRAM_LABEL), 'messages': [DIAGRAM_EDGE]}])}
 DIAGRAM = {'id': S, 'title': DIAGRAM_LABEL, 'caption_unit': I, 'semantic_fingerprint': S, 'meaning': DIAGRAM_MEANING}
@@ -187,10 +189,16 @@ DECISION['identity'] = S
 DECISION['answers'] = ANSWERS
 PLAN = {'project_id': S, 'subject': SUBJECT, 'question': S, 'requested_language': S,
     'fingerprint': S, 'evidence': [EVIDENCE], 'source_status': [STATUS], 'conflicts': [CONFLICT],
+    'question_grounding': optional([{'question': S, 'required_any_evidence_keys': [S]}]),
     'retention_budget': {k: I for k in ('response_byte_limit', 'retained_byte_limit', 'metadata_byte_reserve', 'response_byte_capacity')}}
+RESPONSE_CITATION = ('tuple', I, I, I, I, I, S, I, I, S)
+RESPONSE_CONTEXT = {k: S for k in ('analysis_snapshot_id', 'repository_snapshot_id', 'repository_source_id')}
+RESPONSE_SOURCE = {'context': I, 'source_revision': I,
+    **{k: S for k in ('source_id', 'observation_fingerprint', 'locator', 'field', 'use_kind')}}
 RESPONSE = {'diagrams': [DIAGRAM], 'format_kind': S, 'format_version': I, 'plan_fingerprint': S,
     'language': S, 'generator': GENERATOR,
-    'paragraphs': [{'question': S, 'text': S, 'evidence_keys': [S], 'citations': [CITATION]}]}
+    'paragraphs': [{'question': S, 'text': S, 'evidence_keys': [S], 'citations': [RESPONSE_CITATION]}],
+    'citation_contexts': optional([RESPONSE_CONTEXT]), 'citation_sources': optional([RESPONSE_SOURCE])}
 RECORD = {k: t for k, t in PROVENANCE.items() if k not in ('language', 'fingerprint', 'generator', 'uncited_evidence_count', 'citations')}
 RECORD['realization'] = RESPONSE
 SCHEMAS = {
@@ -203,7 +211,7 @@ SCHEMAS = {
         'selected_work_decisions': optional([DECISION])},
     'decisions': {'project_id': S, 'decisions': [DECISION], 'omissions': I},
     'explanation_prepare': {'operation': S, 'plan': PLAN},
-    'explanation_record': {'operation': S, 'explanation': RECORD},
+    'explanation_record': {'operation': S, 'publication_id': optional(S), 'explanation': RECORD},
 }
 for schema in SCHEMAS.values():
     if 'operation' not in schema:
@@ -235,6 +243,11 @@ def select(value, schema, path='', *, validating=False, root=False):
     if isinstance(schema, tuple):
         if schema[0] in {'optional', 'nullable'}:
             return select(value, schema[1], path, validating=validating)
+        if schema[0] == 'tuple':
+            if not isinstance(value, list) or len(value) != len(schema) - 1:
+                return {MARKER: 'unsupported_typed_value'}
+            return [select(v, child, pointer(path, n), validating=validating)
+                for n, (v, child) in enumerate(zip(value, schema[1:], strict=True))]
         for branch in schema[1:]:
             result = select(value, branch, path, validating=validating)
             if not isinstance(result, dict) or MARKER not in result:

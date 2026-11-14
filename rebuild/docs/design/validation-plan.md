@@ -5862,3 +5862,25 @@ representation success cannot replace actual authorship, a fresh candidate campa
 independent semantic review or human observations. Preserve deeper diagram admission
 errors revealed after the byte barrier is removed and label any authored correction
 separately from its unchanged original.
+
+
+## Current citation wire in reviewer observations — 2026-11-14
+
+A valid current cited response passed Product/lifecycle validation but the older
+review selector emitted three false omissions: two citation tuples and the shared
+provenance tables. Preserve that first reproduced failure. Reviewer returned-meaning
+schema 2 must retain exact current tuples/tables in both measured operation and
+steward response/record paths, without widening body retention or interpretation.
+Positive controls compare complete selected response facts, receipt projection,
+roundtrip validation and privacy-body admission. Negative controls reject the old
+projection envelope and preserve malformed tuple/unapproved body omissions. Run
+the coupled meaning/capture/review/collection replay consumers. Keep Product
+candidate execution and collector identity separate: repair the collector and
+reprocess unchanged captures rather than replaying conversations for a tooling fix.
+
+The actual CLI support now explicitly observes one included fixture file, composes
+complete en/ko cited articles, records/reads them through the real Product, then
+projects and independently validates the copied steward lifecycle. Preserve the
+initial incomplete authored draft refusal. Full current-plan and exact record
+publication metadata must survive as well; diagnostics print only stage states,
+byte counts and bounded omission paths rather than entire evidence bodies.
