@@ -2168,6 +2168,71 @@ fn diagram_semantics_and_nested_bindings_cannot_bypass_admission() -> Result<(),
 }
 
 #[test]
+fn spatial_entry_has_an_exact_native_location_before_the_canvas() -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    let mut r = diagram_control(&f, false)?;
+    let DiagramMeaning::Concept { nodes, relations } = &mut r.diagrams[0].meaning else {
+        return Err("fixture concept".into());
+    };
+    for (id, wording) in [("extra-a", "retained result"), ("extra-b", "acceptance")] {
+        let mut node = nodes[0].clone();
+        node.id = id.into();
+        let start = r.paragraphs[1].text.find(wording).ok_or("extra label")?;
+        node.label = DiagramLabel {
+            text: wording.into(),
+            unit: 1,
+            start_byte: start,
+            end_byte: start + wording.len(),
+        };
+        nodes.push(node);
+        let mut relation = relations[0].clone();
+        relation.id = format!("link-{id}");
+        relation.to = id.into();
+        relations.push(relation);
+    }
+    seal_diagrams(&mut r)?;
+    f.ops.record_explanation(
+        f.project,
+        ExplanationSubject::Repository(f.analysis),
+        "en",
+        r.clone(),
+    )?;
+    for (locale, label) in [("en", "Locate in diagram:"), ("ko", "도식에서 찾기:")] {
+        let live = f.get(&format!("/?view=repository&locale={locale}"))?;
+        let destination = f.temp.path().join(format!("spatial-entry-{locale}.html"));
+        let mut request = f.request();
+        request.locale = if locale == "en" {
+            ViewerLocale::English
+        } else {
+            ViewerLocale::Korean
+        };
+        ViewerAdapter::new(LocalOperations::new(f.ops.layout().clone()))
+            .export_snapshot(&request, &destination)?;
+        let offline = fs::read_to_string(destination)?;
+        for html in [&live, &offline] {
+            let link = html
+                .split("data-diagram-start data-diagram-target=\"")
+                .nth(1)
+                .ok_or("native entry location")?;
+            let target = link.split('"').next().ok_or("entry target")?;
+            assert!(target.ends_with("-admit"));
+            assert!(link.starts_with(&format!("{target}\" href=\"#{target}\"")));
+            assert!(link
+                .split("</a>")
+                .next()
+                .ok_or("entry wording")?
+                .contains(label));
+            assert!(html.contains(&format!("<a id=\"{target}\"")));
+            assert!(html.find("data-diagram-start") < html.find("class=\"diagram-viewport\""));
+            assert!(html.contains("data-native-scale=\"read\""));
+            assert!(html.contains("data-native-scale=\"fit\""));
+        }
+    }
+    assert_eq!(f.answers()?.diagrams, r.diagrams);
+    Ok(())
+}
+
+#[test]
 fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(), Box<dyn Error>> {
     let f = Fixture::new()?;
     let subject = ExplanationSubject::Repository(f.analysis);

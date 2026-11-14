@@ -710,6 +710,17 @@ fn render_diagrams(
         ) {
             Ok(svg) => {
                 if svg.contains("class=\"connected-overview spatial-world\"") {
+                    if let Some(node) = d.nodes().first() {
+                        let label =
+                            volicord_projections::diagram_label(&node.label, &texts).unwrap_or("");
+                        visual.push_str(&format!(
+                            "<p class=\"diagram-start\"><a data-diagram-start data-diagram-target=\"{ns}-{}\" href=\"#{ns}-{}\">{} {}</a></p>",
+                            escape(&node.id),
+                            escape(&node.id),
+                            text(r.locale, "Locate in diagram:", "도식에서 찾기:"),
+                            escape(label)
+                        ));
+                    }
                     visual.push_str(&format!(
                         "<fieldset class=\"native-diagram-controls\"><legend>{}</legend>",
                         text(r.locale, "Figure view", "도식 보기")

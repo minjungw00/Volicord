@@ -13,6 +13,12 @@ return; Source denial clears code and origin together.
 Status: accepted experience requirements, adopted 2026-10-19. Implementation,
 focused technical checks, semantic quality and human acceptance are separate.
 
+Readable spatial entry retains the selected 75% minimum and Fit width control.
+Its initial camera locates the first declared node rather than assuming that
+the layout origin contains content. A visible, localized link to that same
+admitted node also supports native script-free navigation. This location is a
+reading entry, not an inferred causal start or newly authored diagram meaning.
+
 This is the maintained entry for D-01–D-37 and AC-01–AC-35.
 D-19–D-27 adopt the subsequent 2026-10-19 user decisions; they do not
 retroactively qualify the rejected review_101901 output. Specialized owners

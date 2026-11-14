@@ -173,7 +173,10 @@ async function nativeLinkNavigation(page, link, receipt) {
           await element.focus();
           // Native SVG focus can scroll its viewport. Observe selection only
           // after that separate keyboard-navigation action has settled.
-          await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+          // Native no-JS documents do not schedule animation callbacks. Force
+          // layout synchronously there; enabled documents still settle paint.
+          if(mode==='no-js') await element.evaluate(n=>n.getBoundingClientRect().toJSON());
+          else await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
           await page.evaluate(id=>{window.__diagramActivation=null;document.addEventListener('click',event=>{const n=event.target.closest('a.diagram-element');if(n?.id===id){const v=n.closest('.diagram-viewport');window.__diagramActivation={left:v.scrollLeft,top:v.scrollTop,y:scrollY,viewportTop:v.getBoundingClientRect().top,elementTop:n.getBoundingClientRect().top,figureTop:n.closest('figure').scrollTop,figurePosition:getComputedStyle(n.closest('figure')).position,figureRect:n.closest('figure').getBoundingClientRect().toJSON(),meaning:[...n.querySelectorAll('text')].map(t=>({text:t.textContent,box:t.getBoundingClientRect()})).filter(t=>t.box.height>0&&t.box.top>=160&&t.box.bottom<=innerHeight).map(t=>({text:t.text,top:t.box.top,left:t.box.left}))};}},{capture:true});},elementId);
           const task={unit_index:c.unit,citation_index:c.citation,citation,realization_fingerprint:pub.provenance.realization_fingerprint};
           const pending=mode==='live'?citationResponse(page,task,0):null;

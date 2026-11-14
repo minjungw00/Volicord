@@ -34,6 +34,13 @@
     body realization으로 검증하고, 불가능하면 explicit unavailable/degraded를
     성공 fallback과 구분한다.
 
+Spatial entry controls retain the ordinary initial screen before selection.
+Readable camera placement must expose admitted content even when the layout
+origin is empty; script-free output retains an exact native location link.
+No-JS browser controls inspect synchronous layout rather than awaiting animation
+callbacks that disabled page scripting cannot schedule. Observer failures remain
+separate from Product failures and keep their original streams and screenshots.
+
 Maintained Wave 1 asset은 capability 기준 경로인
 `rebuild/validation/repository-intelligence/polyglot-structural/`,
 `rebuild/validation/canonical-context/portability/`와

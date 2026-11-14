@@ -41,6 +41,9 @@ function createReaderFigures({lifetime,modal}) {
   function fit(scene,all=false,minimum=0) {
     scale(scene,Math.max(minimum,Math.min(1,(scene.viewport.clientWidth-24)/scene.width,all?(scene.viewport.clientHeight-88)/scene.height:1)));
     scene.viewport.scrollTo(0,0);scene.entry=all?false:minimum?'readable':'width';
+    // A spatial layout may put its first node far from the world's origin.
+    // Keep readable entry on admitted content rather than empty route space.
+    if(minimum)center(scene,anchor(scene,scene.figure.querySelector('[data-diagram-start]')?.dataset.diagramTarget));
   }
   function inset(scene) {
     const controls=scene.figure.querySelector('.diagram-controls');
@@ -171,7 +174,7 @@ function createReaderFigures({lifetime,modal}) {
     if(start&&event.button===0&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey){
       const scene=scenes.get(start.closest('.admitted-diagram'));if(!scene)return;
       const node=anchor(scene,start.dataset.diagramTarget);if(!node)return;event.preventDefault();scene.entry=false;
-      start.closest('details').open=false;select(scene,node);
+      const menu=start.closest('details');if(menu)menu.open=false;select(scene,node);
       if(scene.scale<.75)scale(scene,.75);center(scene,node);node.focus({preventScroll:true});return;
     }
     const control=event.target.closest('button[data-diagram-action]');if(!control)return;
