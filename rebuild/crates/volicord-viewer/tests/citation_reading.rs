@@ -2300,6 +2300,15 @@ fn portable_documents_keep_readable_diagram_roles_and_rows() -> Result<(), Box<d
             realization.diagrams,
             "document reads cannot rewrite admitted meaning"
         );
+        let answers = f.answers()?;
+        let prose = answers
+            .prose
+            .iter()
+            .map(|p| p.text.as_str())
+            .collect::<Vec<_>>();
+        assert!(answers
+            .text()
+            .contains(&diagram_text(&realization.diagrams[0], &prose)?));
     }
     Ok(())
 }

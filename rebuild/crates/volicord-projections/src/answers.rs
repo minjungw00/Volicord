@@ -206,6 +206,14 @@ impl QuestionAnswers {
             .and_then(|a| a.recorded_action.as_ref())
     }
     pub fn text(&self) -> String {
+        self.render_text(false)
+    }
+    /// Generated documents use admitted reading roles, while inspection text
+    /// retains the complete diagram identity coordinates.
+    pub(crate) fn document_text(&self) -> String {
+        self.render_text(true)
+    }
+    fn render_text(&self, document: bool) -> String {
         let answer_text = |a: &QuestionAnswer| {
             let references = a
                 .citations
@@ -233,11 +241,15 @@ impl QuestionAnswers {
             parts.push(answer_text(answer));
             for diagram in self.diagrams.iter().filter(|d| d.caption_unit == index) {
                 parts.push(
-                    crate::diagram::diagram_reading_text_localized(
-                        diagram,
-                        &texts,
-                        self.fixed_locale,
-                    )
+                    (if document {
+                        crate::diagram::diagram_reading_text_localized(
+                            diagram,
+                            &texts,
+                            self.fixed_locale,
+                        )
+                    } else {
+                        crate::diagram_text(diagram, &texts)
+                    })
                     .unwrap_or_else(|_| {
                         fixed(
                             self.fixed_locale,
@@ -297,14 +309,14 @@ impl QuestionAnswers {
             scopes.push(format!(
                 "{}: {}",
                 fixed(self.fixed_locale, "Work name", "작업 이름"),
-                name.text()
+                name.render_text(document)
             ));
         }
         if let Some(summary) = &self.work_summary {
             scopes.push(format!(
                 "{}: {}",
                 fixed(self.fixed_locale, "Work summary", "작업 요약"),
-                summary.text()
+                summary.render_text(document)
             ));
         }
         scopes.push(format!(

@@ -1345,7 +1345,10 @@ caption before later prose and supporting facts. It preserves explicit node name
 and identifiers, directed endpoints, kinds, guards, state owner and sequence/parallel
 group meaning without exposing internal diagram/node/edge IDs as primary prose.
 Those inspection coordinates remain in the unchanged structured publication and
-its provenance. Markdown uses explicit row breaks; HTML preserves whitespace and
+its provenance, and in the existing full CLI inspection text. Generated-document
+claims select the readable representation explicitly; inspection text must still
+include the complete diagram alternative with exact node/edge/message identities.
+Markdown uses explicit row breaks; HTML preserves whitespace and
 wraps long names. This is the document's labelled linear reading, distinct from
 the Viewer's graphical layout. It changes no diagram admission, stored meaning,
 Source scope, metadata shape or adoption authority.

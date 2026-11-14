@@ -699,7 +699,7 @@ fn architecture_body(
             } else {
                 ClaimClass::DeterministicDerived
             },
-            text: crate::decision_answers(decision, language, locale).text(),
+            text: crate::decision_answers(decision, language, locale).document_text(),
             source_basis: decision.source_basis.clone(),
             decision_basis: vec![decision.decision_id],
             analysis_basis: Vec::new(),
@@ -792,7 +792,7 @@ fn repository_explanation_section(
             } else {
                 ClaimClass::DeterministicDerived
             },
-            text: answers.text(),
+            text: answers.document_text(),
             source_basis,
             decision_basis: Vec::new(),
             analysis_basis,
@@ -827,7 +827,7 @@ fn decision_body(
                 } else {
                     ClaimClass::DeterministicDerived
                 },
-                text: crate::decision_answers(decision, language, locale).text(),
+                text: crate::decision_answers(decision, language, locale).document_text(),
                 source_basis: decision.source_basis.clone(),
                 decision_basis: vec![decision.decision_id],
                 analysis_basis: Vec::new(),
@@ -1129,7 +1129,7 @@ fn work_summary_claim(
         } else {
             ClaimClass::DeterministicDerived
         },
-        text: answers.text(),
+        text: answers.document_text(),
         source_basis: work
             .source_basis
             .iter()
@@ -1273,7 +1273,7 @@ fn decision_summary_section(
             } else {
                 ClaimClass::DeterministicDerived
             },
-            text: crate::decision_answers(decision, language, locale).text(),
+            text: crate::decision_answers(decision, language, locale).document_text(),
             source_basis: decision.source_basis.clone(),
             decision_basis: vec![decision.decision_id],
             analysis_basis: Vec::new(),
