@@ -134,7 +134,7 @@ pub(super) fn graph(
                 + 20 * lines(&associations[i], label_width - 24, 13)
                 + e.condition
                     .as_ref()
-                    .map(|l| label(l).map(|s| 24 * lines(s, label_width - 24, 16)))
+                    .map(|l| label(l).map(|s| 4 + 24 * lines(s, label_width - 24, 16)))
                     .transpose()?
                     .unwrap_or(0)
                 + if common_edges {
@@ -147,7 +147,7 @@ pub(super) fn graph(
                 } else {
                     owner
                         .as_ref()
-                        .map_or(0, |s| 24 * lines(s, label_width - 24, 16) + 8)
+                        .map_or(0, |s| 4 + 24 * lines(s, label_width - 24, 16) + 8)
                 }
                 + 24)
         })
@@ -256,6 +256,7 @@ pub(super) fn graph(
         }
         if !spatial {
             if let Some(owner) = &owner {
+                y += 4; // 13px support to 16px body: preserve native glyph clearance.
                 sized_text(&mut out, r.x + r.w / 2, y, owner, r.w - 24, 16, 24);
                 y += 24 * lines(owner, r.w - 24, 16) + 8;
             }
@@ -267,7 +268,7 @@ pub(super) fn graph(
             sized_text(
                 &mut out,
                 r.x + r.w / 2,
-                y,
+                y + 4,
                 label(condition)?,
                 r.w - 24,
                 16,

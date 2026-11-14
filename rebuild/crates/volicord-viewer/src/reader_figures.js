@@ -46,8 +46,7 @@ function createReaderFigures({lifetime,modal}) {
     if(minimum)center(scene,anchor(scene,scene.figure.querySelector('[data-diagram-start]')?.dataset.diagramTarget));
   }
   function inset(scene) {
-    const controls=scene.figure.querySelector('.diagram-controls');
-    const top=Math.max(76,(controls?.offsetHeight||0)+24)+'px';
+    const top='12px'; // Controls occupy their own row outside the scrollable world.
     const changed=scene.svg.style.marginTop!==top;scene.svg.style.marginTop=top;return changed;
   }
   function size(scene) {

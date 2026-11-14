@@ -19,6 +19,11 @@ with behavioral qualification separate from version selection. Any dependency
 upgrade must revisit binding-specific ownership handling; it does not authorize
 a version-dependent production branch or retained conversion.
 
+Graph glyph clearance uses layout metrics identity `2` in the existing local
+engine key. The admitted diagram and renderer 23 remain unchanged; geometry is
+recomputed under the new metrics key, without another explanation decoder or
+rewriting retained publication meaning. Temporal layout metrics remain independent.
+
 - 상태: active specialized architecture owner
 - 소유 범위: new-product canonical schema와 portable/analysis/derived/document format의
   독립 version boundary, current-only read/write behavior, deterministic serialization,

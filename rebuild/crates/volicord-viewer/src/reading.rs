@@ -713,7 +713,7 @@ fn render_diagrams(
                     if let Some(node) = d.nodes().first() {
                         let label =
                             volicord_projections::diagram_label(&node.label, &texts).unwrap_or("");
-                        visual.push_str(&format!(
+                        html.push_str(&format!(
                             "<p class=\"diagram-start\"><a data-diagram-start data-diagram-target=\"{ns}-{}\" href=\"#{ns}-{}\">{} {}</a></p>",
                             escape(&node.id),
                             escape(&node.id),

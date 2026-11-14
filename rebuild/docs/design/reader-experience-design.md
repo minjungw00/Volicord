@@ -19,6 +19,13 @@ the layout origin contains content. A visible, localized link to that same
 admitted node also supports native script-free navigation. This location is a
 reading entry, not an inferred causal start or newly authored diagram meaning.
 
+Graph relation panels reserve explicit clearance when 13px supporting wording
+precedes a 16px owner or condition. Label geometry and its cache metrics identity
+include that clearance; multilingual glyph bounds are checked in actual consumers.
+Diagram controls occupy a separate row above the scrollable world, so camera
+movement cannot put labels or relationship cards beneath them. The same controls,
+75% entry, direct scale input and Fit width remain available in their existing card.
+
 This is the maintained entry for D-01–D-37 and AC-01–AC-35.
 D-19–D-27 adopt the subsequent 2026-10-19 user decisions; they do not
 retroactively qualify the rejected review_101901 output. Specialized owners

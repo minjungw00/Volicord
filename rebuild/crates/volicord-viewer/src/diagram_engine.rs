@@ -11,7 +11,7 @@ use std::{
 };
 
 pub(super) const ENGINE_ID: &str =
-    "elkjs/0.11.1;quickjs-ng/rquickjs-0.11.0;layered-polyline/1;metrics/1;worker/1";
+    "elkjs/0.11.1;quickjs-ng/rquickjs-0.11.0;layered-polyline/1;metrics/2;worker/1";
 const SOURCE: &str = include_str!("../vendor/elkjs/elk.bundled.js");
 const HEAP_LIMIT: usize = 64 * 1024 * 1024;
 pub(super) const OUTPUT_LIMIT: usize = 262_144;
