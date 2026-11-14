@@ -4257,6 +4257,17 @@ span, required viewport travel, complete canvas, font and renderer identities.
 Full-canvas diagnostic images supplement unchanged desktop/narrow live viewport
 screenshots; neither replaces code, lifecycle, focus/history or publication controls.
 
+Actual native export navigation also runs through
+`native_diagram_location_browser.cjs`: configured public figures, widths and
+available fit/read/full modes retain exact native target identity and selected
+scale while the painted target clears sticky navigation. Small responsive graphs
+need the same visible first-item route even when node/edge counts are low. A
+disposable export without native zoom compensation must fail independently.
+These are supporting geometry observations, separate from semantic judgment,
+complete critical Source reads and actual Human accessibility experience. An
+explicit shared-bound Source omission remains an unmet complete-byte scope,
+including when its unavailable-state presentation and live paging are correct.
+
 `diagram_geometry_browser.cjs` separately consumes renderer stress fixtures emitted
 by `volicord-viewer --lib` with `VOLICORD_LAYOUT_REVIEW_ROOT` set to a fresh ignored
 directory. These are authored layout controls, not admitted repository facts: 96-scalar

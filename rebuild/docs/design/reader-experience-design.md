@@ -1302,6 +1302,15 @@ passes. The general graph policy now applies the selected spacious reading princ
 to complex concept/component/flow/state graphs (more than three nodes or four edges).
 Small graphs keep their native responsive inline layout; this is not an all-diagram
 canvas or adoption of unrelated hand-positioned A/B/C reference examples.
+An inline graph can still exceed a narrow viewport because of its admitted labels
+or transition wording. It retains the same native first-item location link as a
+larger graph, and live entry aligns that actual item without selecting a claim,
+changing scale or replacing the responsive layout. Script-free reading retains
+the exact native anchor and labelled scroll region. This is navigation order,
+not an inferred initial state.
+Native fragment navigation compensates the diagram's CSS zoom when clearing the
+fixed header and outline. The page-pixel clearance stays constant at the selected
+native scale; neither the layout nor the user's scale is changed by this offset.
 
 Directed component layers run horizontally with content-sized boxes and separate
 relationship/guard corridors. Strongly connected components, stable ordering, facing

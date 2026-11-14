@@ -2299,6 +2299,14 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
             .export_snapshot(&f.request(), &destination)?;
         let offline = fs::read_to_string(destination)?;
         for text in [&html, &offline] {
+            let entry = text
+                .split("data-diagram-start data-diagram-target=\"")
+                .nth(1)
+                .ok_or("inline diagram needs a native starting location")?;
+            let target = entry.split('"').next().ok_or("entry target")?;
+            assert!(target.ends_with("-admit"));
+            assert!(text.contains(&format!("<a id=\"{target}\"")));
+            assert!(text.find("data-diagram-start") < text.find("class=\"diagram-viewport\""));
             assert!(text.contains("volicord-static-svg/23"));
             assert!(text.contains(if shape == "state" {
                 "State owner: Admission"

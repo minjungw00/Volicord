@@ -41,7 +41,12 @@ const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'
     await figure.evaluate((n,control)=>{
       const viewport=n.querySelector('.diagram-viewport');
       if(control==='missing-navigation'){viewport.style.width='100px';viewport.removeAttribute('aria-label');viewport.removeAttribute('tabindex');}
-      if(control==='missing-start')n.querySelector(':scope > .diagram-full-view svg').style.transform='translateX(10000px)';
+      if(control==='missing-start'){
+       n.querySelector(':scope > .diagram-full-view svg').style.transform='translateX(10000px)';
+       // Deliberately remove both legitimate entry routes. A visible native
+       // location still supplies a readable start when the map needs travel.
+       n.querySelector('[data-diagram-start]')?.setAttribute('style','display:none');
+      }
       if(control==='missing-purpose')n.querySelector('figcaption').textContent='';
     },control);
     const observed=await observeOverview(figure,d);

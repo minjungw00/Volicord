@@ -65,7 +65,11 @@ function createReaderFigures({lifetime,modal}) {
         scale(scene,scene.scale);
       }
     }
-    if(scene.entry&&scene.spatial)fit(scene,false,scene.entry==='readable'?.75:0);
+    // A small responsive graph can still need horizontal travel when its
+    // admitted transition wording is long. Start on its first actual node,
+    // retaining its native layout and scale rather than empty route space.
+    if(scene.entry==='inline')center(scene,anchor(scene,scene.figure.querySelector('[data-diagram-start]')?.dataset.diagramTarget));
+    else if(scene.entry&&scene.spatial)fit(scene,false,scene.entry==='readable'?.75:0);
     else if(scene.selected)center(scene,anchor(scene,scene.selected));
     clamp(scene);
   }
@@ -102,7 +106,7 @@ function createReaderFigures({lifetime,modal}) {
     const svg=figure.querySelector('svg'),viewport=svg?.closest('.diagram-viewport');if(!svg||!viewport)continue;
     const spatial=svg.classList.contains('spatial-world');
     const controller=new AbortController();
-    const scene={figure,svg,viewport,spatial,controller,scale:1,entry:spatial?'readable':false,selected:null,
+    const scene={figure,svg,viewport,spatial,controller,scale:1,entry:spatial?'readable':'inline',selected:null,
       width:Number(svg.getAttribute('width')),height:Number(svg.getAttribute('height')),disconnect:null};
     scenes.set(figure,scene);figure.querySelector('.diagram-controls').hidden=false;
     figure.dataset.cameraReady='true';

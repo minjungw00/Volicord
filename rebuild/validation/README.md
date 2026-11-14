@@ -1594,6 +1594,16 @@ Entry instrumentation is installed before navigation; article-entry screenshots
 are preserved before ordinary vertical navigation to each figure. Native no-JS
 observations remain separate from JavaScript event-instrumented controls.
 
+`native_diagram_location_browser.cjs CONFIG` uses the same actual-publication
+case paths to check script-free first-item links at each configured width and
+available native scale. It uses native keyboard scale selection and verifies the
+exact fragment and painted label below sticky navigation, without changing the
+selected scale. Its screenshots and geometry do not establish Source completeness
+or Human comprehension. Removing only native zoom compensation from a disposable
+export must reproduce the clearance failure. Source windows omitted by the shared
+bound retain their explicit unavailable scope; they cannot pass the separate
+critical-code completeness assertion.
+
 The native document-navigation driver checks HTML and SVG fragment attributes
 through `reader_fragments.cjs`. Diagram-bearing cases provide `public` (the full
 current public answers JSON): figure entries must retain all admitted titles,

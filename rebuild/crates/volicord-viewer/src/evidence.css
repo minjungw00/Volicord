@@ -352,10 +352,12 @@ body[data-reader-enhanced=true] .appendix .evidence-original:not([hidden]),body:
 .native-diagram-controls label:has(input:checked){background:var(--wash);color:var(--accent)}
 .native-diagram-controls label:has(input:focus-visible),.native-figure-toggle:focus-visible~.figure-panel-header{outline:2px solid var(--accent);outline-offset:2px}
 .admitted-diagram:not([data-camera-ready=true]) .native-diagram-controls{display:flex}
-.admitted-diagram:not([data-camera-ready=true]) .diagram-viewport>svg.spatial-world{zoom:clamp(.75,calc((100cqw - 24px)/var(--map-wide-width)),1)}
-.admitted-diagram:not([data-camera-ready=true]):has([data-native-scale=fit]:checked) .diagram-viewport>svg.spatial-world{zoom:min(1,calc((100cqw - 24px)/var(--map-wide-width)))}
-.admitted-diagram:not([data-camera-ready=true]):has([data-native-scale=read]:checked) .diagram-viewport>svg.spatial-world{zoom:.75}
-.admitted-diagram:not([data-camera-ready=true]):has([data-native-scale=full]:checked) .diagram-viewport>svg.spatial-world{zoom:1}
+.admitted-diagram:not([data-camera-ready=true]) .diagram-viewport>svg.spatial-world{--native-diagram-zoom:clamp(.75,calc((100cqw - 24px)/var(--map-wide-width)),1);zoom:var(--native-diagram-zoom)}
+.admitted-diagram:not([data-camera-ready=true]):has([data-native-scale=fit]:checked) .diagram-viewport>svg.spatial-world{--native-diagram-zoom:min(1,calc((100cqw - 24px)/var(--map-wide-width)))}
+.admitted-diagram:not([data-camera-ready=true]):has([data-native-scale=read]:checked) .diagram-viewport>svg.spatial-world{--native-diagram-zoom:.75}
+.admitted-diagram:not([data-camera-ready=true]):has([data-native-scale=full]:checked) .diagram-viewport>svg.spatial-world{--native-diagram-zoom:1}
+/* Native SVG fragments inherit zoom; keep their clearance in page pixels. */
+.admitted-diagram:not([data-camera-ready=true]) svg.connected-overview.spatial-world [id]{scroll-margin-top:calc((var(--mobile-header) + 78px)/var(--native-diagram-zoom))}
 .admitted-diagram:not([data-camera-ready=true]) .diagram-viewport:has(>svg.spatial-world){padding-top:12px}
 .admitted-diagram:not([data-camera-ready=true]) .diagram-viewport>svg.spatial-world{margin-top:0}
 .native-figure-toggle{display:none}
