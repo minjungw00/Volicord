@@ -43,7 +43,15 @@ async function observeOverview(figure, diagram) {
     const claims=[...figure.querySelectorAll('.diagram-claim')].filter(visible);
     if(claims.length)errors.push('detail selected before orientation');
     const b=svg?.getBoundingClientRect();
-    if(controls&&visible(controls)){const c=controls.getBoundingClientRect();if(c.top<b.top&&c.bottom>b.top+1)errors.push('figure controls obscure the map');}
+    if(controls&&visible(controls)){
+      const c=controls.getBoundingClientRect();
+      // The camera can scroll blank world bounds beneath its controls. Check
+      // actual rendered wording/cards rather than the SVG canvas rectangle.
+      const covered=[...svg.querySelectorAll('text,.participant-box,.edge-key,.message-label')].filter(inViewport).some(n=>{
+        const r=n.getBoundingClientRect();return Math.min(c.right,r.right,bounds?.right??Infinity)-Math.max(c.left,r.left,bounds?.left??-Infinity)>1&&Math.min(c.bottom,r.bottom,bounds?.bottom??Infinity)-Math.max(c.top,r.top,bounds?.top??-Infinity)>1;
+      });
+      if(covered)errors.push('figure controls obscure the map');
+    }
     return {errors,readable_entry:belowReadingSize===0,belowReadingSize,fit_orientation:!!fitOrientation,initialInteractions,travel,nodes:nodes.length,renderedGlyphRuns:glyphs.length,canvas:b?{width:b.width,height:b.height}:null,scroll:{pageY:scrollY,left:viewport?.scrollLeft,top:viewport?.scrollTop},classification:'technical supporting observation; comprehension assessment remains separate'};
   },{nodes,sequence:diagram.meaning.kind==='sequence'});
 }

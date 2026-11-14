@@ -40,6 +40,9 @@ origin is empty; script-free output retains an exact native location link.
 No-JS browser controls inspect synchronous layout rather than awaiting animation
 callbacks that disabled page scripting cannot schedule. Observer failures remain
 separate from Product failures and keep their original streams and screenshots.
+Entry obstruction checks intersect actual rendered wording/cards with the clipped
+viewport, rather than treating blank SVG bounds as content. An actual-page positive
+control and a test-only toolbar overlay must respectively pass and reject.
 
 Maintained Wave 1 asset은 capability 기준 경로인
 `rebuild/validation/repository-intelligence/polyglot-structural/`,
