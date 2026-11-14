@@ -1716,6 +1716,18 @@ Checkpoint must follow the interruption. A terminal event name, a frontend exit
 or a later readback cannot upgrade the failed turn. Existing lifecycle states
 and capture formats suffice; no canonical or review wire schema changes follow.
 
+Naturalistic shared recorded-action inspection separates visible contradictions
+from exact Product transport omissions. A valid same-field terminal facts-suffix
+marker, whole `facts` field marker, or whole `recorded_action` basis marker records
+unobserved evidence; it cannot establish action correctness or genuine absence.
+Visible Project/Work/Checkpoint, direction, quotation, role and key contradictions
+remain hard. Foreign, malformed, unmarked and misplaced omissions do not excuse
+missing required meaning. The shared result carries errors and omissions separately;
+Naturalistic observations retain omissions as limits, while the fixed V11 restart
+oracle rejects either. Preserve original false-blocked evaluations and append
+corrected unchanged-original collection/evaluation; no Product replay or schema change.
+
+
 `collect-batch` maps all eight rollouts before publication. It checks host
 provenance, exact frozen first-turn transport identity, workspace and descendant
 revision, distinct session IDs, actual SessionStart activation, same-Work

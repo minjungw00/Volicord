@@ -266,6 +266,67 @@ class AnswerTests(unittest.TestCase):
         self.assertEqual(fact['status'], 'confirmed_pass')
         self.assertEqual(result['checks']['recall_matches_checkpoint_decision_and_context'], 'passed', result['task_goal_basis'])
 
+    def test_marked_recorded_action_loss_remains_indeterminate(self):
+        import runpy
+        shared_answer_errors = runpy.run_path(str(Path(__file__).resolve().parents[1] /
+            "end-to-end/multi-repository/restart_recall.py"))["shared_answer_errors"]
+        tail = {'transport_omission': {'reason': 'serialized_byte_budget', 'omitted_count': 1,
+            'first_omitted_identity': None,
+            'basis': 'same parent identity, field and stable input order; inspect the authoritative record'}}
+        whole = {'transport_omission': {'reason': 'serialized_byte_budget', 'exact_json_bytes': 1035,
+            'basis': 'inspect the complete field on the authoritative parent record'}}
+        for loss in ('fact_suffix', 'action_basis', 'whole_facts'):
+            with self.subTest(loss=loss):
+                self.setUp()
+                value = copy.deepcopy(self.answer)
+                answers = value['selected_work']['answers']
+                action = copy.deepcopy(answers['facts'][0]['recorded_action'])
+                if loss == 'fact_suffix': answers['facts'] = [copy.deepcopy(tail)]
+                elif loss == 'action_basis': answers['facts'][0]['recorded_action'] = copy.deepcopy(whole)
+                else: answers['facts'] = copy.deepcopy(whole)
+                _, fact = self.evaluate(value)
+                self.assertEqual(fact['status'], 'indeterminate', fact)
+                observation = fact['basis']['observations'][0]
+                self.assertEqual(observation['errors'], [], observation)
+                self.assertTrue(any('recorded action' in limit for limit in observation['limits']))
+                expected = {'project_id': value['project_id'], 'goal_id': action['work_item_id'],
+                    'checkpoint_id': action['checkpoint_id'], 'checkpoint_revision': action['revision'],
+                    'next_step': action['recorded_text'], 'checkpoint_sources': action['source_ids']}
+                self.assertTrue(shared_answer_errors(expected, value),
+                    'V11 requires complete expected continuation evidence; unknown is not a fixture pass')
+
+    def test_recorded_action_marker_cannot_hide_visible_or_unmarked_errors(self):
+        tail = {'transport_omission': {'reason': 'serialized_byte_budget', 'omitted_count': 1,
+            'first_omitted_identity': None,
+            'basis': 'same parent identity, field and stable input order; inspect the authoritative record'}}
+        whole = {'transport_omission': {'reason': 'serialized_byte_budget', 'exact_json_bytes': 1035,
+            'basis': 'inspect the complete field on the authoritative parent record'}}
+        for mutation in ('wrong_direction', 'wrong_work', 'wrong_quotation', 'wrong_key',
+                         'duplicate_fact', 'unmarked_basis', 'malformed_basis', 'wrong_basis',
+                         'unmarked_fact', 'marker_before_fact', 'false_count', 'foreign_marker',
+                         'whole_facts_wrong_prose'):
+            with self.subTest(mutation=mutation):
+                self.setUp()
+                value = copy.deepcopy(self.answer); work = value['selected_work']; a = work['answers']
+                fact = a['facts'][0]
+                if mutation in ('wrong_direction', 'wrong_work', 'wrong_quotation', 'wrong_key'):
+                    fact['recorded_action'] = copy.deepcopy(whole)
+                if mutation == 'wrong_direction': value['next_step'] = 'Different task'
+                elif mutation == 'wrong_work': work['work_item_id'] = 'ff' * 16
+                elif mutation == 'wrong_quotation': fact['text'] = 'Different quotation'
+                elif mutation == 'wrong_key': fact['evidence_keys'] = ['different']
+                elif mutation == 'duplicate_fact': a['facts'].append(copy.deepcopy(fact))
+                elif mutation == 'unmarked_basis': fact['recorded_action'] = {}
+                elif mutation == 'malformed_basis': fact['recorded_action'] = copy.deepcopy(whole); fact['recorded_action']['transport_omission']['basis'] = 'wrong scope'
+                elif mutation == 'wrong_basis': fact['recorded_action']['revision'] = 99; a['facts'].append(copy.deepcopy(tail))
+                elif mutation == 'unmarked_fact': a['facts'] = []
+                elif mutation == 'marker_before_fact': a['facts'] = [copy.deepcopy(tail), {'question': 'OtherFact'}]
+                elif mutation == 'false_count': a['facts'] = [copy.deepcopy(tail)]; a['facts'][0]['transport_omission']['omitted_count'] = False
+                elif mutation == 'whole_facts_wrong_prose': a['facts'] = copy.deepcopy(whole); a['prose'] = [copy.deepcopy(fact)]
+                else: a['facts'] = []; a['transport_omission'] = copy.deepcopy(tail['transport_omission'])
+                _, observed = self.evaluate(value)
+                self.assertEqual(observed['status'], 'confirmed_violation', observed)
+
     def test_generic_omission_cannot_excuse_wrong_action(self):
         wrong = copy.deepcopy(self.answer)
         wrong['next_step'] = 'Wrong task'

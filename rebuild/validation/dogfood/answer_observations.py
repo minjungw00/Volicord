@@ -13,7 +13,7 @@ import codex_events as c
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'shared'))
 from recorded_action_evidence import (
     ANSWER_DTO_FIELDS, ANSWER_DTO_OPTIONAL, PROVENANCE_DTO_FIELDS,
-    field_omission, recorded_action_errors, transport_omission,
+    field_omission, recorded_action_evidence, transport_omission,
 )
 from answer_projection import PROVENANCE, ANSWERS, CLAIM, EVIDENCE
 
@@ -484,10 +484,12 @@ def observe(work, resume, bundle, work_id):
                     asserted_sources = [row['source_id'] for row in sorted(bundle.rows('checkpoint_source_relations'),
                         key=lambda row: row.get('position', -1)) if row.get('project_id') == bundle.project_id
                         and row.get('checkpoint_id') == immutable['id'] and row.get('relation_kind') == 'supported_by']
-                    errors.extend(recorded_action_errors({'project_id': bundle.project_id,
+                    action = recorded_action_evidence({'project_id': bundle.project_id,
                         'goal_id': immutable.get('work_item_id'), 'checkpoint_id': immutable['id'],
                         'checkpoint_revision': immutable['revision'], 'checkpoint_sources': asserted_sources,
-                        'next_step': immutable.get('next_step')}, result))
+                        'next_step': immutable.get('next_step')}, result)
+                    errors.extend(action.errors)
+                    limits.extend(action.omissions)
                 goals = result.get('goal_basis')
                 matching = [g for g in goals if isinstance(g, dict) and g.get('role') == 'goal'
                     and g.get('identity') == goal_work] if isinstance(goals, list) else []
@@ -530,7 +532,9 @@ def observe(work, resume, bundle, work_id):
                     if (checkpoint.get('work_item_id') != latest.arguments.get('goal_context_id')
                             or checkpoint.get('next_step') != expected['next_step']):
                         errors.append('authoring and immutable Checkpoint disagree')
-                    errors.extend(recorded_action_errors(expected, result))
+                    action = recorded_action_evidence(expected, result)
+                    errors.extend(action.errors)
+                    limits.extend(action.omissions)
                     cp = result.get('checkpoint')
                     if not isinstance(cp, dict) or any(cp.get(key) != value for key, value in (
                             ('identity', checkpoint['id']), ('revision', checkpoint['revision']), ('work_item_id', checkpoint.get('work_item_id')))):
@@ -539,8 +543,10 @@ def observe(work, resume, bundle, work_id):
                     if lifecycle['checkpoint'] == 'absent':
                         limits.append('supported absence: no meaningful Checkpoint')
                         if expected_work is not None:
-                            errors.extend(recorded_action_errors({'project_id': bundle.project_id,
-                                'goal_id': expected_work, 'checkpoint_id': None, 'next_step': None}, result))
+                            action = recorded_action_evidence({'project_id': bundle.project_id,
+                                'goal_id': expected_work, 'checkpoint_id': None, 'next_step': None}, result)
+                            errors.extend(action.errors)
+                            limits.extend(action.omissions)
                         elif result.get('next_step') is not None:
                             errors.append('top-level recorded next action')
                     else:
@@ -549,7 +555,9 @@ def observe(work, resume, bundle, work_id):
                         expected = {'project_id': bundle.project_id, 'goal_id': latest.arguments.get('goal_context_id'),
                             'checkpoint_id': latest.result.get('checkpoint_id'), 'checkpoint_revision': latest.result.get('revision'),
                             'next_step': latest.arguments.get('next_step')}
-                        errors.extend(recorded_action_errors(expected, result))
+                        action = recorded_action_evidence(expected, result)
+                        errors.extend(action.errors)
+                        limits.extend(action.omissions)
                         cp = result.get('checkpoint')
                         if not isinstance(cp, dict) or any(cp.get(key) != value for key, value in (
                                 ('identity', latest.result.get('checkpoint_id')), ('revision', latest.result.get('revision')),

@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared"))
-from recorded_action_evidence import recorded_action_errors
+from recorded_action_evidence import recorded_action_evidence
 
 
 def _record(inspection: dict[str, Any], kind: str, identity: str) -> dict[str, Any] | None:
@@ -112,7 +112,11 @@ def shared_answer_errors(expected: dict[str, Any], recall: dict[str, Any]) -> li
     def require(condition: bool, message: str) -> None:
         if not condition:
             errors.append(message)
-    errors.extend(recorded_action_errors(expected, recall))
+    action = recorded_action_evidence(expected, recall)
+    errors.extend(action.errors)
+    errors.extend(action.omissions)  # This known-fixture oracle requires complete evidence.
+    if action.omissions:
+        return errors
     work = recall.get("selected_work")
     if not isinstance(work, dict) or not isinstance(work.get("answers"), dict):
         return errors

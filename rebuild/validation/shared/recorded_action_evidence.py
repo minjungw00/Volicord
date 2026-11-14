@@ -4,6 +4,15 @@ Expected values must come from independent authoring/observation-time records,
 never from the returned answer. This module has no fixture-specific task meaning.
 """
 
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class RecordedActionEvidence:
+    errors: list[str]
+    omissions: list[str]
+
+
 # Serialized QuestionAnswers fields; the private review projection is smaller.
 ANSWER_DTO_FIELDS = frozenset({
     'work_name', 'work_summary', 'evidence_index', 'cautions', 'prose', 'diagrams',
@@ -73,8 +82,15 @@ def field_omission(value, field, *, fields, optional=()):
     return {'placement': 'parent_fields', 'marker': marker}
 
 
-def recorded_action_errors(expected, recall):
-    errors = []
+def recorded_action_evidence(expected, recall):
+    """Inspect visible facts; scoped missing transport remains unobserved.
+
+    Callers requiring a complete fixture must reject omissions as well as errors.
+    Neither an ancestor marker nor hidden fields excuse a visible contradiction.
+    """
+    errors, omissions = [], []
+    def finish(extra=()):
+        return RecordedActionEvidence(errors + list(extra), omissions)
     def require(ok, message):
         if not ok:
             errors.append(message)
@@ -83,7 +99,7 @@ def recorded_action_errors(expected, recall):
     require(recall.get("next_step") == (expected["next_step"] if has_action else None), "top-level recorded next action")
     work = recall.get("selected_work")
     if not isinstance(work, dict):
-        return errors + ["selected Work missing"]
+        return finish(["selected Work missing"])
     require(work.get("work_item_id") == expected["goal_id"], "selected Work identity")
     checkpoints = work.get("checkpoint_ids")
     require(isinstance(checkpoints, list) and (expected["checkpoint_id"] in checkpoints
@@ -91,22 +107,36 @@ def recorded_action_errors(expected, recall):
             "selected Work Checkpoint scope")
     answers = work.get("answers")
     if not isinstance(answers, dict):
-        return errors + ["Recall question answers"]
+        return finish(["Recall question answers"])
     facts, prose = answers.get("facts"), answers.get("prose")
-    if not isinstance(facts, list):
-        return errors + ["shared answer sections"]
     if not isinstance(prose, list):
         if not field_omission(answers, 'prose',
                 fields=ANSWER_DTO_FIELDS, optional=ANSWER_DTO_OPTIONAL):
-            return errors + ["shared answer sections"]
+            return finish(["shared answer sections"])
         # Only the visible recorded action is checked here. The caller retains
         # the generated-prose observation gap; the V11 oracle still requires its
         # fixture-specific generated/availability sections independently.
         prose = []
+    require(not any(isinstance(p, dict) and p.get("question") == "RecordedNextStep" for p in prose),
+            "recorded action role/scope")
+    if not has_action:
+        require(not any(isinstance(p, dict) and p.get('recorded_action') is not None for p in prose),
+                'absent action has no recorded basis')
+    if not isinstance(facts, list):
+        if field_omission(answers, 'facts', fields=ANSWER_DTO_FIELDS, optional=ANSWER_DTO_OPTIONAL):
+            omissions.append('recorded action facts unavailable through scoped whole-field transport omission')
+            return finish()
+        return finish(["shared answer sections"])
+    suffix = (bool(facts) and transport_omission(facts[-1])
+        and 'omitted_count' in facts[-1]['transport_omission']
+        and not any(isinstance(f, dict) and 'transport_omission' in f for f in facts[:-1]))
     recorded = [p for p in facts if isinstance(p, dict) and p.get("question") == "RecordedNextStep"]
     if not has_action:
         unavailable = [p for p in facts if isinstance(p, dict) and p.get('question') == 'NextStepAvailability']
-        require(not recorded and len(unavailable) == 1, 'genuine recorded action absence')
+        if not recorded and not unavailable and suffix:
+            omissions.append('recorded action absence unavailable through scoped fact-suffix transport omission')
+        else:
+            require(not recorded and len(unavailable) == 1, 'genuine recorded action absence')
         require(not any(isinstance(p, dict) and p.get('recorded_action') is not None for p in facts + prose),
                 'absent action has no recorded basis')
         if len(unavailable) == 1:
@@ -119,14 +149,15 @@ def recorded_action_errors(expected, recall):
                 'recorded action absence meaning')
         require(not any(isinstance(p, dict) and p.get('question') == 'NextStep' for p in facts),
                 'recorded action absence role/scope')
-        return errors
-    require(len(recorded) == 1, "recorded next action answer")
+        return finish()
+    if not recorded and suffix:
+        omissions.append("recorded action fact unavailable through scoped fact-suffix transport omission")
+    else:
+        require(len(recorded) == 1, "recorded next action answer")
     require(not any(isinstance(p, dict) and p.get("question") in {"NextStep", "NextStepAvailability"}
                     for p in facts), "recorded action role/scope")
-    require(not any(isinstance(p, dict) and p.get("question") == "RecordedNextStep" for p in prose),
-            "recorded action role/scope")
     if len(recorded) != 1:
-        return errors
+        return finish()
     fact = recorded[0]
     require(fact.get("role") == "deterministic_facts", "recorded action role")
     key = f"checkpoint:{expected['checkpoint_id']}@{expected['checkpoint_revision']}:next_step"
@@ -135,8 +166,11 @@ def recorded_action_errors(expected, recall):
         f"Recorded next action quotation (original language): {expected['next_step']}",
         f"기록된 다음 행동 인용 (원문 언어): {expected['next_step']}"), "ordinary recorded next action meaning")
     basis = fact.get("recorded_action")
+    if transport_omission(basis) and 'exact_json_bytes' in basis['transport_omission']:
+        omissions.append('recorded action basis unavailable through scoped whole-field transport omission')
+        return finish()
     if not isinstance(basis, dict):
-        return errors + ["recorded action basis missing"]
+        return finish(["recorded action basis missing"])
     for field, value in (("work_item_id", expected["goal_id"]), ("checkpoint_id", expected["checkpoint_id"]),
                          ("revision", expected["checkpoint_revision"]), ("field", "next_step"),
                          ("recorded_text", expected["next_step"])):
@@ -159,4 +193,4 @@ def recorded_action_errors(expected, recall):
                         for field in ("availability", "freshness", "snapshot_basis"):
                             if field in visible:
                                 require(status.get(field) == visible[field], f"recorded action Source {field}")
-    return errors
+    return finish()

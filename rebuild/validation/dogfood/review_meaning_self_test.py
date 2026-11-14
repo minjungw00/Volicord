@@ -322,7 +322,7 @@ class MeaningTests(unittest.TestCase):
         missing = a.project(value, 'recall')
         self.assertFalse(missing['semantic_complete'])
         self.assertEqual(missing['omissions'][0]['pointer'], '/selected_work')
-        from recorded_action_evidence import recorded_action_errors
+        from recorded_action_evidence import recorded_action_evidence
         recall = copy.deepcopy(self.answer)
         work = recall['selected_work']
         expected = {'project_id': recall['project_id'], 'goal_id': work['work_item_id'],
@@ -330,9 +330,9 @@ class MeaningTests(unittest.TestCase):
         recall['next_step'] = None
         work['answers']['facts'] = [{'question': 'NextStepAvailability', 'text': 'No next action is recorded in the latest Checkpoint.',
             'role': 'unavailable', 'evidence_keys': []}]
-        self.assertEqual(recorded_action_errors(expected, recall), [])
+        self.assertEqual(recorded_action_evidence(expected, recall).errors, [])
         recall['next_step'] = 'Repair the explanation'
-        self.assertIn('top-level recorded next action', recorded_action_errors(expected, recall))
+        self.assertIn('top-level recorded next action', recorded_action_evidence(expected, recall).errors)
 
     def test_unsafe_claim_and_unknown_nested_body_are_explicit_omissions(self):
         self.answer['selected_work']['answers']['facts'][0]['text'] = 'access_token=synthetic-sensitive-value-817263'

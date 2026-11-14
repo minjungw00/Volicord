@@ -551,6 +551,15 @@ failed turn. `capture_self_test.py` challenges both event names, false-like erro
 values, earlier successful commands, and a later read-only completion; the full
 Dogfood self-test also accepts genuine recovered terminal work after such errors.
 
+The shared recorded-action evidence inspector returns contradictions and scoped
+transport gaps separately. Naturalistic reads retain genuine facts-suffix and
+whole facts/basis omissions as indeterminate; a missing recorded action is never
+inferred correct or absent. Visible wrong identity, direction, quotation and
+Source basis still fail, as do malformed/foreign markers and unmarked loss.
+The fixed V11 continuation oracle rejects every such gap. Coupled consumer tests
+exercise both paths; evaluator-only repairs reprocess unchanged original bytes
+into new append-only evidence and evaluations.
+
 ### Naturalistic workload selection
 
 The existing 3 journeys / 5 Works / 3 resume pairs / 8 sessions fit five ordinary
