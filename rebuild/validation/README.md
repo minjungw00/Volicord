@@ -2078,3 +2078,13 @@ an available JDK; the TypeScript oracles use Node type stripping. Obsolete analy
 `7` is historical/stale, never reinterpreted as current analyzer `8` output. Preserve
 old manifests, Sources and observations; use a disposable runtime for new analysis.
 These controls run through `validate focused`, without Final or the aggregate gate.
+
+CLI observation routing follows the primary command path after known global
+options. `privacy status` retains its own response and does not acquire a missing
+Work from the `status` answer schema. `explanation_evidence_self_test.py` covers
+option-value collisions, real execution-to-index consumption, and historical
+selector claims with unchanged raw payloads, outcomes, coordinates and lifecycles.
+Historical CLI labels and their dependent meaning hashes are producer claims;
+current labels and MCP operation labels remain exact. A corrected interpretation
+appends a new evaluation of unchanged originals rather than rewriting the first
+projection or replaying Product conversations.

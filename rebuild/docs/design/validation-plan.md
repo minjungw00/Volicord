@@ -5952,3 +5952,24 @@ citations and byte windows. A flat-citation assumption previously rejected valid
 current records; retain that reproduction. Exercise original/public tampering and
 unchanged-input controls, plus actual CLI en/ko record/readback into this oracle.
 This repairs measurement tooling only, with no Product replay or decoder fallback.
+
+## Command-path classification in retained observations — 2026-11-15
+
+An actual successful `privacy status` CLI response was classified as a Project
+status read because the collector searched every argument for `status`. Its
+selected-Work omission was therefore an observer error. Route the primary command
+path after known global options, keeping Privacy status distinct and retaining
+its exact public response without imposing the shared Work-answer schema.
+Option values and nested command nouns must not select a different operation.
+
+Immutable collection verification distinguishes raw observations from historical
+selector claims. Only when the already verified retained CLI selector bytes
+differ may its operation label and dependent review-meaning hash differ from the
+current interpretation. Validate historical claim shapes, compare every row,
+payload hash, execution outcome, coordinate, subject and lifecycle exactly, and
+return the current interpretation. MCP operation labels remain exact. Current
+producer labels/hashes and malformed or altered raw evidence must be rejected.
+Keep the original wrong projection and independent review, append the corrected
+evaluation, and check actual unchanged captures plus coupled collection/review
+consumers. This tooling repair grants no missing historical field, semantic
+verdict, Product execution, or human acceptance.

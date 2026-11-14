@@ -42,6 +42,67 @@ class CurrentBundleTests(unittest.TestCase):
 
 
 class MeasuredExecutionTests(unittest.TestCase):
+    def test_privacy_status_is_not_a_work_status_answer(self):
+        from types import SimpleNamespace
+        import answer_projection
+        command = 'volicord --runtime /private/runtime --project status --json privacy status'
+        result = {'operation': 'privacy_status', 'settings': {}}
+        capture = captures.CurrentExecutionTests().command(
+            'text(await tools.exec_command(' + json.dumps({'cmd': command}) + '));',
+            [json.dumps({'output': json.dumps(result), 'exit_code': 0})])
+        observed = e.measured_cli_operations(capture)
+        self.assertEqual([v['operation'] for v in observed], ['privacy_status'])
+        self.assertEqual(observed[0]['result'], result)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mapped = {('volicord', 'A', 'start'): SimpleNamespace(capture=capture)}
+            index = e.collection_index(root, mapped)
+            row = index['measured_observations'][0]
+            self.assertIsNone(row['review_meaning_sha256'])
+            self.assertEqual(row['state'], 'returned_no_subject_answer')
+            producers = {name: e.binding(Path(module.__file__).read_bytes()) for name, module in
+                [('rebuild/validation/dogfood/answer_projection.py', answer_projection),
+                 ('rebuild/validation/dogfood/explanation_evidence.py', e)]}
+            old = copy.deepcopy(index)
+            old['measured_observations'][0].update(operation='project_status', review_meaning_sha256='0' * 64)
+            with self.assertRaises(c.CampaignError):
+                e.verify_collection_index(root, mapped, old, producers)
+            historical = producers | {'rebuild/validation/dogfood/explanation_evidence.py':
+                {'bytes': 1, 'sha256': '0' * 64}}
+            self.assertEqual(e.verify_collection_index(root, mapped, old, historical), index)
+            for field, changed in [('returned_payload_sha256', '0' * 64),
+                    ('sequence', 999), ('exit_code', 1), ('raw_call_id', 'foreign'),
+                    ('state', 'unresolvable'), ('operation', 'invented_operation'),
+                    ('review_meaning_sha256', 'invalid')]:
+                altered = copy.deepcopy(old)
+                altered['measured_observations'][0][field] = changed
+                with self.subTest(field=field), self.assertRaises(c.CampaignError):
+                    e.verify_collection_index(root, mapped, altered, historical)
+            mcp_index = copy.deepcopy(index)
+            mcp_index['measured_observations'][0].update(transport='mcp', operation='recall',
+                review_meaning_sha256='1' * 64)
+            with patch.object(e, 'collection_index', return_value=mcp_index):
+                e.verify_collection_index(root, mapped, mcp_index, historical)
+                for field, changed in [('operation', 'project_status'),
+                        ('review_meaning_sha256', '2' * 64)]:
+                    altered = copy.deepcopy(mcp_index)
+                    altered['measured_observations'][0][field] = changed
+                    with self.subTest(mcp_field=field), self.assertRaises(c.CampaignError):
+                        e.verify_collection_index(root, mapped, altered, historical)
+
+    def test_cli_routes_primary_path_without_option_value_matches(self):
+        for argv, expected in [
+                (['volicord', '--project', 'privacy', '--json', 'status'], 'project_status'),
+                (['volicord', '--project=status', '--json', 'privacy', 'status'], 'privacy_status'),
+                (['volicord', '--repository', 'decisions', '--json', 'work', 'list'], None),
+                (['volicord', '--json', 'work', 'list', '--language', 'status'], None),
+                (['volicord', '--json', 'work', 'explain', 'record'], 'explanation_record'),
+                (['volicord', '--json', 'decision', 'explain', 'prepare'], 'explanation_prepare'),
+                (['volicord', '--unknown', 'status'], None),
+                (['volicord', '--runtime'], None)]:
+            with self.subTest(argv=argv):
+                self.assertEqual(e._cli_operation(argv), expected)
+
     def test_corpus_shaped_explanation_lifecycle_reaches_final_consumer(self):
         helper = captures.CurrentExecutionTests()
         for kind in ('work', 'decision'):
@@ -68,7 +129,9 @@ class MeasuredExecutionTests(unittest.TestCase):
                 self.assertTrue(all(v['raw_call_id'] == 'test' for v in measured))
                 import answer_projection
                 producers = {'rebuild/validation/dogfood/answer_projection.py':
-                    e.binding(Path(answer_projection.__file__).read_bytes())}
+                    e.binding(Path(answer_projection.__file__).read_bytes()),
+                    'rebuild/validation/dogfood/explanation_evidence.py':
+                    e.binding(Path(e.__file__).read_bytes())}
                 mapped = {('volicord', 'A', 'start'): SimpleNamespace(capture=capture)}
                 e.verify_collection_index(Path(temporary), mapped, index, producers)
                 changed = copy.deepcopy(index)

@@ -875,11 +875,36 @@ def measured_cli_operations(capture):
         key=lambda value: (value['sequence'], value.get('group_index', -1)))).decode('utf-8'))
 
 
+def _cli_operation(argv):
+    """Route the command path, never an option value or a nested status noun."""
+    position = 1
+    while position < len(argv) and argv[position].startswith('-'):
+        option = argv[position]
+        if option == '--json':
+            position += 1
+        elif option in {'--runtime', '--repository', '--project', '--locale'}:
+            position += 2
+        elif any(option.startswith(name + '=') for name in
+                 ('--runtime', '--repository', '--project', '--locale')):
+            position += 1
+        else:
+            return None
+    path = list(argv[position:])
+    if path[:3] in (['work', 'explain', 'prepare'], ['decision', 'explain', 'prepare']):
+        return 'explanation_prepare'
+    if path[:3] in (['work', 'explain', 'record'], ['decision', 'explain', 'record']):
+        return 'explanation_record'
+    if path[:2] == ['privacy', 'status']:
+        return 'privacy_status'
+    if path[:1] == ['status']:
+        return 'project_status'
+    if path[:1] == ['decisions']:
+        return 'decisions'
+    return None
+
+
 def _measured_cli_operation(command, argv, unique):
-    expected = next(('explanation_' + argv[n + 2] for n, arg in enumerate(argv[:-2])
-        if arg in {'work', 'decision'} and argv[n + 1] == 'explain' and argv[n + 2] in {'prepare', 'record'}), None)
-    if expected is None:
-        expected = 'project_status' if 'status' in argv else 'decisions' if 'decisions' in argv else None
+    expected = _cli_operation(argv)
     if expected is None:
         return []
     result = None
@@ -913,22 +938,39 @@ def verify_collection_index(root, mapped, recorded, producers):
     import answer_projection
     same_projection = producers.get('rebuild/validation/dogfood/answer_projection.py') == binding(
         Path(answer_projection.__file__).read_bytes())
+    same_selector = producers.get('rebuild/validation/dogfood/explanation_evidence.py') == binding(
+        Path(__file__).read_bytes())
     current = collection_index(root, mapped)
     comparable = copy.deepcopy(current)
     retained = json.loads(json.dumps(recorded))
-    if not same_projection and isinstance(retained, dict):
+    if (not same_projection or not same_selector) and isinstance(retained, dict):
         observations = retained.get('measured_observations')
         if not isinstance(observations, list):
             raise api().CampaignError('invalid retained explanation observations')
         for observation in observations:
             if not isinstance(observation, dict):
                 raise api().CampaignError('invalid retained explanation observation')
+            if same_projection and observation.get('transport') != 'cli':
+                continue
             digest = observation.pop('review_meaning_sha256', 'missing')
             if digest is not None and (not isinstance(digest, str)
                     or re.fullmatch(r'[0-9a-f]{64}', digest) is None):
                 raise api().CampaignError('invalid retained review meaning hash')
         for observation in comparable['measured_observations']:
-            observation.pop('review_meaning_sha256')
+            if not same_projection or observation.get('transport') == 'cli':
+                observation.pop('review_meaning_sha256')
+    if not same_selector and isinstance(retained, dict):
+        # The manifest already binds the historical selector's original bytes.
+        # Its operation label is an interpretation claim, not raw request data.
+        # Keep every row, outcome, coordinate, subject and payload hash exact.
+        operations = {'recall', 'project_status', 'privacy_status', 'decisions',
+            'explanation_prepare', 'explanation_record', 'execution_observation'}
+        for observation in retained['measured_observations']:
+            if observation.get('transport') == 'cli' and observation.pop('operation', None) not in operations:
+                raise api().CampaignError('invalid retained operation classification')
+        for observation in comparable['measured_observations']:
+            if observation.get('transport') == 'cli':
+                observation.pop('operation')
     if retained != comparable:
         raise api().CampaignError('immutable explanation observation/lifecycle index changed')
     return current
