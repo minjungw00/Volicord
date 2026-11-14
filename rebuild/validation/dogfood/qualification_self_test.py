@@ -675,6 +675,19 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
                        'analysis_metadata.py'):
             shutil.copy2(entrypoint.with_name(helper),
                 candidate / 'rebuild/validation/end-to-end/multi-repository' / helper)
+        # The reuse consumer also publishes a collector revision witness. Its
+        # isolated Git commit must contain the exact retained producer bytes,
+        # rather than the entrypoint fixture's deliberately stubbed owners.
+        import collection_runs
+        cls.collector_producers = {}
+        for name, source in collection_runs.producer_paths().items():
+            target = candidate / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            cls.collector_producers[name] = target
+        shutil.copy2(root / 'rebuild/scripts/check-validation-report',
+            candidate / 'rebuild/scripts/check-validation-report')
+        cls.collector_repository = candidate
         assert entrypoint_fixture['git'](candidate, 'add', '.').returncode == 0
         assert entrypoint_fixture['git'](candidate, '-c', 'user.name=Validation Fixture',
             '-c', 'user.email=validation@example.invalid', 'commit', '-qm',
@@ -863,6 +876,7 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
 
     def test_preparation_and_qualification_reuse_without_technical_execution(self):
         import campaign as c
+        import collection_runs
         import campaign_self_test as support
         import resource_observer
         import result_lineage
@@ -872,6 +886,9 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
         import contextlib
         import io
         import sys
+        self.enterContext(patch.object(c, 'ROOT', self.collector_repository))
+        self.enterContext(patch.object(collection_runs, 'producer_paths',
+            return_value=self.collector_producers))
         before = self.owners.counts.copy()
         def entry(*arguments):
             stdout = io.StringIO()

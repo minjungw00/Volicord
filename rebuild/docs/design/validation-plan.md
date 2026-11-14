@@ -6033,3 +6033,9 @@ source-independent publication, missing-proof refusal and append-only retention.
 Actual copied verification must deny all original campaign paths and all subprocess
 readers. A provenance repair does not replay native conversations or upgrade any
 original semantic or Human verdict.
+
+The technical-reuse support fixture must commit its exact collector producers in
+its isolated Git repository and use that repository for collection and witness
+publication. A patched revision from a different repository cannot supply a real
+commit/tree witness. Keep the no-technical-execution guards and use the maintained
+capsule reader in that fixture rather than its entrypoint-only stub.
