@@ -1134,10 +1134,12 @@ class FileBoundaryTests(unittest.TestCase):
         proof_path = index.pop('collector_revision_proof')['path']
         (copied / proof_path).unlink()
         index['lineage_id'] = m.digest({k: v for k, v in index.items() if k != 'lineage_id'})
+        (copied / 'index.json').chmod(0o600)
         (copied / 'index.json').write_bytes(ops.encoded(index))
         receipt = json.loads((copied / 'receipt.json').read_bytes())
         receipt.update(lineage_id=index['lineage_id'], index_sha256=ops.digest(ops.encoded(index)))
         receipt['artifacts'].pop(proof_path)
+        (copied / 'receipt.json').chmod(0o600)
         (copied / 'receipt.json').write_bytes(ops.encoded(receipt))
         before = snapshot(copied)
         with self.assertRaisesRegex(ValueError, 'collector revision proof missing'):
