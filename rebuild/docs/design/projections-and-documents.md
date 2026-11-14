@@ -1340,6 +1340,16 @@ Document 수정이 semantic meaning을 바꾸면 adopted Source의 새 revision/
   audit appendix를 closed `<details>`로 제공한다.
 - PDF와 DOCX는 initial required output이 아니다.
 
+Portable document reading places each complete linear diagram at its admitted
+caption before later prose and supporting facts. It preserves explicit node names
+and identifiers, directed endpoints, kinds, guards, state owner and sequence/parallel
+group meaning without exposing internal diagram/node/edge IDs as primary prose.
+Those inspection coordinates remain in the unchanged structured publication and
+its provenance. Markdown uses explicit row breaks; HTML preserves whitespace and
+wraps long names. This is the document's labelled linear reading, distinct from
+the Viewer's graphical layout. It changes no diagram admission, stored meaning,
+Source scope, metadata shape or adoption authority.
+
 Local Viewer는 필요한 current Project explanation projection과 bounded admitted Sources의 human-first
 hierarchy를 하나의 self-contained read-only HTML snapshot으로 user-specified local
 destination에 publish할 수 있다. 이 Viewer snapshot은 네 generated document를 대체하거나

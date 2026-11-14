@@ -1604,6 +1604,18 @@ export must reproduce the clearance failure. Source windows omitted by the share
 bound retain their explicit unavailable scope; they cannot pass the separate
 critical-code completeness assertion.
 
+`portable_document_linear_browser.cjs CONFIG` checks actual exported document
+files against separately retained public diagram records. Its `manifest` lists
+the path, digest, journey, language, document kind and format of each export;
+`publications` contains `{journey, language, public}` records. Configure Chromium,
+Playwright, fontconfig, widths and a fresh output directory as for native controls.
+With page scripting disabled, it checks complete admitted labels, endpoints,
+guards, state ownership and parallel meaning, and measures separate visible rows
+in HTML. Labels are authored wording supported by a claim range, not necessarily
+literal substrings. A disposable export without the row-preserving CSS must fail.
+Markdown hard breaks have separate public-API coverage. These observations do not
+establish semantic entailment, command execution or Human comprehension.
+
 The native document-navigation driver checks HTML and SVG fragment attributes
 through `reader_fragments.cjs`. Diagram-bearing cases provide `public` (the full
 current public answers JSON): figure entries must retain all admitted titles,

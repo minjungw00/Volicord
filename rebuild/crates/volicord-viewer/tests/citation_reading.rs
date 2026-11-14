@@ -2233,6 +2233,78 @@ fn spatial_entry_has_an_exact_native_location_before_the_canvas() -> Result<(), 
 }
 
 #[test]
+fn portable_documents_keep_readable_diagram_roles_and_rows() -> Result<(), Box<dyn Error>> {
+    let f = Fixture::new()?;
+    for sequence in [false, true] {
+        let realization = diagram_control(&f, sequence)?;
+        f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            realization.clone(),
+        )?;
+        for locale in [FixedLocale::English, FixedLocale::Korean] {
+            let request = DocumentRequest {
+                requested_language: "en".into(),
+                fixed_locale: locale,
+                generated_at: volicord_context::TimestampMicros::from_unix_micros(1),
+                generator: GeneratorIdentity {
+                    generator: "authored-portable-diagram-control".into(),
+                    agent: None,
+                    model: None,
+                },
+                requested_destinations: vec![],
+            };
+            let documents = f.ops.documents(f.project, &request)?;
+            let guide = &documents.project_architecture_guide;
+            let text = guide
+                .body
+                .sections
+                .iter()
+                .flat_map(|s| &s.claims)
+                .map(|c| c.text.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(text.contains("Admission → verification"));
+            assert!(text.contains("acceptance"), "the actual guard survives");
+            assert!(text.contains(if locale == FixedLocale::English {
+                "Diagram (linear reading):"
+            } else {
+                "도식 · 순서대로 읽기:"
+            }));
+            for inspection in ["[diagram=", "; node=", "[edge=", "[message="] {
+                assert!(
+                    !text.contains(inspection),
+                    "inspection syntax cannot become main narrative"
+                );
+            }
+            if sequence {
+                assert!(text.contains(if locale == FixedLocale::English {
+                    "parallel (no relative order asserted)"
+                } else {
+                    "병렬 (상대 순서 없음)"
+                }));
+                assert!(
+                    text.contains("verification → Admission"),
+                    "return direction survives"
+                );
+            }
+            assert!(guide.html.content.contains("white-space:pre-wrap"));
+            assert!(
+                guide.markdown.content.contains("  \n  • "),
+                "portable Markdown retains actual row breaks"
+            );
+        }
+        assert_eq!(
+            f.answers()?.diagrams,
+            realization.diagrams,
+            "document reads cannot rewrite admitted meaning"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(), Box<dyn Error>> {
     let f = Fixture::new()?;
     let subject = ExplanationSubject::Repository(f.analysis);

@@ -4268,6 +4268,15 @@ complete critical Source reads and actual Human accessibility experience. An
 explicit shared-bound Source omission remains an unmet complete-byte scope,
 including when its unavailable-state presentation and live paging are correct.
 
+Portable generated documents also use `portable_document_linear_browser.cjs`
+against actual exports and independently retained admitted diagram records.
+Script-free HTML must preserve the complete linear roles, direction, guards,
+state ownership and parallel meaning as separate readable rows at narrow and
+desktop widths. Removing only row-preserving CSS from a disposable export must
+be rejected. Public-API tests separately cover Markdown hard breaks and caption
+ordering. These format controls neither require a graphical SVG in the document
+nor replace independent usefulness or Human understanding assessment.
+
 `diagram_geometry_browser.cjs` separately consumes renderer stress fixtures emitted
 by `volicord-viewer --lib` with `VOLICORD_LAYOUT_REVIEW_ROOT` set to a fresh ignored
 directory. These are authored layout controls, not admitted repository facts: 96-scalar

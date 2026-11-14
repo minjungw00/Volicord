@@ -303,10 +303,29 @@ pub fn diagram_text(d: &GroundedDiagram, texts: &[&str]) -> Result<String, Strin
     diagram_text_localized(d, texts, crate::FixedLocale::English)
 }
 /// Same admitted meaning with localized explanatory vocabulary for Reader UI.
-pub fn diagram_text_localized<'a>(
+pub fn diagram_text_localized(
+    d: &GroundedDiagram,
+    texts: &[&str],
+    locale: crate::FixedLocale,
+) -> Result<String, String> {
+    diagram_text_format(d, texts, locale, true)
+}
+
+/// Portable document reading retains all admitted roles without inspection IDs.
+/// The caller has already printed the caption at its admitted prose position.
+pub(crate) fn diagram_reading_text_localized(
+    d: &GroundedDiagram,
+    texts: &[&str],
+    locale: crate::FixedLocale,
+) -> Result<String, String> {
+    diagram_text_format(d, texts, locale, false)
+}
+
+fn diagram_text_format<'a>(
     d: &'a GroundedDiagram,
     texts: &[&str],
     locale: crate::FixedLocale,
+    inspection: bool,
 ) -> Result<String, String> {
     let label = |l: &'a DiagramLabel| diagram_label(l, texts);
     let node = |id: &str| {
@@ -316,20 +335,36 @@ pub fn diagram_text_localized<'a>(
             .ok_or_else(|| "diagram endpoint unavailable".to_owned())
             .and_then(|n| diagram_node_identity(n, texts))
     };
-    let mut lines = vec![
-        format!("{} [diagram={}]", label(&d.title)?, d.id),
-        texts
-            .get(d.caption_unit)
-            .ok_or("caption unavailable")?
-            .to_string(),
-    ];
+    let mut lines = if inspection {
+        vec![
+            format!("{} [diagram={}]", label(&d.title)?, d.id),
+            texts
+                .get(d.caption_unit)
+                .ok_or("caption unavailable")?
+                .to_string(),
+        ]
+    } else {
+        vec![format!(
+            "{} {}",
+            diagram_ui(locale, "Diagram (linear reading):", "도식 · 순서대로 읽기:"),
+            label(&d.title)?
+        )]
+    };
     for n in d.nodes() {
-        lines.push(format!(
-            "{} [{}; node={}]",
-            diagram_node_identity(n, texts)?,
-            n.kind.localized_text(locale),
-            n.id
-        ));
+        lines.push(if inspection {
+            format!(
+                "{} [{}; node={}]",
+                diagram_node_identity(n, texts)?,
+                n.kind.localized_text(locale),
+                n.id
+            )
+        } else {
+            format!(
+                "• {} · {}",
+                diagram_node_identity(n, texts)?,
+                n.kind.localized_text(locale)
+            )
+        });
     }
     match &d.meaning {
         DiagramMeaning::Concept { relations, .. }
@@ -351,16 +386,18 @@ pub fn diagram_text_localized<'a>(
                     .transpose()?
                     .map(|s| format!(" [{} {s}]", diagram_ui(locale, "if", "조건:")))
                     .unwrap_or_default();
-                lines.push(format!(
-                    "{} → {} · {}: {}{guard} [edge={}; from={}; to={}]",
+                let meaning = format!(
+                    "{} → {} · {}: {}{guard}",
                     node(&r.from)?,
                     node(&r.to)?,
                     r.kind.localized_text(locale),
                     label(&r.label)?,
-                    r.id,
-                    r.from,
-                    r.to
-                ));
+                );
+                lines.push(if inspection {
+                    format!("{meaning} [edge={}; from={}; to={}]", r.id, r.from, r.to)
+                } else {
+                    format!("• {meaning}")
+                });
             }
         }
         DiagramMeaning::Sequence { groups, .. } => {
@@ -385,18 +422,20 @@ pub fn diagram_text_localized<'a>(
                     }
                 ));
                 for (j, m) in g.messages.iter().enumerate() {
-                    lines.push(format!(
-                        "  {}.{} {} → {} · {}: {} [message={}; from={}; to={}]",
+                    let meaning = format!(
+                        "  {}.{} {} → {} · {}: {}",
                         i + 1,
                         j + 1,
                         node(&m.from)?,
                         node(&m.to)?,
                         m.kind.localized_text(locale),
                         label(&m.label)?,
-                        m.id,
-                        m.from,
-                        m.to
-                    ));
+                    );
+                    lines.push(if inspection {
+                        format!("{meaning} [message={}; from={}; to={}]", m.id, m.from, m.to)
+                    } else {
+                        meaning
+                    });
                 }
             }
         }

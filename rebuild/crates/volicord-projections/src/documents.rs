@@ -2239,7 +2239,7 @@ fn render_markdown(
             }
             output.push_str(
                 &escape_markdown(&bounded_rendered_field(&claim.text, "claim text", locale))
-                    .replace('\n', "\n  "),
+                    .replace('\n', "  \n  "),
             );
             if !claim.uncertainty.is_empty() {
                 output.push_str("  \n  ");
@@ -2269,7 +2269,7 @@ fn render_html(metadata: &DocumentMetadata, body: &DocumentBody, locale: FixedLo
     let mut output = String::from("<!doctype html><html lang=\"");
     output.push_str(&metadata.html_language_tag);
     output.push_str(
-        "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;line-height:1.5;color:#17202a}dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}dt{font-weight:700}.claim{border-left:.3rem solid #667085;padding:.6rem 1rem;margin:.75rem 0;background:#f8fafc}.basis,.uncertainty,.audit-meta{color:#475467;font-size:.92rem}.inference{font-weight:700;color:#9a3412}.audit{margin-top:2rem;border-top:1px solid #d0d5dd;padding-top:1rem}.audit>summary{cursor:pointer;font-weight:700}.audit-claim{padding:.5rem 0;border-top:1px solid #e4e7ec}code{overflow-wrap:anywhere}</style><title>",
+        "\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;line-height:1.5;color:#17202a}dl{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem}dt{font-weight:700}.claim{border-left:.3rem solid #667085;padding:.6rem 1rem;margin:.75rem 0;background:#f8fafc}.claim p{white-space:pre-wrap;overflow-wrap:anywhere}.basis,.uncertainty,.audit-meta{color:#475467;font-size:.92rem}.inference{font-weight:700;color:#9a3412}.audit{margin-top:2rem;border-top:1px solid #d0d5dd;padding-top:1rem}.audit>summary{cursor:pointer;font-weight:700}.audit-claim{padding:.5rem 0;border-top:1px solid #e4e7ec}code{overflow-wrap:anywhere}</style><title>",
     );
     output.push_str(&escape_html(&bounded_rendered_field(
         &body.title,

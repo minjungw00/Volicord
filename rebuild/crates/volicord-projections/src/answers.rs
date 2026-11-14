@@ -206,43 +206,51 @@ impl QuestionAnswers {
             .and_then(|a| a.recorded_action.as_ref())
     }
     pub fn text(&self) -> String {
-        let mut article = self
-            .prose
-            .iter()
-            .chain(&self.facts)
-            .map(|a| {
-                let references = a
-                    .citations
-                    .iter()
-                    .map(|c| {
-                        format!(
-                            "{}:{}–{} ({:?})",
-                            c.locator, c.start_line, c.end_line, c.use_kind
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                if references.is_empty() {
-                    a.text.clone()
-                } else {
-                    format!("{} [{}]", a.text, references.join("; "))
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n");
+        let answer_text = |a: &QuestionAnswer| {
+            let references = a
+                .citations
+                .iter()
+                .map(|c| {
+                    format!(
+                        "{}:{}–{} ({:?})",
+                        c.locator, c.start_line, c.end_line, c.use_kind
+                    )
+                })
+                .collect::<Vec<_>>();
+            if references.is_empty() {
+                a.text.clone()
+            } else {
+                format!("{} [{}]", a.text, references.join("; "))
+            }
+        };
         let texts = self
             .prose
             .iter()
             .map(|p| p.text.as_str())
             .collect::<Vec<_>>();
-        for diagram in &self.diagrams {
-            match crate::diagram_text(diagram, &texts) {
-                Ok(text) => {
-                    article.push_str("\n\n");
-                    article.push_str(&text);
-                }
-                Err(_) => article.push_str("\nDiagram alternative unavailable."),
+        let mut parts = Vec::new();
+        for (index, answer) in self.prose.iter().enumerate() {
+            parts.push(answer_text(answer));
+            for diagram in self.diagrams.iter().filter(|d| d.caption_unit == index) {
+                parts.push(
+                    crate::diagram::diagram_reading_text_localized(
+                        diagram,
+                        &texts,
+                        self.fixed_locale,
+                    )
+                    .unwrap_or_else(|_| {
+                        fixed(
+                            self.fixed_locale,
+                            "Diagram alternative unavailable.",
+                            "도식의 텍스트 표현을 사용할 수 없습니다.",
+                        )
+                        .to_owned()
+                    }),
+                );
             }
         }
+        parts.extend(self.facts.iter().map(answer_text));
+        let mut article = parts.join("\n\n");
         if matches!(
             self.applicability.repository_comparison,
             RepositoryComparisonState::Changed | RepositoryComparisonState::Unavailable
