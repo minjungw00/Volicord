@@ -18,7 +18,7 @@ def require(value, message):
 CONTRACT = "product-backed-dogfood-evidence-rehearsal-2"
 FIXTURE = Path(__file__).with_name("fixtures") / "evidence-rehearsal.json"
 PRODUCER_FILES = ("rehearsal.py", "rehearsal_support.py", "launch_boundary_support.py", "retention_support.py", "resource_boundary_controls.py", "resource_observer_self_test.py", "resource_coverage_self_test.py", "../linux-codex-integration/launch_readiness.py", "../../crates/volicord-viewer/tests/work_explanation.rs", "../../crates/volicord-operations/tests/support/reading_fixture.rs", "rehearsal_contract.py", "evidence_purpose.py", "campaign.py", "collection_runs.py", "codex_events.py",
-    "answer_observations.py", "explanation_evidence.py", "document_realization.py",
+    "answer_observations.py", "explanation_evidence.py", "document_realization.py", "collector_provenance.py", "collector_provenance_self_test.py",
     "review_operations.py", "human_review.py", "viewer_observation.py", "human_observation_plan.py", "human_observation_plan_self_test.py", "fixtures/human-observation-surfaces.json", "review_captures.py", "review_explanations.py",
     "qualification_policy.py", "result_lineage.py", "resource_observer.py", "harness.py",
     "evaluation.json", "evaluation_runs.py", "machine_findings.py", "machine-policy.json",

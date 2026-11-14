@@ -15040,6 +15040,8 @@ def self_test() -> int:
     run_contract_tests()
     from qualification_self_test import run_contract_tests as qualification_tests
     qualification_tests()
+    from collector_provenance_self_test import run_contract_tests as collector_proof_tests
+    collector_proof_tests()
     from human_observation_plan_self_test import run_contract_tests as changed_surface_tests
     changed_surface_tests()
 

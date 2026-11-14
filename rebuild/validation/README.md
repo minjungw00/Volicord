@@ -2088,3 +2088,19 @@ Historical CLI labels and their dependent meaning hashes are producer claims;
 current labels and MCP operation labels remain exact. A corrected interpretation
 appends a new evaluation of unchanged originals rather than rewriting the first
 projection or replaying Product conversations.
+
+Private result lineages retain `provenance/collector-revision-proof.json`: bounded
+Git commit/tree metadata bound to the collection run and exact retained producer
+bytes. `verify-result-lineage` verifies that witness without Git, original campaign
+paths or historical-code execution. Current qualification/approval remains strict;
+archival verification explicitly reports recorded policy identity without claiming
+current-policy equivalence.
+
+For an existing package missing this artifact, use `dogfood-campaign
+retain-collector-provenance --lineage-root ORIGINAL --output NEW` while the exact
+collector Git objects are locally available. It verifies and publishes a separate
+new package; no original evaluation, review, qualification or input is rewritten.
+Missing/foreign/tampered proofs are rejected. Core actual-Git controls are
+`collector_provenance_self_test.py`; coupled copy/publication/repair controls are
+`qualification_self_test.FileBoundaryTests`. A metadata repair supplies no new
+Product run, semantic verdict, Human acceptance or Phase 9 authority.

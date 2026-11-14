@@ -5,6 +5,7 @@ import json
 import evidence_purpose
 from pathlib import Path
 import re
+import tempfile
 
 import evaluation_runs
 import machine_findings as machine
@@ -81,6 +82,11 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
         "evaluation/receipt.json": operations.bounded_read(evaluation_path.with_name("receipt.json")),
         "qualification/qualification.json": qualification_data,
     }
+    import collector_provenance
+    collector_proof_path = 'provenance/collector-revision-proof.json'
+    collector_proof = operations.encoded(collector_provenance.create(campaign_root,
+        campaign.read_json(campaign_root / 'collection/run.json'), campaign.ROOT))
+    files[collector_proof_path] = collector_proof
     # Retain exact immutable replay inputs, including raw conversations. This is
     # the private lineage, never the reviewer-safe package or technical archive.
     for name in manifest['artifacts']:
@@ -144,6 +150,8 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
         "candidate_head": manifest["candidate_head"], "evidence_purpose": manifest["evidence_purpose"],
         "campaign": {"campaign_id": manifest["campaign_id"],
             "evidence_set_path": "source/evidence-set.json", "evidence_set_sha256": evidence_sha},
+        "collector_revision_proof": {"path": collector_proof_path,
+            "sha256": operations.digest(collector_proof)},
         "evaluation": {"run_id": evaluation["run_id"], "path": "evaluation/evaluation.json",
             "sha256": operations.digest(evaluation_data), "receipt_path": "evaluation/receipt.json",
             "evaluator_revision": evaluation["evaluator_revision"], "policy": evaluation["policy"]},
@@ -188,6 +196,65 @@ def publish(campaign_root, evaluation_path, review_roots, qualification_path,
         "approval_run_id": approval["run_id"] if approval else None}
 
 
+def retain_collector_provenance(root, output):
+    """Append a locally proved witness in a new package; never rewrite history."""
+    import campaign
+    import collector_provenance
+    root = root.resolve()
+    output = output.absolute()
+    review.require(not output.exists() and not output.resolve().is_relative_to(root),
+        'collector provenance requires a separate new output')
+    index_data = operations.bounded_read(root / 'index.json')
+    receipt_data = operations.bounded_read(root / 'receipt.json')
+    index, receipt = json.loads(index_data), json.loads(receipt_data)
+    review.require(index.get('kind') == 'dogfood_result_lineage'
+        and index.get('schema_version') == SCHEMA_VERSION
+        and 'collector_revision_proof' not in index,
+        'lineage is not missing the current collector proof')
+    review.require(index['lineage_id'] == machine.digest({k: v for k, v in index.items() if k != 'lineage_id'})
+        and receipt.get('kind') == 'dogfood_result_lineage_receipt'
+        and receipt.get('schema_version') == SCHEMA_VERSION
+        and receipt.get('lineage_id') == index['lineage_id']
+        and receipt.get('index_sha256') == operations.digest(index_data),
+        'original lineage index/receipt changed')
+    inventory = receipt.get('artifacts')
+    review.require(isinstance(inventory, dict) and inventory, 'original lineage inventory empty')
+    review.require({p.relative_to(root).as_posix() for p in root.rglob('*') if p.is_file()}
+        == {*inventory, 'index.json', 'receipt.json'}, 'original lineage inventory differs')
+    files = _relative_files(root, inventory)
+    review.require(all(inventory[name] == _binding(data) for name, data in files.items()),
+        'original lineage payload changed')
+    run = json.loads(files['source/collection/run.json'])
+    proof_path = 'provenance/collector-revision-proof.json'
+    review.require(proof_path not in files, 'unbound proof already present')
+    proof_data = operations.encoded(collector_provenance.create(root / 'source', run, campaign.ROOT))
+    files[proof_path] = proof_data
+    revised = {k: v for k, v in index.items() if k != 'lineage_id'}
+    revised['collector_revision_proof'] = {'path': proof_path, 'sha256': operations.digest(proof_data)}
+    revised['lineage_id'] = machine.digest(revised)
+    revised_data = operations.encoded(revised)
+    files['index.json'] = revised_data
+    files['receipt.json'] = operations.encoded({'kind': 'dogfood_result_lineage_receipt',
+        'schema_version': SCHEMA_VERSION, 'lineage_id': revised['lineage_id'],
+        'index_sha256': operations.digest(revised_data),
+        'artifacts': {name: _binding(data) for name, data in files.items() if name != 'index.json'}})
+    # Full current verification occurs before publication. A provenance witness
+    # cannot repair a different source, review, evaluation or qualification defect.
+    with tempfile.TemporaryDirectory(prefix='volicord-lineage-provenance-', dir=output.parent) as temp:
+        provisional = Path(temp) / 'lineage'
+        operations.publish_directory(provisional, files)
+        verify(provisional)
+    review.require(operations.bounded_read(root / 'index.json') == index_data
+        and operations.bounded_read(root / 'receipt.json') == receipt_data,
+        'original lineage changed during proof retention')
+    review.require(all(operations.bounded_read(operations.safe_path(root, name)) == data
+        for name, data in files.items() if name in inventory), 'original payload changed during proof retention')
+    operations.publish_directory(output, files)
+    return {'state': 'published', 'lineage_root': str(output), 'lineage_id': revised['lineage_id'],
+        'original_lineage_id': index['lineage_id'], 'original_receipt_sha256': operations.digest(receipt_data),
+        'source_evaluation_reviews_qualification_unchanged': True}
+
+
 def verify(root):
     """Verify a copied package without consulting original campaign/staging paths."""
     root = root.resolve()
@@ -230,7 +297,15 @@ def verify(root):
         campaign.verify_inventory(root / 'source')
     except (ValueError, OSError) as error:
         raise ValueError(f'copied source inventory binding changed: {error}') from error
-    collection = collection_runs.verify(root / 'source', evidence_set)
+    proof_binding = index.get('collector_revision_proof')
+    review.require(isinstance(proof_binding, dict) and set(proof_binding) == {'path', 'sha256'}
+        and proof_binding['path'] == 'provenance/collector-revision-proof.json',
+        'copied collector revision proof missing; retain a proof in a separate new lineage')
+    proof_data = operations.bounded_read(operations.safe_path(root, proof_binding['path']))
+    review.require(operations.digest(proof_data) == proof_binding['sha256'],
+        'copied collector revision proof changed')
+    collection = collection_runs.verify(root / 'source', evidence_set,
+        revision_proof=json.loads(proof_data))
     import explanation_evidence
     from types import SimpleNamespace
     def copied_capture(slot):
@@ -245,7 +320,7 @@ def verify(root):
     current_explanations = explanation_evidence.verify_collection_index(root / 'source', mapped,
         evidence_set['explanation_evidence'], collection['producers'])
     evaluation_path = operations.safe_path(root, index["evaluation"]["path"])
-    evaluation = evaluation_runs.load(evaluation_path)
+    evaluation = evaluation_runs.load(evaluation_path, for_review=True)
     previous_path = root / 'evaluation/previous-evaluation.json'
     if evaluation['previous_evaluation'] is not None:
         review.require(evaluation_runs.historical_reference(previous_path,
@@ -347,7 +422,7 @@ def verify(root):
     qualification_path = operations.safe_path(root, index["qualification"]["path"])
     qualification_data = operations.bounded_read(qualification_path)
     qualification = json.loads(qualification_data)
-    qualification_policy.validate_result(qualification)
+    qualification_policy.validate_result(qualification, for_archive=True)
     evidence_purpose.require_same(index, evidence_set, evaluation, qualification)
     review.require(qualification["candidate_head"] == index["candidate_head"]
         and qualification["evidence_set"]["sha256"] == index["campaign"]["evidence_set_sha256"]
@@ -410,4 +485,5 @@ def verify(root):
         "review_run_ids": [item["run_id"] for item in review_refs],
         "qualification_run_id": qualification["run_id"],
         "approval_run_id": approval["run_id"] if approval else None,
+        "policy_verification": "recorded_identity_not_current_equivalence",
         "external_staging_paths_used": False}

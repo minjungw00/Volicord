@@ -240,7 +240,7 @@ def unchanged(value, files, producers):
         raise api().CampaignError("collection source or collector changed during processing")
 
 
-def verify(root, manifest, *, publication_output=True):
+def verify(root, manifest, *, publication_output=True, revision_proof=None):
     """Verify retained provenance without the source campaign or staging Runtime."""
     c = api()
     value = c.read_json(root / "collection/run.json")
@@ -265,7 +265,10 @@ def verify(root, manifest, *, publication_output=True):
                 raise c.CampaignError("collection retained input/producer changed")
     if set(value["producers"]) != recorded_producer_names(root):
         raise c.CampaignError("collection producer dependency inventory changed")
-    if value["mode"] == "reprocess":
+    if revision_proof is not None:
+        import collector_provenance
+        collector_provenance.verify(root, value, revision_proof)
+    elif value["mode"] == "reprocess":
         verify_collector_revision(value)
     original = c.read_json(root / "collection/inputs/source/campaign.json")
     if (value["source_campaign"] != {"campaign_id": original["campaign_id"], "root": original["campaign_root"],

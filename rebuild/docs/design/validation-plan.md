@@ -5997,3 +5997,32 @@ claiming they are resolved. Positive controls retain the original failed report
 after an explicitly comparable pass; negative controls keep selected failures and
 unrelated-pass/comparison-unknown alerts. Failed originals, comparison details,
 canonical state and the CLI/MCP facts remain unchanged.
+
+## Source-independent collector revision witnesses — 2026-11-15
+
+A copied result passed with original campaign/Runtime paths denied, but a stronger
+no-subprocess check exposed `git show` reads from the operator's Git object store.
+Preserve that original success scope and the stronger refused attempt. Retained
+producer hashes alone do not prove their relationship to the recorded collector
+commit when the original Git repository is absent.
+
+Private result lineages now retain a bounded Git commit/tree witness for exactly
+their collector producer paths. Verify the commit and ancestor tree object hashes,
+regular-file modes, exact minimal tree closure, final blob identities and existing
+SHA-256/byte bindings without Git or historical-code execution. Do not copy
+unrelated file bodies. Missing, foreign, malformed, rehashed or incomplete proofs
+must fail. Current collection and new qualification/approval retain strict local
+revision/current-policy verification; archival reading verifies the recorded
+current-schema policy and replays its observations without claiming current-policy
+equivalence or new authority.
+
+`retain-collector-provenance` may publish a separate corrected lineage after
+verifying all original payload hashes and fully checking the new package. It must
+leave original observations, evaluations, reviews, qualifications, approval and
+both original packages untouched. Old packages without the witness cannot silently
+fall back to Git during copied verification. Test actual temporary Git objects,
+original-repository removal, forbidden subprocesses, tampered bodies/trees/modes,
+source-independent publication, missing-proof refusal and append-only retention.
+Actual copied verification must deny all original campaign paths and all subprocess
+readers. A provenance repair does not replay native conversations or upgrade any
+original semantic or Human verdict.

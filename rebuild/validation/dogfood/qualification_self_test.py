@@ -1109,6 +1109,54 @@ class GateTechnicalBoundaryTests(unittest.TestCase):
 
 
 class FileBoundaryTests(unittest.TestCase):
+    def test_collector_proof_survives_copy_and_repairs_only_a_separate_package(self):
+        import subprocess
+        import campaign
+        import result_lineage
+        import review_operations as ops
+        from review_operations_self_test import snapshot
+        prefix = self.parent / self._testMethodName
+        prefix.mkdir()
+        candidate = campaign.load_evidence_set(self.root)['candidate_head']
+        qroot = prefix / 'qualification'
+        qualified = policy.qualify(self.root, self.evaluation, qroot, candidate=candidate, review_roots=[])
+        published = result_lineage.publish(self.root, self.evaluation, [],
+            qroot / 'qualification.json', output=prefix / 'published')
+        copied = prefix / 'copied'
+        shutil.copytree(published['lineage_root'], copied)
+        with patch.object(subprocess, 'run', side_effect=AssertionError('copied verifier used Git')), \
+             patch.object(subprocess, 'Popen', side_effect=AssertionError('copied verifier spawned a reader')), \
+             patch.object(campaign, 'load_evidence_set', side_effect=AssertionError('original campaign read')):
+            self.assertFalse(result_lineage.verify(copied)['external_staging_paths_used'])
+        # Authored reproduction of the missing-artifact defect, with every outer
+        # hash honestly resealed. A file hash alone must not waive the Git proof.
+        index = json.loads((copied / 'index.json').read_bytes())
+        proof_path = index.pop('collector_revision_proof')['path']
+        (copied / proof_path).unlink()
+        index['lineage_id'] = m.digest({k: v for k, v in index.items() if k != 'lineage_id'})
+        (copied / 'index.json').write_bytes(ops.encoded(index))
+        receipt = json.loads((copied / 'receipt.json').read_bytes())
+        receipt.update(lineage_id=index['lineage_id'], index_sha256=ops.digest(ops.encoded(index)))
+        receipt['artifacts'].pop(proof_path)
+        (copied / 'receipt.json').write_bytes(ops.encoded(receipt))
+        before = snapshot(copied)
+        with self.assertRaisesRegex(ValueError, 'collector revision proof missing'):
+            result_lineage.verify(copied)
+        revised = prefix / 'revised'
+        result_lineage.retain_collector_provenance(copied, revised)
+        self.assertEqual(snapshot(copied), before)
+        self.assertEqual((copied / 'qualification/qualification.json').read_bytes(),
+                         (revised / 'qualification/qualification.json').read_bytes())
+        with patch.object(subprocess, 'run', side_effect=AssertionError('revised copied verifier used Git')):
+            self.assertEqual(result_lineage.verify(revised)['policy_verification'],
+                'recorded_identity_not_current_equivalence')
+        # Archival reading never supplies fresh current-policy authority.
+        with patch.object(policy, 'identity', return_value={'revision': policy.REVISION, 'sha256': 'f' * 64}):
+            with self.assertRaisesRegex(ValueError, 'policy/schema'):
+                policy.validate_result(qualified)
+            policy.validate_result(qualified, for_archive=True)
+            result_lineage.verify(revised)
+
     def test_changed_projection_meaning_replays_from_unchanged_copied_raw_inputs(self):
         import answer_projection
         import campaign as c

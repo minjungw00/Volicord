@@ -364,10 +364,15 @@ def qualify(root, evaluation_path, output, *, candidate, review_roots=(), capsul
     return result
 
 
-def validate_result(value):
+def validate_result(value, *, for_archive=False):
+    """Archived integrity is distinct from current qualification/approval."""
     import re
+    recorded = value.get('policy')
     review.require(value.get("kind") == "phase8_dogfood_result" and value.get("schema_version") == 3
-        and value.get("policy") == identity(), "invalid qualification policy/schema")
+        and isinstance(recorded, dict) and set(recorded) == {'revision', 'sha256'}
+        and recorded['revision'] == REVISION
+        and isinstance(recorded['sha256'], str) and re.fullmatch('[0-9a-f]{64}', recorded['sha256'])
+        and (for_archive or recorded == identity()), "invalid qualification policy/schema")
     for field, size in (("candidate_head", 40), ("evaluator_revision", 40), ("run_nonce", 32)):
         review.require(re.fullmatch(f"[0-9a-f]{{{size}}}", str(value.get(field, ""))), "invalid qualification identity")
     review.require(value.get("run_id") == machine.digest({k: v for k, v in value.items() if k != "run_id"}), "qualification run hash changed")
@@ -441,7 +446,7 @@ def approve(qualification_path, output, *, operator, statement):
 
 def approval_value(value, data, operator, statement):
     evidence_purpose.require_measured(value)
-    result = {**value, "kind": "dogfood_operator_approval", "schema_version": 1, "policy": identity(),
+    result = {**value, "kind": "dogfood_operator_approval", "schema_version": 1, "policy": value['policy'],
         "candidate_head": value["candidate_head"], "evidence_set": value["evidence_set"],
         "qualification_run_id": value["run_id"], "qualification_sha256": operations.digest(data),
         "operator": {"identity": operator, "identity_state": "self_reported"}, "action": statement,

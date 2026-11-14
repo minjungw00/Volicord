@@ -3295,6 +3295,10 @@ def parser() -> argparse.ArgumentParser:
     verify_lineage = sub.add_parser("verify-result-lineage",
         help="Verify a copied result lineage without original staging paths")
     verify_lineage.add_argument("--lineage-root", required=True)
+    retain_provenance = sub.add_parser('retain-collector-provenance',
+        help='Retain an exact collector Git witness in a separate verified lineage copy')
+    retain_provenance.add_argument('--lineage-root', required=True)
+    retain_provenance.add_argument('--output', required=True)
     finalize = sub.add_parser("finalize-manifest")
     package = sub.add_parser("package-review")
     prepare_qualitative = sub.add_parser("prepare-qualitative-review")
@@ -3393,6 +3397,10 @@ def main() -> int:
         return subprocess.run(argv, check=False).returncode
     if args.command == "verify-result-lineage":
         print(json.dumps(result_lineage.verify(Path(args.lineage_root)), indent=2, sort_keys=True))
+        return 0
+    if args.command == 'retain-collector-provenance':
+        print(json.dumps(result_lineage.retain_collector_provenance(
+            Path(args.lineage_root), Path(args.output)), indent=2, sort_keys=True))
         return 0
     if args.command == "validate-approval":
         import qualification_policy
