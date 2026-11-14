@@ -548,7 +548,10 @@ fn failure_notices_own_actions_and_preserve_exact_report_targets(
                     "exact report target"
                 );
             }
-            assert!(html.contains("data-warning=\"history\""));
+            assert!(
+                !html.contains("data-warning=\"history\""),
+                "past adversity alone does not add another opening warning"
+            );
             assert_eq!(
                 html.matches("class=\"verification-status-badge\"").count(),
                 1
@@ -620,6 +623,12 @@ fn failure_notices_own_actions_and_preserve_exact_report_targets(
     let mut historical_html = String::new();
     work_detail(&mut historical_html, &request, &p, &historical, false);
     assert!(!historical_html.contains("class=\"verification-status-badge\""));
+    assert!(!historical_html.contains("data-warning=\"history\""));
+    assert!(!historical_html.contains("data-warning=\"historical\""));
+    assert!(
+        !historical_html.contains("data-warning=\"failure\""),
+        "historical-only failures stay with original records rather than the opening"
+    );
     assert!(
         historical_html.contains("Historical"),
         "historical failed originals remain inspectable"

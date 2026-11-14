@@ -2857,10 +2857,42 @@ fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<d
             .next()
             .ok_or("claim close")?;
         assert_eq!(
-            claim.contains("class=\"source-window-omission\""),
-            needs_omission
+            claim.matches("class=\"source-window-omission\"").count(),
+            usize::from(needs_omission),
+            "one relevant scope message, even when many supporting windows are omitted"
         );
         assert_eq!(claim.contains("unavailable offline"), needs_omission);
+        let inline_actions = html
+            .split("<div class=\"unit\"")
+            .skip(1)
+            .filter_map(|unit| unit.split("</div>").next())
+            .filter(|unit| unit.contains("paragraph-evidence-action"))
+            .collect::<Vec<_>>();
+        assert!(
+            !inline_actions.is_empty(),
+            "ordinary cited prose is exercised"
+        );
+        assert!(
+            inline_actions
+                .iter()
+                .all(|unit| !unit.contains("source-window-omission")),
+            "ordinary prose does not repeat embedding diagnostics"
+        );
+        assert_eq!(
+            inline_actions
+                .iter()
+                .any(|unit| unit.contains("source-scope-icon")),
+            needs_omission
+        );
+        if needs_omission {
+            assert!(inline_actions.iter().any(|unit| unit.contains(
+                "Some cited code is not embedded in this page; open evidence for included ranges and availability.")),
+                "the evidence action retains an accessible, non-color-only scope cue");
+            assert!(
+                html.contains("code-reading-scope") && html.contains("Supporting code omitted"),
+                "exact omitted ranges remain discoverable in the evidence disclosure"
+            );
+        }
     }
     Ok(())
 }

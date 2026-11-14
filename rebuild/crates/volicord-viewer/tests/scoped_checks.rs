@@ -112,6 +112,9 @@ fn passing_repeat_preserves_report_provenance_without_inventing_a_failure(
             // A genuine earlier failure still exists as its own original report.
             assert!(html.contains(&f.failed.checkpoint_id.to_string()));
             assert!(html.contains("actual=3; expected=7"));
+            assert!(!html.contains("data-warning=\"history\""));
+            assert!(!html.contains("data-warning=\"historical\""),
+                "an explicitly compared passing rerun keeps its failed original without a historical opening alert");
         }
     }
     assert_eq!(before, f.ops.canonical_basis(f.project)?);

@@ -5973,3 +5973,27 @@ Keep the original wrong projection and independent review, append the corrected
 evaluation, and check actual unchanged captures plus coupled collection/review
 consumers. This tooling repair grants no missing historical field, semantic
 verdict, Product execution, or human acceptance.
+
+## Quiet evidence scope and historical-only opening notices — 2026-11-15
+
+Independent rendered review found repeated per-citation embedding diagnostics in
+ordinary Repository prose. Preserve the original HTML, screenshots and two
+violated assessments. Ordinary evidence actions now aggregate missing embedded
+ranges into one information cue with accessible scope text; exact range states
+remain in the included-code disclosure and Source reader. A selected figure
+claim retains one explicit limit for its entire supporting set. No Source,
+publication, range, byte bound, expiry or authority is changed.
+
+Exercise complete and overflowing independent-window fixtures through real
+Operations recording and HTTP, including multiple omitted citations, the quiet
+ordinary action and the exact figure/evidence limit. Check actual current
+publications with development live, native and script-free consumers separately
+from a changed candidate's gate and fresh campaign. Replaying older publications
+does not upgrade their original production or establish new user acceptance.
+
+Direct user feedback also identified the opening historical-adversity notice.
+Keep past observations in folded verification originals and record flow, without
+claiming they are resolved. Positive controls retain the original failed report
+after an explicitly comparable pass; negative controls keep selected failures and
+unrelated-pass/comparison-unknown alerts. Failed originals, comparison details,
+canonical state and the CLI/MCP facts remain unchanged.

@@ -416,37 +416,56 @@ fn reader_citation_actions(
     let Some(first) = targets.first() else {
         return;
     };
-    html.push_str(&format!("<div class=\"evidence-actions\"><a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{} · {}\">{}</a>",reader_claim_anchor(answers,index),escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),text(r.locale,"Choose an exact range from this explanation's evidence","이 설명의 근거에서 정확한 범위 선택"),targets.len(),text(r.locale,"Evidence","근거 보기")));
-    for (_, c) in citations
+    let omitted = citations
         .iter()
         .enumerate()
         .filter(|(n, c)| !unique || !citations[..*n].contains(c))
-    {
-        source_window_omission(html, r, answers, c);
+        .any(|(_, c)| source_window_omitted(answers, c));
+    let scope = if omitted {
+        text(r.locale,
+            "Some cited code is not embedded in this page; open evidence for included ranges and availability.",
+            "인용한 코드 일부가 이 화면에 포함되지 않았습니다. 근거 보기에서 포함 범위와 조회 가능 여부를 확인하세요.")
+    } else {
+        ""
+    };
+    let label = format!(
+        "{} · {}{}{}",
+        text(
+            r.locale,
+            "Choose an exact range from this explanation's evidence",
+            "이 설명의 근거에서 정확한 범위 선택"
+        ),
+        targets.len(),
+        if omitted { " · " } else { "" },
+        scope
+    );
+    html.push_str(&format!("<div class=\"evidence-actions\"><a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{}\" title=\"{}\">{}",reader_claim_anchor(answers,index),escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),escape(&label),escape(scope),text(r.locale,"Evidence","근거 보기")));
+    if omitted {
+        html.push_str("<span class=\"source-scope-icon\" aria-hidden=\"true\">i</span>");
     }
-    html.push_str("</div>");
+    html.push_str("</a></div>");
 }
 
-fn source_window_omission(
-    html: &mut String,
-    r: &ViewerRequest,
+fn source_window_omitted(
     answers: &ReaderAnswers<'_>,
     citation: &volicord_projections::ExplanationCitation,
-) {
-    if !answers.source_excerpts.iter().any(|e| {
+) -> bool {
+    !answers.source_excerpts.iter().any(|e| {
         e.citation.same_source_range(citation)
             && e.omitted_utf8_bytes == 0
             && e.text.len() == citation.end_byte - citation.start_byte
-    }) {
-        html.push_str(&format!(
-            "<small class=\"source-window-omission\">{}</small>",
-            text(
-                r.locale,
-                "Complete code window is not embedded; unavailable offline.",
-                "전체 코드 범위가 포함되지 않아 오프라인에서 읽을 수 없습니다."
-            )
-        ));
-    }
+    })
+}
+
+fn source_window_omission(html: &mut String, r: &ViewerRequest) {
+    html.push_str(&format!(
+        "<small class=\"source-window-omission\">{}</small>",
+        text(
+            r.locale,
+            "Complete code window is not embedded; unavailable offline.",
+            "전체 코드 범위가 포함되지 않아 오프라인에서 읽을 수 없습니다."
+        )
+    ));
 }
 
 /// Visibility is a reading hierarchy, never a change to admitted dependencies.
@@ -854,8 +873,11 @@ fn render_diagrams(
                 if let Some(first) = targets.first() {
                     html.push_str(&format!("<a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{claim}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{} · {}\">{}</a>",escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),text(r.locale,"Choose an exact range for the selected element","선택한 요소의 정확한 근거 범위 선택"),targets.len(),text(r.locale,"Evidence","근거 보기")));
                 }
-                for (_, c) in covering {
-                    source_window_omission(html, r, answers, c);
+                if covering
+                    .iter()
+                    .any(|(_, c)| source_window_omitted(answers, c))
+                {
+                    source_window_omission(html, r);
                 }
                 html.push_str("</div></section>");
             }
@@ -2296,16 +2318,6 @@ fn opening_context(
             &actions,
         );
     }
-    if failed.iter().any(historical)
-        && !answers
-            .facts
-            .iter()
-            .any(|f| f.question == "HistoricalAdversity")
-    {
-        let actions = notice_record_action(r, answers, work, "full-verification");
-        reading_notice(html, "historical", "history", text(r.locale,"Historical failure", "과거 검증 실패"),
-            text(r.locale,"An earlier failure remains recorded. Historical applicability or an explicitly compared rerun establishes no whole-work coverage.","이전 실패는 원래 보고에 남아 있습니다. 과거 적용 범위나 명시적으로 비교한 재실행이 작업 전체의 coverage를 확정하지는 않습니다."), &actions);
-    }
     if answers
         .cautions
         .iter()
@@ -2333,11 +2345,7 @@ fn opening_context(
     for fact in answers.facts.iter().filter(|a| {
         matches!(
             a.question.as_str(),
-            "HistoricalAdversity"
-                | "VerificationCoverage"
-                | "SourceEvidenceGap"
-                | "Conflicts"
-                | "ReviewBasis"
+            "VerificationCoverage" | "SourceEvidenceGap" | "Conflicts" | "ReviewBasis"
         ) || (rejected && a.question == "UserAcceptance")
     }) {
         // A current independent article has its own range availability. Historical
@@ -2350,11 +2358,6 @@ fn opening_context(
             continue;
         }
         let (kind, severity, title) = match fact.question.as_str() {
-            "HistoricalAdversity" => (
-                "history",
-                "history",
-                text(r.locale, "Prior adverse observations", "과거 문제 관측"),
-            ),
             "SourceEvidenceGap" => (
                 "source",
                 "note",

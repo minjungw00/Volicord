@@ -713,6 +713,20 @@ pan and exact navigation returns retain the reader's position. No-script readers
 retain native scrolling and the same complete relationship navigation.
 These technical contracts do not establish human readability or acceptance.
 
+Ordinary prose keeps embedding diagnostics with its evidence action, rather than
+repeating an offline warning for every missing citation window. Affected actions
+carry one quiet information icon with an accessible scope description and hover
+text. Exact included/omitted/unavailable ranges remain in the Source reader and
+the included-code disclosure. Selected figure claims may show one explicit scope
+message for their complete supporting set. This presentation does not remove
+citations, enlarge embedding bounds or turn an initial omission into Source expiry.
+
+Opening alerts describe current failed checks, unestablished comparable retests,
+rejections and other current limitations. Historical adversity alone belongs with
+the folded original verification and record flow. Moving it there does not claim
+resolution: a later unrelated pass cannot remove an unresolved failure alert, and
+the original failure, comparison basis and historical applicability remain intact.
+
 D/AC wording above defines outcomes, not an API or crate taxonomy. The direct
 checks below establish only their stated scope. The ledger records earlier candidate observations, not current passes for superseded Viewer surfaces. AC-26–31 require fresh validation; human acceptance remains separate.
 Existing safe-read/v4/citation tests establish regression infrastructure, not sufficient
