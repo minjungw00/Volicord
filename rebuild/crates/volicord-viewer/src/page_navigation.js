@@ -23,21 +23,64 @@ function createPageNavigation({startReader}) {
   function saveScroll(){
     if(!loading&&route(location)===currentRoute)history.replaceState({...state(),viewerPageScroll:{x:scrollX,y:scrollY}},'');
   }
-  function showLoading(url){
+  function loadingContext(url,trigger){
+    const sameProject=!url.searchParams.has('project')||url.searchParams.get('project').toLowerCase()===document.body.dataset.projectId;
+    const sameLanguage=(url.searchParams.get('language')||'en')===(new URL(location.href).searchParams.get('language')||'en');
+    const picker=document.querySelector('.project-picker > summary > span:nth-child(2)');
+    const projectLink=trigger?.closest('.project-picker nav a');
+    const project=(projectLink||(sameProject?picker:null))?.childNodes[0]?.textContent.trim()||null;
+    const count=sameProject?document.querySelector('.project-navigation [data-destination=work] .nav-count')?.textContent:null;
+    const work=url.searchParams.get('work');
+    let title=null;
+    if(!loading&&sameProject&&sameLanguage){
+      if(work&&trigger?.dataset.workLink===work)title=trigger.querySelector('h3')?.textContent||trigger.closest('.continue-card')?.querySelector('h2')?.textContent;
+      const current=new URL(location.href);
+      if(current.searchParams.get('view')===url.searchParams.get('view')&&current.searchParams.get('work')===work)title=document.querySelector('.doc-head h1')?.textContent||title;
+    }
+    return {project,count,title};
+  }
+  function loadingHeader(section,url,context){
+    const {ko,view}=labels(url),work=url.searchParams.get('work');
+    const node=(tag,className,text)=>{const n=document.createElement(tag);n.className=className;if(text)n.textContent=text;return n;};
+    const heading=(text,className='')=>{const h=node('h1',className,text);if(!text){h.append(node('span','loading-title-placeholder'));h.setAttribute('aria-label',ko?'제목을 불러오는 중':'Loading title');}return h;};
+    if(view==='overview'){
+      section.classList.add('overview-page');
+      const header=node('header','page-header'),title=node('div','project-title'),body=node('div','');
+      const emblem=node('span','project-emblem',context.project?Array.from(context.project)[0]:'');emblem.setAttribute('aria-hidden','true');
+      body.append(heading(context.project),node('p','project-meta',ko?'로컬 프로젝트 · 보존된 기록':'Local Project · retained records'));
+      title.append(emblem,body);header.append(node('p','eyebrow','PROJECT OVERVIEW'),title);section.append(header);return section;
+    }
+    if(view==='work'&&!work){
+      section.classList.add('catalogue-page');
+      const header=node('header','page-header'),title=node('div','heading-count');
+      title.append(heading(ko?'작업':'Work','index-title'));if(context.count)title.append(node('span','',context.count));
+      header.append(node('p','eyebrow',context.project),title,node('p','overview-lead',ko?'진행 중인 일부터 지난 조사까지, 목표와 결과를 함께 찾아 읽습니다.':'Find and read recorded goals, progress and investigations.'));
+      section.append(header);return section;
+    }
+    const article=node('article','doc');article.dataset.readingLayout='grouped';
+    const toc=node('details','document-nav');toc.dataset.overflow='true';toc.inert=true;toc.setAttribute('aria-hidden','true');
+    const summary=node('summary','');summary.append(node('span','toc-label',ko?'목차':'Contents'),node('span','toc-cue',work?(ko?'작업 설명':'Work explanation'):(ko?'저장소 설명':'Repository explanation')),node('span','toc-position'),node('span','','⌄'));toc.append(summary);
+    const breadcrumb=node('p','breadcrumb'),back=node('a','',work?(ko?'← 작업':'← Work'):(ko?'← 개요':'← Overview'));
+    const backUrl=new URL(url);for(const key of ['work','from'])backUrl.searchParams.delete(key);backUrl.searchParams.set('view',work?'work':'overview');breadcrumb.append(back);back.href=backUrl.href;
+    const group=node('section','work-reading-group'),header=node('header','doc-head');
+    if(work){const id=node('p','work-identifier');id.append(node('span','',ko?'작업 ID':'Work ID'),node('code','',work));header.append(id);}
+    header.append(heading(context.title));group.append(header);article.append(toc,breadcrumb,group);section.append(article);return group;
+  }
+  function showLoading(url,context){
     const {ko,name,view}=labels(url),main=document.getElementById('viewer-content');
     if(!main)throw Error('missing reader surface');
     document.body.dataset.pageLoading='true';document.body.dataset.view=view;
     document.querySelectorAll('.project-navigation a').forEach(a=>{if(a.dataset.destination===view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
     const mobile=document.querySelector('.mobile-location');if(mobile)mobile.textContent=name;
     main.replaceChildren();main.setAttribute('aria-busy','true');main.tabIndex=-1;
-    const section=document.createElement('section');section.className='page-loading';section.lang=ko?'ko':'en';
-    const title=document.createElement('h1');title.textContent=name;
+    const section=document.createElement('section');section.className='snapshot-page page-loading';section.lang=ko?'ko':'en';
+    const content=loadingHeader(section,url,context);
     const message=document.createElement('p');message.className='page-loading-message';
     const spinner=document.createElement('span');spinner.className='page-loading-spinner';spinner.setAttribute('aria-hidden','true');
     message.append(spinner,document.createTextNode(ko?'내용을 불러오는 중입니다.':'Loading content…'));
     const skeleton=document.createElement('div');skeleton.className='page-loading-skeleton';skeleton.setAttribute('aria-hidden','true');
     for(let i=0;i<3;i++)skeleton.append(document.createElement('span'));
-    section.append(title,message,skeleton);main.append(section);window.scrollTo(0,0);main.focus({preventScroll:true});
+    content.append(message,skeleton);main.append(section);window.scrollTo(0,0);main.focus({preventScroll:true});
     document.title=name+' · Volicord';announce(name+' · '+(ko?'불러오는 중':'Loading'));
   }
   function showError(url){
@@ -50,8 +93,14 @@ function createPageNavigation({startReader}) {
     const native=document.createElement('a');native.className='button';native.href=url.href;native.dataset.nativeNavigation='true';native.textContent=ko?'페이지 새로고침':'Reload page';
     section.append(title,message,retry,native);main.append(section);announce(title.textContent);main.focus({preventScroll:true});
   }
-  async function go(destination,{pop=false,retry=false}={}){
+  function paintLoadingFrame(){
+    // Let the pending frame paint before expensive DOM parsing/mounting. Motion
+    // uses compositor transforms so it does not require a JS animation loop.
+    return new Promise(resolve=>{if(document.hidden)setTimeout(resolve,0);else requestAnimationFrame(()=>setTimeout(resolve,0));});
+  }
+  async function go(destination,{pop=false,retry=false,trigger=null}={}){
     const url=new URL(destination,location.href);if(!eligible(url)){location.assign(url.href);return;}
+    const context=loadingContext(url,trigger);
     const token=++sequence;pending?.abort();pending=new AbortController();const controller=pending;
     const saved=pop?state().viewerPageScroll:null;
     if(!pop&&!retry)saveScroll();
@@ -59,9 +108,11 @@ function createPageNavigation({startReader}) {
     if(!pop&&!retry)history.pushState({},'',url.href);
     currentRoute=route(url);loading=true;
     try {
-      showLoading(url);
+      showLoading(url,context);
       const response=await fetch(url.href,{credentials:'same-origin',cache:'no-store',redirect:'error',signal:controller.signal});
       const html=await response.text();
+      if(token!==sequence||controller.signal.aborted)return;
+      await paintLoadingFrame();
       if(token!==sequence||controller.signal.aborted)return;
       const parsed=new DOMParser().parseFromString(html,'text/html');
       const script=parsed.querySelector('script[data-viewer-reading]');
@@ -73,6 +124,8 @@ function createPageNavigation({startReader}) {
       // Reuse only the already CSP-pinned factories. Fetched scripts are never
       // executed, and a different running build uses native document navigation.
       parsed.querySelectorAll('script').forEach(node=>node.remove());
+      await paintLoadingFrame();
+      if(token!==sequence||controller.signal.aborted)return;
       document.documentElement.lang=parsed.documentElement.lang;
       document.title=parsed.title;
       const selector='style,meta[name="volicord-observation"],meta[name="volicord-observation-unavailable"]';
@@ -101,7 +154,7 @@ function createPageNavigation({startReader}) {
     if(!link||link.hasAttribute('download')||link.dataset.nativeNavigation||link.target&&link.target!=='_self')return;
     const url=new URL(link.href,location.href);
     if(!eligible(url)||(route(url)===route(location)&&url.hash))return;
-    event.preventDefault();go(url.href);
+    event.preventDefault();go(url.href,{trigger:link});
   });
   lifetime.on(document,'submit',event=>{
     const form=event.target;if(event.defaultPrevented||form.method.toLowerCase()!=='get'||form.target&&form.target!=='_self')return;

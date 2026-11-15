@@ -721,8 +721,23 @@ for their complete supporting set. This presentation does not remove citations,
 enlarge embedding bounds or turn an initial omission into Source expiry.
 
 Enhanced live navigation immediately selects the destination and replaces the main
-body with a labelled loading state while its authoritative GET completes. A spinner
-and text expose progress; reduced-motion preferences disable the spinner motion.
+body with a labelled loading state while its authoritative GET completes. All pages
+and pending frames share one 940px content measure and responsive shell gutters;
+a stable scrollbar gutter prevents centering shifts between short and long pages.
+Pending Overview/catalogue headers use the same native classes, Project name and
+fixed labels. Document frames preserve the same outline, breadcrumb, Work ID and
+title placement/typography. A title already visible in the current same-Project,
+same-language navigation context may label that pending destination. Unknown
+authored titles use a heading-sized placeholder until the authoritative response;
+no unrelated generic title, hidden article prefetch or cross-page title cache
+substitutes for them. Pending labels carry no publication/readability authority.
+A rotating spinner, moving body placeholders and text expose progress; reduced-motion
+preferences disable both animations. Browser checks sample real transforms and
+pixels over time as well as checking styles. The pending frame receives explicit
+paint opportunities before DOM parsing and before mounting. Transform animations
+use compositor-friendly layers. Full unheld navigation records frame gaps and
+long tasks through response parsing/body replacement separately from held-response
+controls; these observations establish no universal frame-rate guarantee.
 Links, GET search/sort forms and language changes share that lifecycle. New
 navigation aborts superseded page and citation reads; late responses cannot replace
 the selected page. Each mounted page gets fresh reader handlers, buffers and

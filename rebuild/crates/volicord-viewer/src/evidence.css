@@ -84,7 +84,7 @@
 .diagram-return-index {margin:10px 0;font-size:11px}
 .diagram-return-index>summary {font-size:11px;color:var(--muted)}
 body:is([data-source-open=true],:has(.appendix :target)) main.shell.viewer-shell {max-width:none;padding-inline:32px}
-body:is([data-source-open=true],:has(.appendix :target)) .doc {width:auto;max-width:940px;margin:0 auto}
+body:is([data-source-open=true],:has(.appendix :target)) .doc {width:auto;max-width:var(--page-measure);margin:0 auto}
 body:is([data-source-open=true],:has(.appendix :target)) .doc-head h1 {font-size:35px}
 @media(min-width:1200px) {
  body:is([data-source-open=true],:has(.appendix :target)) {overflow:auto}

@@ -1,14 +1,21 @@
 /* Adopted project reader. Native links/disclosures remain usable in exports. */
-.page-loading,.page-navigation-error{max-width:940px;margin:24px auto}
+/* One content measure for every page and its pending frame. */
+html{scrollbar-gutter:stable}
+.page-loading,.page-navigation-error{margin-block:0}
 .page-loading-message{display:flex;align-items:center;gap:12px;margin-top:24px;color:var(--body)}
-.page-loading-spinner{width:20px;height:20px;flex:none;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:viewer-page-spin .8s linear infinite}
-.page-loading-skeleton{display:grid;gap:16px;margin-top:36px;max-width:760px}
-.page-loading-skeleton span{display:block;height:12px;border-radius:4px;background:var(--soft)}
+.page-loading-spinner{width:20px;height:20px;flex:none;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;will-change:transform;animation:viewer-page-spin .8s linear infinite}
+.page-loading-skeleton{display:grid;gap:16px;margin-top:32px}
+.page-loading-skeleton span,.loading-title-placeholder{display:block;position:relative;overflow:hidden;border-radius:4px;background:var(--soft)}
+.page-loading-skeleton span{height:12px}
 .page-loading-skeleton span:last-child{width:65%}
+.loading-title-placeholder{display:inline-block;vertical-align:middle;height:.8em;width:90%;margin:0}
+.page-loading-skeleton span::after,.loading-title-placeholder::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,var(--surface),transparent);transform:translateX(-100%);will-change:transform;animation:viewer-page-shimmer 1.4s ease-in-out infinite}
+.page-loading .document-nav{pointer-events:none}
 .page-navigation-error p{margin:20px 0}.page-navigation-error .button{margin:0 12px 12px 0}
 @keyframes viewer-page-spin{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){.page-loading-spinner{animation:none}}
-:root {color-scheme:light;--paper:#fff;--surface:#fff;--canvas:#f7fbff;--rail:#f5f9fd;--soft:#edf5fb;--ink:#152e40;--body:#334c5d;--muted:#627b8e;--subtle:#7f95a6;--line:#dce7ef;--accent:#087bb8;--strong:#075d91;--wash:#e8f5fe;--focus:#0284c7;--code:#17232e;--measure:100%;--rail-width:232px;--mobile-header:0px;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK KR",NanumGothic,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font:14px/1.85 var(--sans);background:var(--paper);color:var(--ink)}
+@keyframes viewer-page-shimmer{to{transform:translateX(100%)}}
+@media(prefers-reduced-motion:reduce){.page-loading-spinner,.page-loading-skeleton span::after,.loading-title-placeholder::after{animation:none}}
+:root {color-scheme:light;--paper:#fff;--surface:#fff;--canvas:#f7fbff;--rail:#f5f9fd;--soft:#edf5fb;--ink:#152e40;--body:#334c5d;--muted:#627b8e;--subtle:#7f95a6;--line:#dce7ef;--accent:#087bb8;--strong:#075d91;--wash:#e8f5fe;--focus:#0284c7;--code:#17232e;--measure:100%;--page-measure:940px;--rail-width:232px;--mobile-header:0px;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK KR",NanumGothic,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font:14px/1.85 var(--sans);background:var(--paper);color:var(--ink)}
 body {background:var(--paper);color:var(--ink)}
 pre,code {font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
 h1 {font-size:35px;line-height:1.4;letter-spacing:-.05em;font-weight:710;text-wrap:initial}
@@ -67,10 +74,9 @@ button,input,select {font:inherit}
 .rail-close {display:none}
 .nav-backdrop[hidden] {display:none}
 main.shell.viewer-shell {box-sizing:border-box;margin:0 0 0 var(--rail-width);width:calc(100% - var(--rail-width));max-width:none;padding:48px 48px 64px;min-height:100vh;overflow-anchor:none}
-.viewer-shell>section {max-width:1100px;margin-inline:auto}
-.viewer-shell>section:has(>.doc) {max-width:940px}
+.viewer-shell>section {max-width:var(--page-measure);margin-inline:auto}
 .viewer-shell:has(>.snapshot-page>.doc) {padding-top:0}
-.doc {max-width:940px;width:auto;margin:0 auto}
+.doc {max-width:var(--page-measure);width:auto;margin:0 auto}
 .doc-head {margin:0 0 24px}
 .breadcrumb {padding-top:30px;margin:0 0 17px;font-size:11px;line-height:1.8;color:var(--muted)}
 .breadcrumb>a {border:0;background:none;padding:0;min-height:0;font-size:11px;font-weight:400;color:var(--muted);justify-content:start}

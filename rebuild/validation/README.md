@@ -1338,9 +1338,14 @@ support, not gate or human acceptance. The Runtime needs a recorded Work and
 repository explanation for the list/evidence journeys. Held authoritative GET
 responses verify immediate URL/loading presentation in en/ko at 390/768/1440,
 reduced motion, superseded requests, errors/retry, malformed-response refusal,
-mounted search/sort/language controls, Source navigation, list-history restoration,
+matched page/header geometry and known titles, actual spinner/skeleton transform
+and pixel changes, full unheld-navigation frame gaps/long tasks, mounted
+search/sort/language controls, Source navigation, list-history restoration,
 native new-tab and script-free navigation. Screenshots, hashes, partial failures
 and numeric results remain in the exclusive output directory.
+An optional `cdp_endpoint` connects an existing local review Chrome and creates an
+isolated context for these same controls; it neither routes existing tabs nor
+closes the existing browser. Report connected/headless mode separately.
 
 ## Bounded citation reading
 

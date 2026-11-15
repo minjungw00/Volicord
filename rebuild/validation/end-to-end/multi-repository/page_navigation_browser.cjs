@@ -9,6 +9,14 @@ const result={outcome:'failed',checks:[],human_acceptance:'unobserved'};
 let browser,child,exit,page,logs='',stdout='';
 const check=name=>{result.checks.push(name);console.log(name);};
 const bounded=(promise,name)=>Promise.race([promise,new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Timed out: '+name)),30000);timer.unref();})]);
+async function frame(page,selector='main > section'){
+ return page.locator(selector).evaluate(n=>{const h=n.querySelector('h1'),r=n.getBoundingClientRect(),v=h.getBoundingClientRect(),s=getComputedStyle(h);return{x:r.x,width:r.width,text:h.textContent,heading:{x:v.x,y:v.y,font:s.font,spacing:s.letterSpacing}};});
+}
+function sameFrame(pending,actual){
+ for(const field of ['x','width'])assert(Math.abs(pending[field]-actual[field])<1,'shared page gutter '+field);
+ for(const field of ['x','y'])assert(Math.abs(pending.heading[field]-actual.heading[field])<1,'same loading/actual heading position '+field);
+ assert.equal(pending.heading.font,actual.heading.font);assert.equal(pending.heading.spacing,actual.heading.spacing);
+}
 async function main(){
  try{
   result.candidate=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
@@ -19,16 +27,19 @@ async function main(){
   child.stderr.on('data',b=>logs+=b);child.stdout.on('data',b=>stdout+=b);
   exit=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
   const base=await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error(logs||'listener timeout')),15000);child.once('error',no);child.stderr.on('data',()=>{const m=logs.match(/http:\/\/127\.0\.0\.1:\d+\//);if(m){clearTimeout(timer);ok(m[0]);}});});
-  browser=await require(config.playwright).chromium.launch({executablePath:config.chromium,args:['--no-sandbox'],env:{...process.env,FONTCONFIG_FILE:config.fontconfig}});
+  const chromium=require(config.playwright).chromium;
+  browser=config.cdp_endpoint?await chromium.connectOverCDP(config.cdp_endpoint):await chromium.launch({executablePath:config.chromium,args:['--no-sandbox'],env:{...process.env,FONTCONFIG_FILE:config.fontconfig}});
+  result.browser_mode=config.cdp_endpoint?'connected-headful-isolated-context':'launched-headless';
   const context=await browser.newContext();context.setDefaultTimeout(30000);await context.route('**/*',r=>r.request().url().startsWith(base)?r.continue():r.abort());
   page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const url=(view,locale='ko',extra={})=>{const u=new URL(base);u.search=new URLSearchParams({project:config.project,view,locale,language:locale,...extra});return u.href;};
   const ready=async(view,locale='ko')=>{await page.waitForFunction(({view,locale})=>document.body.dataset.view===view&&document.documentElement.lang===locale&&document.body.dataset.readerEnhanced==='true'&&!document.querySelector('.page-loading,.page-navigation-error'),{view,locale});};
-  const nav=async view=>page.locator('.project-navigation a[data-destination="'+view+'"]').click();
+  const nav=async view=>{if(page.viewportSize().width<=980&&!await page.locator('.project-shell').evaluate(n=>n.open))await page.locator('.project-shell > summary').click();await page.locator('.project-navigation a[data-destination="'+view+'"]').click();};
   // This marker can survive only an enhanced navigation, never a document load.
   await page.goto(url('overview'));await page.evaluate(()=>window.navigationTestIdentity=1);
   for(const locale of ['ko','en'])for(const width of [390,768,1440]){
    await page.setViewportSize({width,height:900});await page.goto(url('overview',locale));
+   const overviewFrame=await frame(page);
    let release,arrived;const held=new Promise(r=>release=r),arrival=new Promise(r=>arrived=r);
    const matcher=u=>u.pathname==='/'&&u.searchParams.get('view')==='repository';
    await context.route(matcher,async r=>{const response=await r.fetch();arrived();await held;await r.fulfill({response}).catch(()=>{});});
@@ -36,20 +47,53 @@ async function main(){
    console.log('requesting '+locale+' '+width);await nav('repository');await bounded(arrival,'repository response '+locale+' '+width);
    assert.equal(new URL(page.url()).searchParams.get('view'),'repository');
    assert.equal(await page.locator('#viewer-content').getAttribute('aria-busy'),'true');
-   assert.equal(await page.locator('.page-loading').count(),1);assert.equal(await page.locator('.doc').count(),0);
+   assert.equal(await page.locator('.page-loading').count(),1);assert.equal(await page.locator('[data-reader-publication]').count(),0,'loading does not carry the old article or evidence');
    assert.match(await page.locator('.page-loading-message').textContent(),locale==='ko'?/불러오는/:/Loading/);
    assert.equal(await page.locator('.project-navigation [aria-current=page]').getAttribute('data-destination'),'repository');
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+   const loadingGeometry=await frame(page,'.page-loading');
    await page.emulateMedia({reducedMotion:'reduce'});
    assert.equal(await page.locator('.page-loading-spinner').evaluate(n=>getComputedStyle(n).animationName),'none');
+   assert.equal(await page.locator('.page-loading-skeleton span').first().evaluate(n=>getComputedStyle(n,'::after').animationName),'none');
    await page.emulateMedia({reducedMotion:'no-preference'});
    assert.equal(await page.locator('.page-loading-spinner').evaluate(n=>getComputedStyle(n).animationName),'viewer-page-spin');
+   const motion=()=>page.locator('.page-loading').evaluate(n=>{const a=n.querySelector('.page-loading-spinner'),b=n.querySelector('.page-loading-skeleton span');return{spin:getComputedStyle(a).transform,shimmer:getComputedStyle(b,'::after').transform,time:a.getAnimations()[0].currentTime};});
+   const first=await motion(),pixels=await page.locator('.page-loading-skeleton').screenshot();await page.waitForTimeout(230);const second=await motion();
+   assert(second.time>first.time&&first.spin!==second.spin&&first.shimmer!==second.shimmer,'actual spinner and skeleton advance while the page response is held');
+   assert.notDeepEqual(await page.locator('.page-loading-skeleton').screenshot(),pixels,'body loading pixels actually change');
    await page.screenshot({path:path.join(config.output,`loading-${locale}-${width}.png`)});
    release();await ready('repository',locale);await context.unroute(matcher);
+   const actual=await frame(page);sameFrame(loadingGeometry,actual);
+   for(const field of ['x','width'])assert(Math.abs(overviewFrame[field]-actual[field])<1,'Overview and document share the same horizontal measure');
    assert.equal(await page.locator('.source-scope-icon,[data-source-scope-action]').count(),0);
    check(`immediate-loading-${locale}-${width}`);
+   for(const target of ['overview','work','detail']){
+    let releaseFrame,frameArrived;const heldFrame=new Promise(r=>releaseFrame=r),frameArrival=new Promise(r=>frameArrived=r);
+    const view=target==='detail'?'work':target;
+    const targetRoute=u=>u.pathname==='/'&&u.searchParams.get('view')===view&&u.searchParams.has('work')===(target==='detail');
+    await context.route(targetRoute,async r=>{const response=await r.fetch();frameArrived();await heldFrame;await r.fulfill({response}).catch(()=>{});});
+    if(target==='detail')await page.locator('a.work-row').first().click();else await nav(view);
+    await bounded(frameArrival,'frame '+target);const pendingFrame=await frame(page,'.page-loading');
+    assert(pendingFrame.text,'known Project/Work title is present while loading');
+    await page.screenshot({path:path.join(config.output,`loading-${target}-${locale}-${width}.png`)});
+    releaseFrame();await ready(view,locale);await context.unroute(targetRoute);
+    const actualFrame=await frame(page);sameFrame(pendingFrame,actualFrame);assert.equal(pendingFrame.text,actualFrame.text,'same known header content');
+    for(const field of ['x','width'])assert(Math.abs(overviewFrame[field]-actualFrame[field])<1,'all pages share the same horizontal measure');
+    check(`matching-${target}-header-${locale}-${width}`);
+   }
   }
   await page.setViewportSize({width:1440,height:900});await page.goto(url('overview'));
+  // Observe the entire real navigation, including response parsing and mounting.
+  // Gaps/tasks are measurements, not an invented universal frame-rate guarantee.
+  await page.evaluate(()=>{
+   const value=window.navigationAnimationObservation={frames:[],longTasks:[],stop:false};
+   value.observer=new PerformanceObserver(list=>{for(const e of list.getEntries())value.longTasks.push({start:e.startTime,duration:e.duration});});value.observer.observe({type:'longtask'});
+   const tick=t=>{const n=document.querySelector('.page-loading-spinner');value.frames.push({t,transform:n?getComputedStyle(n).transform:null});if(!value.stop&&value.frames.length<5000)requestAnimationFrame(tick);};requestAnimationFrame(tick);
+  });
+  await nav('repository');await ready('repository');await page.waitForTimeout(50);
+  result.real_navigation=await page.evaluate(()=>{const v=navigationAnimationObservation;v.stop=true;v.observer.disconnect();const frames=v.frames;return{frames,long_tasks:v.longTasks,max_frame_gap_ms:Math.max(0,...frames.slice(1).map((n,i)=>n.t-frames[i].t))};});
+  assert(new Set(result.real_navigation.frames.filter(f=>f.transform).map(f=>f.transform)).size>2,'motion advances during the real unheld data load');check('real-response-animation-through-parse-and-mount');
+  await page.goto(url('overview'));
   await page.evaluate(()=>window.navigationTestIdentity=1);
   let releaseOld,oldArrived;const heldOld=new Promise(r=>releaseOld=r),oldArrival=new Promise(r=>oldArrived=r);
   const repository=u=>u.pathname==='/'&&u.searchParams.get('view')==='repository';
