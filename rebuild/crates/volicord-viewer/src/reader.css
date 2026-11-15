@@ -40,7 +40,7 @@ main.shell { padding-top:24px; padding-bottom:80px; }
 .doc,.tool-page { max-width:900px; margin:0 auto; }
 .breadcrumb { margin-bottom:28px; font-size:.85rem; }
 .doc-head { margin-bottom:32px; }
-.work-identifier { display:flex; flex-wrap:wrap; gap:4px 8px; margin-bottom:10px; font-size:11px; line-height:1.7; color:var(--muted); }
+.work-identifier { display:flex; flex-wrap:wrap; gap:4px 8px; margin-bottom:10px; font-size:11px; line-height:1.7; color:var(--body,var(--muted)); }
 .work-identifier code { font:inherit; font-family:ui-monospace,"DejaVu Sans Mono",monospace; overflow-wrap:anywhere; }
 .doc-head .lead { font-size:1.2rem; line-height:1.8; margin-top:22px; }
 .interpretation { color:var(--muted); font-size:.8rem; margin-top:18px; }
