@@ -287,6 +287,135 @@ class MeaningTests(unittest.TestCase):
         self.assertFalse(missing['semantic_complete'])
         self.assertEqual(missing['omissions'], [{'pointer': '', 'reason': 'unresolvable_observation'}])
 
+    def generated_answer(self):
+        _, _, _, after = lifecycle()
+        answer = copy.deepcopy(self.answer)
+        answer['selected_work']['answers'] = copy.deepcopy(after['selected_work']['answers'])
+        baseline = a.project(answer, 'recall')
+        self.assertTrue(baseline['semantic_complete'])
+        self.assertEqual(baseline['consistency_errors'], [])
+        return answer
+
+    @staticmethod
+    def whole_omission(value):
+        return {'transport_omission': {'reason': 'serialized_byte_budget',
+            'exact_json_bytes': len(json.dumps(value, separators=(',', ':')).encode()),
+            'basis': 'inspect the complete field on the authoritative parent record'}}
+
+    def test_whole_provenance_omission_preserves_unknown_not_false_conflicts(self):
+        answer = self.generated_answer()
+        generated = answer['selected_work']['answers']
+        marker = self.whole_omission(generated['provenance'])
+        generated['provenance'] = marker
+        selected = a.project(answer, 'recall')
+        self.assertFalse(selected['semantic_complete'])
+        self.assertTrue(selected['omissions'])
+        self.assertEqual(selected['value']['selected_work']['answers']['provenance'], marker)
+        self.assertEqual(selected['consistency_errors'], [])
+        a.validate(selected)
+
+    def test_partial_provenance_does_not_exempt_visible_identity_or_role_conflicts(self):
+        baseline = self.generated_answer()
+        cases = [
+            ('missing_project', None), ('missing_subject_identity', None),
+            ('missing_generator_status', None),
+            ('wrong_project', 'generated subject/Project mismatch'),
+            ('wrong_subject_kind', 'generated subject/Project mismatch'),
+            ('wrong_generator_status', 'generator provenance assertion changed'),
+            ('wrong_claim_role', 'generated role/grounding mismatch'),
+        ]
+        for name, expected in cases:
+            with self.subTest(name=name):
+                answer = copy.deepcopy(baseline)
+                generated = answer['selected_work']['answers']; provenance = generated['provenance']
+                provenance['transport_omission'] = {'reason': 'serialized_byte_budget',
+                    'omitted_field_count': 1, 'basis': 'inspect this exact provenance'}
+                if name == 'missing_subject_identity':
+                    provenance['subject'] = {'kind': 'work', 'transport_omission': {
+                        'reason': 'serialized_byte_budget', 'omitted_field_count': 1,
+                        'basis': 'inspect this exact subject'}}
+                    del provenance['transport_omission']
+                elif name == 'missing_generator_status':
+                    del provenance['generator_identity_status']
+                else:
+                    del provenance['project_id']
+                    if name == 'wrong_project':
+                        provenance['project_id'] = '11' * 16
+                        del provenance['language']
+                    elif name == 'wrong_subject_kind':
+                        provenance['subject']['kind'] = 'decision'
+                    elif name == 'wrong_generator_status':
+                        provenance['generator_identity_status'] = 'verified'
+                    elif name == 'wrong_claim_role':
+                        generated['prose'][0]['role'] = 'deterministic_facts'
+                selected = a.project(answer, 'recall')
+                self.assertFalse(selected['semantic_complete'])
+                self.assertEqual(selected['consistency_errors'], [expected] if expected else [])
+                a.validate(selected)
+
+    def test_omitted_evidence_is_unknown_but_complete_missing_keys_still_conflict(self):
+        baseline = self.generated_answer()
+        for suffix in (False, True):
+            with self.subTest(suffix=suffix):
+                answer = copy.deepcopy(baseline)
+                provenance = answer['selected_work']['answers']['provenance']
+                original = provenance['evidence']
+                provenance['evidence'] = ([{'transport_omission': {
+                    'reason': 'serialized_byte_budget', 'omitted_count': len(original),
+                    'basis': 'inspect this exact evidence list'}}] if suffix
+                    else self.whole_omission(original))
+                selected = a.project(answer, 'recall')
+                self.assertFalse(selected['semantic_complete'])
+                self.assertEqual(selected['consistency_errors'], [])
+                a.validate(selected)
+        answer = copy.deepcopy(baseline)
+        self.assertTrue(any(claim['evidence_keys'] for claim in answer['selected_work']['answers']['prose']))
+        answer['selected_work']['answers']['provenance']['evidence'] = []
+        selected = a.project(answer, 'recall')
+        self.assertIn('generated role/grounding mismatch', selected['consistency_errors'])
+        self.assertTrue(selected['semantic_complete'], 'complete but contradictory is distinct from omitted')
+        a.validate(selected)
+
+    def test_partial_subject_array_keeps_visible_prefix_and_suffix_count_constraints(self):
+        for wrong_prefix, omitted in ((False, 12), (True, 12), (False, 13)):
+            with self.subTest(wrong_prefix=wrong_prefix, omitted=omitted):
+                answer = self.generated_answer()
+                subject = answer['selected_work']['answers']['provenance']['subject']
+                prefix = subject['identity'][:4]
+                if wrong_prefix:
+                    prefix[0] ^= 1
+                subject['identity'] = prefix + [{'transport_omission': {
+                    'reason': 'serialized_byte_budget', 'omitted_count': omitted,
+                    'basis': 'inspect the same subject identity suffix'}}]
+                selected = a.project(answer, 'recall')
+                self.assertFalse(selected['semantic_complete'])
+                self.assertEqual('generated subject/Project mismatch' in selected['consistency_errors'],
+                                 wrong_prefix or omitted != 12)
+                a.validate(selected)
+
+    def test_partial_recorded_direction_does_not_hide_a_different_visible_action(self):
+        for wrong in (False, True):
+            with self.subTest(wrong=wrong):
+                answer = copy.deepcopy(self.answer)
+                answer['checkpoint'] = self.whole_omission(answer['checkpoint'])
+                if wrong:
+                    answer['next_step'] = 'A different visible returned action'
+                else:
+                    del answer['next_step']
+                selected = a.project(answer, 'recall')
+                self.assertFalse(selected['semantic_complete'])
+                self.assertEqual('returned task direction/Checkpoint mismatch' in selected['consistency_errors'], wrong)
+                a.validate(selected)
+
+    def test_returned_meaning_uses_only_current_diagnostic_version(self):
+        selected = a.project(self.generated_answer(), 'recall')
+        a.validate(selected)
+        for version in (a.SCHEMA_VERSION - 1, a.SCHEMA_VERSION + 1):
+            with self.subTest(version=version):
+                old = copy.deepcopy(selected); old['schema_version'] = version
+                with self.assertRaises(ValueError):
+                    a.validate(old)
+
     def test_absent_topics_do_not_invent_transport_claims_in_actual_capture(self):
         _, _, _, after = lifecycle()
         generated = after['selected_work']['answers']

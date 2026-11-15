@@ -1,5 +1,11 @@
 # Reconstruction validation assets
 
+`review_meaning_self_test.py` covers current returned-meaning schema 3. Whole and
+partial omissions remain incomplete while visible contradictory identities, roles,
+grounding and directions remain diagnosable. Reprepare private review packages from
+unchanged captures after a collector correction; preserve earlier packages and
+their exact collector proof rather than rewriting their computed diagnostics.
+
 `grounded_diagrams_browser.cjs` selects a requested non-first citation through
 the currently open evidence family's picker before checking the exact response
 and complete Source bytes. A picker is attached to the active citation, which

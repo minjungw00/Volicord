@@ -6056,3 +6056,24 @@ its isolated Git repository and use that repository for collection and witness
 publication. A patched revision from a different repository cannot supply a real
 commit/tree witness. Keep the no-technical-execution guards and use the maintained
 capsule reader in that fixture rather than its entrypoint-only stub.
+
+## Partial returned-meaning consistency — 2026-11-16
+
+Private returned-meaning schema 3 compares only observed values. Preserve the
+reproduction where an entire provenance field is replaced by a valid byte-budget
+marker but schema 2 reports changed Project/subject, generator assertion and
+grounding. A missing member or incomplete key inventory must remain unknown;
+visible conflicting sibling values, claim roles, complete grounding inventories
+and recorded directions must still fail their consistency checks. Keep every
+omission and its original coordinate, all retention bounds and the complete-capture
+qualification guard unchanged. This repairs diagnostics, not missing interaction.
+
+Run `review_meaning_self_test.py` for whole/partial/suffix omissions, independent
+visible contradictions and exact-current version rejection, then the coupled
+capture, review and collection consumers. Compare actual immutable return records
+before/after reprojection: omission lists and semantic completeness must be
+identical while unsupported contradiction diagnostics disappear. Preserve old
+packages with their original collector proof and verification; prepare new review
+packages from unchanged captures under the new collector identity. Product runtime
+execution, earlier user acceptance and Human observations are not replayed or
+upgraded by this collector correction.

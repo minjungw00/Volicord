@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MARKER = '_semantic_omission'
 UNKNOWN = '_unretained_field_count'
 
@@ -307,6 +307,34 @@ def omissions(value, path=''):
 def consistency(value, operation):
     """Receipt/identity consistency only; factual machine oracle stays separate."""
     errors = []
+    missing = object()
+
+    def unknown(item):
+        return item is missing or (isinstance(item, dict) and (MARKER in item
+            or ('transport_omission' in item and set(item) <= {'transport_omission', UNKNOWN})))
+
+    def array_length(items):
+        report = items[-1].get('transport_omission') if items and isinstance(items[-1], dict) else None
+        if isinstance(report, dict) and 'omitted_count' in report:
+            count = report['omitted_count']
+            return len(items) - 1 + count if type(count) is int and count >= 0 else missing
+        return len(items)
+
+    def contradicts(actual, expected):
+        # An omission is still incomplete evidence. It supplies no value to
+        # compare, and cannot excuse a different visible member of the object.
+        if unknown(actual) or unknown(expected):
+            return False
+        if type(actual) is not type(expected):
+            return True
+        if isinstance(expected, dict):
+            return any(contradicts(actual.get(key, missing), item)
+                       for key, item in expected.items())
+        if isinstance(expected, list):
+            return (any(contradicts(left, right) for left, right in zip(actual, expected))
+                or contradicts(array_length(actual), array_length(expected)))
+        return actual != expected
+
     if isinstance(value, dict) and isinstance(value.get('operation'), str) and value['operation'] != operation:
         errors.append('returned operation differs from request')
     def answers(work, kind, project):
@@ -315,42 +343,54 @@ def consistency(value, operation):
         a = work['answers']; identity = work.get('work_item_id' if kind == 'work' else 'identity')
         p = a.get('provenance')
         if isinstance(p, dict) and MARKER not in p:
-            expected = list(bytes.fromhex(identity)) if isinstance(identity, str) and re.fullmatch(r'[0-9a-f]{32}', identity) else None
-            if p.get('project_id') != project or p.get('subject') != {'kind': kind, 'identity': expected}:
+            expected = (list(bytes.fromhex(identity))
+                if isinstance(identity, str) and re.fullmatch(r'[0-9a-f]{32}', identity)
+                else missing if unknown(identity) else None)
+            if (contradicts(p.get('project_id', missing), project)
+                    or contradicts(p.get('subject', missing), {'kind': kind, 'identity': expected})):
                 errors.append('generated subject/Project mismatch')
-            if p.get('generator_identity_status') != 'self_reported_not_independently_verified':
+            if contradicts(p.get('generator_identity_status', missing), 'self_reported_not_independently_verified'):
                 errors.append('generator provenance assertion changed')
             evidence = p.get('evidence'); keys = {e.get('key') for e in evidence if isinstance(e, dict) and isinstance(e.get('key'), str)} if isinstance(evidence, list) else set()
+            complete_keys = (isinstance(evidence, list) and all(
+                isinstance(item, dict) and isinstance(item.get('key'), str) for item in evidence))
             for claim in a.get('prose', []) if isinstance(a.get('prose'), list) else []:
                 if not isinstance(claim, dict) or MARKER in claim:
                     continue
                 cited = claim.get('evidence_keys')
-                if claim.get('role') != 'generated_interpretation' or not isinstance(cited, list) or any(k not in keys for k in cited if isinstance(k, str)):
+                if (contradicts(claim.get('role', missing), 'generated_interpretation')
+                        or complete_keys and isinstance(cited, list)
+                        and any(k not in keys for k in cited if isinstance(k, str))):
                     errors.append('generated role/grounding mismatch')
-        if a.get('explanation_state') != 'current' and p is not None and not omissions(p):
+        if (contradicts(a.get('explanation_state', missing), 'current')
+                and p is not None and not omissions(p)):
             errors.append('non-current explanation carries generated provenance')
         for fact in a.get('facts', []) if isinstance(a.get('facts'), list) else []:
             action = fact.get('recorded_action') if isinstance(fact, dict) else None
             if not isinstance(action, dict) or MARKER in action:
                 continue
-            if (isinstance(action.get('work_item_id'), str) and action['work_item_id'] != identity
+            if (isinstance(action.get('work_item_id'), str) and contradicts(action['work_item_id'], identity)
                     or isinstance(action.get('checkpoint_id'), str) and isinstance(work.get('checkpoint_ids'), list)
+                    and not omissions(work['checkpoint_ids'])
                     and action['checkpoint_id'] not in work['checkpoint_ids']):
                 errors.append('recorded action Work/Checkpoint mismatch')
             if any(type(action.get(k)) is not t for k,t in (('checkpoint_id', str), ('revision', int), ('recorded_text', str))):
                 continue
             expected_key = f"checkpoint:{action['checkpoint_id']}@{action['revision']}:next_step"
-            if fact.get('question') != 'RecordedNextStep' or fact.get('role') != 'deterministic_facts' or action.get('field') != 'next_step' or fact.get('evidence_keys') != [expected_key]:
+            if (contradicts(fact.get('question', missing), 'RecordedNextStep')
+                    or contradicts(fact.get('role', missing), 'deterministic_facts')
+                    or contradicts(action.get('field', missing), 'next_step')
+                    or contradicts(fact.get('evidence_keys', missing), [expected_key])):
                 errors.append('recorded action role/evidence key mismatch')
-            if fact.get('text') not in [prefix + action['recorded_text'] for prefix in (
+            if not unknown(fact.get('text', missing)) and fact.get('text') not in [prefix + action['recorded_text'] for prefix in (
                     'Recorded next action quotation (original language): ', '기록된 다음 행동 인용 (원문 언어): ')]:
                 errors.append('recorded action quotation mismatch')
             if operation == 'recall':
                 cp = value.get('checkpoint')
-                if value.get('next_step') != action['recorded_text'] or isinstance(cp, dict) and any(cp.get(k) != v for k, v in (
+                if contradicts(value.get('next_step', missing), action['recorded_text']) or isinstance(cp, dict) and any(contradicts(cp.get(k, missing), v) for k, v in (
                     ('identity', action['checkpoint_id']), ('revision', action['revision']), ('work_item_id', identity), ('next_step', action['recorded_text']))):
                     errors.append('returned task direction/Checkpoint mismatch')
-    project = value.get('project_id') if isinstance(value, dict) else None
+    project = value.get('project_id', missing) if isinstance(value, dict) else missing
     if isinstance(value, dict):
         answers(value.get('selected_work'), 'work', project)
         for field in ('decisions', 'selected_work_decisions'):

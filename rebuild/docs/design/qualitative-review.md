@@ -401,7 +401,7 @@ supplies omitted actual interaction. Privacy or size omissions require `insuffic
 with explicit inspected omission/availability evidence and limits, never automatic Product
 failure or silent satisfaction. This changes structural admissibility, not semantic scoring.
 
-Returned-meaning schema `2` retains the current explanation-10 response and
+Returned-meaning schema `3` retains the current explanation-10 response and
 record representation: context/Source provenance tables and fixed nine-position
 citation tuples. Public reading citations remain complete named-field objects.
 Current diagram labels/identifiers/state owner, paged canonical-evidence references,
@@ -423,6 +423,17 @@ role and evidence keys; RecordedNextStep retains exact recorded text, Work/Check
 field and Source status. Answers retain explanation availability, diagnostic and generated
 provenance: subject, language, fingerprint, generation time, generator claims, record revisions,
 Sources/snapshots and conflicts. Status/Decision CLI reads preserve corresponding typed rows.
+
+Consistency diagnostics compare observed values only. A whole-field omission, an
+omitted member or an incomplete evidence-key suffix supplies no contradictory value.
+Other visible Project/subject members, generator assertions, claim roles, complete
+key inventories and recorded directions still undergo independent comparisons; a
+sibling omission cannot excuse their conflicts. Omissions, their exact coordinates
+and `semantic_complete = false` remain unchanged and cannot qualify a partial
+capture. Schema 2 diagnostic artifacts remain original historical evidence; current
+schema 3 preparation reprojects unchanged source captures and does not rewrite or
+decode older returned-meaning envelopes as current.
+
 Plans retain typed canonical evidence content and subject/language; records retain the accepted
 realization and basis. No Work-specific MCP tool is assumed.
 Source status retains the returned body-retention label (not the Source observation prose).
