@@ -363,15 +363,21 @@ def markdown_files(root: Path, tracked: Iterable[str]) -> list[Path]:
     return selected
 
 
+def relative_link_target(target: str) -> str:
+    # A URI need not contain // (for example, work:, mailto: or urn:).
+    # This checker owns repository file existence, not scheme-specific meaning.
+    if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", target):
+        return ""
+    return target.split("#", 1)[0]
+
+
 def check_links(root: Path, paths: Iterable[Path]) -> list[str]:
     errors: list[str] = []
     link_pattern = re.compile(r"\[[^]]+\]\(([^)]+)\)")
     for path in paths:
         text = path.read_text(encoding="utf-8")
         for target in link_pattern.findall(text):
-            if "://" in target or target.startswith("#"):
-                continue
-            relative = target.split("#", 1)[0]
+            relative = relative_link_target(target)
             if relative and not (path.parent / relative).resolve().exists():
                 errors.append(f"{path.relative_to(root)}: unresolved relative link: {target}")
     return errors
@@ -1196,9 +1202,10 @@ def copy_self_test_fixture(destination: Path, tracked: list[str]) -> list[str]:
     tracked_set = set(tracked)
     for document in markdown_files(REPOSITORY_ROOT, tracked):
         for link in re.findall(r"\[[^]]+\]\(([^)]+)\)", document.read_text(encoding="utf-8")):
-            if "://" in link or link.startswith("#"):
+            relative_target = relative_link_target(link)
+            if not relative_target:
                 continue
-            source = (document.parent / link.split("#", 1)[0]).resolve()
+            source = (document.parent / relative_target).resolve()
             try:
                 relative = source.relative_to(REPOSITORY_ROOT).as_posix()
             except ValueError:
@@ -1262,6 +1269,30 @@ def remove_top_level_candidate_read_authority(root: Path, _: list[str]) -> None:
 
 
 def self_test() -> int:
+    with tempfile.TemporaryDirectory(prefix="volicord-link-scopes-") as temporary:
+        scope = Path(temporary)
+        document = scope / "guide.md"
+        (scope / "existing.md").write_text("# Existing\n", encoding="utf-8")
+        non_files = (
+            "work:ID",
+            "work:32-lowercase-hex-id",
+            "work:0123456789abcdef0123456789abcdef",
+            "mailto:reader@example.test",
+            "urn:example:entry",
+            "https://example.invalid/path",
+            "#section",
+        )
+        for target in (*non_files, "existing.md#section"):
+            document.write_text(f"[example]({target})\n", encoding="utf-8")
+            errors = check_links(scope, [document])
+            if errors:
+                raise AssertionError(f"non-file or existing link rejected: {target}: {errors}")
+        for target in ("missing.md", "./work:ID", "missing/https://example.invalid"):
+            document.write_text(f"[example]({target})\n", encoding="utf-8")
+            errors = check_links(scope, [document])
+            if errors != [f"guide.md: unresolved relative link: {target}"]:
+                raise AssertionError(f"missing relative link was not rejected: {target}: {errors}")
+
     maintained_errors = check_repository(REPOSITORY_ROOT)
     if maintained_errors:
         raise AssertionError("maintained repository did not pass before self-test: " + maintained_errors[0])

@@ -150,6 +150,13 @@ Support failure는 `validation_failed`이며 Final을 시작하지 않는다.
 | provider qualification `--self-test` | provider evidence/degradation and source-boundary controls |
 | fixture checker | actual maintained fixture hashes/integrity |
 
+The architecture checker validates repository-relative file links and preserves
+missing-file rejection. A standard URI scheme is not a repository path, including
+non-hierarchical `work:`, `mailto:` and `urn:` examples. This structural check does
+not validate a URI destination or authorize a Product Work link; those identities
+and authority remain with their normal Product consumers. Its fixture copier
+uses the same classification, with positive URI and negative relative-path controls.
+
 Qualification build inputs and outputs are owned by the maintained gate before
 admission. Each invocation receives a new target and compiler/test identity
 receipts; inherited diagnostic compiler/cache/output settings and ambient Cargo
