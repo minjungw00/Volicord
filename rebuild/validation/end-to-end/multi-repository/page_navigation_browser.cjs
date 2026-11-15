@@ -36,7 +36,16 @@ async function main(){
   const ready=async(view,locale='ko')=>{await page.waitForFunction(({view,locale})=>document.body.dataset.view===view&&document.documentElement.lang===locale&&document.body.dataset.readerEnhanced==='true'&&!document.querySelector('.page-loading,.page-navigation-error'),{view,locale});};
   const nav=async view=>{if(page.viewportSize().width<=980&&!await page.locator('.project-shell').evaluate(n=>n.open))await page.locator('.project-shell > summary').click();await page.locator('.project-navigation a[data-destination="'+view+'"]').click();};
   // This marker can survive only an enhanced navigation, never a document load.
-  await page.goto(url('overview'));await page.evaluate(()=>window.navigationTestIdentity=1);
+  await page.goto(url('overview'));
+  result.font_qualification=config.expected_ko_font?'required':'not_asserted';
+  if(config.expected_ko_font){
+   const cdp=await context.newCDPSession(page);await cdp.send('DOM.enable');await cdp.send('CSS.enable');
+   const document=await cdp.send('DOM.getDocument',{depth:0});const node=await cdp.send('DOM.querySelector',{nodeId:document.root.nodeId,selector:'.project-meta'});
+   result.korean_platform_fonts=(await cdp.send('CSS.getPlatformFontsForNode',{nodeId:node.nodeId})).fonts;
+   assert(result.korean_platform_fonts.some(f=>f.familyName.startsWith(config.expected_ko_font)&&f.glyphCount>0),'the actual browser must render Korean with its configured font');
+   await cdp.detach();result.font_qualification='passed';check('configured-korean-fonts');
+  }
+  await page.evaluate(()=>window.navigationTestIdentity=1);
   for(const locale of ['ko','en'])for(const width of [390,768,1440]){
    await page.setViewportSize({width,height:900});await page.goto(url('overview',locale));
    const overviewFrame=await frame(page);

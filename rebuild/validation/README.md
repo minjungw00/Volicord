@@ -1346,6 +1346,11 @@ and numeric results remain in the exclusive output directory.
 An optional `cdp_endpoint` connects an existing local review Chrome and creates an
 isolated context for these same controls; it neither routes existing tabs nor
 closes the existing browser. Report connected/headless mode separately.
+Set `expected_ko_font` to the configured Korean font family prefix (for the
+maintained font fixture, `Noto Sans KR`). The CDP platform-font probe checks actual
+rendered Korean glyphs before interpreting header geometry; a configured filename
+or computed CSS stack alone does not establish that the connected browser loaded
+that font. Runs without the probe report font qualification as not asserted.
 
 ## Bounded citation reading
 
