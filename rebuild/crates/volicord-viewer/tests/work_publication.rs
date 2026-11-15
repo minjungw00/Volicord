@@ -925,7 +925,7 @@ fn large_source_history_uses_scope_only_preparation_and_consistent_inspector_pag
         .operations
         .canonical_evidence_detail(f.project, &request)
         .is_err());
-    let expires = observe(1)?;
+    let expires = observe(5)?;
     let fresh = f
         .operations
         .explanation_source_manifest(f.project, id, 0, None)?;
@@ -935,7 +935,29 @@ fn large_source_history_uses_scope_only_preparation_and_consistent_inspector_pag
             .ok_or("expiry fingerprint")?
             .into(),
     );
-    std::thread::sleep(std::time::Duration::from_millis(1100));
+    // A monotonic sleep does not establish expiry on the owner's wall clock:
+    // clock correction can move it back while this real-lifetime test runs.
+    // Establish the before state, then wait for the public typed expiry result.
+    f.operations
+        .read_explanation_source(f.project, id, expires.source_id)?;
+    let wait_started = std::time::Instant::now();
+    loop {
+        match f
+            .operations
+            .read_explanation_source(f.project, id, expires.source_id)
+        {
+            Err(error) if error.reading_failure() == Some(ExplanationFailureReason::Expired) => {
+                break
+            }
+            Err(error) => return Err(error.into()),
+            Ok(_) => {}
+        }
+        assert!(
+            wait_started.elapsed() < std::time::Duration::from_secs(15),
+            "owner clock did not reach Source expiry within the bounded wait"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
     assert!(f
         .operations
         .canonical_evidence_detail(f.project, &request)
