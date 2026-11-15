@@ -1530,6 +1530,14 @@ comprehension/assistive acceptance claim.
 
 ### Authored checks and caveats beside their claims
 
+Comparison conditions and results use the same ordinary paragraph treatment as
+other article content, without a bordered card or comparison-specific small type.
+Authors introduce a distinct comparison topic with its own meaningful section
+heading; the renderer preserves that heading and never invents one from numbers
+or paragraph roles. Work detail displays the exact Work ID as quiet, labelled,
+wrapping text above its title, including when an article is unavailable. It is
+the same identity used in the Work list, separate from authored names and status.
+
 Verification and Limits classify admitted content; they do not authorize moving
 it past later prose or a figure. The shared section index preserves every original
 unit position. Reader renders interleaved checks and material qualifications in

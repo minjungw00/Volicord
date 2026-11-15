@@ -1562,6 +1562,10 @@ fn authored_sections_and_comparisons_reach_live_and_offline_without_enum_titles(
             "The following comparison preserves reported conditions separately from conclusions.",
         ),
         (
+            ExplanationQuestion::SectionHeading,
+            "Conditions and measured outcomes",
+        ),
+        (
             ExplanationQuestion::ComparisonCondition,
             "A recorded Checkpoint reports verification",
         ),
@@ -1603,9 +1607,18 @@ fn authored_sections_and_comparisons_reach_live_and_offline_without_enum_titles(
     for page in [live, offline] {
         assert!(page.contains(">What the observation can tell us</h3>"));
         assert!(page.contains(">Boundaries that remain open</h3>"));
-        assert!(
-            page.contains("<dl class=\"comparison-card\">") && page.contains("<dt class=\"unit\"")
-        );
+        assert!(page.contains(">Conditions and measured outcomes</h3>"));
+        assert!(!page.contains("comparison-card"));
+        assert!(page.contains("<p class=\"work-identifier\"><span>Work ID</span>"));
+        assert!(page.contains(&format!("<code>{work}</code></p>")));
+        let condition = page
+            .find("data-question=\"ComparisonCondition\"")
+            .ok_or("condition")?;
+        let result = page
+            .find("data-question=\"ComparisonResult\"")
+            .ok_or("result")?;
+        assert!(condition < result);
+        assert!(page[condition..result].contains("</p>"));
         assert!(
             page.find("What the observation can tell us")
                 .ok_or("first")?
@@ -1640,6 +1653,22 @@ fn independent_verification_report_is_readable_with_no_article(
         assert!(page.contains("Original verification report quotation"));
         assert!(page.contains("Comparison unresolved"));
         assert!(page.contains("Exit status proves no assertions"));
+    }
+    let mut korean = request.clone();
+    korean.locale = ViewerLocale::Korean;
+    korean.requested_language = "ko".into();
+    let offline = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()))
+        .render_snapshot(&korean, TimestampMicros::from_unix_micros(1))?
+        .html;
+    for page in [
+        get(
+            &f,
+            &format!("/?view=work&work={work}&locale=ko&language=ko"),
+        ),
+        offline,
+    ] {
+        assert!(page.contains("<p class=\"work-identifier\"><span>작업 ID</span>"));
+        assert!(page.contains(&format!("<code>{work}</code></p>")));
     }
     assert_eq!(before, f.operations.canonical_basis(f.project)?);
     Ok(())

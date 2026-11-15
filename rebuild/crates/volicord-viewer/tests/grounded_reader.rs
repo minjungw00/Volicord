@@ -2259,8 +2259,12 @@ fn authored_heading_synopsis_and_reading_points_share_public_lifecycle(
         assert!(page.contains("data-title-basis=\"generated-interpretation\""));
         assert!(page.contains("data-question=\"Heading\" lang=\"en\" data-content-language=\"en\">A constant return, examined</h1>"));
         assert!(page.contains("class=\"lead\""));
-        assert_eq!(page.matches("class=\"comparison-card\"").count(), 3);
-        assert!(page.contains("class=\"comparisons\""));
+        assert_eq!(
+            page.matches("<p class=\"unit-text\" data-question=\"Comparison\"")
+                .count(),
+            3
+        );
+        assert!(!page.contains("comparison-card"));
         assert!(
             page.find("data-question=\"Purpose\"").ok_or("problem")?
                 < page.find("data-question=\"Limits\"").ok_or("limit")?

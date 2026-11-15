@@ -40,6 +40,8 @@ main.shell { padding-top:24px; padding-bottom:80px; }
 .doc,.tool-page { max-width:900px; margin:0 auto; }
 .breadcrumb { margin-bottom:28px; font-size:.85rem; }
 .doc-head { margin-bottom:32px; }
+.work-identifier { display:flex; flex-wrap:wrap; gap:4px 8px; margin-bottom:10px; font-size:11px; line-height:1.7; color:var(--muted); }
+.work-identifier code { font:inherit; font-family:ui-monospace,"DejaVu Sans Mono",monospace; overflow-wrap:anywhere; }
 .doc-head .lead { font-size:1.2rem; line-height:1.8; margin-top:22px; }
 .interpretation { color:var(--muted); font-size:.8rem; margin-top:18px; }
 .scope-summary { color:var(--muted); font-size:.88rem; margin:16px 0; max-width:85ch; }
@@ -56,9 +58,6 @@ main.shell { padding-top:24px; padding-bottom:80px; }
 .evidence-link,.notice-actions .inspection-action { display:inline-flex; align-items:center; gap:2px; border:1px solid var(--line); border-radius:7px; background:var(--wash); padding:8px 12px; text-decoration:none; font-size:.82rem; line-height:1.5; max-width:100%; min-height:44px; }
 .evidence-link:hover,.notice-actions .inspection-action:hover { border-color:var(--accent); }
 .evidence-link span { font-family:ui-monospace,monospace; font-size:.72rem; color:var(--muted); }
-.comparisons { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
-.comparison-card { background:var(--surface); border:1px solid var(--line); padding:20px; border-radius:8px; }
-.comparison-card .unit-text { font-size:.93rem; }
 .serial { font: .8rem ui-monospace,monospace; color:var(--muted); margin-bottom:12px; }
 .guard,.unavailable { padding:20px 24px; margin:24px 0; background:var(--soft); }
 .guard h2 { font-size:1rem; margin-bottom:8px; }
@@ -152,7 +151,6 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
  body:has(.appendix :target) main.shell { max-width:none; padding-inline:28px; }
  body:has(.appendix :target) .doc { width:44%; max-width:none; margin:0; }
  body:has(.appendix :target) .doc-head h1 { font-size:2.1rem; }
- body:has(.appendix :target) .comparisons { grid-template-columns:1fr; }
  body:has(.appendix :target) .claim-quote { max-height:20vh; font-size:1rem; }
  body[data-viewer-mode=snapshot] .snapshot-page { display:none; }
  body[data-viewer-mode=snapshot]:not(:has(main :target)) #overview { display:block; }
@@ -162,7 +160,6 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
 @media(min-width:1100px) { .doc { margin-left:10%; margin-right:15%; } }
 @media(max-width:900px) {
  .shell { padding-inline:28px; }
- .comparisons { grid-template-columns:1fr; }
  .code-region { font-size:13px; line-height:1.65; }
  .source-line-numbers>span { height:1.65em; }
  @supports selector(:has(*)) {
@@ -184,7 +181,6 @@ details pre { background:var(--soft); padding:20px; white-space:pre-wrap; overfl
  .doc-head { margin-bottom:24px; }
  .unit-text { font-size:1rem; }
  .reading-section { margin-top:28px; padding-top:28px; }
- .comparison-card .evidence-link { width:auto; }
  .index-title { font-size:1.8rem; }
  .work-card { padding:20px; }
  .work-card-heading { gap:12px; flex-wrap:wrap; }
@@ -384,7 +380,6 @@ details.verification-report > summary,details.evidence-index > summary { min-hei
 body[data-source-open=true] main.shell { max-width:none; padding-inline:28px; }
 body[data-source-open=true] .doc { width:44%; max-width:none; margin:0; }
 body[data-source-open=true] .doc-head h1 { font-size:2.1rem; }
-body[data-source-open=true] .comparisons { grid-template-columns:1fr; }
 body[data-source-open=true] .claim-quote { max-height:20vh; font-size:1rem; }
 @media(max-width:900px) {
  body[data-source-open=true] { overflow:hidden; }

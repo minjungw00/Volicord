@@ -516,11 +516,10 @@ fn reader_unit_at_level(
     } else {
         &answers.language
     };
-    let outer = match answer.question.as_str() {
-        "ComparisonCondition" => "dt",
-        "ComparisonResult" => "dd",
-        "FlowStep" => "li",
-        _ => "div",
+    let outer = if answer.question == "FlowStep" {
+        "li"
+    } else {
+        "div"
     };
     let tag = if answer.question == "SectionHeading" {
         if let Some(level) = heading_level {
@@ -1091,24 +1090,12 @@ fn render_article_sections(
                 html.push_str("<ol class=\"article-flow\">");
                 flow_open = true;
             }
-            if answer.question == "ComparisonCondition" {
-                html.push_str("<dl class=\"comparison-card\">");
-            }
-            if answer.question == "Comparison" {
-                html.push_str("<div class=\"comparisons\"><div class=\"comparison-card\">");
-            }
             if answer.question != "Narrative"
                 || !answers.diagrams.iter().any(|d| d.caption_unit == index)
             {
                 reader_unit(html, r, answers, index);
             }
             render_diagrams(html, r, answers, index, snapshot);
-            if answer.question == "Comparison" {
-                html.push_str("</div></div>");
-            }
-            if answer.question == "ComparisonResult" {
-                html.push_str("</dl>");
-            }
         }
         if flow_open {
             html.push_str("</ol>");
@@ -1272,6 +1259,13 @@ fn render_document_body(
             if let ViewerView::WorkContext {work,..}=&r.view { if !target.contains("work=") { target.push_str(&format!("#row-{work}")); } }
             escape(&target)
         }, back_label, if grouped {"<section class=\"work-reading-group\" data-reading-group=\"work\">"} else {""}, if decision.is_some() {format!("<p class=\"eyebrow\">{kind} · {}</p>",text(r.locale,"interpretation and observations","해석과 관측"))} else {String::new()}));
+    if let Some(w) = work {
+        html.push_str(&format!(
+            "<p class=\"work-identifier\"><span>{}</span> <code>{}</code></p>",
+            text(r.locale, "Work ID", "작업 ID"),
+            w.work_item_id
+        ));
+    }
     if let Some(name) = answers
         .work_name
         .as_ref()

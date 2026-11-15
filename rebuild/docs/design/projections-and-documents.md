@@ -2584,6 +2584,11 @@ Each fragment uses the existing question/text/evidence_keys/citations envelope,
 common exhaustive traversal and validity within its admitted publication scope. No nested generated
 strings, extra retention store or format-dependent decoder exists. Conditions
 precede their adjacent result; all other sections follow the author's order.
+Comparison units render as ordinary paragraphs, with the same typography and
+claim-specific evidence actions as surrounding prose. A separate comparison topic
+uses an authored `section_heading`, rather than an implicit bordered card or a
+heading inferred during reads. Work detail also exposes its exact list identity
+as labelled supporting text above the title, independent of article availability.
 Section headings are bounded to 240 characters; existing aggregate budgets remain.
 Work and Decision compose require a fresh authored heading and synopsis. General
 record admission still permits partial documents; unsupported detail is omitted.

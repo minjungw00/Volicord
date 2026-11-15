@@ -135,10 +135,6 @@
 .doc[data-reading-layout="grouped"] .reading-dates{font-size:10px;line-height:1.8}
 .doc[data-reading-layout="grouped"] .reading-dates .work-date > span:last-child{font-weight:400;margin-right:0}
 .doc[data-reading-layout="grouped"] .related-decision-body > .scope-summary{margin:0 0 16px;font-size:11px;color:var(--muted)}
-.doc[data-reading-layout="grouped"] .related-decision-body .comparison-card{padding:12px 14px;border:1px solid var(--line);border-radius:8px;margin:12px 0 0}
-.doc[data-reading-layout="grouped"] .related-decision-body .comparison-card > .unit{margin:0}
-.doc[data-reading-layout="grouped"] .related-decision-body .comparison-card > dt .unit-text{font-weight:600}
-.doc[data-reading-layout="grouped"] .related-decision-body .comparison-card > dd{margin:8px 0 0}
 .doc[data-reading-layout="grouped"] .related-decision-body .article-section > .unit:has(h4){position:relative;margin:24px 0 14px;padding-left:39px}
 .doc[data-reading-layout="grouped"] .related-decision-body .article-section > .unit:has(h4):first-child{margin-top:0}
 .doc[data-reading-layout="grouped"] .related-decision-body .article-section > .unit[data-section-number]:has(h4)::before{position:absolute;left:0;top:2px;width:23px;border-top:1px solid var(--accent);padding-top:3px;font:10px/1.6 "SFMono-Regular",Consolas,monospace;color:var(--accent)}
