@@ -68,7 +68,7 @@ function createPageNavigation({startReader}) {
       if(script&&script.textContent!==bundle){location.replace(url.href);return;}
       if(!parsed.querySelector('main#viewer-content')||parsed.body.dataset.viewerMode!=='live'||!script||
           !/^[0-9a-f]{32}$/.test(parsed.body.dataset.projectId||'')||
-          (url.searchParams.has('project')&&parsed.body.dataset.projectId!==url.searchParams.get('project'))||
+          (url.searchParams.has('project')&&parsed.body.dataset.projectId!==url.searchParams.get('project').toLowerCase())||
           (!response.ok&&response.status!==404))throw Error('unavailable reader response');
       // Reuse only the already CSP-pinned factories. Fetched scripts are never
       // executed, and a different running build uses native document navigation.

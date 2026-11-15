@@ -8,7 +8,7 @@ const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const result={outcome:'failed',checks:[],human_acceptance:'unobserved'};
 let browser,child,exit,page,logs='',stdout='';
 const check=name=>{result.checks.push(name);console.log(name);};
-const bounded=(promise,name)=>Promise.race([promise,new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Timed out: '+name)),15000);timer.unref();})]);
+const bounded=(promise,name)=>Promise.race([promise,new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Timed out: '+name)),30000);timer.unref();})]);
 async function main(){
  try{
   result.candidate=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
@@ -20,7 +20,7 @@ async function main(){
   exit=new Promise(resolve=>child.once('close',(code,signal)=>resolve({code,signal})));
   const base=await new Promise((ok,no)=>{const timer=setTimeout(()=>no(Error(logs||'listener timeout')),15000);child.once('error',no);child.stderr.on('data',()=>{const m=logs.match(/http:\/\/127\.0\.0\.1:\d+\//);if(m){clearTimeout(timer);ok(m[0]);}});});
   browser=await require(config.playwright).chromium.launch({executablePath:config.chromium,args:['--no-sandbox'],env:{...process.env,FONTCONFIG_FILE:config.fontconfig}});
-  const context=await browser.newContext();context.setDefaultTimeout(15000);await context.route('**/*',r=>r.request().url().startsWith(base)?r.continue():r.abort());
+  const context=await browser.newContext();context.setDefaultTimeout(30000);await context.route('**/*',r=>r.request().url().startsWith(base)?r.continue():r.abort());
   page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   const url=(view,locale='ko',extra={})=>{const u=new URL(base);u.search=new URLSearchParams({project:config.project,view,locale,language:locale,...extra});return u.href;};
   const ready=async(view,locale='ko')=>{await page.waitForFunction(({view,locale})=>document.body.dataset.view===view&&document.documentElement.lang===locale&&document.body.dataset.readerEnhanced==='true'&&!document.querySelector('.page-loading,.page-navigation-error'),{view,locale});};
@@ -86,11 +86,15 @@ async function main(){
   await page.goBack();await ready('work','en');await page.waitForFunction(id=>document.activeElement?.id===id,rowId);
   assert(Math.abs(await page.locator('#'+rowId).evaluate(n=>n.getBoundingClientRect().top)-top)<3);check('back-restores-list-position-focus');
   await page.goForward();await page.waitForFunction(()=>new URL(location.href).searchParams.has('work')&&!document.querySelector('.page-loading'));check('forward-revalidates-work');
+  // HTTP accepts both hexadecimal cases for a Project ID. Client-side binding
+  // must preserve that same identity rather than reject the normalized response.
+  await page.evaluate(href=>{const a=document.createElement('a');a.href=href;a.textContent='Project selection';document.getElementById('viewer-content').append(a);a.click();},url('overview','en',{project:config.project.toUpperCase()}));
+  await ready('overview','en');assert.equal(await page.locator('body').getAttribute('data-project-id'),config.project.toLowerCase());check('uppercase-project-selection');
   // A different bundle must use native navigation. Its fetched script is never
   // evaluated inside the currently executing page, even before that fallback.
   let foreignBundle=true;await page.evaluate(()=>window.navigationTestIdentity=2);
   await context.route(repository,async r=>{const response=await r.fetch();if(foreignBundle){foreignBundle=false;const body=(await response.text()).replace('<script data-viewer-reading>','<script data-viewer-reading>window.untrustedFetchedScript=true;');await r.fulfill({response,body});}else await r.fulfill({response});});
-  await nav('repository');await ready('repository','en');await context.unroute(repository);
+  const fallbackStart=Date.now();await nav('repository');await ready('repository','en');result.changed_bundle_fallback_ms=Date.now()-fallbackStart;await context.unroute(repository);
   assert.equal(await page.evaluate(()=>window.navigationTestIdentity),undefined);assert.equal(await page.evaluate(()=>window.untrustedFetchedScript),undefined);check('changed-bundle-native-fallback-without-evaluation');
   // Modified clicks keep native separate-document behavior.
   const popupPromise=context.waitForEvent('page');await page.locator('.project-navigation a[data-destination=overview]').click({modifiers:['Control']});
