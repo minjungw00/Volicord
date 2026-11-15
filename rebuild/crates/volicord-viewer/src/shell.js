@@ -1,5 +1,5 @@
 // Owns the project drawer only; contents and modal authority are injected.
-function createReaderShell({lifetime,modal,contents}) {
+function createReaderShell({lifetime,modal,contents,navigatePage}) {
  const shell=document.querySelector('.project-shell');if(!shell)return;
  const rail=shell.querySelector('.project-rail'),trigger=shell.querySelector(':scope > summary');
  const backdrop=document.querySelector('.nav-backdrop');
@@ -8,7 +8,7 @@ function createReaderShell({lifetime,modal,contents}) {
  const languagePicker=rail.querySelector('select[data-language-picker]');
  if(languagePicker){
   languagePicker.disabled=false;
-  lifetime.on(languagePicker,'change',()=>{if(languagePicker.value)location.assign(languagePicker.value);});
+  if(!navigatePage)lifetime.on(languagePicker,'change',()=>{if(languagePicker.value)location.assign(languagePicker.value);});
  }
  const closeContents=()=>contents.close();
  function sync(restore=false){

@@ -1328,6 +1328,20 @@ bounds. Purpose and forgetting controls preserve the canonical Purpose record;
 missing analysis, explicit rebinding and unreadable storage retain truthful read
 states and never gain ambient Source access.
 
+## Live page loading
+
+`end-to-end/multi-repository/page_navigation_browser.cjs CONFIG` starts the real
+Viewer over an existing disposable reading Runtime. Configuration supplies absolute
+`runtime`, `project`, `viewer`, `playwright`, `chromium`, `fontconfig`, and a fresh
+`output` directory (with an existing parent). Use `validate focused`; this is
+support, not gate or human acceptance. The Runtime needs a recorded Work and
+repository explanation for the list/evidence journeys. Held authoritative GET
+responses verify immediate URL/loading presentation in en/ko at 390/768/1440,
+reduced motion, superseded requests, errors/retry, malformed-response refusal,
+mounted search/sort/language controls, Source navigation, list-history restoration,
+native new-tab and script-free navigation. Screenshots, hashes, partial failures
+and numeric results remain in the exclusive output directory.
+
 ## Bounded citation reading
 
 Run `validate focused citation-reading -- cargo test --manifest-path

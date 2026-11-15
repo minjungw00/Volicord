@@ -416,18 +416,6 @@ fn reader_citation_actions(
     let Some(first) = targets.first() else {
         return;
     };
-    let omitted = citations
-        .iter()
-        .enumerate()
-        .filter(|(n, c)| !unique || !citations[..*n].contains(c))
-        .any(|(_, c)| source_window_omitted(answers, c));
-    let scope = if omitted {
-        text(r.locale,
-            "Some cited code is not embedded in this page; open evidence for included ranges and availability.",
-            "인용한 코드 일부가 이 화면에 포함되지 않았습니다. 근거 보기에서 포함 범위와 조회 가능 여부를 확인하세요.")
-    } else {
-        ""
-    };
     let base_label = format!(
         "{} · {}",
         text(
@@ -437,17 +425,7 @@ fn reader_citation_actions(
         ),
         targets.len()
     );
-    let label = format!(
-        "{}{}{}",
-        base_label,
-        if omitted { " · " } else { "" },
-        scope
-    );
-    html.push_str(&format!("<div class=\"evidence-actions\"><a class=\"evidence-link paragraph-evidence-action\" data-source-scope-action data-evidence-label=\"{}\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{}\" title=\"{}\">{}",escape(&base_label),reader_claim_anchor(answers,index),escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),escape(&label),escape(scope),text(r.locale,"Evidence","근거 보기")));
-    if omitted {
-        html.push_str("<span class=\"source-scope-icon\" aria-hidden=\"true\">i</span>");
-    }
-    html.push_str("</a></div>");
+    html.push_str(&format!("<div class=\"evidence-actions\"><a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{}\">{}</a></div>",reader_claim_anchor(answers,index),escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),escape(&base_label),text(r.locale,"Evidence","근거 보기")));
 }
 
 fn source_window_omitted(

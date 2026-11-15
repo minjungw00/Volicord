@@ -78,6 +78,3 @@ function createReaderModal(lifetime) {
   lifetime.cleanup(modal.clear);
   return modal;
 }
-
-const readerLifetime=createReaderLifetime();
-const readerModal=createReaderModal(readerLifetime);

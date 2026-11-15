@@ -338,13 +338,14 @@ impl ViewerAdapter {
         }
         html.push_str(STYLE);
         html.push_str(&format!(
-            "</head><body data-view=\"{}\" data-viewer-mode=\"{}\">",
+            "</head><body data-view=\"{}\" data-viewer-mode=\"{}\" data-project-id=\"{}\">",
             request.view.key(),
             if matches!(mode, ViewerRenderMode::Live { .. }) {
                 "live"
             } else {
                 "snapshot"
-            }
+            },
+            request.project_id
         ));
         let choices = if snapshot {
             Vec::new()

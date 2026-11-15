@@ -28,29 +28,6 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
     }
     return code;
   }
-  function refreshSourceScopes() {
-    const sizes=new Map();
-    const scope=ko?'인용한 코드 일부가 이 화면에 포함되지 않았습니다. 근거 보기에서 포함 범위와 조회 가능 여부를 확인하세요.':'Some cited code is not embedded in this page; open evidence for included ranges and availability.';
-    for(const action of document.querySelectorAll('a[data-source-scope-action]')){
-      let omitted=true;
-      try {
-        const targets=JSON.parse(action.dataset.citationTargets);
-        omitted=!targets.length||targets.some(target=>{
-          const point=document.getElementById(target.slice(1));
-          if(!point?.matches('.source-point'))return true;
-          const citation=JSON.parse(point.dataset.citationBinding),code=codeWindow(point)?.querySelector('pre.code-region code');
-          if(!code||!Number.isSafeInteger(citation.start_byte)||!Number.isSafeInteger(citation.end_byte)||citation.end_byte<=citation.start_byte)return true;
-          if(!sizes.has(code))sizes.set(code,new TextEncoder().encode(code.textContent).length);
-          return sizes.get(code)!==citation.end_byte-citation.start_byte;
-        });
-      } catch { /* An invalid target cannot claim complete included evidence. */ }
-      let icon=action.querySelector('.source-scope-icon');
-      if(omitted&&!icon){icon=document.createElement('span');icon.className='source-scope-icon';icon.setAttribute('aria-hidden','true');icon.textContent='i';action.append(icon);}
-      if(!omitted)icon?.remove();
-      action.title=omitted?scope:'';
-      action.setAttribute('aria-label',action.dataset.evidenceLabel+(omitted?' · '+scope:''));
-    }
-  }
   function paintCode(code, source, highlight) {
     // The server's bounded lexer is shared with script-free rendering. Treat
     // ranges as untrusted presentation hints: malformed hints fall back to text.
@@ -93,7 +70,6 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
       const position=document.createElement('span');position.id=code.id;position.dataset.codePlaceholder='true';
       for(const key of ['sourceId','rangeSha256','readerPublication','codeKey'])position.dataset[key]=code.dataset[key];code.replaceWith(position);
     }
-    refreshSourceScopes();
   }
   let expiryTimer;
   function expireBodies(){
@@ -221,7 +197,6 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
       button.textContent = chunk.next_offset === null
         ? (ko ? '인용 범위 처음부터 다시 읽기' : 'Read cited range again from start')
         : (ko ? '전체 인용 범위 읽는 중…' : 'Reading the complete cited range…');
-      refreshSourceScopes();
       if(chunk.next_offset!==null)await readCitation(point,chunk.next_offset);
     } catch (error) {
       if (controller.signal.aborted || reads.get(control) !== controller || !isSelected(point) || !point.isConnected) return;
@@ -247,7 +222,6 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
       button.textContent = ko ? '허용된 인용 다시 확인' : 'Check permitted citation again';
     } finally {
       if (reads.get(control) === controller) button.disabled = false;
-      refreshSourceScopes();
     }
   }
 
@@ -265,11 +239,9 @@ function createCitationReader({lifetime, isSelected, selectedSource, withholdPub
     for(const node of document.querySelectorAll('pre.code-region,.code-caption,.code-origin,.initial-range-omission,.source-code-reference')){
       if(nativeVisibility.has(node))node.hidden=nativeVisibility.get(node);
     }
-    refreshSourceScopes();
   });
   lifetime.on(document,'visibilitychange',()=>{if(!document.hidden)expireBodies();});
   expireBodies();
-  refreshSourceScopes();
   return {read:readCitation, cancel, forgetPublication, expire:expireBodies,pointFor(node){
     const metadata=node.closest('.source-metadata'),point=document.getElementById(metadata?.dataset.sourceContext);
     return point&&inspection(point)===node.closest('.citation-inspection')?point:null;

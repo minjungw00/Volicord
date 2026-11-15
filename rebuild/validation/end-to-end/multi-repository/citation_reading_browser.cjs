@@ -55,10 +55,6 @@ async function initial(page){
  }
  return included;
 }
-async function scopeAction(point){
- const origin=await point.getAttribute('data-origin');
- return point.page().locator('.doc [id="'+origin+'"] > .evidence-actions > a[data-source-scope-action]');
-}
 async function contrast(page,point){return (await code(point)).evaluate(code=>{
  const region=code.closest('pre'),rgb=s=>s.match(/[\d.]+/g).slice(0,3).map(Number),lum=c=>c.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((n,v,i)=>n+v*[.2126,.7152,.0722][i],0),bg=lum(rgb(getComputedStyle(region).backgroundColor));
  return ['keyword','comment','string','type','function','number','variable'].map(kind=>{const span=document.createElement('span');span.className='syn-'+kind;span.textContent='sample';code.append(span);const fg=lum(rgb(getComputedStyle(span).color));span.remove();return{kind,ratio:(Math.max(bg,fg)+.05)/(Math.min(bg,fg)+.05)};});
@@ -92,20 +88,18 @@ async function main(){
  }
  await page.setViewportSize({width:1440,height:900});await page.goto(base+'?view=repository');
  for(let i=0;i<tasks.length;i++){const p=await activate(page,i);await exact(p,fixture.originals[i===11?8:i]);await close(p);}
- assert.equal(await page.locator('.doc a[data-source-scope-action] .source-scope-icon').count(),0,'complete original ranges clear every family omission icon');
- assert.ok(await page.locator('.doc a[data-source-scope-action]').evaluateAll(xs=>xs.every(a=>a.title===''&&!a.getAttribute('aria-label').includes('not embedded'))),'accessible scope clears with the visual cue');
- // A complete prior read must not hide the cue while a fresh read has only a
- // prefix. Hold the real second bounded response, then finish the same range.
+ assert.equal(await page.locator('.source-scope-icon,[data-source-scope-action]').count(),0,'embedding scope belongs in evidence detail, not an inline icon');
+ // Hold the real second bounded response, then finish the same range.
  const longIndex=tasks.findIndex((_,i)=>Buffer.byteLength(fixture.originals[i===11?8:i])>4096);assert(longIndex>=0);
  let releaseTail,tailArrived;const tailHeld=new Promise(r=>releaseTail=r),tailArrival=new Promise(r=>tailArrived=r);
  await context.route('**/citation?*',async r=>{const response=await r.fetch();if(Number(new URL(r.request().url()).searchParams.get('offset'))>0){tailArrived();await tailHeld;}await r.fulfill({response});});
  const partial=await activate(page,longIndex,true,false);await tailArrival;
- assert.equal(await (await scopeAction(partial)).locator('.source-scope-icon').count(),1,'partial bounded reassembly keeps the complete-family cue');
- releaseTail();await citationReady(partial);await exact(partial,fixture.originals[longIndex===11?8:longIndex]);assert.equal(await (await scopeAction(partial)).locator('.source-scope-icon').count(),0);await close(partial);await context.unroute('**/citation?*');
+ const prefix=await (await code(partial)).textContent(),whole=fixture.originals[longIndex===11?8:longIndex];assert(prefix.length<whole.length&&whole.startsWith(prefix),'bounded partial bytes remain an exact original prefix');
+ releaseTail();await citationReady(partial);await exact(partial,fixture.originals[longIndex===11?8:longIndex]);await close(partial);await context.unroute('**/citation?*');
  // Expired presentation bytes are removed without changing the actual fixture's
- // retention policy. The restored cue cannot claim those removed bytes remain.
+ // retention policy. No removed bytes may remain in the reading surface.
  await partial.locator('.source-deadline').evaluate(n=>n.dataset.expiresAt=String((Date.now()-1000)*1000));await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
- assert.equal(await (await code(partial)).count(),0);assert.equal(await (await scopeAction(partial)).locator('.source-scope-icon').count(),1,'expiry restores the cue');
+ assert.equal(await (await code(partial)).count(),0);
  await page.goto(base+'?view=repository');
  // Decoration cannot turn captured bytes into markup or alter copy semantics.
  for(const tokens of [[[0,1,'</span><script>bad</script>']],[[2,4,'keyword'],[0,1,'string']],[[0,999999,'string']]]){
@@ -121,8 +115,8 @@ async function main(){
  // availability cannot revive a removed payload or cached bytes.
  const recovered=await activate(page,8);await exact(recovered,fixture.originals[8]);assert.equal(await recovered.locator('.range-unavailable:visible').count(),0,'successful current retry clears the stale refusal');await close(recovered);
  await context.route('**/citation?*',async r=>{const response=await r.fetch(),value=await response.json();for(const a of value.applicability.source_ranges)if(a.unit_index===tasks[8].unit&&a.citation_index===tasks[8].index){a.available=false;a.limitation='unavailable';}await r.fulfill({response,json:value});});
- const unavailable=await activate(page,8,true,false);await unavailable.locator('.range-unavailable').waitFor();assert.equal(await (await code(unavailable)).count(),0,'unavailable applicability cannot paint a successful stale chunk');assert.equal(await (await scopeAction(unavailable)).locator('.source-scope-icon').count(),1,'removed code restores the omission cue');await close(unavailable);await context.unroute('**/citation?*');
- const retried=await activate(page,8);await exact(retried,fixture.originals[8]);assert.equal(await retried.locator('.range-unavailable').count(),0);assert.equal(await (await scopeAction(retried)).locator('.source-scope-icon').count(),0,'valid complete retry clears the cue again');await close(retried);
+ const unavailable=await activate(page,8,true,false);await unavailable.locator('.range-unavailable').waitFor();assert.equal(await (await code(unavailable)).count(),0,'unavailable applicability cannot paint a successful stale chunk');await close(unavailable);await context.unroute('**/citation?*');
+ const retried=await activate(page,8);await exact(retried,fixture.originals[8]);assert.equal(await retried.locator('.range-unavailable').count(),0);await close(retried);
  // Held successful bytes cannot paint after close or overwrite another claim.
  await page.setViewportSize({width:390,height:900});let release,arrived;const held=new Promise(r=>release=r),arrival=new Promise(r=>arrived=r);
  await context.route('**/citation?*',async r=>{const response=await r.fetch();arrived();await held;await r.fulfill({response}).catch(()=>{});});

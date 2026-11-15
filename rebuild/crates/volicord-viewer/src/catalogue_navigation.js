@@ -39,6 +39,7 @@
   };
   Promise.resolve(document.fonts?.ready).then(()=>lifetime.frame(()=>lifetime.frame(apply)));
  }
+ restore();
  lifetime.on(window,'pageshow',event=>{
   // Revalidate authority instead of reviving a previous page's cached summaries.
   if(event.persisted){location.reload();return;}

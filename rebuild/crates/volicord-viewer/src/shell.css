@@ -1,4 +1,13 @@
 /* Adopted project reader. Native links/disclosures remain usable in exports. */
+.page-loading,.page-navigation-error{max-width:940px;margin:24px auto}
+.page-loading-message{display:flex;align-items:center;gap:12px;margin-top:24px;color:var(--body)}
+.page-loading-spinner{width:20px;height:20px;flex:none;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:viewer-page-spin .8s linear infinite}
+.page-loading-skeleton{display:grid;gap:16px;margin-top:36px;max-width:760px}
+.page-loading-skeleton span{display:block;height:12px;border-radius:4px;background:var(--soft)}
+.page-loading-skeleton span:last-child{width:65%}
+.page-navigation-error p{margin:20px 0}.page-navigation-error .button{margin:0 12px 12px 0}
+@keyframes viewer-page-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.page-loading-spinner{animation:none}}
 :root {color-scheme:light;--paper:#fff;--surface:#fff;--canvas:#f7fbff;--rail:#f5f9fd;--soft:#edf5fb;--ink:#152e40;--body:#334c5d;--muted:#627b8e;--subtle:#7f95a6;--line:#dce7ef;--accent:#087bb8;--strong:#075d91;--wash:#e8f5fe;--focus:#0284c7;--code:#17232e;--measure:100%;--rail-width:232px;--mobile-header:0px;--sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK KR",NanumGothic,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;font:14px/1.85 var(--sans);background:var(--paper);color:var(--ink)}
 body {background:var(--paper);color:var(--ink)}
 pre,code {font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}

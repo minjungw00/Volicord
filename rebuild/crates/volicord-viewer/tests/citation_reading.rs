@@ -2878,16 +2878,13 @@ fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<d
                 .all(|unit| !unit.contains("source-window-omission")),
             "ordinary prose does not repeat embedding diagnostics"
         );
-        assert_eq!(
+        assert!(
             inline_actions
                 .iter()
-                .any(|unit| unit.contains("source-scope-icon")),
-            needs_omission
+                .all(|unit| !unit.contains("source-scope-icon")),
+            "evidence actions use the same design for all embedding scopes"
         );
         if needs_omission {
-            assert!(inline_actions.iter().any(|unit| unit.contains(
-                "Some cited code is not embedded in this page; open evidence for included ranges and availability.")),
-                "the evidence action retains an accessible, non-color-only scope cue");
             assert!(
                 html.contains("code-reading-scope") && html.contains("Supporting code omitted"),
                 "exact omitted ranges remain discoverable in the evidence disclosure"

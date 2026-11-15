@@ -713,20 +713,27 @@ pan and exact navigation returns retain the reader's position. No-script readers
 retain native scrolling and the same complete relationship navigation.
 These technical contracts do not establish human readability or acceptance.
 
-Ordinary prose keeps embedding diagnostics with its evidence action, rather than
-repeating an offline warning for every missing citation window. Affected actions
-carry one quiet information icon with an accessible scope description and hover
-text. The icon reflects the action's complete citation set in the current reading DOM.
-After validated bounded reads assemble every cited range, the icon and its
-accessible omission wording clear together. A partial read or another unread
-range keeps them; denial or expiry that removes bytes restores them. These UI
-updates perform no additional retrieval or retention renewal. Initial HTML and
-script-free readers continue to describe their actually embedded ranges. Exact
-initial embedding scope remains separately inspectable in the included-code
-disclosure; exact included/omitted/unavailable ranges remain in the Source reader.
-Selected figure claims may show one explicit scope
-message for their complete supporting set. This presentation does not remove
-citations, enlarge embedding bounds or turn an initial omission into Source expiry.
+Ordinary prose uses the same quiet evidence action for every embedding scope,
+without an inline omission/loading icon. Initial embedding scope stays inspectable
+in the included-code disclosure; exact included/omitted/unavailable ranges remain
+in the Source reader. Selected figure claims may show one explicit scope message
+for their complete supporting set. This presentation does not remove citations,
+enlarge embedding bounds or turn an initial omission into Source expiry.
+
+Enhanced live navigation immediately selects the destination and replaces the main
+body with a labelled loading state while its authoritative GET completes. A spinner
+and text expose progress; reduced-motion preferences disable the spinner motion.
+Links, GET search/sort forms and language changes share that lifecycle. New
+navigation aborts superseded page and citation reads; late responses cannot replace
+the selected page. Each mounted page gets fresh reader handlers, buffers and
+observers. Back/Forward re-read the destination and restore scoped list position;
+same-page evidence/diagram fragments retain their own navigation. Failed reads
+show an explicit retry/reload surface, never the old page as the new destination.
+Fetched scripts are never executed: only the current CSP-pinned reader factories
+initialize a response from the same bundle. A changed bundle falls back to native
+navigation. Native links/forms, guarded actions, new tabs, and script-free exports
+retain their original behavior. This enhancement changes no read/write authority,
+Source retention or content production and makes no server-latency guarantee.
 
 Opening alerts describe current failed checks, unestablished comparable retests,
 rejections and other current limitations. Historical adversity alone belongs with

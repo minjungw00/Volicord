@@ -5,7 +5,7 @@
   const sourceReturns = new Map();
   let navigationSequence = 0;
   const remember = (map, value) => {
-    const token = String(++navigationSequence);
+    const token = readerNavigationScope+':'+String(++navigationSequence);
     map.set(token, value);
     if (map.size > 128) map.delete(map.keys().next().value);
     return token;
@@ -129,7 +129,7 @@
   }
   let shell=null;
   const outline=createReaderOutline({lifetime,navigate,closeDrawer:()=>shell?.closeForContents()});
-  shell=createReaderShell({lifetime,modal,contents:outline});
+  shell=createReaderShell({lifetime,modal,contents:outline,navigatePage});
   const figures=createReaderFigures({lifetime,modal});
   const citations=createCitationReader({lifetime,isSelected:point=>selected===point,
     selectedSource:()=>selected?.dataset.sourceId,withholdPublication,updateComparison});
@@ -375,7 +375,7 @@
   lifetime.on(window,'pageshow',event=>{if(event.persisted){citations.expire();focusedHash=null;apply();}});
   lifetime.cleanup(()=>{
     const nativeHash=location.hash.split('!')[0];
-    if(fragment().target&&nativeHash!==location.hash)location.replace(nativeHash);
+    if(!navigatePage&&fragment().target&&nativeHash!==location.hash)location.replace(nativeHash);
     diagramReturns.clear();sourceReturns.clear();evidenceBackdrop.remove();fragmentNotice.remove();
     document.querySelectorAll('.source-point > .evidence-original').forEach(n=>{n.hidden=false;});
     document.querySelectorAll('.source-point > .evidence-selection-context').forEach(n=>{n.hidden=true;n.textContent='';});

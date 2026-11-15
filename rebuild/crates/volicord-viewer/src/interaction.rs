@@ -14,10 +14,13 @@ pub(crate) const SCRIPT: &str = concat!(
     "\n",
     include_str!("shell.js"),
     "\n",
+    "\nlet readerGeneration=0;\nfunction startReader(navigatePage) {\nconst readerNavigationScope=String(performance.timeOrigin)+':'+String(++readerGeneration);\nconst readerLifetime=createReaderLifetime();\nconst readerModal=createReaderModal(readerLifetime);\n",
     include_str!("reading.js"),
     "\n",
     include_str!("catalogue_navigation.js"),
-    "\n})();"
+    "\nreturn () => readerLifetime.dispose();\n}\n",
+    include_str!("page_navigation.js"),
+    "\ncreatePageNavigation({startReader});\n})();"
 );
 pub(crate) fn csp_source() -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
