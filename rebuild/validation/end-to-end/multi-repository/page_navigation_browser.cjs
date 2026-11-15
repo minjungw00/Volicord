@@ -169,7 +169,7 @@ async function main(){
   // A headful Chrome can exit when its last review window closes. Open the
   // script-free review window before releasing our enhanced context.
   const native=await browser.newContext({javaScriptEnabled:false});const nativePage=await native.newPage();page=nativePage;await nativePage.goto(url('overview'));await context.close();
-  await nativePage.locator('.project-navigation a[data-destination=work]').click();assert.equal(new URL(nativePage.url()).searchParams.get('view'),'work');await native.close();check('no-script-native-navigation');
+  await nativePage.locator('.project-navigation a[data-destination=work]:visible').click();assert.equal(new URL(nativePage.url()).searchParams.get('view'),'work');await native.close();check('no-script-native-navigation');
   result.outcome='passed';
  }catch(error){result.error=error.stack||String(error);result.page=await page?.evaluate(()=>({url:location.href,body:document.body.dataset,main:document.getElementById('viewer-content')?.textContent.slice(0,1200)})).catch(()=>null);await page?.screenshot({path:path.join(config.output,'failure.png')}).catch(()=>{});throw error;}
  finally{
