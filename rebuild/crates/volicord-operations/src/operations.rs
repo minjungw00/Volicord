@@ -986,6 +986,32 @@ impl LocalOperations {
             .map_err(|error| Error::with_source("Project identity unavailable", error))
     }
 
+    /// Exact canonical Goal identity only; no history/analysis/publication read.
+    /// Missing, forgotten, non-Goal and foreign identities are unavailable;
+    /// storage/integrity failures remain errors instead of invented absence.
+    pub fn work_identity_available(
+        &self,
+        project: ProjectId,
+        work: ContextItemId,
+    ) -> Result<bool, Error> {
+        match self
+            .open_canonical_read_only()?
+            .get_context_item(project, work)
+        {
+            Ok(item) => Ok(item.role == ContextItemRole::Goal),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    volicord_context::ErrorKind::NotFound
+                        | volicord_context::ErrorKind::WrongProject
+                ) =>
+            {
+                Ok(false)
+            }
+            Err(error) => Err(Error::with_source("Work identity unavailable", error)),
+        }
+    }
+
     /// Local Runtime Project identities only; no cross-Project content projection.
     pub fn project_choices(&self, offset: usize) -> Result<Vec<volicord_context::Project>, Error> {
         self.open_canonical_read_only()?

@@ -4180,3 +4180,12 @@ its single group spans the available width without inventing Work metadata.
 Inside a Decision's folded originals, the complete reading-basis and exact
 Decision/Question record dumps each require their own initially closed disclosure.
 They remain complete and escaped; opening the parent does not open these dumps.
+
+
+Initial live document delivery may precede the full read with identity-only pending
+chrome. The subsequent authoritative body is rendered once under the ordinary read
+checks in the same response. Observation metadata travels with that completed body
+in an inert template and moves to the head when script mounts it; native consumers
+may read the template only after the completion marker. The pending shell supplies
+no publication availability, analysis state or observation authority. Offline exports
+and non-document fetches retain their complete-document representation.

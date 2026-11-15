@@ -50,6 +50,270 @@ fn exchange(server: &ViewerServer, request: impl AsRef<[u8]>) -> String {
     String::from_utf8(output).expect("UTF-8 response")
 }
 
+fn initial_document(target: &str) -> String {
+    format!("GET {target} HTTP/1.1\r\nHost: {AUTHORITY}\r\nSec-Fetch-Site: none\r\nSec-Fetch-Mode: navigate\r\nSec-Fetch-Dest: document\r\n\r\n")
+}
+
+#[derive(Default)]
+struct StreamingCapture {
+    bytes: Vec<u8>,
+    flushed: Vec<Vec<u8>>,
+    fail_after_shell: bool,
+}
+
+impl std::io::Write for StreamingCapture {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.fail_after_shell && !self.flushed.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "test client disconnected",
+            ));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.flushed.push(self.bytes.clone());
+        Ok(())
+    }
+}
+
+fn decode_chunks(response: &[u8]) -> String {
+    let header_end = response
+        .windows(4)
+        .position(|s| s == b"\r\n\r\n")
+        .expect("headers")
+        + 4;
+    let mut encoded = &response[header_end..];
+    let mut body = Vec::new();
+    loop {
+        let end = encoded
+            .windows(2)
+            .position(|s| s == b"\r\n")
+            .expect("chunk header");
+        let size = usize::from_str_radix(std::str::from_utf8(&encoded[..end]).expect("hex"), 16)
+            .expect("size");
+        encoded = &encoded[end + 2..];
+        if size == 0 {
+            assert_eq!(encoded, b"\r\n");
+            break;
+        }
+        body.extend_from_slice(&encoded[..size]);
+        assert_eq!(&encoded[size..size + 2], b"\r\n");
+        encoded = &encoded[size + 2..];
+    }
+    String::from_utf8(body).expect("complete UTF-8 chunks")
+}
+
+#[test]
+fn document_shell_is_flushed_before_the_complete_body_with_one_pinned_script() {
+    let (_temporary, server, project) = setup();
+    let before = server
+        .adapter()
+        .operations()
+        .canonical_basis(project)
+        .expect("before");
+    let mut output = StreamingCapture::default();
+    server
+        .serve_connection(
+            &mut Cursor::new(initial_document("/?locale=ko&language=ko")),
+            &mut output,
+        )
+        .expect("stream");
+    assert!(output.flushed.len() >= 2);
+    let prefix = std::str::from_utf8(&output.flushed[0]).expect("prefix");
+    assert!(prefix.contains("Transfer-Encoding: chunked\r\n"));
+    assert!(!prefix.contains("Content-Length:"));
+    assert!(prefix.contains("data-initial-read=\"pending\""));
+    assert!(prefix.contains("내용을 불러오는 중입니다."));
+    assert!(!prefix.contains("<span data-initial-ready"));
+    assert!(!prefix.contains("<article class=\"doc\""));
+    let body = decode_chunks(&output.bytes);
+    assert_eq!(body.matches("<script data-viewer-reading>").count(), 1);
+    assert_eq!(body.matches("id=\"viewer-content\"").count(), 1);
+    assert!(body.contains("<div data-initial-content><template data-initial-head>"));
+    assert!(body.contains("<section id=\"overview\""));
+    assert!(body.contains("<span data-initial-ready data-initial-status=\"200\" hidden>"));
+    assert!(body.ends_with("</body></html>"));
+    assert_eq!(
+        before,
+        server
+            .adapter()
+            .operations()
+            .canonical_basis(project)
+            .expect("after")
+    );
+    let fetch = exchange(
+        &server,
+        format!("GET / HTTP/1.1\r\nHost: {AUTHORITY}\r\nSec-Fetch-Dest: empty\r\n\r\n"),
+    );
+    assert!(fetch.contains("Content-Length:"));
+    assert!(!fetch.contains("Transfer-Encoding:"));
+    assert!(!fetch.contains("data-initial-read=\"pending\""));
+}
+
+#[test]
+fn missing_document_work_and_forbidden_origin_fail_before_streaming() {
+    let (_temporary, server, _project) = setup();
+    let missing = exchange(
+        &server,
+        initial_document("/?view=work&work=00000000000000000000000000000000"),
+    );
+    assert!(missing.starts_with("HTTP/1.1 404"));
+    assert!(!missing.contains("Transfer-Encoding:"));
+    let forbidden = initial_document("/").replace(
+        "Sec-Fetch-Site: none",
+        "Origin: https://example.invalid\r\nSec-Fetch-Site: none",
+    );
+    let denied = exchange(&server, forbidden);
+    assert!(denied.starts_with("HTTP/1.1 403"));
+    assert!(!denied.contains("data-initial-read=\"pending\""));
+}
+
+#[test]
+fn disconnected_initial_reader_does_not_write_a_second_response() {
+    let (_temporary, server, project) = setup();
+    let before = server
+        .adapter()
+        .operations()
+        .canonical_basis(project)
+        .expect("before");
+    let mut output = StreamingCapture {
+        fail_after_shell: true,
+        ..Default::default()
+    };
+    assert!(server
+        .serve_connection(&mut Cursor::new(initial_document("/")), &mut output)
+        .is_err());
+    assert_eq!(
+        String::from_utf8_lossy(&output.bytes)
+            .matches("HTTP/1.1 ")
+            .count(),
+        1
+    );
+    assert!(!String::from_utf8_lossy(&output.bytes).contains("<span data-initial-ready"));
+    assert_eq!(
+        before,
+        server
+            .adapter()
+            .operations()
+            .canonical_basis(project)
+            .expect("after")
+    );
+}
+
+#[test]
+fn storage_failure_after_initial_frame_finishes_with_explicit_error() {
+    struct InterruptAfterFrame {
+        bytes: Vec<u8>,
+        store: std::path::PathBuf,
+        held: std::path::PathBuf,
+        moved: bool,
+    }
+    impl std::io::Write for InterruptAfterFrame {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            if !self.moved {
+                std::fs::rename(&self.store, &self.held)?;
+                self.moved = true;
+            }
+            Ok(())
+        }
+    }
+    let (_temporary, server, project) = setup();
+    let ops = server.adapter().operations();
+    let before = ops.canonical_basis(project).expect("before");
+    let store = ops.layout().canonical_store();
+    let held = store.with_extension("held");
+    let mut output = InterruptAfterFrame {
+        bytes: Vec::new(),
+        store,
+        held,
+        moved: false,
+    };
+    let served = server.serve_connection(&mut Cursor::new(initial_document("/")), &mut output);
+    if output.moved {
+        std::fs::rename(&output.held, &output.store).expect("restore fixture");
+    }
+    served.expect("complete error response");
+    let body = decode_chunks(&output.bytes);
+    assert!(body.contains("data-initial-status=\"422\""));
+    assert!(body.contains("class=\"page-navigation-error\" role=\"alert\""));
+    assert!(!body.contains("<section id=\"overview\""));
+    assert_eq!(
+        String::from_utf8_lossy(&output.bytes)
+            .matches("HTTP/1.1 ")
+            .count(),
+        1
+    );
+    assert_eq!(before, ops.canonical_basis(project).expect("restored"));
+}
+
+#[test]
+fn fast_work_identity_checks_use_exact_canonical_goals_without_writes() {
+    let (_temporary, server, project) = setup();
+    let ops = server.adapter().operations();
+    let goal = ops
+        .record_current_host_user_context(
+            project,
+            "test".into(),
+            "identity".into(),
+            "a bounded goal".into(),
+            volicord_context::ContextItemRole::Goal,
+            "a bounded goal".into(),
+        )
+        .expect("Goal");
+    let preference = ops
+        .record_current_host_user_context(
+            project,
+            "test".into(),
+            "identity".into(),
+            "a stated preference".into(),
+            volicord_context::ContextItemRole::Preference,
+            "a stated preference".into(),
+        )
+        .expect("Preference");
+    let foreign = ops
+        .initialize_project("Other", None)
+        .expect("other Project")
+        .project
+        .id;
+    let before = ops.canonical_basis(project).expect("before");
+    assert!(ops
+        .work_identity_available(project, goal.context_item_id)
+        .expect("exact Goal"));
+    assert!(!ops
+        .work_identity_available(project, preference.context_item_id)
+        .expect("non Goal"));
+    assert!(!ops
+        .work_identity_available(foreign, goal.context_item_id)
+        .expect("foreign Goal"));
+    assert!(!ops
+        .work_identity_available(
+            project,
+            volicord_context::ContextItemId::from_bytes([0; 16])
+        )
+        .expect("missing"));
+    assert_eq!(before, ops.canonical_basis(project).expect("after"));
+    let absent = tempfile::tempdir().expect("temp");
+    let unreadable = LocalOperations::new(
+        RuntimeLayout::new(absent.path().join("uninitialized")).expect("layout"),
+    );
+    assert!(
+        unreadable
+            .work_identity_available(project, goal.context_item_id)
+            .is_err(),
+        "missing storage is not a successful absent-Goal read"
+    );
+    assert!(
+        !absent.path().join("uninitialized").exists(),
+        "read-only lookup does not initialize storage"
+    );
+}
+
 fn post(path: &str, body: &str, request_authenticity: &str) -> String {
     let body = format!("{body}&request_authenticity={request_authenticity}");
     post_with_context(

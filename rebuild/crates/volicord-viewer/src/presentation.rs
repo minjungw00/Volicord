@@ -102,7 +102,7 @@ pub(super) fn percent_encode(value: &str) -> String {
     encoded
 }
 
-pub(super) fn escape(value: &str) -> String {
+pub(crate) fn escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")

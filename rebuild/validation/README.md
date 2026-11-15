@@ -1358,6 +1358,20 @@ stay disabled. Forced allow-motion controls do not establish what a normal manua
 Chrome profile displays. Native settings, controlled modes and browser identity
 remain distinct in results; no production motion preference is overridden.
 
+`end-to-end/multi-repository/initial_navigation_browser.cjs CONFIG` uses the same
+absolute browser/runtime configuration plus an exact `work` ID and a fresh output
+folder. It gates actual response bytes through a local proxy: the real initial frame
+is forwarded immediately and later body bytes are held. Host/Origin are rewritten
+to that owned upstream authority; no replacement HTML is supplied. Fifteen journeys
+cover en/ko Overview/catalogue/Work/repository entry, default route, reload, native
+no-JS content and exact Source fragments, reduced motion and incomplete-body retry.
+They check animated transforms before document completion, deferred reader controls,
+final native/scripted content, script identity and unchanged database rows. Shell
+receipt and upstream body completion times are separate local measurements, not
+article-readiness or production latency guarantees. Proxy delivery controls and
+normal unheld navigation checks remain separate evidence. No human acceptance is
+inferred from either driver.
+
 ## Bounded citation reading
 
 Run `validate focused citation-reading -- cargo test --manifest-path

@@ -53,7 +53,7 @@ async function capture(name, target=page.locator('main > section').first(), stre
     });
   });
   const observed=await page.evaluate(()=>{
-    const meta=document.querySelector('meta[name="volicord-observation"]');
+    const meta=document.querySelector('meta[name="volicord-observation"]')||(document.querySelector('[data-initial-ready]')&&document.querySelector('template[data-initial-head]')?.content.querySelector('meta[name="volicord-observation"]'));
     return {context:meta?JSON.parse(meta.content):null,dom:document.documentElement.outerHTML};
   });
   if(mode==='offline') {

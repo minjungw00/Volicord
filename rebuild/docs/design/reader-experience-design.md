@@ -752,6 +752,20 @@ navigation. Native links/forms, guarded actions, new tabs, and script-free expor
 retain their original behavior. This enhancement changes no read/write authority,
 Source retention or content production and makes no server-latency guarantee.
 
+First entry and reload use the same pending presentation. After authority, query,
+Project and exact Work identity checks, a document navigation receives a small
+identity-only frame before history, analysis and retained explanations are read.
+The complete authoritative body follows in the same chunked HTTP response; there
+is no second content request, hidden prefetch or content cache. Unknown counts,
+states, authored titles and publication metadata stay absent until the read completes.
+The CSP-pinned reader starts document controls only after the completion marker;
+without JavaScript the same complete native document becomes visible. Browsers
+without relational CSS use ordinary inline delivery instead of hiding the document. Exact deep
+fragments survive delivery. A truncated response offers retry/reload rather than
+leaving a permanent pending frame when script is available. First paint still
+requires connection and bounded identity checks; no instantaneous-display promise
+or elapsed-time progress estimate is implied.
+
 Opening alerts describe current failed checks, unestablished comparable retests,
 rejections and other current limitations. Historical adversity alone belongs with
 the folded original verification and record flow. Moving it there does not claim

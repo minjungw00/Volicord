@@ -1,6 +1,10 @@
 /* Adopted project reader. Native links/disclosures remain usable in exports. */
 /* One content measure for every page and its pending frame. */
 html{scrollbar-gutter:stable}
+body > [data-initial-content]{display:none}
+body:not([data-initial-enhanced]):has(>[data-initial-ready]) > [data-initial-indicator]{display:none}
+body:not([data-initial-enhanced]):has(>[data-initial-ready]) > [data-initial-content]{display:contents}
+@supports not selector(body:has(*)){body:not([data-initial-enhanced]) > [data-initial-indicator]{display:none}body:not([data-initial-enhanced]) > [data-initial-content]{display:contents}}
 .page-loading,.page-navigation-error{margin-block:0}
 .page-loading-message{display:flex;align-items:center;gap:12px;margin-top:24px;color:var(--body)}
 .page-loading-spinner{width:20px;height:20px;flex:none;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;will-change:transform;animation:viewer-page-spin .8s linear infinite}

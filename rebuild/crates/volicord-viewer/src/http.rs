@@ -61,8 +61,21 @@ impl ViewerServer {
         reader: &mut impl Read,
         writer: &mut impl Write,
     ) -> Result<(), ViewerError> {
-        let response = match HttpRequest::read(reader).and_then(|request| self.route(request)) {
-            Ok(response) => response,
+        let prepared = HttpRequest::read(reader).and_then(|request| {
+            let initial = request.method == "GET"
+                && request.path == "/"
+                && request.fetch_mode.as_deref() == Some("navigate")
+                && request.fetch_destination.as_deref() == Some("document");
+            self.route(request).map(|response| (response, initial))
+        });
+        let response = match prepared {
+            Ok((RoutedResponse::Page(selected), true)) if selected.guarded_request.is_none() => {
+                return self.stream_initial(&selected, writer);
+            }
+            Ok((RoutedResponse::Page(selected), _)) => self
+                .render_selected(&selected)
+                .unwrap_or_else(HttpResponse::error),
+            Ok((RoutedResponse::Complete(response), _)) => response,
             Err(error) => HttpResponse::error(error),
         };
         response.write(writer).map_err(|error| {
@@ -70,7 +83,7 @@ impl ViewerServer {
         })
     }
 
-    fn route(&self, request: HttpRequest) -> Result<HttpResponse, HttpFailure> {
+    fn route(&self, request: HttpRequest) -> Result<RoutedResponse, HttpFailure> {
         self.validate_authority(&request)?;
         if request.method == "GET"
             && (request.origin.as_deref().is_some_and(|s| s != self.origin)
@@ -96,8 +109,10 @@ impl ViewerServer {
             self.validate_mutation_request(&request)?;
         }
         match (request.method.as_str(), request.path.as_str()) {
-            ("GET", "/") => self.render(request.query, None),
-            ("GET", "/citation") => self.read_citation(request),
+            ("GET", "/") => self
+                .select_page(request.query, None)
+                .map(RoutedResponse::Page),
+            ("GET", "/citation") => self.read_citation(request).map(RoutedResponse::Complete),
             ("POST", "/guarded/confirm") => {
                 let form = request.form()?;
                 form.require_only(&[
@@ -152,7 +167,9 @@ impl ViewerServer {
                         form.required("user_turn")?.to_owned(),
                     )
                     .map_err(domain_failure)?;
-                Ok(HttpResponse::redirect(form.return_location()))
+                Ok(RoutedResponse::Complete(HttpResponse::redirect(
+                    form.return_location(),
+                )))
             }
             (_, path) if path.starts_with("/guarded/") => {
                 if request.method != "GET" {
@@ -162,10 +179,11 @@ impl ViewerServer {
                 if value.is_empty() || value.contains('/') {
                     return Err(HttpFailure::not_found());
                 }
-                self.render(
+                self.select_page(
                     request.query,
                     Some(ConfirmationRequestId::from_bytes(identity(value)?)),
                 )
+                .map(RoutedResponse::Page)
             }
             ("GET", _) | ("POST", _) => Err(HttpFailure::not_found()),
             _ => Err(HttpFailure::method_not_allowed("GET, POST")),
@@ -314,11 +332,11 @@ impl ViewerServer {
         Ok(())
     }
 
-    fn render(
+    fn select_page(
         &self,
         query: FormData,
         guarded_path: Option<ConfirmationRequestId>,
-    ) -> Result<HttpResponse, HttpFailure> {
+    ) -> Result<ViewerRequest, HttpFailure> {
         query.require_only(&[
             "project", "from", "q", "sort", "basis", "state", "page", "view", "work", "scope",
             "entity", "decision", "tool", "locale", "language", "guarded",
@@ -355,12 +373,16 @@ impl ViewerServer {
             requested_language: view.language,
             guarded_request: guarded,
         };
-        match self.adapter.render(&selected, &self.request_authenticity) {
+        Ok(selected)
+    }
+
+    fn render_selected(&self, selected: &ViewerRequest) -> Result<HttpResponse, HttpFailure> {
+        match self.adapter.render(selected, &self.request_authenticity) {
             Ok(page) => Ok(HttpResponse::html(page.html)),
             Err(error) if error.not_found && selected.guarded_request.is_none() => {
                 let page = self
                     .adapter
-                    .render_not_found(&selected, &self.request_authenticity)
+                    .render_not_found(selected, &self.request_authenticity)
                     .map_err(domain_failure)?;
                 let mut response = HttpResponse::html(page.html);
                 response.status = 404;
@@ -369,6 +391,64 @@ impl ViewerServer {
             }
             Err(error) => Err(domain_failure(error)),
         }
+    }
+
+    fn stream_initial(
+        &self,
+        selected: &ViewerRequest,
+        writer: &mut impl Write,
+    ) -> Result<(), ViewerError> {
+        let prefix = match self.adapter.initial_shell(selected) {
+            Ok(prefix) => prefix,
+            Err(error) => {
+                // Preserve ordinary validation/error statuses before streaming.
+                let response = if error.not_found {
+                    self.render_selected(selected)
+                        .unwrap_or_else(HttpResponse::error)
+                } else {
+                    HttpResponse::error(domain_failure(error))
+                };
+                return response
+                    .write(writer)
+                    .map_err(|error| ViewerError::new(error.to_string()));
+            }
+        };
+        let label = match selected.locale {
+            ViewerLocale::Korean => "내용을 불러오는 중입니다.",
+            ViewerLocale::English => "Loading content…",
+        };
+        let pending = format!("{prefix}<section class=\"page-loading\" role=\"status\"><p class=\"page-loading-message\"><span class=\"page-loading-spinner\" aria-hidden=\"true\"></span>{label}</p><div class=\"page-loading-skeleton\" aria-hidden=\"true\"><span></span><span></span><span></span></div></section></main></div><script data-viewer-reading>{}</script><div data-initial-content>", crate::interaction::SCRIPT);
+        HttpResponse::html(String::new())
+            .write_headers(writer, None)
+            .and_then(|()| write_chunk(writer, pending.as_bytes()))
+            .and_then(|()| writer.flush())
+            .map_err(|error| {
+                ViewerError::new(format!("cannot send initial Viewer shell: {error}"))
+            })?;
+
+        // Expensive history, analysis, publications and diagrams start only after
+        // the identity-only frame is on the wire. No duplicate projection read.
+        let response = self
+            .render_selected(selected)
+            .unwrap_or_else(HttpResponse::error);
+        let status = response.status;
+        let html = String::from_utf8_lossy(&response.body);
+        let body = if response.content_type.starts_with("text/html") {
+            streamed_body(&html)?
+        } else {
+            let message = match selected.locale {
+                ViewerLocale::Korean => "페이지를 불러오지 못했습니다. 새로고침해 다시 시도하세요.",
+                ViewerLocale::English => "Could not load this page. Reload to try again.",
+            };
+            format!("<main class=\"shell viewer-shell\" id=\"viewer-content\" tabindex=\"-1\"><section class=\"page-navigation-error\" role=\"alert\"><h1>{message}</h1><details><summary>Details</summary><pre>{}</pre></details></section></main>", crate::render::escape(&html))
+        };
+        let tail = format!("{body}</div><span data-initial-ready data-initial-status=\"{status}\" hidden></span></body></html>");
+        write_chunk(writer, tail.as_bytes())
+            .and_then(|()| writer.write_all(b"0\r\n\r\n"))
+            .and_then(|()| writer.flush())
+            .map_err(|error| {
+                ViewerError::new(format!("cannot finish initial Viewer response: {error}"))
+            })
     }
 
     fn view_parameters(
@@ -403,6 +483,49 @@ impl ViewerServer {
             language,
         })
     }
+}
+
+enum RoutedResponse {
+    Complete(HttpResponse),
+    Page(ViewerRequest),
+}
+
+fn streamed_body(html: &str) -> Result<String, ViewerError> {
+    let start = html
+        .find("<body ")
+        .and_then(|start| html[start..].find('>').map(|offset| start + offset + 1))
+        .ok_or_else(|| ViewerError::new("missing Viewer body start"))?;
+    let end = html
+        .rfind("</body>")
+        .ok_or_else(|| ViewerError::new("missing Viewer body end"))?;
+    let script = format!(
+        "<script data-viewer-reading>{}</script>",
+        crate::interaction::SCRIPT
+    );
+    let body = html
+        .get(start..end)
+        .and_then(|body| body.strip_suffix(&script))
+        .ok_or_else(|| ViewerError::new("invalid Viewer body/script boundary"))?;
+    let metadata = ["volicord-observation", "volicord-observation-unavailable"]
+        .into_iter()
+        .find_map(|name| {
+            let marker = format!("<meta name=\"{name}\"");
+            html.find(&marker).and_then(|start| {
+                html[start..]
+                    .find('>')
+                    .map(|end| &html[start..start + end + 1])
+            })
+        })
+        .unwrap_or("");
+    Ok(format!(
+        "<template data-initial-head>{metadata}</template>{body}"
+    ))
+}
+
+fn write_chunk(writer: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
+    write!(writer, "{:x}\r\n", bytes.len())?;
+    writer.write_all(bytes)?;
+    writer.write_all(b"\r\n")
 }
 
 struct ViewParameters {
@@ -683,12 +806,26 @@ impl HttpResponse {
         }
     }
 
-    fn write(self, writer: &mut impl Write) -> io::Result<()> {
-        write!(writer, "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src {}; form-action 'self'; frame-ancestors 'none'\r\n", self.status, self.reason, self.content_type, self.body.len(), crate::interaction::csp_source())?;
-        if let Some(location) = self.location {
+    fn write_headers(&self, writer: &mut impl Write, length: Option<usize>) -> io::Result<()> {
+        write!(
+            writer,
+            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\n",
+            self.status, self.reason, self.content_type
+        )?;
+        if let Some(length) = length {
+            write!(writer, "Content-Length: {length}\r\n")?;
+        } else {
+            writer.write_all(b"Transfer-Encoding: chunked\r\n")?;
+        }
+        write!(writer, "Connection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; connect-src 'self'; style-src 'unsafe-inline'; script-src {}; form-action 'self'; frame-ancestors 'none'\r\n", crate::interaction::csp_source())?;
+        if let Some(location) = &self.location {
             write!(writer, "Location: {location}\r\n")?;
         }
-        writer.write_all(b"\r\n")?;
+        writer.write_all(b"\r\n")
+    }
+
+    fn write(self, writer: &mut impl Write) -> io::Result<()> {
+        self.write_headers(writer, Some(self.body.len()))?;
         writer.write_all(&self.body)
     }
 }

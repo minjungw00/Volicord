@@ -54,6 +54,31 @@ fn icon(kind: usize) -> &'static str {
         _ => "<path d=\"M1 4h5l2 2h7v8H1z\"/>",
     }
 }
+
+/// Identity-only initial chrome. Counts, choices, states and publications wait
+/// for the real projection; missing values never become empty/zero claims.
+pub(super) fn start_pending(html: &mut String, r: &ViewerRequest, project: &Project) {
+    let name = escape(&project.display_name);
+    let close_label = text(r.locale, "Close project menu", "프로젝트 메뉴 닫기");
+    html.push_str(&format!("<details class=\"project-shell\"><summary class=\"mobile-header\"><span class=\"menu-label\">{}</span><span class=\"menu-glyph\" aria-hidden=\"true\">☰</span><span class=\"mobile-project\">{name}</span><span class=\"mobile-location\">{}</span></summary><aside class=\"project-rail\" aria-label=\"{}\"><div class=\"rail-top\"><div class=\"brand-line\"><a class=\"brand\" href=\"{}\"><span class=\"v-mark\" aria-hidden=\"true\">V</span>volicord</a><button class=\"rail-close\" type=\"button\" hidden aria-label=\"{close_label}\">×</button></div><p class=\"rail-heading\">{}</p><details class=\"project-picker\"><summary><span class=\"project-mark\" aria-hidden=\"true\">{}</span><span>{name}<small>{}</small></span></summary></details></div><div class=\"rail-navigation\"><nav class=\"project-navigation\" aria-label=\"Viewer\">",
+        text(r.locale,"Open project menu","프로젝트 메뉴 열기"),page_label(r),text(r.locale,"Project navigation","프로젝트 내 이동"),escape(&href(r,&ViewerView::Overview,false)),text(r.locale,"Project","프로젝트"),escape(&project.display_name.chars().next().unwrap_or('V').to_string()),text(r.locale,"Loading content…","내용을 불러오는 중입니다.")));
+    for (i, view, label) in [
+        (0, ViewerView::Overview, text(r.locale, "Overview", "개요")),
+        (
+            1,
+            ViewerView::RepositoryExplanation,
+            text(r.locale, "Repository explanation", "저장소 설명"),
+        ),
+        (
+            2,
+            ViewerView::Work { work: None },
+            text(r.locale, "Work", "작업"),
+        ),
+    ] {
+        html.push_str(&format!("<a class=\"nav-link\" data-destination=\"{}\" href=\"{}\"{}><svg viewBox=\"0 0 16 16\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" aria-hidden=\"true\">{}</svg>{label}</a>", view.key(),escape(&href(r,&view,false)),if view.key()==r.view.key(){" aria-current=\"page\""}else{""},icon(i)));
+    }
+    html.push_str(&format!("</nav></div></aside></details><button class=\"nav-backdrop\" hidden type=\"button\" tabindex=\"-1\" aria-label=\"{close_label}\"></button><main class=\"shell viewer-shell\" id=\"viewer-pending-content\" tabindex=\"-1\">"));
+}
 pub(super) fn start(
     html: &mut String,
     r: &ViewerRequest,

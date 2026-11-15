@@ -815,3 +815,15 @@ remaining work; after host restart it reports resume required rather than preten
 a live request survived. Explicit produce retries current preparation and requires
 new request-local Source reads. Superseded intents reject admission under the same
 mutation lock; no background retry, automatic capture or lifetime renewal exists.
+
+
+### Initial Viewer delivery
+
+A top-level live document can send its identity-only loading frame before the full
+read completes. Authority/query/missing-identity failures keep their ordinary HTTP
+status before any frame is sent. A later read failure cannot revise already-sent
+HTTP headers: it completes with an explicit error body and a completion marker
+carrying the read status, never a successful article. An interrupted body offers
+scripted retry and native reload. API/fetch reads and guarded actions retain complete
+response status behavior. Disconnects stop writing; reads do not create records,
+Source captures, retention renewal or background retries.

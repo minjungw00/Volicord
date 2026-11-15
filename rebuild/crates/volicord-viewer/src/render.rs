@@ -6,8 +6,8 @@ mod presentation;
 mod reading;
 #[path = "shell.rs"]
 mod shell;
-pub(crate) use presentation::locale_key;
 use presentation::*;
+pub(crate) use presentation::{escape, locale_key};
 pub(crate) use shell::work_state_key;
 use std::{
     error::Error as StdError,
@@ -159,6 +159,28 @@ impl ViewerAdapter {
                 })?;
         }
         Ok(())
+    }
+
+    /// Fast identity-only frame: no analysis, explanations or Source bodies.
+    pub(crate) fn initial_shell(&self, request: &ViewerRequest) -> Result<String, ViewerError> {
+        let project = self
+            .operations
+            .project_identity(request.project_id)
+            .map_err(|error| ViewerError::new(error.to_string()))?;
+        if let Some(work) = request.view.exact_work() {
+            if !self
+                .operations
+                .work_identity_available(request.project_id, work)
+                .map_err(|error| ViewerError::new(error.to_string()))?
+            {
+                let mut error = ViewerError::new("selected identity is absent from this Project");
+                error.not_found = true;
+                return Err(error);
+            }
+        }
+        let mut html = format!("<!doctype html><html lang=\"{}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>Volicord</title>{STYLE}</head><body data-view=\"{}\" data-viewer-mode=\"live\" data-project-id=\"{}\" data-initial-read=\"pending\"><div data-initial-indicator>", locale_key(request.locale), request.view.key(), request.project_id);
+        shell::start_pending(&mut html, request, &project);
+        Ok(html)
     }
 
     pub fn render(

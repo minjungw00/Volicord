@@ -16,7 +16,7 @@ function createPageNavigation({startReader}) {
   }
   function labels(url){
     const ko=(url.searchParams.get('locale')||document.documentElement.lang)==='ko';
-    const view=url.searchParams.get('view')||'overview';
+    const view=url.searchParams.get('view')||document.body.dataset.view||'overview';
     const name=view==='overview'?(ko?'개요':'Overview'):view==='repository'?(ko?'저장소 설명':'Repository explanation'):(ko?'작업':'Work');
     return {ko,name,view};
   }
@@ -66,8 +66,9 @@ function createPageNavigation({startReader}) {
     if(work){const id=node('p','work-identifier');id.append(node('span','',ko?'작업 ID':'Work ID'),node('code','',work));header.append(id);}
     header.append(heading(context.title));group.append(header);article.append(toc,breadcrumb,group);section.append(article);return group;
   }
+  const mainSurface=()=>document.getElementById(document.body.dataset.initialRead==='pending'?'viewer-pending-content':'viewer-content');
   function showLoading(url,context){
-    const {ko,name,view}=labels(url),main=document.getElementById('viewer-content');
+    const {ko,name,view}=labels(url),main=mainSurface();
     if(!main)throw Error('missing reader surface');
     document.body.dataset.pageLoading='true';document.body.dataset.view=view;
     document.querySelectorAll('.project-navigation a').forEach(a=>{if(a.dataset.destination===view)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
@@ -84,7 +85,7 @@ function createPageNavigation({startReader}) {
     document.title=name+' · Volicord';announce(name+' · '+(ko?'불러오는 중':'Loading'));
   }
   function showError(url){
-    const main=document.getElementById('viewer-content'),{ko}=labels(url);if(!main)return;
+    const main=mainSurface(),{ko}=labels(url);if(!main)return;
     main.replaceChildren();main.setAttribute('aria-busy','false');delete document.body.dataset.pageLoading;
     const section=document.createElement('section');section.className='page-navigation-error';section.lang=ko?'ko':'en';
     const title=document.createElement('h1');title.textContent=ko?'페이지를 불러오지 못했습니다':'Could not load this page';
@@ -139,13 +140,37 @@ function createPageNavigation({startReader}) {
       if(!url.hash)window.scrollTo(0,0);
       disposeReader=startReader(go);
       if(pop&&saved&&Number.isFinite(saved.x)&&Number.isFinite(saved.y)&&saved.x>=0&&saved.y>=0&&saved.y<100000000)window.scrollTo(saved.x,saved.y);
-      if(!url.hash){const main=document.getElementById('viewer-content');main.focus({preventScroll:true});}
+      if(!url.hash){const main=mainSurface();main.focus({preventScroll:true});}
       announce(labels(url).name+' · '+(labels(url).ko?'불러왔습니다':'Loaded'));
       document.dispatchEvent(new CustomEvent('viewer:navigated',{detail:{url:url.href}}));
     } catch(error){
       if(token!==sequence||controller.signal.aborted)return;
       loading=false;pending=null;showError(url);
     }
+  }
+  if(document.body.dataset.initialRead==='pending'){
+    const url=new URL(location.href),title=document.title;
+    showLoading(url,loadingContext(url,null));
+    document.body.dataset.initialEnhanced='true';
+    const finish=()=>{
+      const payload=document.querySelector('body > [data-initial-content]');
+      const ready=document.querySelector('body > [data-initial-ready]');
+      if(payload&&ready){
+        const head=payload.querySelector('template[data-initial-head]');
+        if(head){document.head.querySelectorAll('meta[name="volicord-observation"],meta[name="volicord-observation-unavailable"]').forEach(n=>n.remove());document.head.append(...head.content.childNodes);head.remove();}
+        document.body.replaceChildren(...payload.childNodes,bundleNode);
+      }else{
+        payload?.remove();const pending=mainSurface();if(pending)pending.id='viewer-content';
+        document.body.append(bundleNode);
+      }
+      delete document.body.dataset.initialRead;delete document.body.dataset.initialEnhanced;delete document.body.dataset.pageLoading;
+      if(!payload||!ready)showError(url);
+      document.getElementById('viewer-content')?.removeAttribute('aria-busy');document.title=title;lifetime.dispose();
+      createPageNavigation({startReader});
+    };
+    if(document.readyState==='loading')lifetime.on(document,'DOMContentLoaded',finish,{once:true});
+    else finish();
+    return;
   }
   lifetime.on(document,'click',event=>{
     if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
