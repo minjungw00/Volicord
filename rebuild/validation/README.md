@@ -153,6 +153,13 @@ Read-only qualitative inspection accepts `inspect-agent-review --review-root <pr
 inspection uses the same presentation. Recording and publication recheck current bytes.
 See [the qualitative review owner](../docs/design/qualitative-review.md).
 
+An explicitly selected `prepare-qualitative-review --code-source WORK_SLOT=REPOSITORY`
+adds bounded, indexed before/after code bodies at that Work's recorded Git boundaries.
+Commit/tree/blob witnesses and native evidence bindings remain verifiable without
+the original repository. This is post-session Source evidence, not earlier model
+exposure, execution or user authority. See [recorded-code evidence](dogfood/review-code.md)
+for scope, bounds and refusal behavior.
+
 Bounded explanation input/invocation experiments are documented under
 [V06 explanation generation support](projections/source-grounded-documents/explanation-generation/README.md).
 They are focused support only, independent of gate/official V11, Product schema

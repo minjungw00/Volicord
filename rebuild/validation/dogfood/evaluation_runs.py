@@ -15,6 +15,7 @@ def policy_identity():
         "review_captures_sha256": harness.sha256(Path(__file__).with_name("review_captures.py")),
         "review_explanations_sha256": harness.sha256(Path(__file__).with_name("review_explanations.py")),
         "review_operations_sha256": harness.sha256(Path(__file__).with_name("review_operations.py")),
+        "collector_provenance_sha256": harness.sha256(Path(__file__).with_name("collector_provenance.py")),
         "explanation_evidence_sha256": harness.sha256(Path(__file__).with_name("explanation_evidence.py")),
         "codex_events_sha256": harness.sha256(Path(__file__).with_name("codex_events.py")),
         "answer_observations_sha256": harness.sha256(Path(__file__).with_name("answer_observations.py")),

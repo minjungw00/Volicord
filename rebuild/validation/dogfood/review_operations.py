@@ -7,6 +7,9 @@ No repository/rollout instruction is executed, and no provider is contacted.
 from __future__ import annotations
 
 import copy
+import base64
+import subprocess
+import collector_provenance as code_git
 import gzip
 import hashlib
 import io
@@ -293,6 +296,18 @@ def verify_campaign_work_scope(index, manifest):
             and sample["project_id"] == actual["project_id"],
             "review target Work differs from campaign evidence")
     for entry in index["evidence"].values():
+        origin = entry['origin']
+        if origin.get('kind') == 'evidence_set_member':
+            if entry['surface'] in review_captures.CAPTURE_SURFACES:
+                expected = {'bytes': origin.get('raw_bytes'), 'sha256': origin.get('raw_sha256')}
+                expected_origin = {'kind': 'evidence_set_member', 'path': origin['path'],
+                    'raw_bytes': expected['bytes'], 'raw_sha256': expected['sha256']}
+            else:
+                expected = {'bytes': entry['bytes'], 'sha256': entry['sha256']}
+                expected_origin = {'kind': 'evidence_set_member', 'path': origin['path'], **expected}
+            review.require(origin == expected_origin
+                and manifest['artifacts'].get(origin['path']) == expected,
+                'review source differs from immutable campaign evidence')
         if entry["surface"] == "canonical_bundle":
             origin = entry["origin"]
             expected = {"bytes": entry["bytes"], "sha256": entry["sha256"]}
@@ -581,6 +596,8 @@ Unavailable CLI or live accessibility surfaces require insufficient_evidence.
 Agent identity must remain agent; do not label an agent judgment as human review.
 Validate with validate-qualitative-review; record with record-qualitative-review.
 Preflight verifies structure and evidence membership, not semantic correctness.
+Explicit code attachments are indexed post-session Git snapshots, not proof that
+the earlier agent read them, ran tests, or held user authority. Retain capture gaps.
 No review result grants final replacement or Phase 9 approval.
 """
 
@@ -648,8 +665,270 @@ def _inspect_agent_criterion(preparation, sha, specs, draft, criterion_number):
         ], "semantic_judgment_suggested": False, "mutation": "none"}
 
 
+class RecordedCode:
+    """Bounded indexed text bodies at a Work's recorded Git boundaries."""
+    MAX_BODY_BYTES = 4 * 1024 * 1024
+    MAX_METADATA_BYTES = 4 * 1024 * 1024
+    MAX_TOTAL_BYTES = 32 * 1024 * 1024
+    PREFIX = 'recorded-code-'
+    WITNESS = 'recorded_git_code_witness'
+    BODY = 'recorded_git_code_body'
+    LIMIT = 'Code at recorded revisions; not original model exposure, execution, user authority or Human understanding.'
+
+    @staticmethod
+    def require(condition, message):
+        review.require(condition, 'review code: ' + message)
+
+
+    @staticmethod
+    def path_parts(name):
+        RecordedCode.require(isinstance(name, str) and name and not name.startswith('/')
+            and all(p not in {'', '.', '..'} for p in name.split('/')), 'unsafe source path')
+        return name.split('/')
+
+
+    @staticmethod
+    def boundaries(index, contents, sample_id):
+        sample = next((s for s in index['samples'] if s['sample_id'] == sample_id), None)
+        RecordedCode.require(sample is not None, 'unknown Work')
+        identity = sample['journey_id'] + '-git-observations'
+        entry = index['evidence'].get(identity, {})
+        RecordedCode.require(entry.get('surface') == 'repository_state' and sample_id in entry['sample_ids']
+            and entry['origin']['kind'] == 'evidence_set_member', 'native Git evidence unavailable')
+        value = json.loads(contents[entry['path']])
+        RecordedCode.require(value.get('kind') == 'dogfood_journey_git_observations'
+            and type(value.get('schema_version')) is int and value['schema_version'] == 1
+            and value['journey_id'] == sample['journey_id'], 'foreign Git evidence')
+        observation = value['observation']
+        history = observation['commits']
+        RecordedCode.require(history['state'] == 'computed', 'recorded commit history unavailable')
+        known = {c['revision']: c for c in history['commits']}
+        RecordedCode.require(len(known) == len(history['commits']), 'duplicate recorded commit')
+        views = {}
+        parents = {}
+        for row in observation['session_git_observations']:
+            if row['session_slot_id'] not in {sample_id + '-start', sample_id + '-resume'}:
+                continue
+            changes = row.get('commits_to_next_observation') or {}
+            if changes.get('state') != 'computed':
+                continue
+            for commit in changes['commits']:
+                RecordedCode.require(known.get(commit['revision']) == commit, 'commit differs from recorded history')
+                RecordedCode.require(len(commit['parents']) == 1, 'source attachment requires a recorded single-parent boundary')
+                before, after = commit['parents'][0], commit['revision']
+                for revision in (before, after):
+                    RecordedCode.require(re.fullmatch('[0-9a-f]{40}', revision), 'invalid recorded revision')
+                    views.setdefault(revision, set()).update(commit['paths'])
+                parents[after] = commit['parents']
+        RecordedCode.require(views and len(views) <= 16, 'no bounded committed Work boundary')
+        for paths in views.values():
+            RecordedCode.require(0 < len(paths) <= 64, 'source path bound exceeded')
+            for name in paths:
+                RecordedCode.path_parts(name)
+        return identity, views, parents
+
+
+    @staticmethod
+    def object_read(repository, kind, identity, maximum):
+        RecordedCode.require(kind in {'commit', 'tree', 'blob'} and re.fullmatch('[0-9a-f]{40}', identity),
+            'invalid Git object request')
+        process = subprocess.Popen(['git', 'cat-file', kind, identity], cwd=repository,
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            data = process.stdout.read(maximum + 1)
+            RecordedCode.require(len(data) <= maximum, 'Git object exceeds bound')
+            RecordedCode.require(process.wait(timeout=30) == 0, 'Git object unavailable')
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.stdout.close()
+            process.wait(timeout=30)
+        RecordedCode.require(code_git.oid(kind, data) == identity, 'Git object identity mismatch')
+        return data
+
+
+    @staticmethod
+    def root_tree(commit, revision, expected_parents):
+        RecordedCode.require(code_git.oid('commit', commit) == revision, 'commit identity mismatch')
+        headers = commit.split(b'\n\n', 1)[0].splitlines()
+        RecordedCode.require(headers and re.fullmatch(b'tree [0-9a-f]{40}', headers[0]), 'commit tree unavailable')
+        if expected_parents is not None:
+            RecordedCode.require([line[7:].decode('ascii') for line in headers if line.startswith(b'parent ')]
+                == expected_parents, 'commit parents differ from recorded boundary')
+        return headers[0][5:].decode('ascii')
+
+
+    @staticmethod
+    def entry_at(root, name, tree_reader):
+        parts = RecordedCode.path_parts(name)
+        current = root
+        for n, part in enumerate(parts):
+            entries = code_git.tree_entries(tree_reader(current))
+            entry = entries.get(part.encode('utf-8'))
+            if entry is None:
+                return None
+            if n + 1 == len(parts):
+                RecordedCode.require(entry[0] in {b'100644', b'100755'}, 'source symlink/gitlink is unsupported')
+                return entry
+            RecordedCode.require(entry[0] == b'40000', 'source ancestor is not a directory')
+            current = entry[1]
+
+
+    @staticmethod
+    def safe_tree(body):
+        # Git tree OIDs are binary; inspect decoded names rather than treating
+        # random hash bytes as UTF-8 secret-bearing prose.
+        entries = code_git.tree_entries(body)
+        require_review_artifact_safe(encoded({name.decode('utf-8'):
+            [mode.decode('ascii'), oid] for name, (mode, oid) in entries.items()}))
+
+
+    @staticmethod
+    def create(index, contents, requests, candidate, evidence_sha):
+        """Read only explicitly named repositories and observed committed paths."""
+        artifacts = []
+        seen = set()
+        total = 0
+        for request in requests:
+            sample_id, separator, repository = request.partition('=')
+            RecordedCode.require(separator and sample_id not in seen and Path(repository).is_dir(),
+                'expected distinct WORK_SLOT=REPOSITORY')
+            seen.add(sample_id)
+            native_id, views, parents = RecordedCode.boundaries(index, contents, sample_id)
+            for revision, paths in sorted(views.items()):
+                identity = RecordedCode.PREFIX + sample_id + '-' + revision
+                commit = RecordedCode.object_read(repository, 'commit', revision, RecordedCode.MAX_METADATA_BYTES)
+                require_review_artifact_safe(commit)
+                root = RecordedCode.root_tree(commit, revision, parents.get(revision))
+                trees = {}
+
+                def read_tree(oid):
+                    if oid not in trees:
+                        remaining = RecordedCode.MAX_METADATA_BYTES - len(encoded(trees))
+                        RecordedCode.require(remaining > 0, 'tree witness exceeds bound')
+                        body = RecordedCode.object_read(repository, 'tree', oid, remaining // 4 * 3)
+                        RecordedCode.safe_tree(body)
+                        trees[oid] = base64.b64encode(body).decode('ascii')
+                    return code_git.decode(trees[oid])
+
+                files = {}
+                for name in sorted(paths):
+                    entry = RecordedCode.entry_at(root, name, read_tree)
+                    if entry is None:
+                        files[name] = {'state': 'absent'}
+                        continue
+                    mode, blob = entry
+                    body = RecordedCode.object_read(repository, 'blob', blob, RecordedCode.MAX_BODY_BYTES)
+                    RecordedCode.require('\0' not in body.decode('utf-8'), 'binary source is unsupported')
+                    require_review_artifact_safe(body)
+                    total += len(body)
+                    RecordedCode.require(total <= RecordedCode.MAX_TOTAL_BYTES, 'code evidence exceeds total bound')
+                    body_id = identity + '-' + digest(name.encode())[:24]
+                    files[name] = {'state': 'present', 'mode': mode.decode('ascii'), 'blob': blob,
+                        'bytes': len(body), 'sha256': digest(body), 'artifact_id': body_id}
+                    artifacts.append((body_id, body, sample_id,
+                        {'kind': RecordedCode.BODY, 'witness_evidence_id': identity, 'source_path': name}, '.txt'))
+                witness = {'kind': 'dogfood_recorded_git_code', 'schema_version': 1,
+                    'candidate_head': candidate, 'evidence_set_sha256': evidence_sha,
+                    'sample_id': sample_id, 'native_git_evidence_id': native_id,
+                    'revision': revision, 'files': files, 'commit': base64.b64encode(commit).decode('ascii'),
+                    'trees': trees, 'limit': RecordedCode.LIMIT}
+                witness_bytes = encoded(witness)
+                RecordedCode.require(len(witness_bytes) <= RecordedCode.MAX_METADATA_BYTES, 'revision witness exceeds bound')
+                artifacts.append((identity, witness_bytes, sample_id,
+                    {'kind': RecordedCode.WITNESS, 'native_git_evidence_id': native_id}, '.json'))
+        return artifacts
+
+
+    @staticmethod
+    def validate(index, contents, binding):
+        """Pure copied verification: no repository, Git process or original path access."""
+        claimed = set()
+        total = 0
+        witnessed = {}
+        witness_entries = [(i, e) for i, e in index['evidence'].items()
+            if e['origin'].get('kind') == RecordedCode.WITNESS]
+        RecordedCode.require(len(witness_entries) <= 16 * 5, 'too many code witnesses')
+        for identity, entry in witness_entries:
+            raw = contents[entry['path']]
+            RecordedCode.require(len(raw) <= RecordedCode.MAX_METADATA_BYTES, 'revision witness exceeds bound')
+            value = json.loads(raw)
+            RecordedCode.require(set(value) == {'kind', 'schema_version', 'candidate_head', 'evidence_set_sha256',
+                'sample_id', 'native_git_evidence_id', 'revision', 'files', 'commit', 'trees', 'limit'}
+                and value['kind'] == 'dogfood_recorded_git_code' and type(value['schema_version']) is int
+                and value['schema_version'] == 1 and value['limit'] == RecordedCode.LIMIT
+                and value['candidate_head'] == binding['candidate_head']
+                and value['evidence_set_sha256'] == binding['evidence_set']['sha256'], 'foreign code witness')
+            sample_id = value['sample_id']
+            native_id, views, parents = RecordedCode.boundaries(index, contents, sample_id)
+            revision = value['revision']
+            RecordedCode.require(revision in views and set(value['files']) == views[revision]
+                and identity == RecordedCode.PREFIX + sample_id + '-' + revision
+                and value['native_git_evidence_id'] == native_id
+                and entry['origin'] == {'kind': RecordedCode.WITNESS, 'native_git_evidence_id': native_id}
+                and entry['surface'] == 'repository_state' and entry['sample_id'] == sample_id
+                and entry['sample_ids'] == [sample_id], 'code scope differs from native Work boundary')
+            witnessed.setdefault(sample_id, set()).add(revision)
+            commit = code_git.decode(value['commit'])
+            require_review_artifact_safe(commit)
+            root = RecordedCode.root_tree(commit, revision, parents.get(revision))
+            trees = value['trees']
+            RecordedCode.require(isinstance(trees, dict) and trees, 'tree closure unavailable')
+            used = set()
+
+            def read_tree(oid):
+                RecordedCode.require(oid in trees, 'required source tree missing')
+                body = code_git.decode(trees[oid])
+                RecordedCode.safe_tree(body)
+                RecordedCode.require(code_git.oid('tree', body) == oid, 'source tree identity mismatch')
+                used.add(oid)
+                return body
+
+            for name, file in value['files'].items():
+                target = RecordedCode.entry_at(root, name, read_tree)
+                if target is None:
+                    RecordedCode.require(file == {'state': 'absent'}, 'absent source invented')
+                    continue
+                RecordedCode.require(set(file) == {'state', 'mode', 'blob', 'bytes', 'sha256', 'artifact_id'}
+                    and file['state'] == 'present' and file['mode'].encode('ascii') == target[0]
+                    and file['blob'] == target[1], 'source entry differs from Git tree')
+                body_id = identity + '-' + digest(name.encode())[:24]
+                body_entry = index['evidence'].get(body_id, {})
+                RecordedCode.require(file['artifact_id'] == body_id and body_entry.get('origin') == {
+                    'kind': RecordedCode.BODY, 'witness_evidence_id': identity, 'source_path': name}
+                    and body_entry['surface'] == 'repository_state'
+                    and body_entry['sample_id'] == sample_id and body_entry['sample_ids'] == [sample_id],
+                    'missing or foreign code body')
+                body = contents[body_entry['path']]
+                RecordedCode.require(len(body) <= RecordedCode.MAX_BODY_BYTES and type(file['bytes']) is int
+                    and file['bytes'] == len(body) and file['sha256'] == digest(body)
+                    and code_git.oid('blob', body) == target[1], 'source body identity mismatch')
+                RecordedCode.require('\0' not in body.decode('utf-8'), 'binary source is unsupported')
+                total += len(body)
+                RecordedCode.require(total <= RecordedCode.MAX_TOTAL_BYTES, 'code evidence exceeds total bound')
+                sample = next(s for s in index['samples'] if s['sample_id'] == sample_id)
+                RecordedCode.require(sample['authority_evidence'].get(body_id) == body_id, 'missing code authority alias')
+                claimed.add(body_id)
+            RecordedCode.require(used == set(trees), 'unrelated source tree retained')
+            claimed.add(identity)
+        actual = {i for i, e in index['evidence'].items() if e['origin'].get('kind') in {RecordedCode.WITNESS, RecordedCode.BODY}}
+        RecordedCode.require(actual == claimed, 'unbound code artifact')
+        for sample_id, revisions in witnessed.items():
+            _, views, _ = RecordedCode.boundaries(index, contents, sample_id)
+            RecordedCode.require(revisions == set(views), 'recorded source boundary omitted')
+        for sample in index['samples']:
+            for alias, identity in sample['authority_evidence'].items():
+                if alias.startswith(RecordedCode.PREFIX):
+                    RecordedCode.require(alias == identity and identity in claimed
+                        and index['evidence'][identity]['origin']['kind'] == RecordedCode.BODY
+                        and index['evidence'][identity]['sample_id'] == sample['sample_id'],
+                        'foreign or unbound source authority alias')
+
+
+
 def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, evaluation_path=None,
-            include_raw=False, run_id=None, human_observations=None, cli_observation_root=None):
+            include_raw=False, run_id=None, human_observations=None, cli_observation_root=None,
+            code_sources=()):
     c = campaign_api()
     root, output = root.resolve(), output.absolute()
     review.require(not output.resolve().is_relative_to(root), "review run must be outside immutable campaign input")
@@ -683,6 +962,24 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         cli_observation_set, _, _ = cli_observations.load(root, cli_observation_root)
     files, index, unavailable = select_evidence(root, manifest, evaluation, include_raw=include_raw,
         cli_observation_set=cli_observation_set)
+    if code_sources:
+        attachments = RecordedCode.create(index, files, code_sources,
+            manifest['candidate_head'], evidence_hash)
+        for identity_key, body, sample_id, origin, suffix in attachments:
+            review.require(identity_key not in index['evidence'] and len(files) < MAX_FILES,
+                'duplicate or excessive code evidence')
+            require_review_artifact_safe(body)
+            name = 'evidence/' + identity_key + suffix
+            pointers, count = locators(body)
+            files[name] = body
+            index['evidence'][identity_key] = {'path': name, 'bytes': len(body), 'sha256': digest(body),
+                'sample_id': sample_id, 'sample_ids': [sample_id], 'surface': 'repository_state',
+                'origin': origin, 'locators': pointers, 'line_count': count, 'locale': None}
+            if origin['kind'] == RecordedCode.BODY:
+                sample = next(s for s in index['samples'] if s['sample_id'] == sample_id)
+                sample['authority_evidence'][identity_key] = identity_key
+        RecordedCode.validate(index, files, {'candidate_head': manifest['candidate_head'],
+            'evidence_set': {'sha256': evidence_hash}})
     if human_observations is not None:
         import human_review
         review.require(reviewer_kind == "human", "agent preparation cannot supply direct human live observations")
@@ -777,8 +1074,9 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         "completion_obligations": review.completion_obligations(index, policy),
         "preparer_revision": c.harness.git_head(c.ROOT),
         "preparer_files": {name: c.harness.sha256(Path(__file__).parent / name) for name in
-            ("review_operations.py", "human_review.py", "viewer_observation.py", "human_observation_plan.py", "fixtures/human-observation-surfaces.json", "review_captures.py", "review_explanations.py", "answer_projection.py", "explanation_evidence.py", "answer_observations.py", "codex_events.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
-             "authority_obligations.py", "interaction_diagnostics.py", "workload_intents.py", "evaluation.json")}}
+            (("review_operations.py", "human_review.py", "viewer_observation.py", "human_observation_plan.py", "fixtures/human-observation-surfaces.json", "review_captures.py", "review_explanations.py", "answer_projection.py", "explanation_evidence.py", "answer_observations.py", "codex_events.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
+              "authority_obligations.py", "interaction_diagnostics.py", "workload_intents.py", "evaluation.json")
+             + (("collector_provenance.py",) if code_sources else ()))}}
     preparation_bytes = encoded(preparation)
     review.require(len(preparation_bytes) <= MAX_FILE_BYTES, "review index exceeds bound")
     files["preparation.json"] = preparation_bytes
@@ -865,6 +1163,9 @@ def _load_package(root):
         pointers, count = locators(content)
         review.require(entry["sha256"] == digest(content) and entry["bytes"] == len(content)
             and entry["locators"] == pointers and entry["line_count"] == count, "index locator/content mismatch")
+        if entry['surface'] == 'repository_state':
+            review.require(entry['origin'].get('kind') in {'evidence_set_member',
+                'recorded_git_code_witness', 'recorded_git_code_body'}, 'unknown repository code origin')
         if entry["surface"] == "live_viewer_observation":
             import viewer_observation
             observed = json.loads(content)
@@ -949,6 +1250,9 @@ def _load_package(root):
                 and entry['sample_ids'] == canonical_entry['sample_ids']
                 and contents[entry['path']] == encoded(review_captures.source_details(bundle)),
                 'Source detail projection differs from retained canonical bundle')
+    if any(e['origin'].get('kind') in {'recorded_git_code_witness', 'recorded_git_code_body'}
+            for e in index['evidence'].values()):
+        RecordedCode.validate(index, contents, binding)
     review.require(set(contents) == {"preparation.json", "REVIEW.md", *(e["path"] for e in index["evidence"].values())},
         "review package contains unindexed or private extra artifacts")
     for value in index["machine_findings"].values():

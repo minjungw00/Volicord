@@ -377,6 +377,16 @@ legacy decoder는 두지 않는다.
 
 ### 3.2 Validation responsibility and evidence reuse
 
+Explicit private review code selection may attach complete regular-text files at
+already recorded Work commit boundaries. The existing review index carries the
+Work-scoped bodies and exact-current independent Git witness, with native artifact
+hash binding rechecked in qualification and copied lineage. This supplements
+post-hoc Source inspection only: original returned context, authority chronology,
+execution and Human guards remain unchanged. Focused real-Git/corruption/bounds and
+original-repository-unavailable checks own this optional path; existing technical
+Product evidence and original eight conversations retain their recorded scopes.
+See [recorded-code evidence](../../validation/dogfood/review-code.md).
+
 This matrix owns validation responsibilities and reuse boundaries. A campaign ID,
 session label such as “final”, or instruction-only preparation change does not
 invalidate applicable evidence. Claims remain limited to the recorded candidate,

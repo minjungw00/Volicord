@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Reviewer isolation, bounded packaging and append-only review operations."""
 import copy
+import io
+import shutil
+import base64
+import collector_provenance as code_git
 from qualitative_review_self_test import dimensions
 import json
 from pathlib import Path
@@ -238,6 +242,232 @@ def append_reviewable_execution(events):
                 'internal_chat_message_metadata_passthrough': metadata}}]
     events[terminal:terminal] = additions
     return events
+
+
+code = ops.RecordedCode
+
+class CodeEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='volicord-review-code-')
+        self.addCleanup(self.temporary.cleanup)
+        self.repo = Path(self.temporary.name) / 'source'
+        self.repo.mkdir()
+        self.git('init', '-q')
+        (self.repo / 'src').mkdir()
+        (self.repo / 'src/value.py').write_text('VALUE = 1\n')
+        self.before = self.commit('before')
+        (self.repo / 'src/value.py').write_text('VALUE = 2\n')
+        (self.repo / 'src/설명.txt').write_text('중단 원인\n')
+        self.after = self.commit('after')
+        self.sample = 'journey-small-python-work-a'
+        self.journey = 'journey-small-python'
+        self.candidate, self.evidence_sha = 'a' * 40, 'b' * 64
+        paths = ['src/value.py', 'src/설명.txt']
+        commit = {'revision': self.after, 'parents': [self.before], 'paths': paths}
+        native = {'kind': 'dogfood_journey_git_observations', 'schema_version': 1,
+            'journey_id': self.journey, 'observation': {
+                'commits': {'state': 'computed', 'commits': [commit]},
+                'session_git_observations': [{'session_slot_id': self.sample + '-start',
+                    'commits_to_next_observation': {'state': 'computed', 'commits': [commit]}}]}}
+        data = ops.encoded(native)
+        self.native_id = self.journey + '-git-observations'
+        self.contents = {'evidence/native-git.json': data}
+        self.index = {'samples': [{'sample_id': self.sample, 'journey_id': self.journey,
+            'work_item_id': 'c' * 32, 'project_id': 'd' * 32, 'authority_evidence': {}}],
+            'evidence': {self.native_id: {'path': 'evidence/native-git.json',
+                'bytes': len(data), 'sha256': ops.digest(data), 'surface': 'repository_state',
+                'sample_id': self.journey, 'sample_ids': [self.journey, self.sample],
+                'origin': {'kind': 'evidence_set_member', 'path': 'native/git.json',
+                    'bytes': len(data), 'sha256': ops.digest(data)}}}}
+        self.binding = {'candidate_head': self.candidate, 'evidence_set': {'sha256': self.evidence_sha}}
+
+    def git(self, *args):
+        return subprocess.check_output(['git', '-c', 'core.hooksPath=/dev/null',
+            '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', *args],
+            cwd=self.repo, stderr=subprocess.DEVNULL).decode().strip()
+
+    def commit(self, message):
+        self.git('add', '.')
+        self.git('commit', '-qm', message)
+        return self.git('rev-parse', 'HEAD')
+
+    def prepared(self):
+        index, contents = copy.deepcopy(self.index), dict(self.contents)
+        selected = code.create(index, contents, [self.sample + '=' + str(self.repo)],
+            self.candidate, self.evidence_sha)
+        for identity, data, sample, origin, suffix in selected:
+            path = 'evidence/' + identity + suffix
+            contents[path] = data
+            pointers, count = ops.locators(data)
+            index['evidence'][identity] = {'path': path, 'bytes': len(data),
+                'sha256': ops.digest(data), 'surface': 'repository_state', 'sample_id': sample,
+                'sample_ids': [sample], 'origin': origin, 'locators': pointers,
+                'line_count': count, 'locale': None}
+            if origin['kind'] == code.BODY:
+                index['samples'][0]['authority_evidence'][identity] = identity
+        code.validate(index, contents, self.binding)
+        return index, contents
+
+    def witness(self, index, contents, revision=None):
+        identity = next(i for i, e in index['evidence'].items()
+            if e['origin']['kind'] == code.WITNESS
+            and (revision is None or i.endswith(revision)))
+        path = index['evidence'][identity]['path']
+        return identity, path, json.loads(contents[path])
+
+    def test_complete_before_after_text_and_absence_survive_original_removal(self):
+        index, contents = self.prepared()
+        _, _, before = self.witness(index, contents, self.before)
+        self.assertEqual(before['files']['src/설명.txt'], {'state': 'absent'})
+        bodies = [contents[e['path']] for e in index['evidence'].values()
+            if e['origin']['kind'] == code.BODY]
+        self.assertCountEqual(bodies, [b'VALUE = 1\n', b'VALUE = 2\n', '중단 원인\n'.encode()])
+        shutil.rmtree(self.repo)
+        with patch('subprocess.Popen', side_effect=AssertionError('original Git forbidden')):
+            code.validate(index, contents, self.binding)
+
+    def test_rehashed_code_body_cannot_replace_git_blob(self):
+        index, contents = self.prepared()
+        _, path, witness = self.witness(index, contents, self.after)
+        file = witness['files']['src/value.py']
+        identity = file['artifact_id']
+        entry = index['evidence'][identity]
+        body = b'VALUE = 999\n'
+        contents[entry['path']] = body
+        entry.update(bytes=len(body), sha256=ops.digest(body))
+        file.update(bytes=len(body), sha256=ops.digest(body))
+        contents[path] = ops.encoded(witness)
+        with self.assertRaisesRegex(ValueError, 'source body identity'):
+            code.validate(index, contents, self.binding)
+
+    def test_missing_source_path_and_extra_tree_are_rejected(self):
+        index, contents = self.prepared()
+        _, path, value = self.witness(index, contents)
+        value['files'].pop('src/value.py')
+        contents[path] = ops.encoded(value)
+        with self.assertRaises(ValueError):
+            code.validate(index, contents, self.binding)
+        index, contents = self.prepared()
+        _, path, value = self.witness(index, contents)
+        raw = b'100644 unused\0' + bytes.fromhex('1' * 40)
+        value['trees'][code_git.oid('tree', raw)] = base64.b64encode(raw).decode()
+        contents[path] = ops.encoded(value)
+        with self.assertRaisesRegex(ValueError, 'unrelated source tree'):
+            code.validate(index, contents, self.binding)
+
+    def test_omitted_before_boundary_and_authority_alias_are_rejected(self):
+        index, contents = self.prepared()
+        identity, path, value = self.witness(index, contents, self.before)
+        for file in value['files'].values():
+            if file['state'] == 'present':
+                body_id = file['artifact_id']
+                contents.pop(index['evidence'].pop(body_id)['path'])
+                index['samples'][0]['authority_evidence'].pop(body_id)
+        index['evidence'].pop(identity)
+        contents.pop(path)
+        with self.assertRaisesRegex(ValueError, 'boundary omitted'):
+            code.validate(index, contents, self.binding)
+        index, contents = self.prepared()
+        index['samples'][0]['authority_evidence'].clear()
+        with self.assertRaisesRegex(ValueError, 'authority alias'):
+            code.validate(index, contents, self.binding)
+
+    def test_foreign_candidate_revision_and_work_are_rejected(self):
+        for field, replacement in [('candidate_head', 'f' * 40),
+                ('revision', 'e' * 40), ('sample_id', 'foreign-work')]:
+            with self.subTest(field=field):
+                index, contents = self.prepared()
+                _, path, value = self.witness(index, contents)
+                value[field] = replacement
+                contents[path] = ops.encoded(value)
+                with self.assertRaises(ValueError):
+                    code.validate(index, contents, self.binding)
+
+    def test_code_scope_does_not_accept_modified_native_git_evidence(self):
+        index, _ = self.prepared()
+        origin = self.index['evidence'][self.native_id]['origin']
+        manifest = {'work_evidence': [{'work_slot_id': self.sample,
+            'work_item_id': 'c' * 32, 'project_id': 'd' * 32}],
+            'journey_final_evidence': [],
+            'artifacts': {'native/git.json': {k: origin[k] for k in ('bytes', 'sha256')}}}
+        ops.verify_campaign_work_scope(index, manifest)
+        index['evidence'][self.native_id]['sha256'] = '0' * 64
+        index['evidence'][self.native_id]['origin']['sha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'immutable campaign'):
+            ops.verify_campaign_work_scope(index, manifest)
+
+    def test_explicit_selection_and_pre_read_bounds(self):
+        with patch('subprocess.Popen', side_effect=AssertionError('no implicit source read')):
+            self.assertEqual(code.create(self.index, self.contents, [], self.candidate, self.evidence_sha), [])
+        with patch.object(code, 'MAX_BODY_BYTES', 1):
+            with self.assertRaisesRegex(ValueError, 'exceeds bound'):
+                self.prepared()
+        class Process:
+            stdout = io.BytesIO(b'x' * 100)
+            killed = False
+            def poll(self): return None
+            def kill(self): self.killed = True
+            def wait(self, timeout): return 0
+        process = Process()
+        reads = []
+        original = process.stdout.read
+        process.stdout.read = lambda size: (reads.append(size), original(size))[1]
+        with patch('subprocess.Popen', return_value=process):
+            with self.assertRaisesRegex(ValueError, 'exceeds bound'):
+                code.object_read(self.repo, 'blob', 'a' * 40, 8)
+        self.assertEqual(reads, [9])
+        self.assertTrue(process.killed)
+
+    def test_projected_capture_binds_raw_inventory_without_equating_projection_bytes(self):
+        index, _ = self.prepared()
+        origin = self.index['evidence'][self.native_id]['origin']
+        manifest = {'work_evidence': [{'work_slot_id': self.sample,
+            'work_item_id': 'c' * 32, 'project_id': 'd' * 32}],
+            'journey_final_evidence': [],
+            'artifacts': {'native/git.json': {k: origin[k] for k in ('bytes', 'sha256')},
+                'native/rollout.jsonl': {'bytes': 1000, 'sha256': 'e' * 64}}}
+        index['evidence']['capture'] = {'surface': 'work_capture', 'bytes': 200,
+            'sha256': 'f' * 64, 'origin': {'kind': 'evidence_set_member',
+                'path': 'native/rollout.jsonl', 'raw_bytes': 1000, 'raw_sha256': 'e' * 64}}
+        ops.verify_campaign_work_scope(index, manifest)
+        index['evidence']['capture']['origin']['raw_sha256'] = 'a' * 64
+        with self.assertRaisesRegex(ValueError, 'immutable campaign'):
+            ops.verify_campaign_work_scope(index, manifest)
+
+    def test_unknown_work_duplicate_request_and_traversal_are_rejected(self):
+        for requests in [['unknown=' + str(self.repo)], [self.sample + '=' + str(self.repo)] * 2]:
+            with self.subTest(requests=requests), self.assertRaises(ValueError):
+                code.create(self.index, self.contents, requests, self.candidate, self.evidence_sha)
+        for path in ['../escape.py', '/absolute.py', 'src/../escape.py']:
+            index, contents = copy.deepcopy(self.index), dict(self.contents)
+            native = json.loads(contents['evidence/native-git.json'])
+            native['observation']['commits']['commits'][0]['paths'] = [path]
+            native['observation']['session_git_observations'][0]['commits_to_next_observation']['commits'][0]['paths'] = [path]
+            contents['evidence/native-git.json'] = ops.encoded(native)
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                code.create(index, contents, [self.sample + '=' + str(self.repo)], self.candidate, self.evidence_sha)
+
+    def replace_recorded_change(self, revision, parent, paths):
+        native = json.loads(self.contents['evidence/native-git.json'])
+        change = {'revision': revision, 'parents': [parent], 'paths': paths}
+        native['observation']['commits']['commits'] = [change]
+        native['observation']['session_git_observations'][0]['commits_to_next_observation']['commits'] = [change]
+        self.contents['evidence/native-git.json'] = ops.encoded(native)
+
+    def test_symlink_is_not_followed_as_source_code(self):
+        (self.repo / 'src/link.py').symlink_to('value.py')
+        revision = self.commit('link')
+        self.replace_recorded_change(revision, self.after, ['src/link.py'])
+        with self.assertRaisesRegex(ValueError, 'symlink/gitlink'):
+            self.prepared()
+
+    def test_existing_sensitive_payload_guard_applies_to_code_bodies(self):
+        (self.repo / 'src/value.py').write_text('api_key = "do-not-retain-123456789"\n')
+        revision = self.commit('authored guard counterexample')
+        self.replace_recorded_change(revision, self.after, ['src/value.py'])
+        with self.assertRaises(ValueError):
+            self.prepared()
+
 
 
 class ProjectionTests(unittest.TestCase):

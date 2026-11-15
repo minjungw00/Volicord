@@ -3078,7 +3078,7 @@ def evaluate_campaign(root: Path, output: Path | None = None, previous: Path | N
         "evaluator_files": {name: harness.sha256(Path(__file__).parent / name)
             for name in ("harness.py", "codex_events.py", "machine_findings.py", "machine-policy.json", "campaign.py",
                 "authority_obligations.py", "document_realization.py", "identity_provenance.py", "evaluation_runs.py", "answer_observations.py", "explanation_evidence.py", "answer_projection.py", "review_captures.py", "review_explanations.py", "review_operations.py",
-                "../shared/recorded_action_evidence.py",
+                "../shared/recorded_action_evidence.py", "collector_provenance.py",
                 "evaluation.json", "collection_runs.py", "interaction_diagnostics.py", "workload_intents.py", "support_evidence.py", "evidence_purpose.py")},
         "policy": policy_identity(), "qualitative_review_runs": [], "previous_evaluation": prior,
         "run_nonce": secrets.token_hex(16), "collection_state": "collected",
@@ -3328,6 +3328,8 @@ def parser() -> argparse.ArgumentParser:
         help="Use immutable raw Work/resume rollouts as inputs to bounded reviewer-safe capture projections")
     prepare_qualitative.add_argument("--human-observations", help="Candidate/evidence-bound direct human en/ko live accessibility observations")
     prepare_qualitative.add_argument("--cli-observations", help="Candidate/evidence-bound repository-class CLI observation directory")
+    prepare_qualitative.add_argument("--code-source", action="append", default=[], metavar="WORK_SLOT=REPOSITORY",
+        help="Explicitly retain bounded code at this Work's recorded Git commit boundaries; no execution or original-read claim")
     inspect_agent.add_argument("--review-root", required=True)
     inspection_scope = inspect_agent.add_mutually_exclusive_group(required=True)
     inspection_scope.add_argument("--criterion-number", type=int)
@@ -3479,7 +3481,8 @@ def main() -> int:
             evaluation_path=Path(args.machine_evaluation) if args.machine_evaluation else None,
             include_raw=args.include_raw_rollouts,
             human_observations=Path(args.human_observations) if args.human_observations else None,
-            cli_observation_root=Path(args.cli_observations) if args.cli_observations else None)
+            cli_observation_root=Path(args.cli_observations) if args.cli_observations else None,
+            code_sources=args.code_source)
     elif args.command == "inspect-agent-review":
         value = (review_operations.inspect_agent_batch(root, args.criterion_numbers)
             if args.criterion_numbers is not None else
