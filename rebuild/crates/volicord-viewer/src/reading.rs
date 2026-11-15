@@ -428,18 +428,22 @@ fn reader_citation_actions(
     } else {
         ""
     };
-    let label = format!(
-        "{} · {}{}{}",
+    let base_label = format!(
+        "{} · {}",
         text(
             r.locale,
             "Choose an exact range from this explanation's evidence",
             "이 설명의 근거에서 정확한 범위 선택"
         ),
-        targets.len(),
+        targets.len()
+    );
+    let label = format!(
+        "{}{}{}",
+        base_label,
         if omitted { " · " } else { "" },
         scope
     );
-    html.push_str(&format!("<div class=\"evidence-actions\"><a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{}\" title=\"{}\">{}",reader_claim_anchor(answers,index),escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),escape(&label),escape(scope),text(r.locale,"Evidence","근거 보기")));
+    html.push_str(&format!("<div class=\"evidence-actions\"><a class=\"evidence-link paragraph-evidence-action\" data-source-scope-action data-evidence-label=\"{}\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{}\" title=\"{}\">{}",escape(&base_label),reader_claim_anchor(answers,index),escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),escape(&label),escape(scope),text(r.locale,"Evidence","근거 보기")));
     if omitted {
         html.push_str("<span class=\"source-scope-icon\" aria-hidden=\"true\">i</span>");
     }

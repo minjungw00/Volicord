@@ -716,8 +716,15 @@ These technical contracts do not establish human readability or acceptance.
 Ordinary prose keeps embedding diagnostics with its evidence action, rather than
 repeating an offline warning for every missing citation window. Affected actions
 carry one quiet information icon with an accessible scope description and hover
-text. Exact included/omitted/unavailable ranges remain in the Source reader and
-the included-code disclosure. Selected figure claims may show one explicit scope
+text. The icon reflects the action's complete citation set in the current reading DOM.
+After validated bounded reads assemble every cited range, the icon and its
+accessible omission wording clear together. A partial read or another unread
+range keeps them; denial or expiry that removes bytes restores them. These UI
+updates perform no additional retrieval or retention renewal. Initial HTML and
+script-free readers continue to describe their actually embedded ranges. Exact
+initial embedding scope remains separately inspectable in the included-code
+disclosure; exact included/omitted/unavailable ranges remain in the Source reader.
+Selected figure claims may show one explicit scope
 message for their complete supporting set. This presentation does not remove
 citations, enlarge embedding bounds or turn an initial omission into Source expiry.
 
