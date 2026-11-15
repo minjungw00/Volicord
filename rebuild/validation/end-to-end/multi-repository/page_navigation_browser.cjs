@@ -37,6 +37,9 @@ async function main(){
   const nav=async view=>{if(page.viewportSize().width<=980&&!await page.locator('.project-shell').evaluate(n=>n.open))await page.locator('.project-shell > summary').click();await page.locator('.project-navigation a[data-destination="'+view+'"]').click();};
   // This marker can survive only an enhanced navigation, never a document load.
   await page.goto(url('overview'));
+  result.native_motion_environment=await page.evaluate(()=>({reduced_motion:matchMedia('(prefers-reduced-motion: reduce)').matches,user_agent:navigator.userAgent,visibility:document.visibilityState}));
+  result.controlled_motion_modes=['reduce','no-preference'];
+  result.motion_override_during_real_navigation=false;
   result.font_qualification=config.expected_ko_font?'required':'not_asserted';
   if(config.expected_ko_font){
    const cdp=await context.newCDPSession(page);await cdp.send('DOM.enable');await cdp.send('CSS.enable');
@@ -71,6 +74,8 @@ async function main(){
    assert(second.time>first.time&&first.spin!==second.spin&&first.shimmer!==second.shimmer,'actual spinner and skeleton advance while the page response is held');
    assert.notDeepEqual(await page.locator('.page-loading-skeleton').screenshot(),pixels,'body loading pixels actually change');
    await page.screenshot({path:path.join(config.output,`loading-${locale}-${width}.png`)});
+   await page.emulateMedia({reducedMotion:null});
+   assert.equal(await page.evaluate(()=>matchMedia('(prefers-reduced-motion: reduce)').matches),result.native_motion_environment.reduced_motion,'controlled motion override is cleared');
    release();await ready('repository',locale);await context.unroute(matcher);
    const actual=await frame(page);sameFrame(loadingGeometry,actual);
    for(const field of ['x','width'])assert(Math.abs(overviewFrame[field]-actual[field])<1,'Overview and document share the same horizontal measure');
@@ -92,8 +97,12 @@ async function main(){
    }
   }
   await page.setViewportSize({width:1440,height:900});await page.goto(url('overview'));
-  // Observe the entire real navigation, including response parsing and mounting.
+  // Observe the entire real navigation with the browser's native preference,
+  // including response parsing and mounting. Controlled allow-motion checks
+  // cannot stand in for the default manual-Chrome environment.
   // Gaps/tasks are measurements, not an invented universal frame-rate guarantee.
+  await page.emulateMedia({reducedMotion:null});
+  assert.equal(await page.evaluate(()=>matchMedia('(prefers-reduced-motion: reduce)').matches),result.native_motion_environment.reduced_motion);
   await page.evaluate(()=>{
    const value=window.navigationAnimationObservation={frames:[],longTasks:[],stop:false};
    value.observer=new PerformanceObserver(list=>{for(const e of list.getEntries())value.longTasks.push({start:e.startTime,duration:e.duration});});value.observer.observe({type:'longtask'});
@@ -101,7 +110,11 @@ async function main(){
   });
   await nav('repository');await ready('repository');await page.waitForTimeout(50);
   result.real_navigation=await page.evaluate(()=>{const v=navigationAnimationObservation;v.stop=true;v.observer.disconnect();const frames=v.frames;return{frames,long_tasks:v.longTasks,max_frame_gap_ms:Math.max(0,...frames.slice(1).map((n,i)=>n.t-frames[i].t))};});
-  assert(new Set(result.real_navigation.frames.filter(f=>f.transform).map(f=>f.transform)).size>2,'motion advances during the real unheld data load');check('real-response-animation-through-parse-and-mount');
+  const nativeTransforms=result.real_navigation.frames.filter(f=>f.transform).map(f=>f.transform);
+  assert(nativeTransforms.length>2,'actual loading frames were observed');
+  if(result.native_motion_environment.reduced_motion)assert(nativeTransforms.every(t=>t==='none'),'native reduced-motion preference keeps the loading animation disabled');
+  else assert(new Set(nativeTransforms).size>2,'motion advances during the real unheld data load with native settings');
+  check('real-response-native-motion-through-parse-and-mount');
   await page.goto(url('overview'));
   await page.evaluate(()=>window.navigationTestIdentity=1);
   let releaseOld,oldArrived;const heldOld=new Promise(r=>releaseOld=r),oldArrival=new Promise(r=>oldArrived=r);

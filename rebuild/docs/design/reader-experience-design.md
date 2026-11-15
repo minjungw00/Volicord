@@ -737,7 +737,9 @@ pixels over time as well as checking styles. The pending frame receives explicit
 paint opportunities before DOM parsing and before mounting. Transform animations
 use compositor-friendly layers. Full unheld navigation records frame gaps and
 long tasks through response parsing/body replacement separately from held-response
-controls; these observations establish no universal frame-rate guarantee.
+controls, after clearing any emulated motion preference. Controlled allow-motion
+results do not establish native/manual-browser behavior. Native reduced-motion
+settings remain respected. These observations establish no universal frame-rate guarantee.
 Links, GET search/sort forms and language changes share that lifecycle. New
 navigation aborts superseded page and citation reads; late responses cannot replace
 the selected page. Each mounted page gets fresh reader handlers, buffers and

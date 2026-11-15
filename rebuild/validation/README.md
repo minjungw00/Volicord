@@ -1351,6 +1351,12 @@ maintained font fixture, `Noto Sans KR`). The CDP platform-font probe checks act
 rendered Korean glyphs before interpreting header geometry; a configured filename
 or computed CSS stack alone does not establish that the connected browser loaded
 that font. Runs without the probe report font qualification as not asserted.
+Motion controls explicitly emulate both reduce/allow states and then clear the
+override with `reducedMotion: null`. The separate full unheld journey records and
+uses the browser native preference: an animation-disabled native preference must
+stay disabled. Forced allow-motion controls do not establish what a normal manual
+Chrome profile displays. Native settings, controlled modes and browser identity
+remain distinct in results; no production motion preference is overridden.
 
 ## Bounded citation reading
 
