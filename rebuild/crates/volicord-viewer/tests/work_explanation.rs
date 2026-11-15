@@ -57,6 +57,58 @@ fn get(f: &reading_fixture::Fixture, path: &str) -> String {
 }
 
 #[test]
+fn explicit_work_navigation_preserves_scope_and_native_target_availability(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parent = tempfile::tempdir()?;
+    let f = reading_fixture::rich_fixture_in(parent.path())?;
+    let foreign_parent = tempfile::tempdir()?;
+    let foreign = reading_fixture::rich_fixture_in(foreign_parent.path())?;
+    let work = f.goals["relay"];
+    let other = foreign.goals["relay"];
+    let subject = ExplanationSubject::Work(work);
+    let plan = f.operations.prepare_explanation(f.project, subject, "en")?;
+    let mut response = fake(&plan);
+    response.paragraphs[0].text = format!(
+        "Read [this recorded Work](work:{work}) and [a missing destination](work:{other})."
+    );
+    f.operations
+        .record_explanation(f.project, subject, "en", response)?;
+    let canonical = f.operations.canonical_basis(f.project)?;
+    let privacy = f.operations.privacy_status(f.project)?;
+    let page = get(&f, &format!("/?view=work&work={work}&language=en"));
+    assert!(page.contains(&format!(
+        "class=\"authored-work-link\" data-work-reference=\"{work}\""
+    )));
+    assert!(page.contains(&format!("work={other}&amp;project={}", f.project)));
+    let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+    let request = volicord_viewer::ViewerRequest {
+        project_id: f.project,
+        locale: ViewerLocale::English,
+        requested_language: "en".into(),
+        view: ViewerView::Overview,
+        guarded_request: None,
+    };
+    let native = viewer
+        .render_snapshot(&request, TimestampMicros::from_unix_micros(123))?
+        .html;
+    assert!(native.contains(&format!("href=\"#work-{work}\"")));
+    assert!(!native.contains(&format!("href=\"#work-{other}\"")));
+    assert!(native.contains("a missing destination · Work not included in this snapshot"));
+    assert!(viewer
+        .render(
+            &volicord_viewer::ViewerRequest {
+                view: ViewerView::Work { work: Some(other) },
+                ..request
+            },
+            "scope-control"
+        )
+        .is_err());
+    assert_eq!(canonical, f.operations.canonical_basis(f.project)?);
+    assert_eq!(privacy, f.operations.privacy_status(f.project)?);
+    Ok(())
+}
+
+#[test]
 fn grounded_examples_and_tables_keep_original_units_and_withhold_after_deletion(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let parent = tempfile::tempdir()?;

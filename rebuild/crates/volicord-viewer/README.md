@@ -159,11 +159,20 @@ remote asset. See the Reader owner for the bounded framework decision and limits
 
 Complete generated prose units can author fenced code examples or pipe tables
 (header/separator and consistent columns). The reader escapes all content and
-never executes or interprets embedded HTML/links. Malformed or mixed notation is
+never executes embedded HTML or arbitrary links. Malformed or mixed notation is
 shown as complete literal text. Original Source panels, quotations, exact claim
 coordinates and publication lifecycle remain separate and unchanged.
 
-Overview uses an available same-language repository synopsis as an introduction,
+Evidence selections keep examples/tables in the same form. Exact row claim spans
+can expose row-specific evidence actions and identify selected rows within the
+table context. The raw claim remains separate for exact byte validation.
+Generated prose may explicitly use `[displayed title](work:32-hex-id)` to navigate
+within the same Project/language; the ordinary destination read validates the Work.
+Native exports only link to included pages and label absent destinations. Bare IDs,
+other URL schemes, code examples and Source/canonical quotations never activate
+links. Labels remain authored publication text, not inferred canonical relations.
+
+Live and native Overview use an available same-language repository synopsis as an introduction,
 separate from the user's recorded Project Purpose. Work situation text connects
 typed completion/history and the latest state; failed report counts never become
 test or defect counts. A short textual note identifies claims whose code evidence

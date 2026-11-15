@@ -4220,8 +4220,24 @@ inside generated prose units. Raw strings and all sealed offsets/citations remai
 unchanged; other readers retain the same authored text. Neither a code example nor
 a table cell becomes a Source quotation or observed run. Whole-unit presentation
 fails back to full escaped text for malformed/mixed syntax and never interprets
-HTML or links. Overview's repository introduction reuses only the permitted
+HTML or arbitrary links. Overview's repository introduction reuses only the permitted
 same-language repository synopsis; it does not manufacture Project Purpose or
 create a separate lifetime. Work situation sentences use actual typed history and
 retained retest facts, not semantic parsing of original reports. No new domain
 record, generated format, authority, provider call or read-side authoring exists.
+
+Evidence panels retain that presentation over the original complete generated
+unit and exact subclaim. A row-scoped table claim can retain its table context
+without widening the cited claim or Source range. Byte checks use the original
+raw string, not rendered table text. Cached DOM templates are request-local safe
+presentation only and retain the publication's removal boundary.
+
+Explicit `work:ID` references in generated prose are local navigation hints with
+an authored displayed label, not canonical relations or code-effect evidence.
+The Viewer fixes Project/language scope from the current request and delegates
+target admission to the ordinary exact Work read. Offline targets must exist in
+that export; other/malformed link syntax remains escaped. No borrowed Work
+Source authority, inferred relation, separate lifetime or background lookup exists.
+Authorship checks every diagram relation kind and direction independently, and
+keeps next actions in a purposeful section instead of appending them to an
+unrelated mechanism. This is not a renderer keyword classifier or semantic pass.

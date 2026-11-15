@@ -1646,8 +1646,27 @@ these as escaped non-executable code or an accessible horizontally scrollable
 table. Mixed/malformed notation remains complete escaped text. Canonical quotations,
 Source bytes, headings and synopsis are never parsed this way. Unit identity, exact
 original text/claim coordinates, evidence actions and lifecycle do not change.
-No markup link, raw HTML, execution, external content or new Source authority is
+No arbitrary markup link, raw HTML, execution, external content or new Source authority is
 introduced. Live and native export share the renderer.
+
+The evidence panel uses the same safe example/table presentation, including after
+enhanced navigation restores a claim. Exact raw claim bytes remain separately
+available for citation checks. A subclaim inside a table keeps its header and
+surrounding rows as context and marks the selected rows using the admitted UTF-8
+claim span. Row-scoped citations offer direct evidence actions at those rows;
+whole-table citations do not acquire invented row precision. Source code and
+canonical quotations remain literal. All quoted technical actions need their
+implementing ranges, including publication, metadata and cleanup branches.
+
+Generated prose may explicitly author `[displayed Work title](work:ID)` with an
+exact lowercase 32-hex Work identity. Viewer offers same-Project, same-language
+navigation using that retained label; it does not infer relations from names,
+paths or bare IDs, or create a canonical relation. The author checks the actual
+displayed title/identity at publication. The destination performs ordinary exact
+Work admission (including foreign/missing/deleted rejection). Fenced examples and
+Source/canonical text never activate references. Native exports link only to
+actually included Work pages; absent destinations have an explicit unavailability
+message and no dead fragment or external fallback. Other link syntax stays literal.
 
 A concise deterministic Work situation explains the latest typed state and any
 earlier typed completion record, with unresolved report-count meaning and actual
@@ -1665,6 +1684,8 @@ occurs on Overview. Its thin catalogue read attaches only the selected-language
 repository publication, with the same admission, bounded Source availability and
 publication revalidation as a repository read. It does not attach Work articles or
 other-language repository bodies. Work-list queries retain their card-only path.
+Native Overview shares the same introduction and its publication identity; an
+export does not revert to a purpose-missing message plus repository link alone.
 Repository articles identify their actually retained local
 Git basis when available. A match does not establish public-release availability:
 authors must ground and distinguish relevant local changes, baseline behavior and

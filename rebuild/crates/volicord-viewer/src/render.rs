@@ -4,6 +4,7 @@ mod catalogue;
 mod presentation;
 #[path = "reading.rs"]
 mod reading;
+pub(crate) use reading::url as reader_url;
 #[path = "shell.rs"]
 mod shell;
 use presentation::*;
@@ -404,6 +405,7 @@ impl ViewerAdapter {
             html.push_str("</script>");
         }
         html.push_str("</body></html>");
+        let html = crate::authored_text::resolve_work_links(&html, request, snapshot);
         let html_render = render_started.elapsed();
         Ok((
             ViewerPage {

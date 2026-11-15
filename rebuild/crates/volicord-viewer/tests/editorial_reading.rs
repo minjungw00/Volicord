@@ -55,7 +55,10 @@ fn repository_introduction_is_not_user_purpose_and_formatting_keeps_lifecycle(
             (ExplanationQuestion::ReadingPoint,"```json\n{\"input\":\"Ada\",\"result\":\"hello Ada\",\"literal\":\"<script>\"}\n```"),
             (ExplanationQuestion::Narrative,"| Input | Expected prefix |\n| --- | --- |\n| Ada | hello |\n| λ \\| 이름 | hello |"),
             (ExplanationQuestion::Limits,"The example explains the selected function, not execution or whole-repository coverage."),
-        ].into_iter().map(|(question,text)|RepositoryReaderUnit{question,text:text.into(),evidence_keys:vec!["repository_basis".into()],sources:if question==ExplanationQuestion::Limits {vec![]}else{vec![RepositoryClaimRange{source_id,start_byte:0,end_byte:code.len(),claim:None}]}}).collect();
+        ].into_iter().map(|(question,text)|{
+            let claims=if text.starts_with('|') {text.split_inclusive('\n').scan(0,|offset,line|{let start=*offset;*offset+=line.len();Some((start,*offset))}).skip(2).map(|(start,end)|Some(FileByteRange{start_byte:start,end_byte:end})).collect()}else{vec![None]};
+            RepositoryReaderUnit{question,text:text.into(),evidence_keys:vec!["repository_basis".into()],sources:if question==ExplanationQuestion::Limits {vec![]}else{claims.into_iter().map(|claim|RepositoryClaimRange{source_id,start_byte:0,end_byte:code.len(),claim}).collect()}}
+        }).collect();
         let response = ops.compose_repository_explanation(
             project,
             analysis,
@@ -125,6 +128,32 @@ fn repository_introduction_is_not_user_purpose_and_formatting_keeps_lifecycle(
             .html;
         assert!(snapshot.contains("class=\"authored-table\""));
         assert!(snapshot.contains("class=\"authored-example\""));
+        let introduction = snapshot
+            .split("class=\"repository-card\"")
+            .nth(1)
+            .ok_or("native intro")?
+            .split("</section>")
+            .next()
+            .ok_or("end intro")?;
+        assert!(
+            introduction.contains(synopsis),
+            "native Overview must share the live introduction"
+        );
+        let claim = snapshot
+            .split("class=\"evidence-claim\"")
+            .skip(1)
+            .any(|part| {
+                part.split("<template")
+                    .next()
+                    .is_some_and(|s| s.contains("class=\"authored-table\""))
+            });
+        assert!(
+            claim,
+            "table context is formatted in actual evidence claims"
+        );
+        assert!(snapshot.contains("class=\"claim-selected\" aria-current=\"true\""));
+        assert!(snapshot.contains("class=\"table-evidence-actions\""));
+        assert!(snapshot.contains("class=\"claim-format\""));
         assert!(!snapshot.contains("<script>"));
         if let Some(output) = &output {
             fs::write(output.join(format!("{language}.html")), &snapshot)?;

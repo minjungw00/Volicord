@@ -2,7 +2,7 @@
 use super::*;
 use crate::ViewerView;
 
-pub(super) fn url(request: &ViewerRequest, view: &ViewerView) -> String {
+pub(crate) fn url(request: &ViewerRequest, view: &ViewerView) -> String {
     let mut fields = view.fields();
     fields.push(("project", request.project_id.to_string()));
     fields.push(("locale", locale_key(request.locale).into()));
@@ -102,18 +102,7 @@ fn overview(
         "위에서 읽을 문서를 선택하세요. 저장한 문단 링크로 이곳에 왔다면 이 스냅샷에서 해당 문단을 사용할 수 없습니다.")));
     }
     project_purpose(html, r, u);
-    {
-        html.push_str(&format!("<p class=\"repository-reading-basis\">{}</p>", text(r.locale,"Open the repository explanation to read any available article and its code basis and limits.","저장소 설명을 열어 이용 가능한 글과 그 코드 기준·한계를 확인하세요.")));
-        html.push_str(&format!(
-            "<p><a class=\"button secondary repository-reading-link\" href=\"{}\">{}</a></p>",
-            if snapshot {
-                "#repository-explanation".into()
-            } else {
-                escape(&url(r, &ViewerView::RepositoryExplanation))
-            },
-            text(r.locale, "Read repository explanation", "저장소 설명 읽기")
-        ));
-    }
+    repository_introduction(html, r, p, snapshot);
 
     html.push_str(&format!("<div class=\"section-heading\"><div><h2>{}</h2></div><a class=\"button secondary\" href=\"{}\">{} →</a></div>",
         text(r.locale,"Recent Work","최근 작업"),
@@ -173,6 +162,32 @@ pub(super) fn project_purpose(html: &mut String, r: &ViewerRequest, u: &ProjectU
         ));
     }
     html.push_str("</section>");
+}
+
+pub(super) fn repository_introduction(
+    html: &mut String,
+    r: &ViewerRequest,
+    p: &ProjectProjection,
+    snapshot: bool,
+) {
+    let answers = volicord_projections::explanation_answers(
+        &p.repository_explanations,
+        &r.requested_language,
+        r.locale.fixed(),
+    );
+    let introduction = answers.synopsis().map(|u| u.text.as_str());
+    let publication = answers
+        .provenance
+        .as_ref()
+        .and_then(|p| p.publication_id.as_deref())
+        .map(|id| format!(" data-reader-publication=\"{}\"", escape(id)))
+        .unwrap_or_default();
+    let target = if snapshot {
+        "#repository-explanation".to_owned()
+    } else {
+        url(r, &ViewerView::RepositoryExplanation)
+    };
+    html.push_str(&format!("<section class=\"repository-card\"><p class=\"card-topline\">{}</p><h2>{}</h2><p lang=\"{}\"{}>{}</p><div class=\"card-bottom\"><a class=\"button primary repository-reading-link\" href=\"{}\">{} →</a></div></section>",text(r.locale,"Repository explanation","저장소 설명"),text(r.locale,"Repository introduction","저장소 소개"),escape(&content_language_tag(&r.requested_language)),publication,escape(introduction.unwrap_or(text(r.locale,"No repository introduction is available in this language. Open the repository explanation for its recorded scope and availability.","이 언어의 저장소 소개를 사용할 수 없습니다. 저장소 설명에서 기록된 범위와 이용 가능 상태를 확인하세요."))),escape(&target),text(r.locale,"Read repository explanation","저장소 설명 읽기")));
 }
 fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, snapshot: bool) {
     let answers = volicord_projections::work_answers(w, &r.requested_language, r.locale.fixed());
@@ -540,7 +555,11 @@ fn reader_unit_at_level(
         answer.question.as_str(),
         "Heading" | "Synopsis" | "SectionHeading"
     ) {
-        crate::authored_text::block(&answer.text, r.locale == ViewerLocale::Korean)
+        let actions=answer.citations.iter().enumerate().filter(|(_,c)|c.claim_start_byte!=0 || c.claim_end_byte!=answer.text.len()).map(|(n,c)|{
+            let target=format!("#{}",source_point_anchor(answers,index,n));
+            (c.claim_start_byte,c.claim_end_byte,format!("<a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\">{} {}</a>",reader_claim_anchor(answers,index),escape(&serde_json::to_string(&vec![&target]).unwrap_or_default()),target,text(r.locale,"Evidence","근거 보기"),n+1))
+        }).collect::<Vec<_>>();
+        crate::authored_text::with_actions(&answer.text, r.locale == ViewerLocale::Korean, &actions)
     } else {
         None
     };
@@ -578,7 +597,17 @@ fn reader_unit_at_level(
         .position(|section| section.heading_index == Some(index))
         .map(|number| format!(" data-section-number=\"{:02}\"", number + 1))
         .unwrap_or_default();
-    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"{}{}><{tag} class=\"unit-text\"{} data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),publication_scope(answers),section_number,if heading_level.is_some() && answer.question == "SectionHeading" {" data-toc-entry"} else {""},escape(&answer.question),escape(&content_language_tag(language)),escape(language),formatted.unwrap_or_else(|| escape(&answer.text))));
+    let content = formatted.unwrap_or_else(|| {
+        if matches!(
+            answer.role,
+            volicord_projections::AnswerRole::GeneratedInterpretation
+        ) {
+            crate::authored_text::inline(&answer.text)
+        } else {
+            escape(&answer.text)
+        }
+    });
+    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"{}{}><{tag} class=\"unit-text\"{} data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),publication_scope(answers),section_number,if heading_level.is_some() && answer.question == "SectionHeading" {" data-toc-entry"} else {""},escape(&answer.question),escape(&content_language_tag(language)),escape(language),content));
     reader_inline_citations(html, r, answers, index);
     html.push_str(&format!("</{outer}>"));
 }
@@ -2799,13 +2828,31 @@ fn render_source_excerpts(
                 .text
                 .get(c.claim_start_byte..c.claim_end_byte)
                 .unwrap_or("");
+            let selected_claim = if matches!(
+                answer.role,
+                volicord_projections::AnswerRole::GeneratedInterpretation
+            ) {
+                crate::authored_text::selected(
+                    &answer.text,
+                    c.claim_start_byte,
+                    c.claim_end_byte,
+                    r.locale == ViewerLocale::Korean,
+                )
+            } else {
+                escape(claim)
+            };
             let selected_question = evidence_question(r, answers);
             let range = source_excerpt_anchor(answers, c);
             let next_key = seen.len();
             let first_payload = !seen.contains_key(&range);
             let code_key = *seen.entry(range.clone()).or_insert(next_key);
             let point_key = format!("{index}-{n}");
-            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-point-key=\"{point_key}\" data-code-key=\"{code_key}\" data-origin=\"{}\" data-source-id=\"{}\" data-range-sha256=\"{}\" data-citation-binding=\"{}\" data-cited-code=\"{range}\" data-source-metadata=\"{anchor}-observation-data\" data-unit-index=\"{index}\" data-citation-index=\"{n}\" tabindex=\"-1\"{}><div class=\"point-bar reading-panel-header\"><strong>{}</strong><a class=\"return panel-close\" href=\"#{}\" aria-label=\"{}\">×</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><p class=\"evidence-context-label\">{}</p><h2 class=\"evidence-claim\" lang=\"{}\">{}</h2><p class=\"evidence-selection-context\" hidden></p>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),escape(&c.range_sha256),escape(&serde_json::to_string(c).unwrap_or_default()),publication_scope(answers),text(r.locale,"Evidence","근거"),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),selected_question,text(r.locale,"Selected explanation","선택한 설명"),escape(&content_language_tag(&provenance.language)),escape(claim)));
+            html.push_str(&format!("<section class=\"source-point\" id=\"{}\" data-point-key=\"{point_key}\" data-code-key=\"{code_key}\" data-origin=\"{}\" data-source-id=\"{}\" data-range-sha256=\"{}\" data-citation-binding=\"{}\" data-cited-code=\"{range}\" data-source-metadata=\"{anchor}-observation-data\" data-unit-index=\"{index}\" data-citation-index=\"{n}\" tabindex=\"-1\"{}><div class=\"point-bar reading-panel-header\"><strong>{}</strong><a class=\"return panel-close\" href=\"#{}\" aria-label=\"{}\">×</a><span class=\"point-counter\">{} · {} {}/{}</span></div><p class=\"point-title\">{}</p><p class=\"evidence-context-label\">{}</p><div class=\"evidence-claim\" lang=\"{}\">{}</div><p class=\"evidence-selection-context\" hidden></p>",anchor,reader_claim_anchor(answers,index),escape(&c.source_id),escape(&c.range_sha256),escape(&serde_json::to_string(c).unwrap_or_default()),publication_scope(answers),text(r.locale,"Evidence","근거"),reader_claim_anchor(answers,index),text(r.locale,"Return to explanation","설명으로 돌아가기"),answer_title(&answer.question,r.locale),text(r.locale,"Source","근거"),n+1,answer.citations.len(),selected_question,text(r.locale,"Selected explanation","선택한 설명"),escape(&content_language_tag(&provenance.language)),selected_claim));
+            if selected_claim != escape(claim) {
+                html.push_str(&format!(
+                    "<template class=\"claim-format\">{selected_claim}</template>"
+                ));
+            }
             diagram_source_origins(html, answers, index, n);
             let mut context = String::new();
             if !answer.citations.is_empty() {
@@ -2872,7 +2919,7 @@ fn render_source_excerpts(
                 "<p class=\"source-note\">{}</p>",
                 citation_use_label(r.locale, c.use_kind)
             ));
-            html.push_str(&format!("<span class=\"claim-quote\" hidden>{}</span><details class=\"evidence-original evidence-connected-context evidence-disclosure\"><summary>{}</summary><blockquote lang=\"{}\">{}</blockquote></details>",escape(claim),text(r.locale,"Connected body passage","연결된 본문 문장"),escape(&content_language_tag(&provenance.language)),escape(claim)));
+            html.push_str(&format!("<span class=\"claim-quote\" hidden>{}</span><details class=\"evidence-original evidence-connected-context evidence-disclosure\"><summary>{}</summary><blockquote lang=\"{}\">{}</blockquote></details>",escape(claim),text(r.locale,"Connected body passage","연결된 본문 문장"),escape(&content_language_tag(&provenance.language)),selected_claim));
             if excerpt.is_none() {
                 if let Some(status) = answers
                     .applicability

@@ -271,19 +271,9 @@ pub(super) fn overview(
             )
         ));
     }
-    let repository_answers = volicord_projections::explanation_answers(
-        &p.repository_explanations,
-        &r.requested_language,
-        r.locale.fixed(),
-    );
-    let repository_intro = repository_answers.synopsis().map(|unit| unit.text.clone());
-    let publication = repository_answers
-        .provenance
-        .as_ref()
-        .and_then(|p| p.publication_id.as_deref())
-        .map(|id| format!(" data-reader-publication=\"{}\"", escape(id)))
-        .unwrap_or_default();
-    html.push_str(&format!("</section><section class=\"repository-card\"><p class=\"card-topline\">{}</p><h2>{}</h2><p lang=\"{}\"{}>{}</p><div class=\"card-bottom\"><a class=\"button primary repository-reading-link\" href=\"{}\">{} →</a></div></section></div>",text(r.locale,"Repository explanation","저장소 설명"),text(r.locale,"Repository introduction","저장소 소개"),escape(&content_language_tag(&r.requested_language)),publication,escape(repository_intro.as_deref().unwrap_or(text(r.locale,"No repository introduction is available in this language. Open the repository explanation for its recorded scope and availability.","이 언어의 저장소 소개를 사용할 수 없습니다. 저장소 설명에서 기록된 범위와 이용 가능 상태를 확인하세요."))),escape(&reading::url(r,&ViewerView::RepositoryExplanation)),text(r.locale,"Read repository explanation","저장소 설명 읽기")));
+    html.push_str("</section>");
+    reading::repository_introduction(html, r, p, false);
+    html.push_str("</div>");
     html.push_str(&format!(
         "<div class=\"work-stats\"><a href=\"{}\">{} <b>{}</b></a>",
         escape(&href(r, WorkCatalogueQuery::default())),

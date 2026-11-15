@@ -199,7 +199,12 @@
       const title=point.querySelector(':scope > .evidence-claim');
       const context=point.querySelector(':scope > .evidence-selection-context');
       const wording=origin?.querySelector('.diagram-selected-label')?.textContent;
-      if(title)title.textContent=wording||point.querySelector('.claim-quote')?.textContent||'';
+      if(title){
+        const format=point.querySelector(':scope > template.claim-format');
+        if(wording)title.textContent=wording;
+        else if(format)title.replaceChildren(format.content.cloneNode(true));
+        else title.textContent=point.querySelector('.claim-quote')?.textContent||'';
+      }
       const original=point.querySelector(':scope > .evidence-original');
       if(original){original.hidden=!wording||wording.replace(/\s+/g,' ').trim()===point.querySelector('.claim-quote')?.textContent.replace(/\s+/g,' ').trim();original.querySelector('summary').textContent=ko?'연결된 본문':'Connected explanation';}
 

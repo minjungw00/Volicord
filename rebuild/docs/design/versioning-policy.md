@@ -1056,3 +1056,12 @@ notation falls back without dropping content; no migration or old-format decoder
 is introduced. Updated preparation guidance has its actual new request fingerprint
 and applies to explicit fresh production, not retroactive qualification of earlier
 publications.
+
+Evidence-panel example/table reuse, row actions over existing claim byte ranges,
+and explicit presentation-only `work:ID` navigation keep explanation-10 unchanged.
+The authored string, citation coordinates, Source ranges, seals and decoder remain
+exact. No relation or link AST is stored. Readers that do not implement the Viewer
+presentation retain literal authored notation; the Viewer admits no arbitrary URL
+or Source/canonical markup. A native missing destination stays unavailable rather
+than producing a dead fragment. Current preparation guidance has its new request
+fingerprint; existing publications are not retroactively semantically qualified.
