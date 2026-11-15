@@ -1065,3 +1065,9 @@ presentation retain literal authored notation; the Viewer admits no arbitrary UR
 or Source/canonical markup. A native missing destination stays unavailable rather
 than producing a dead fragment. Current preparation guidance has its new request
 fingerprint; existing publications are not retroactively semantically qualified.
+
+Single-origin captions and evidence action names reuse the existing question role,
+claim span and Source locator/line coordinates. No purpose-label field or new
+retained format is introduced; fallback names stay factual. Explicit editorial
+refinement is a new publication, while original text, Source bytes and prior
+publications remain preserved under their existing lifecycle.

@@ -245,7 +245,7 @@ fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_ac
         "canonical Project Purpose",
         "distinct end-to-end operation when complexity warrants it",
         "implementations/callees",
-        "Review each language",
+        "Reread edited units",
         "separate independent claims",
         // Check the visual obligations, not a superseded editorial sentence.
         "lifetime/order=sequence",

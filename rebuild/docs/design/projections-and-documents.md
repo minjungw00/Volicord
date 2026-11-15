@@ -4241,3 +4241,12 @@ Source authority, inferred relation, separate lifetime or background lookup exis
 Authorship checks every diagram relation kind and direction independently, and
 keeps next actions in a purposeful section instead of appending them to an
 unrelated mechanism. This is not a renderer keyword classifier or semantic pass.
+
+Caption presentation uses the first figure as the sole primary origin for every
+substantive caption role, preserving list semantics for flow steps and exact
+source-return links. Row actions name an explicitly selected cell claim when
+available; otherwise they identify the factual file/range without inventing a
+purpose. Both changes operate on existing admitted text and claim coordinates.
+Production review includes complete-unit rereading after edits in each language
+and recorded-time/scope wording for historical checks. Read/export does not fix
+editorial fragments or rewrite original verification records automatically.

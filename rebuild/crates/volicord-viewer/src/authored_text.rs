@@ -3,6 +3,22 @@
 //! Markdown/HTML interpreter for Sources, canonical reports or arbitrary links.
 use crate::render::escape;
 
+/// A deliberately selected cell phrase is already authored meaning. A complete
+/// row or mixed notation supplies no purpose label: show its exact location.
+pub(crate) fn evidence_label(claim: &str, locator: &str, start: usize, end: usize) -> String {
+    let phrase = claim.trim();
+    if !phrase.is_empty() && !phrase.contains(['|', '\n', '\r', '`', '[', ']']) {
+        phrase.to_owned()
+    } else {
+        let file = locator
+            .rsplit('/')
+            .next()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(locator);
+        format!("{file}:{start}–{end}")
+    }
+}
+
 /// A complete fenced example or pipe table may occupy one grounded reader unit.
 /// Malformed/mixed notation falls back to the complete ordinary escaped text.
 pub(crate) fn block(text: &str, korean: bool) -> Option<String> {
@@ -244,6 +260,30 @@ fn cells(line: &str) -> Option<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn evidence_names_preserve_authored_roles_or_exact_locations_without_inference() {
+        assert_eq!(
+            evidence_label("Initial setup", "src/entry.py", 4, 19),
+            "Initial setup"
+        );
+        assert_eq!(
+            evidence_label("dispatch", "src/entry.py", 25, 40),
+            "dispatch"
+        );
+        assert_eq!(
+            evidence_label(
+                "| CLI | Initial setup and dispatch |\n",
+                "src/entry.py",
+                4,
+                19
+            ),
+            "entry.py:4–19"
+        );
+        assert_eq!(
+            evidence_label("[x](work:id)", "src/entry.py", 25, 40),
+            "entry.py:25–40"
+        );
+    }
     #[test]
     fn row_selection_uses_exact_utf8_coordinates_including_crlf() {
         let text = "| 이름 | 값 |\r\n| --- | --- |\r\n| 첫째 | A |\r\n| 둘째 | B |\r\n";

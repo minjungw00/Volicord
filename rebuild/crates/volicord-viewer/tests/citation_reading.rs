@@ -2481,6 +2481,72 @@ fn diagram_component_flow_and_owned_state_survive_public_consumers() -> Result<(
 }
 
 #[test]
+fn substantive_figure_captions_have_one_origin_without_repeating_the_body(
+) -> Result<(), Box<dyn Error>> {
+    for question in [
+        ExplanationQuestion::Narrative,
+        ExplanationQuestion::Observation,
+        ExplanationQuestion::FlowStep,
+    ] {
+        let f = Fixture::new()?;
+        let mut realization = diagram_control(&f, false)?;
+        realization.paragraphs[1].question = question;
+        let mut second = realization.diagrams[0].clone();
+        second.id = "shared-detail".into();
+        realization.diagrams.push(second);
+        seal_diagrams(&mut realization)?;
+        f.ops.record_explanation(
+            f.project,
+            ExplanationSubject::Repository(f.analysis),
+            "en",
+            realization,
+        )?;
+        let before = f.answers()?;
+        let html = f.get("/?view=repository")?;
+        assert_eq!(html.matches("class=\"unit diagram-caption\"").count(), 1);
+        assert_eq!(html.matches("class=\"shared-diagram-basis\"").count(), 1);
+        let caption = html
+            .split("class=\"unit diagram-caption\"")
+            .nth(1)
+            .ok_or("caption")?
+            .split("</div>")
+            .next()
+            .ok_or("end")?;
+        assert!(caption.contains(&format!("data-question=\"{question:?}\"")));
+        let paragraph = caption
+            .split("<p class=\"unit-text\"")
+            .nth(1)
+            .ok_or("caption paragraph")?
+            .split("</p>")
+            .next()
+            .ok_or("paragraph end")?;
+        let paragraph = format!("<p class=\"unit-text\"{paragraph}</p>");
+        let primary = html
+            .split("<aside class=\"appendix\"")
+            .next()
+            .ok_or("primary")?;
+        assert_eq!(
+            primary.matches(&paragraph).count(),
+            1,
+            "one primary explanatory unit for {question:?}"
+        );
+        for target in html
+            .split("href=\"#")
+            .skip(1)
+            .map(|part| part.split('"').next().unwrap_or(""))
+        {
+            assert_eq!(
+                html.matches(&format!(" id=\"{target}\"")).count(),
+                1,
+                "unique caption/figure return {target}"
+            );
+        }
+        assert_eq!(before.prose, f.answers()?.prose);
+    }
+    Ok(())
+}
+
+#[test]
 fn shared_diagram_caption_preserves_separate_elements_and_exact_origins(
 ) -> Result<(), Box<dyn Error>> {
     let f = Fixture::new()?;

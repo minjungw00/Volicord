@@ -166,6 +166,9 @@ coordinates and publication lifecycle remain separate and unchanged.
 Evidence selections keep examples/tables in the same form. Exact row claim spans
 can expose row-specific evidence actions and identify selected rows within the
 table context. The raw claim remains separate for exact byte validation.
+An exact cell subclaim may name the evidence purpose; a row-wide claim uses the
+file/line range instead of an inferred role. Diagram captions have one primary
+location for all substantive roles, including observations and ordered steps.
 Generated prose may explicitly use `[displayed title](work:32-hex-id)` to navigate
 within the same Project/language; the ordinary destination read validates the Work.
 Native exports only link to included pages and label absent destinations. Bare IDs,

@@ -557,7 +557,11 @@ fn reader_unit_at_level(
     ) {
         let actions=answer.citations.iter().enumerate().filter(|(_,c)|c.claim_start_byte!=0 || c.claim_end_byte!=answer.text.len()).map(|(n,c)|{
             let target=format!("#{}",source_point_anchor(answers,index,n));
-            (c.claim_start_byte,c.claim_end_byte,format!("<a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\">{} {}</a>",reader_claim_anchor(answers,index),escape(&serde_json::to_string(&vec![&target]).unwrap_or_default()),target,text(r.locale,"Evidence","근거 보기"),n+1))
+            let claim=answer.text.get(c.claim_start_byte..c.claim_end_byte).unwrap_or("");
+            // An explicit cell subclaim can name the purpose. Row-wide claims
+            // retain factual file/range labels, never a guessed semantic role.
+            let detail=crate::authored_text::evidence_label(claim,&c.locator,c.start_line,c.end_line);
+            (c.claim_start_byte,c.claim_end_byte,format!("<a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\">{} · {}</a>",reader_claim_anchor(answers,index),escape(&serde_json::to_string(&vec![&target]).unwrap_or_default()),target,text(r.locale,"Evidence","근거 보기"),escape(&detail)))
         }).collect::<Vec<_>>();
         crate::authored_text::with_actions(&answer.text, r.locale == ViewerLocale::Korean, &actions)
     } else {
@@ -844,8 +848,8 @@ fn render_diagrams(
         }
         visual.push_str("</div>");
         let mut caption = String::new();
-        let caption_open = if ordinal == 0 && answers.prose[index].question == "Narrative" {
-            format!("<div class=\"unit diagram-caption\" id=\"{}\" tabindex=\"-1\"><p class=\"unit-text\" data-question=\"Narrative\" lang=\"{}\" data-content-language=\"{}\">",reader_claim_anchor(answers,index),escape(&content_language_tag(&answers.language)),escape(&answers.language))
+        let caption_open = if ordinal == 0 {
+            format!("<div class=\"unit diagram-caption\" id=\"{}\" tabindex=\"-1\"><p class=\"unit-text\" data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">",reader_claim_anchor(answers,index),escape(&answers.prose[index].question),escape(&content_language_tag(&answers.language)),escape(&answers.language))
         } else {
             "<div class=\"diagram-caption\"><p>".into()
         };
@@ -1144,12 +1148,16 @@ fn render_article_sections(
                 html.push_str("<ol class=\"article-flow\">");
                 flow_open = true;
             }
-            if answer.question != "Narrative"
-                || !answers.diagrams.iter().any(|d| d.caption_unit == index)
-            {
+            let is_caption = answers.diagrams.iter().any(|d| d.caption_unit == index);
+            if !is_caption {
                 reader_unit(html, r, answers, index);
+            } else if answer.question == "FlowStep" {
+                html.push_str("<li>");
             }
             render_diagrams(html, r, answers, index, snapshot);
+            if is_caption && answer.question == "FlowStep" {
+                html.push_str("</li>");
+            }
         }
         if flow_open {
             html.push_str("</ol>");

@@ -1657,6 +1657,16 @@ claim span. Row-scoped citations offer direct evidence actions at those rows;
 whole-table citations do not acquire invented row precision. Source code and
 canonical quotations remain literal. All quoted technical actions need their
 implementing ranges, including publication, metadata and cleanup branches.
+Row evidence actions may use an exact authored cell subclaim as their purpose
+label. A row-wide/mixed claim instead shows the factual file and line range;
+Viewer does not infer a semantic role from the repository, filename or code.
+No claim is truncated to produce a label. Authored labels remain escaped.
+
+Every admitted substantive diagram-caption unit appears once above its figures,
+with its original question role, claim anchor and evidence actions. Subsequent
+figures sharing it link to that origin. Observation and ordered-flow captions
+receive the same treatment as narrative captions; a FlowStep retains its list
+item. Its text is not repeated as an ordinary body paragraph.
 
 Generated prose may explicitly author `[displayed Work title](work:ID)` with an
 exact lowercase 32-hex Work identity. Viewer offers same-Project, same-language
@@ -1698,3 +1708,9 @@ These presentation and preparation improvements are general across repository
 languages and Work kinds; no repository-name or reviewed-output detector supplies
 content, source priority or status. Technical support does not certify explanation
 quality, ordinary first-production success or human comprehension.
+
+After refinement, authors reread complete edited units in each language, including
+the transition into unchanged text. Remove superseded titles, dangling fragments
+and duplicated qualifications rather than splicing by an ambiguous title prefix.
+Refer to retained verification by its recorded time/scope (or an explicitly
+recorded follow-up); unqualified “new/fresh” must not imply an export-time run.
