@@ -6,6 +6,7 @@ body:not([data-initial-enhanced]):has(>[data-initial-ready]) > [data-initial-ind
 body:not([data-initial-enhanced]):has(>[data-initial-ready]) > [data-initial-content]{display:contents}
 @supports not selector(body:has(*)){body:not([data-initial-enhanced]) > [data-initial-indicator]{display:none}body:not([data-initial-enhanced]) > [data-initial-content]{display:contents}}
 .page-loading,.page-navigation-error{margin-block:0}
+.catalogue-results > .page-loading{padding:1px 0 28px;min-height:220px}
 .page-loading-message{display:flex;align-items:center;gap:12px;margin-top:24px;color:var(--body)}
 .page-loading-spinner{width:20px;height:20px;flex:none;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;will-change:transform;animation:viewer-page-spin .8s linear infinite}
 .page-loading-skeleton{display:grid;gap:16px;margin-top:32px}

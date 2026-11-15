@@ -827,3 +827,11 @@ carrying the read status, never a successful article. An interrupted body offers
 scripted retry and native reload. API/fetch reads and guarded actions retain complete
 response status behavior. Disconnects stop writing; reads do not create records,
 Source captures, retention renewal or background retries.
+
+
+An enhanced same-scope catalogue query failure replaces only the results with its
+explicit error/retry surface. Search, filters and ordering remain usable, including
+a new query while a previous one is pending or failed. Retries still perform the
+authoritative GET and all current binding checks. No stale rows or count can be
+shown as the new query's result, and late/aborted reads cannot overwrite a later
+selection. A Project/language/destination change retains full-page recovery.

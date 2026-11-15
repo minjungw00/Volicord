@@ -4189,3 +4189,14 @@ in an inert template and moves to the head when script mounts it; native consume
 may read the template only after the completion marker. The pending shell supplies
 no publication availability, analysis state or observation authority. Offline exports
 and non-document fetches retain their complete-document representation.
+
+
+A live catalogue exposes a scoped result region for same-Project, same-language
+query updates. The ordinary full GET remains the sole authority for rows, counts,
+query/basis and link destinations; no client-side catalogue, new read endpoint or
+retained cache is introduced. Preserving existing query controls across a response
+does not preserve old result authority: old rows/counts are replaced by loading or
+explicit local failure, and only the latest matching read can supply new results.
+Current observation metadata is replaced with the matching full-response metadata.
+Native forms, snapshot documents and exact Work selection retain their existing
+public boundaries and query semantics.

@@ -154,6 +154,10 @@ pub(super) fn index(
         ));
     }
     html.push_str("</nav>");
+    html.push_str(&format!(
+        "<div class=\"catalogue-results\" data-catalogue-results role=\"region\" aria-label=\"{}\" aria-busy=\"false\">",
+        text(r.locale, "Work search results", "작업 검색 결과")
+    ));
     if c.refreshed {
         html.push_str(&format!(
             "<p class=\"catalogue-refresh\" role=\"status\">{}</p>",
@@ -225,7 +229,7 @@ pub(super) fn index(
         }
         html.push_str("</nav>");
     }
-    html.push_str("</section>");
+    html.push_str("</div></section>");
 }
 
 pub(super) fn overview(

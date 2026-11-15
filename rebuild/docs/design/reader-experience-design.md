@@ -740,8 +740,19 @@ long tasks through response parsing/body replacement separately from held-respon
 controls, after clearing any emulated motion preference. Controlled allow-motion
 results do not establish native/manual-browser behavior. Native reduced-motion
 settings remain respected. These observations establish no universal frame-rate guarantee.
-Links, GET search/sort forms and language changes share that lifecycle. New
-navigation aborts superseded page and citation reads; late responses cannot replace
+Destination and language changes share that full-page lifecycle. Within an already
+rendered catalogue of the same Project and language, search, state filters, ordering
+and paging replace only the result region. The original heading, search form,
+filter controls and input focus remain usable while a labelled result loader replaces
+old rows, result counts and pagination. Edits made while awaiting a response stay
+in the same input nodes; a later response cannot overwrite an unsubmitted draft.
+State changes include the currently edited search and ordering. Applied query
+identity, result links/counts, list basis and language destinations refresh from the
+authoritative response. Local failures retain controls and offer result retry/reload;
+changing the query can recover without a page reload. History restores the selected
+query, and superseded result reads cannot replace a newer selection. First entry,
+other destinations, Project/language changes and native navigation retain the
+full-document path. New navigation aborts superseded page and citation reads; late responses cannot replace
 the selected page. Each mounted page gets fresh reader handlers, buffers and
 observers. Back/Forward re-read the destination and restore scoped list position;
 same-page evidence/diagram fragments retain their own navigation. Failed reads

@@ -1358,6 +1358,16 @@ stay disabled. Forced allow-motion controls do not establish what a normal manua
 Chrome profile displays. Native settings, controlled modes and browser identity
 remain distinct in results; no production motion preference is overridden.
 
+`end-to-end/multi-repository/catalogue_loading_browser.cjs CONFIG` checks local
+result loading through held real GET responses, retaining the actual input/filter
+DOM nodes. Supply the same browser fields plus an isolated `runtime`, `project`,
+and the `ids` map from the explicit `catalogue::seed_catalogue_browser` fixture
+(`VOLICORD_CATALOGUE_FIXTURE`, 33 synthetic controls). A fresh output is required.
+English/Korean UI at 390/768/1440 covers focus/caret/drafts, ordering, edited query
+with state filtering, empty results, error correction/retry, reset, exact pagination,
+superseded responses, history and leaving the list. Database row hashes must remain
+unchanged. This supports technical navigation evidence, not semantic/human approval.
+
 `end-to-end/multi-repository/initial_navigation_browser.cjs CONFIG` uses the same
 absolute browser/runtime configuration plus an exact `work` ID and a fresh output
 folder. It gates actual response bytes through a local proxy: the real initial frame

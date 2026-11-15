@@ -67,6 +67,86 @@ function createPageNavigation({startReader}) {
     header.append(heading(context.title));group.append(header);article.append(toc,breadcrumb,group);section.append(article);return group;
   }
   const mainSurface=()=>document.getElementById(document.body.dataset.initialRead==='pending'?'viewer-pending-content':'viewer-content');
+  function catalogueSurface(url){
+    const catalogue=mainSurface()?.querySelector('#works[data-catalogue-route]');
+    if(!catalogue?.querySelector('[data-catalogue-results]'))return null;
+    const own=new URL(catalogue.dataset.catalogueRoute,location.href);
+    if(url.searchParams.get('view')!=='work'||url.searchParams.has('work')||
+        url.searchParams.get('project')?.toLowerCase()!==document.body.dataset.projectId||
+        (url.searchParams.get('locale')||document.documentElement.lang)!==document.documentElement.lang||
+        (url.searchParams.get('language')||'en')!==own.searchParams.get('language'))return null;
+    return catalogue;
+  }
+  function selectCatalogueQuery(catalogue,url){
+    const form=catalogue.querySelector('.catalog-controls');
+    for(const [name,fallback] of [['q',''],['sort','recent']]){
+      const control=form.elements.namedItem(name),value=url.searchParams.get(name)||fallback;
+      if(control.value!==value)control.value=value;
+    }
+    let state=form.elements.namedItem('state');
+    if(url.searchParams.has('state')){
+      if(!state){state=document.createElement('input');state.type='hidden';state.name='state';form.append(state);}
+      state.value=url.searchParams.get('state');
+    }else state?.remove();
+    catalogue.querySelectorAll('.filter-tab').forEach(link=>{
+      if(new URL(link.href).searchParams.get('state')===url.searchParams.get('state'))link.setAttribute('aria-current','true');
+      else link.removeAttribute('aria-current');
+    });
+  }
+  function appendLoading(content,ko,results=false){
+    const message=document.createElement('p');message.className='page-loading-message';
+    const spinner=document.createElement('span');spinner.className='page-loading-spinner';spinner.setAttribute('aria-hidden','true');
+    message.append(spinner,document.createTextNode(results?(ko?'결과를 불러오는 중입니다.':'Loading results…'):(ko?'내용을 불러오는 중입니다.':'Loading content…')));
+    const skeleton=document.createElement('div');skeleton.className='page-loading-skeleton';skeleton.setAttribute('aria-hidden','true');
+    for(let i=0;i<3;i++)skeleton.append(document.createElement('span'));
+    content.append(message,skeleton);
+  }
+  function showCatalogueLoading(catalogue,url){
+    selectCatalogueQuery(catalogue,url);
+    const results=catalogue.querySelector('[data-catalogue-results]');
+    // Retain the form, filters, heading, their DOM identities and input focus.
+    // Old rows/counts cannot masquerade as results of the newly selected query.
+    results.style.minHeight=Math.ceil(results.getBoundingClientRect().height)+'px';
+    results.replaceChildren();results.setAttribute('aria-busy','true');
+    const pending=document.createElement('div');pending.className='page-loading';pending.setAttribute('role','status');
+    appendLoading(pending,labels(url).ko,true);results.append(pending);
+    document.body.dataset.pageLoading='true';announce(labels(url).ko?'결과를 불러오는 중':'Loading results');
+  }
+  function mountCatalogue(catalogue,parsed){
+    const next=parsed.querySelector('#works[data-catalogue-route]');
+    const results=next?.querySelector('[data-catalogue-results]');
+    if(!results)throw Error('missing catalogue results');
+    catalogue.querySelector('[data-catalogue-results]').replaceWith(document.adoptNode(results));
+    catalogue.dataset.catalogueRoute=next.dataset.catalogueRoute;
+    catalogue.dataset.catalogueBasis=next.dataset.catalogueBasis;
+    // Refresh response-owned counts/links without replacing the editable form.
+    const total=next.querySelector('.heading-count > span');
+    if(total)catalogue.querySelector('.heading-count > span').textContent=total.textContent;
+    const freshFilters=[...next.querySelectorAll('.filter-tab')];
+    catalogue.querySelectorAll('.filter-tab').forEach((link,i)=>{
+      const fresh=freshFilters[i];link.href=fresh.href;
+      link.querySelector('span').textContent=fresh.querySelector('span').textContent;
+    });
+    for(const selector of ['.project-navigation .nav-count','.rail-states','select[data-language-picker]']){
+      const current=document.querySelector(selector),fresh=parsed.querySelector(selector);
+      if(!current||!fresh)continue;
+      if(selector==='.rail-states'){
+        const links=[...current.querySelectorAll('[data-state]')];
+        for(const link of links){
+          const next=fresh.querySelector('[data-state="'+link.dataset.state+'"]');
+          if(!next){link.remove();continue;}
+          link.href=next.href;link.querySelector('.nav-count').textContent=next.querySelector('.nav-count').textContent;
+          if(next.hasAttribute('aria-current'))link.setAttribute('aria-current',next.getAttribute('aria-current'));else link.removeAttribute('aria-current');
+        }
+        for(const link of fresh.querySelectorAll('[data-state]')){
+          if(!links.some(n=>n.dataset.state===link.dataset.state))current.append(document.adoptNode(link));
+        }
+      }
+      else if(selector.startsWith('select')){
+        [...current.options].forEach((option,i)=>{if(fresh.options[i])option.value=fresh.options[i].value;});
+      }else current.textContent=fresh.textContent;
+    }
+  }
   function showLoading(url,context){
     const {ko,name,view}=labels(url),main=mainSurface();
     if(!main)throw Error('missing reader surface');
@@ -76,23 +156,18 @@ function createPageNavigation({startReader}) {
     main.replaceChildren();main.setAttribute('aria-busy','true');main.tabIndex=-1;
     const section=document.createElement('section');section.className='snapshot-page page-loading';section.lang=ko?'ko':'en';
     const content=loadingHeader(section,url,context);
-    const message=document.createElement('p');message.className='page-loading-message';
-    const spinner=document.createElement('span');spinner.className='page-loading-spinner';spinner.setAttribute('aria-hidden','true');
-    message.append(spinner,document.createTextNode(ko?'내용을 불러오는 중입니다.':'Loading content…'));
-    const skeleton=document.createElement('div');skeleton.className='page-loading-skeleton';skeleton.setAttribute('aria-hidden','true');
-    for(let i=0;i<3;i++)skeleton.append(document.createElement('span'));
-    content.append(message,skeleton);main.append(section);window.scrollTo(0,0);main.focus({preventScroll:true});
+    appendLoading(content,ko);main.append(section);window.scrollTo(0,0);main.focus({preventScroll:true});
     document.title=name+' · Volicord';announce(name+' · '+(ko?'불러오는 중':'Loading'));
   }
-  function showError(url){
-    const main=mainSurface(),{ko}=labels(url);if(!main)return;
+  function showError(url,surface=null){
+    const main=surface||mainSurface(),{ko}=labels(url);if(!main)return;
     main.replaceChildren();main.setAttribute('aria-busy','false');delete document.body.dataset.pageLoading;
     const section=document.createElement('section');section.className='page-navigation-error';section.lang=ko?'ko':'en';
-    const title=document.createElement('h1');title.textContent=ko?'페이지를 불러오지 못했습니다':'Could not load this page';
+    const title=document.createElement(surface?'h2':'h1');title.textContent=surface?(ko?'결과를 불러오지 못했습니다':'Could not load these results'):(ko?'페이지를 불러오지 못했습니다':'Could not load this page');
     const message=document.createElement('p');message.textContent=ko?'다시 시도하거나 다른 페이지를 선택하세요.':'Try again or choose another page.';
     const retry=document.createElement('button');retry.type='button';retry.className='button';retry.dataset.retryPage='true';retry.textContent=ko?'다시 시도':'Try again';
     const native=document.createElement('a');native.className='button';native.href=url.href;native.dataset.nativeNavigation='true';native.textContent=ko?'페이지 새로고침':'Reload page';
-    section.append(title,message,retry,native);main.append(section);announce(title.textContent);main.focus({preventScroll:true});
+    section.append(title,message,retry,native);main.append(section);announce(title.textContent);if(!surface)main.focus({preventScroll:true});
   }
   function paintLoadingFrame(){
     // Let the pending frame paint before expensive DOM parsing/mounting. Motion
@@ -102,14 +177,15 @@ function createPageNavigation({startReader}) {
   async function go(destination,{pop=false,retry=false,trigger=null}={}){
     const url=new URL(destination,location.href);if(!eligible(url)){location.assign(url.href);return;}
     const context=loadingContext(url,trigger);
+    const catalogue=catalogueSurface(url);
     const token=++sequence;pending?.abort();pending=new AbortController();const controller=pending;
     const saved=pop?state().viewerPageScroll:null;
     if(!pop&&!retry)saveScroll();
-    disposeReader?.();disposeReader=null;
+    if(!catalogue){disposeReader?.();disposeReader=null;}
     if(!pop&&!retry)history.pushState({},'',url.href);
     currentRoute=route(url);loading=true;
     try {
-      showLoading(url,context);
+      if(catalogue)showCatalogueLoading(catalogue,url);else showLoading(url,context);
       const response=await fetch(url.href,{credentials:'same-origin',cache:'no-store',redirect:'error',signal:controller.signal});
       const html=await response.text();
       if(token!==sequence||controller.signal.aborted)return;
@@ -122,6 +198,7 @@ function createPageNavigation({startReader}) {
           !/^[0-9a-f]{32}$/.test(parsed.body.dataset.projectId||'')||
           (url.searchParams.has('project')&&parsed.body.dataset.projectId!==url.searchParams.get('project').toLowerCase())||
           (!response.ok&&response.status!==404))throw Error('unavailable reader response');
+      if(catalogue&&!parsed.querySelector('#works[data-catalogue-route] > [data-catalogue-results]'))throw Error('unavailable catalogue response');
       // Reuse only the already CSP-pinned factories. Fetched scripts are never
       // executed, and a different running build uses native document navigation.
       parsed.querySelectorAll('script').forEach(node=>node.remove());
@@ -132,20 +209,21 @@ function createPageNavigation({startReader}) {
       const selector='style,meta[name="volicord-observation"],meta[name="volicord-observation-unavailable"]';
       document.head.querySelectorAll(selector).forEach(node=>node.remove());
       parsed.head.querySelectorAll(selector).forEach(node=>document.head.append(document.importNode(node,true)));
-      document.body.replaceWith(document.adoptNode(parsed.body));
+      if(catalogue){mountCatalogue(catalogue,parsed);disposeReader?.();disposeReader=null;delete document.body.dataset.pageLoading;}
+      else document.body.replaceWith(document.adoptNode(parsed.body));
       // Moving the already executed script preserves the current bundle witness;
       // no script from the response is inserted or evaluated.
       document.body.append(bundleNode);
       loading=false;pending=null;
-      if(!url.hash)window.scrollTo(0,0);
+      if(!url.hash&&!catalogue)window.scrollTo(0,0);
       disposeReader=startReader(go);
       if(pop&&saved&&Number.isFinite(saved.x)&&Number.isFinite(saved.y)&&saved.x>=0&&saved.y>=0&&saved.y<100000000)window.scrollTo(saved.x,saved.y);
-      if(!url.hash){const main=mainSurface();main.focus({preventScroll:true});}
+      if(!url.hash&&!catalogue){const main=mainSurface();main.focus({preventScroll:true});}
       announce(labels(url).name+' · '+(labels(url).ko?'불러왔습니다':'Loaded'));
       document.dispatchEvent(new CustomEvent('viewer:navigated',{detail:{url:url.href}}));
     } catch(error){
       if(token!==sequence||controller.signal.aborted)return;
-      loading=false;pending=null;showError(url);
+      loading=false;pending=null;showError(url,catalogue?.querySelector('[data-catalogue-results]'));
     }
   }
   if(document.body.dataset.initialRead==='pending'){
@@ -179,6 +257,11 @@ function createPageNavigation({startReader}) {
     if(!link||link.hasAttribute('download')||link.dataset.nativeNavigation||link.target&&link.target!=='_self')return;
     const url=new URL(link.href,location.href);
     if(!eligible(url)||(route(url)===route(location)&&url.hash))return;
+    if(link.matches('.filter-tab')&&catalogueSurface(url)){
+      const form=link.closest('#works').querySelector('.catalog-controls');
+      for(const name of ['q','sort'])url.searchParams.set(name,form.elements.namedItem(name).value);
+      url.searchParams.delete('basis');url.searchParams.set('page','0');
+    }
     event.preventDefault();go(url.href,{trigger:link});
   });
   lifetime.on(document,'submit',event=>{
