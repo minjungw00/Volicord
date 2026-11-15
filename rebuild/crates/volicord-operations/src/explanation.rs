@@ -666,6 +666,24 @@ impl LocalOperations {
         canonical: &CanonicalReadBasis,
         projection: &mut ProjectProjection,
     ) -> usize {
+        self.attach_reader_explanations(canonical, projection, None)
+    }
+
+    pub(crate) fn attach_repository_introduction(
+        &self,
+        canonical: &CanonicalReadBasis,
+        projection: &mut ProjectProjection,
+        language: &str,
+    ) -> usize {
+        self.attach_reader_explanations(canonical, projection, Some(language))
+    }
+
+    fn attach_reader_explanations(
+        &self,
+        canonical: &CanonicalReadBasis,
+        projection: &mut ProjectProjection,
+        introduction_language: Option<&str>,
+    ) -> usize {
         let records = self.explanation_dependencies(canonical.project.id);
         let mut latest = std::collections::BTreeMap::new();
         if let Ok(records) = &records {
@@ -705,6 +723,10 @@ impl LocalOperations {
                 .range(prefix.as_str()..)
                 .take_while(|(purpose, _)| purpose.starts_with(&prefix))
                 .map(|(_, record)| *record)
+                .filter(|record| {
+                    introduction_language
+                        .is_none_or(|language| record.purpose[prefix.len()..] == *language)
+                })
                 .map(|record| {
                     let language = record.purpose[prefix.len()..].to_owned();
                     preparations += 1;
@@ -815,6 +837,9 @@ impl LocalOperations {
             }
         }
         for (language, subject) in repository_subjects {
+            if introduction_language.is_some_and(|requested| requested != language) {
+                continue;
+            }
             projection.repository_explanations.extend(
                 attach(subject)
                     .into_iter()
@@ -858,6 +883,9 @@ impl LocalOperations {
                 source_excerpts: Vec::new(),
                 omitted_source_excerpt_count: 0,
             }];
+        }
+        if introduction_language.is_some() {
+            return preparations;
         }
         for work in projection
             .selected_work

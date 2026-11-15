@@ -239,14 +239,14 @@ fn cli_preparation_routes_work_free_repository_evidence_without_granting_body_ac
         .ok_or("instructions")?;
     for obligation in [
         "reader questions",
-        "two materially distinct",
+        "one representative user journey",
         "failure paths",
-        "unknowns",
+        "unestablished comparisons",
         "canonical Project Purpose",
-        "actual use or resume flows",
-        "implementing callees/callbacks",
-        "every language/revision independently",
-        "reasoning unit",
+        "distinct end-to-end operation when complexity warrants it",
+        "implementations/callees",
+        "Review each language",
+        "separate independent claims",
         // Check the visual obligations, not a superseded editorial sentence.
         "lifetime/order=sequence",
         "transitions=state",

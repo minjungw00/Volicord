@@ -57,6 +57,123 @@ fn get(f: &reading_fixture::Fixture, path: &str) -> String {
 }
 
 #[test]
+fn grounded_examples_and_tables_keep_original_units_and_withhold_after_deletion(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let parent = tempfile::tempdir()?;
+    let f = reading_fixture::rich_fixture_in(parent.path())?;
+    let work = f.goals["relay"];
+    let subject = ExplanationSubject::Work(work);
+    for language in ["en", "ko"] {
+        let plan = f
+            .operations
+            .prepare_explanation(f.project, subject, language)?;
+        let mut response = fake(&plan);
+        response.paragraphs[1].text =
+            "```json\n{\"missing\":null,\"empty\":\"\",\"literal\":\"<script>\"}\n```".into();
+        response.paragraphs[2].text = "| Condition | Result |\n| --- | --- |\n| α | one \\| two |\n| 중단 | <img src=x onerror=alert(1)> |".into();
+        let original = response.clone();
+        f.operations
+            .record_explanation(f.project, subject, language, response)?;
+        let before = f.operations.canonical_basis(f.project)?;
+        let privacy = f.operations.privacy_status(f.project)?;
+        let request = volicord_viewer::ViewerRequest {
+            project_id: f.project,
+            locale: if language == "ko" {
+                ViewerLocale::Korean
+            } else {
+                ViewerLocale::English
+            },
+            requested_language: language.into(),
+            view: ViewerView::Work { work: Some(work) },
+            guarded_request: None,
+        };
+        let viewer = ViewerAdapter::new(LocalOperations::new(f.operations.layout().clone()));
+        for html in [
+            viewer.render(&request, "examples-test")?.html,
+            viewer
+                .render_snapshot(&request, TimestampMicros::from_unix_micros(123))?
+                .html,
+        ] {
+            assert!(html.contains("class=\"authored-example\""));
+            assert!(html.contains("<th scope=\"col\">Condition</th>"));
+            assert!(html.contains("<td>one | two</td>"));
+            assert!(html.contains("&lt;script&gt;"));
+            assert!(!html.contains("<img src=x"));
+            assert!(html.contains("data-question=\"ReportedChange\""));
+        }
+        let read = f
+            .operations
+            .project_projection_selected(f.project, WorkSelector::ExactWork(work))?;
+        let retained = read
+            .selected_work
+            .as_ref()
+            .ok_or("Work")?
+            .reading
+            .explanations
+            .iter()
+            .find(|r| r.language == language)
+            .and_then(|r| r.content.as_ref())
+            .ok_or("article")?;
+        assert_eq!(
+            retained.realization, original,
+            "formatting never rewrites text, offsets, seals or grounding"
+        );
+        assert_eq!(before, f.operations.canonical_basis(f.project)?);
+        assert_eq!(privacy, f.operations.privacy_status(f.project)?);
+        f.operations.delete_explanations(f.project, subject)?;
+        let removed = viewer.render(&request, "deleted-example")?.html;
+        assert!(!removed.contains("class=\"authored-example\""));
+        assert!(!removed.contains("<th scope=\"col\">Condition</th>"));
+    }
+    Ok(())
+}
+
+#[test]
+fn current_situation_uses_typed_history_not_completion_words_in_report_text(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for completed in [false, true] {
+        let mut input: serde_json::Value = serde_json::from_str(reading_fixture::SCENARIO)?;
+        input["prior_checkpoint_count"] = 0.into();
+        input["later_checkpoint_count"] = 0.into();
+        input["works"][0]["checkpoints"] = serde_json::json!([
+            {"key":"earlier","work":if completed {"Completed"}else{"InProgress"},"verification":"Passed","state_change":"implementation completed: unstructured quotation only","paths":[]},
+            {"key":"latest","work":"Paused","verification":"Failed","state_change":null,"paths":[]}
+        ]);
+        let f = reading_fixture::fixture_scenario(input)?;
+        for language in ["en", "ko"] {
+            let html = get(
+                &f,
+                &format!(
+                    "/?view=work&work={}&language={language}&locale={language}",
+                    f.goals["older"]
+                ),
+            );
+            let summary = html
+                .split("class=\"work-situation\"")
+                .nth(1)
+                .ok_or("situation")?
+                .split("</p>")
+                .next()
+                .ok_or("end")?;
+            assert_eq!(
+                summary.contains(if language == "en" {
+                    "An earlier work record says completed"
+                } else {
+                    "이전에 완료로 기록된 이력"
+                }),
+                completed
+            );
+            assert!(summary.contains(if language == "en" {
+                "not a count of current failing tests"
+            } else {
+                "현재 실패한 테스트 수나 제품 결함 수가 아닙니다"
+            }));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn reused_execution_keeps_both_checkpoint_reports_across_cli_mcp_live_and_offline(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Authored negative history, not a genuine task or an inferred retest.

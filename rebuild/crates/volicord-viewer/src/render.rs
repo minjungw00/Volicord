@@ -307,11 +307,19 @@ impl ViewerAdapter {
         let snapshot = matches!(mode, ViewerRenderMode::Snapshot { .. });
         let projection_result = if !snapshot {
             if let Some(query) = request.view.catalogue_query() {
-                self.operations.project_catalogue_projection_profiled(
-                    request.project_id,
-                    &query,
-                    &request.requested_language,
-                )
+                if matches!(request.view, crate::ViewerView::Overview) {
+                    self.operations.project_overview_projection_profiled(
+                        request.project_id,
+                        &query,
+                        &request.requested_language,
+                    )
+                } else {
+                    self.operations.project_catalogue_projection_profiled(
+                        request.project_id,
+                        &query,
+                        &request.requested_language,
+                    )
+                }
             } else {
                 self.operations.project_projection_read_profiled(
                     request.project_id,

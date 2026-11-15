@@ -155,3 +155,17 @@ enhancement primitives are unavailable. Back-forward restoration revalidates
 selected evidence. All CSS/JavaScript and runtime diagram rendering are embedded
 in installed executables; later publications/export need no frontend build or
 remote asset. See the Reader owner for the bounded framework decision and limits.
+
+
+Complete generated prose units can author fenced code examples or pipe tables
+(header/separator and consistent columns). The reader escapes all content and
+never executes or interprets embedded HTML/links. Malformed or mixed notation is
+shown as complete literal text. Original Source panels, quotations, exact claim
+coordinates and publication lifecycle remain separate and unchanged.
+
+Overview uses an available same-language repository synopsis as an introduction,
+separate from the user's recorded Project Purpose. Work situation text connects
+typed completion/history and the latest state; failed report counts never become
+test or defect counts. A short textual note identifies claims whose code evidence
+is omitted/unavailable before opening it. Repository match does not imply public
+release availability. These are scoped reading controls, not quality approval.

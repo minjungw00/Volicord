@@ -1624,3 +1624,56 @@ Unchanged current bases skip without renewal; explicit refinement requests anoth
 edition. Goal/Checkpoint follow-ups execute nothing and impose no quota. An
 interrupted/failed request and prior independently readable prose remain separate.
 Missing normal content is incomplete production, never normal completion.
+
+
+### Explanatory changes, examples and current situation
+
+Ordinary host authorship leads with the original problem, actual delta against
+pre-existing behavior and the user-visible consequence. A current mechanism is
+not automatically a new change; absent before-code does not remove the obligation
+to explain supported change from records. Introduce terms and a representative
+use case before internal details. Independent Work summaries help choose a document:
+problem, supported current result and remaining action/material state. Do not clip
+existing prose, infer a summary from a prefix or turn the card into a verification
+ledger. Detailed methods and limits remain in their explicit roles, with material
+caveats kept near claims. A measured comparison includes relevant modes and actual
+conditions, separating observations from proposed causes. Examples never imply an
+execution; authors distinguish illustrative values from observed output.
+
+An entire generated narrative unit may explicitly author a fenced code example or
+a pipe comparison table (header, separator, consistent columns). Viewer presents
+these as escaped non-executable code or an accessible horizontally scrollable
+table. Mixed/malformed notation remains complete escaped text. Canonical quotations,
+Source bytes, headings and synopsis are never parsed this way. Unit identity, exact
+original text/claim coordinates, evidence actions and lifecycle do not change.
+No markup link, raw HTML, execution, external content or new Source authority is
+introduced. Live and native export share the renderer.
+
+A concise deterministic Work situation explains the latest typed state and any
+earlier typed completion record, with unresolved report-count meaning and actual
+acceptance-record absence. It does not parse report prose into implementation
+completion, diagnoses or retest resolution. Its next-action link targets only an
+actually admitted authored NextStep. Decision applicability and code comparison
+remain separate states with a nearby explanation. A collapsed related Decision
+may repeat its admitted synopsis to retain the choice and material impact before
+opening; no prefix extraction, truncation or invented choice summary is used.
+
+Overview may show the current same-language repository article's admitted synopsis
+as a repository introduction, separately from canonical Project Purpose. Missing,
+withheld or deleted introductions stay unavailable; no README read or authorship
+occurs on Overview. Its thin catalogue read attaches only the selected-language
+repository publication, with the same admission, bounded Source availability and
+publication revalidation as a repository read. It does not attach Work articles or
+other-language repository bodies. Work-list queries retain their card-only path.
+Repository articles identify their actually retained local
+Git basis when available. A match does not establish public-release availability:
+authors must ground and distinguish relevant local changes, baseline behavior and
+unestablished comparisons without inferring Work links from paths or chronology.
+
+Quiet evidence actions remain icon-free. Affected authored claims may show a short
+text availability note based on exact Source-window inclusion/availability, not
+prose role or an inferred missing range. Shared complete windows count as included.
+These presentation and preparation improvements are general across repository
+languages and Work kinds; no repository-name or reviewed-output detector supplies
+content, source priority or status. Technical support does not certify explanation
+quality, ordinary first-production success or human comprehension.

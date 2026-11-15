@@ -426,6 +426,36 @@ fn reader_citation_actions(
         targets.len()
     );
     html.push_str(&format!("<div class=\"evidence-actions\"><a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{}\">{}</a></div>",reader_claim_anchor(answers,index),escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),escape(&base_label),text(r.locale,"Evidence","근거 보기")));
+    if let Some(scope) = answers
+        .embedded_source_scope
+        .iter()
+        .find(|s| s.unit_index == index)
+    {
+        let unavailable = scope.unavailable_citation_indices.iter().any(|&i| {
+            citations[i].use_kind == volicord_projections::ExplanationSourceUse::CurrentCode
+        });
+        let omitted = scope.omitted_citation_indices.iter().any(|&i| {
+            citations[i].use_kind == volicord_projections::ExplanationSourceUse::CurrentCode
+        });
+        if unavailable || omitted {
+            html.push_str(&format!(
+                "<p class=\"claim-evidence-availability\">{}</p>",
+                if unavailable {
+                    text(
+                        r.locale,
+                        "Some code evidence is unavailable.",
+                        "코드 근거 일부 이용 불가",
+                    )
+                } else {
+                    text(
+                        r.locale,
+                        "Some code evidence is not included in this page.",
+                        "이 화면에 일부 코드 근거 미포함",
+                    )
+                }
+            ));
+        }
+    }
 }
 
 fn source_window_omitted(
@@ -503,6 +533,17 @@ fn reader_unit_at_level(
     } else {
         "div"
     };
+    let formatted = if matches!(
+        answer.role,
+        volicord_projections::AnswerRole::GeneratedInterpretation
+    ) && !matches!(
+        answer.question.as_str(),
+        "Heading" | "Synopsis" | "SectionHeading"
+    ) {
+        crate::authored_text::block(&answer.text, r.locale == ViewerLocale::Korean)
+    } else {
+        None
+    };
     let tag = if answer.question == "SectionHeading" {
         if let Some(level) = heading_level {
             match level {
@@ -522,6 +563,8 @@ fn reader_unit_at_level(
         } else {
             "h2"
         }
+    } else if formatted.is_some() {
+        "div"
     } else {
         "p"
     };
@@ -535,7 +578,7 @@ fn reader_unit_at_level(
         .position(|section| section.heading_index == Some(index))
         .map(|number| format!(" data-section-number=\"{:02}\"", number + 1))
         .unwrap_or_default();
-    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"{}{}><{tag} class=\"unit-text\"{} data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),publication_scope(answers),section_number,if heading_level.is_some() && answer.question == "SectionHeading" {" data-toc-entry"} else {""},escape(&answer.question),escape(&content_language_tag(language)),escape(language),escape(&answer.text)));
+    html.push_str(&format!("<{outer} class=\"unit\" id=\"{}\" tabindex=\"-1\"{}{}><{tag} class=\"unit-text\"{} data-question=\"{}\" lang=\"{}\" data-content-language=\"{}\">{}</{tag}>",reader_claim_anchor(answers,index),publication_scope(answers),section_number,if heading_level.is_some() && answer.question == "SectionHeading" {" data-toc-entry"} else {""},escape(&answer.question),escape(&content_language_tag(language)),escape(language),formatted.unwrap_or_else(|| escape(&answer.text))));
     reader_inline_citations(html, r, answers, index);
     html.push_str(&format!("</{outer}>"));
 }
@@ -1336,6 +1379,70 @@ fn render_document_body(
         html.push_str(&format!("<p class=\"lead\" data-statement-role=\"verified-canonical\">{}</p><p class=\"record-strip\">{}</p>", escape(&decision_choice_attribution(&d.decision, r.locale)), brief_decision_state_label(d.decision.state, r.locale)));
     }
     html.push_str("</header>");
+    if let Some(w) = work {
+        let earlier_completed = w
+            .reading
+            .states
+            .iter()
+            .any(|s| s.work_state == WorkState::Completed);
+        let state_label = understanding_work_state_label(w.state, r.locale);
+        let statement = if r.locale == ViewerLocale::Korean {
+            format!(
+                "{}최신 작업 기록의 상태는 {state_label}입니다.",
+                if earlier_completed && w.state != UnderstandingWorkState::Completed {
+                    "이전에 완료로 기록된 이력이 있으며, "
+                } else {
+                    ""
+                }
+            )
+        } else if earlier_completed && w.state != UnderstandingWorkState::Completed {
+            format!("An earlier work record says completed; the latest recorded state is {state_label}.")
+        } else {
+            format!("The latest recorded Work state is {state_label}.")
+        };
+        html.push_str(&format!(
+            "<p class=\"work-situation\" data-statement-role=\"deterministic-derived\">{}",
+            escape(&statement)
+        ));
+        let failed = w
+            .reading
+            .verification_report
+            .checks
+            .iter()
+            .filter(|check| {
+                check.reported_state == volicord_projections::ReportedCheckState::Failed
+                    && !verification::historical_check(check, &w.reading.verification_report)
+            })
+            .count();
+        if failed > 0 {
+            html.push_str(text(r.locale," Failed reports still need a comparable retest review; their count is not a count of current failing tests or product defects."," 실패 보고에는 비교 가능한 재검증 확인이 남아 있습니다. 보고 건수는 현재 실패한 테스트 수나 제품 결함 수가 아닙니다."));
+        }
+        if w.reading
+            .answers
+            .acceptance
+            .as_ref()
+            .is_none_or(|s| s.user_acceptance.state == UserAcceptanceState::NotRequested)
+        {
+            html.push_str(text(
+                r.locale,
+                " User acceptance is not recorded.",
+                " 사용자 수락은 기록되지 않았습니다.",
+            ));
+        }
+        if let Some((index, _)) = answers
+            .prose
+            .iter()
+            .enumerate()
+            .find(|(_, unit)| unit.question == "NextStep")
+        {
+            html.push_str(&format!(
+                " <a href=\"#{}\">{}</a>",
+                reader_claim_anchor(answers, index),
+                text(r.locale, "Recorded next action", "기록된 다음 행동")
+            ));
+        }
+        html.push_str("</p>");
+    }
     opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
     if grouped {
@@ -1468,7 +1575,20 @@ fn render_document_body(
         html.push_str(&format!("<p class=\"reading-group-empty\">{}</p>",text(r.locale,"No separate verification explanation or report is recorded in this section. This does not establish that checks ran or passed.","이 영역에 별도의 검증 설명이나 보고가 기록되지 않았습니다. 검사를 실행했거나 통과했다는 뜻은 아닙니다.")));
     }
     if grouped && limit_groups == 0 {
-        html.push_str(&format!("<p class=\"reading-group-empty\">{}</p>",text(r.locale,"No separate explanation of limits is recorded in this section. This does not establish an absence of limitations; inspect the retained records and evidence for their actual scope and gaps.","이 영역에 별도로 작성된 한계 설명이 없습니다. 한계가 없다는 뜻은 아니며, 원문과 근거에서 기록된 범위와 공백을 확인할 수 있습니다.")));
+        html.push_str(&format!(
+            "<p class=\"reading-group-empty\">{} <a href=\"#{}\">{}</a></p>",
+            text(
+                r.locale,
+                "For evidence availability and the recorded scope of this explanation, see",
+                "근거의 이용 가능 상태와 이 설명의 기록된 범위는"
+            ),
+            document_anchor(answers, "records"),
+            text(
+                r.locale,
+                "Original records and evidence",
+                "원문과 근거에서 확인하세요"
+            )
+        ));
     }
     if grouped {
         html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"records\" id=\"{}\" tabindex=\"-1\" aria-label=\"{}\"><h2 class=\"reading-group-heading\" data-toc-group-heading>{}</h2>",document_anchor(answers,"records"),text(r.locale,"Original records and evidence","원문과 근거"),text(r.locale,"Original records and evidence","원문과 근거")));
@@ -2517,6 +2637,14 @@ fn render_applicability(
 ) {
     let basis = &answers.applicability;
     use volicord_projections::ExplanationState as E;
+    if let Some(head) = answers
+        .provenance
+        .as_ref()
+        .and_then(|p| p.evidence.iter().find(|e| e.key == "repository_basis"))
+        .and_then(|e| e.content["repository"]["observation_basis"]["git"]["head"].as_str())
+    {
+        html.push_str(&format!("<p class=\"explained-code-basis\">{} <code>{}</code>. {}</p>",text(r.locale,"Recorded local code basis · Git HEAD:","기록된 로컬 코드 기준 · Git HEAD:"),escape(head),text(r.locale,"Read the described local changes in context; a repository match does not establish public-release availability.","본문에 설명된 로컬 변경 범위를 함께 확인하세요. 저장소 일치는 공개 배포 여부를 뜻하지 않습니다.")));
+    }
     let article_state = match answers.explanation_state {
         E::Current => text(r.locale, "Available", "읽을 수 있음"),
         E::Stale => text(r.locale, "Basis changed", "근거 변경됨"),
@@ -3225,12 +3353,24 @@ fn decision_detail(
     let body_id = document_anchor(&reader, "reading");
     // The outline targets the hidden body, so native fragment navigation also
     // opens this exact Decision. Its summary retains the compact title/state.
-    html.push_str(&format!("<details class=\"record-box related-decision\"><summary id=\"{heading_id}\"><h3 data-toc-entry data-toc-target=\"{body_id}\"><span class=\"decision-title\" lang=\"{}\"{}>{}</span><span class=\"record-strip\">{}</span></h3></summary><div class=\"related-decision-body\" id=\"{body_id}\" tabindex=\"-1\">",
+    html.push_str(&format!("<details class=\"record-box related-decision\"><summary id=\"{heading_id}\"><h3 data-toc-entry data-toc-target=\"{body_id}\"><span class=\"decision-title\" lang=\"{}\"{}>{}</span><span class=\"record-strip\">{}</span></h3>",
         escape(&content_language_tag(&r.requested_language)),publication_scope(&reader),escape(&title),brief_decision_state_label(d.decision.state,r.locale)));
+    if let Some(unit) = reader.prose.iter().find(|unit| unit.question == "Synopsis") {
+        html.push_str(&format!(
+            "<p class=\"decision-choice-summary\" lang=\"{}\"{}>{}</p>",
+            escape(&content_language_tag(&r.requested_language)),
+            publication_scope(&reader),
+            escape(&unit.text)
+        ));
+    }
+    html.push_str(&format!(
+        "</summary><div class=\"related-decision-body\" id=\"{body_id}\" tabindex=\"-1\">"
+    ));
     if let Some((index, _)) = heading {
         reader_inline_citations(html, r, &reader, index);
     }
     render_applicability(html, r, &reader, snapshot);
+    html.push_str(&format!("<p class=\"decision-state-note\">{}</p>",text(r.locale,"Decision applicability describes the recorded choice; repository comparison describes the explanation’s code basis. These are independent states.","결정 적용 상태는 기록된 선택의 효력을, 저장소 비교 상태는 설명의 코드 기준을 나타냅니다. 두 상태는 서로 별개입니다.")));
     opening_context(html, r, &reader, None, Some(d));
     explanation_diagnostic(html, r, &reader);
     let mut content = String::new();

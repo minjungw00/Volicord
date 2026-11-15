@@ -2741,6 +2741,28 @@ impl LocalOperations {
         query: &volicord_projections::WorkCatalogueQuery,
         language: &str,
     ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
+        self.catalogue_projection_profiled(project_id, query, language, false)
+    }
+
+    /// Overview adds only the selected-language repository publication to the
+    /// thin catalogue. It shares normal publication/lifecycle revalidation;
+    /// Work articles and other-language repository bodies remain unread.
+    pub fn project_overview_projection_profiled(
+        &self,
+        project_id: ProjectId,
+        query: &volicord_projections::WorkCatalogueQuery,
+        language: &str,
+    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
+        self.catalogue_projection_profiled(project_id, query, language, true)
+    }
+
+    fn catalogue_projection_profiled(
+        &self,
+        project_id: ProjectId,
+        query: &volicord_projections::WorkCatalogueQuery,
+        language: &str,
+        repository_introduction: bool,
+    ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
         query.validate().map_err(Error::new)?;
         if language.is_empty() || language.len() > 128 || language.chars().any(char::is_control) {
             return Err(Error::new("invalid content language"));
@@ -2757,7 +2779,7 @@ impl LocalOperations {
                 code: false,
                 inspection: false,
             },
-            Some((query, language)),
+            Some((query, language, repository_introduction)),
         )
     }
 
@@ -2767,7 +2789,7 @@ impl LocalOperations {
         selection: volicord_projections::WorkSelector,
         detail: volicord_projections::ProjectionDetail,
         requirements: volicord_projections::ProjectionReadRequirements,
-        catalogue: Option<(&volicord_projections::WorkCatalogueQuery, &str)>,
+        catalogue: Option<(&volicord_projections::WorkCatalogueQuery, &str, bool)>,
     ) -> Result<(ProjectProjection, ProjectProjectionProfile), Error> {
         let total_started = Instant::now();
         let canonical_started = Instant::now();
@@ -2825,14 +2847,19 @@ impl LocalOperations {
         })
         .map_err(|error| Error::with_source("Work selection failed", error))?;
         self.attach_analysis_attempt(project_id, &mut projection.repository_analysis);
-        let explanation_basis_preparations = if let Some((query, language)) = catalogue {
-            projection.work_catalogue =
-                Some(self.work_catalogue_from(&canonical, query, language)?);
-            0
-        } else {
-            self.attach_work_verification(&canonical, &mut projection);
-            self.attach_explanations(&canonical, &mut projection)
-        };
+        let explanation_basis_preparations =
+            if let Some((query, language, introduction)) = catalogue {
+                projection.work_catalogue =
+                    Some(self.work_catalogue_from(&canonical, query, language)?);
+                if introduction {
+                    self.attach_repository_introduction(&canonical, &mut projection, language)
+                } else {
+                    0
+                }
+            } else {
+                self.attach_work_verification(&canonical, &mut projection);
+                self.attach_explanations(&canonical, &mut projection)
+            };
         let projection_build = projection_started.elapsed();
         let work_read_cost = projection.work_read_cost;
         Ok((

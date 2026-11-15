@@ -1045,3 +1045,14 @@ A current collector may reprocess unchanged original captures under a separately
 bound producer/policy and publish new evidence/reviews. Preserve the observed
 Product candidate and its applicable technical gate; collector repair alone does
 not manufacture a new Product execution or require replaying its conversations.
+
+
+Whole-unit presentation of explicitly authored fenced examples/pipe tables is a
+Viewer rendering change over unchanged explanation-10 text. The retained string,
+claim UTF-8 offsets, citations, seals, reading scopes and exact-current decoder are
+unchanged; no HTML or presentation AST is persisted. Canonical/Source quotations
+remain literal. Other readers retain the authored notation. Unsupported/malformed
+notation falls back without dropping content; no migration or old-format decoder
+is introduced. Updated preparation guidance has its actual new request fingerprint
+and applies to explicit fresh production, not retroactive qualification of earlier
+publications.

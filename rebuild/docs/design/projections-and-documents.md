@@ -4200,3 +4200,28 @@ explicit local failure, and only the latest matching read can supply new results
 Current observation metadata is replaced with the matching full-response metadata.
 Native forms, snapshot documents and exact Work selection retain their existing
 public boundaries and query semantics.
+
+
+### Reader-oriented production review
+
+Preparation asks the authorized host to establish prior problem, actual change
+versus existing mechanism, user-visible result and concrete recorded next action.
+For repository understanding, establish a representative user journey before
+responsibility/code-entry details and distinguish investigated local changes from
+public/baseline behavior. Independent card summaries prioritize selection rather
+than a completion ledger. Review each language and diagram element's actual
+conditional/ownership claim; avoid broad repeated claim spans. Command/output
+examples, field/alternative tables and all relevant measured modes belong to
+grounded units, with illustrative and observed values distinguished. This is an
+authoring obligation, not a keyword/length oracle or an admission quality claim.
+
+Viewer may present complete explicitly fenced examples and consistent pipe tables
+inside generated prose units. Raw strings and all sealed offsets/citations remain
+unchanged; other readers retain the same authored text. Neither a code example nor
+a table cell becomes a Source quotation or observed run. Whole-unit presentation
+fails back to full escaped text for malformed/mixed syntax and never interprets
+HTML or links. Overview's repository introduction reuses only the permitted
+same-language repository synopsis; it does not manufacture Project Purpose or
+create a separate lifetime. Work situation sentences use actual typed history and
+retained retest facts, not semantic parsing of original reports. No new domain
+record, generated format, authority, provider call or read-side authoring exists.
