@@ -152,8 +152,10 @@ async function main(){
   // Modified clicks keep native separate-document behavior.
   const popupPromise=context.waitForEvent('page');await page.locator('.project-navigation a[data-destination=overview]').click({modifiers:['Control']});
   const popup=await popupPromise;await popup.waitForLoadState();assert.equal(new URL(popup.url()).searchParams.get('view'),'overview');await popup.close();check('modified-click-native-tab');
-  assert.deepEqual(errors,[]);await context.close();
-  const native=await browser.newContext({javaScriptEnabled:false});const nativePage=await native.newPage();await nativePage.goto(url('overview'));
+  assert.deepEqual(errors,[]);
+  // A headful Chrome can exit when its last review window closes. Open the
+  // script-free review window before releasing our enhanced context.
+  const native=await browser.newContext({javaScriptEnabled:false});const nativePage=await native.newPage();page=nativePage;await nativePage.goto(url('overview'));await context.close();
   await nativePage.locator('.project-navigation a[data-destination=work]').click();assert.equal(new URL(nativePage.url()).searchParams.get('view'),'work');await native.close();check('no-script-native-navigation');
   result.outcome='passed';
  }catch(error){result.error=error.stack||String(error);result.page=await page?.evaluate(()=>({url:location.href,body:document.body.dataset,main:document.getElementById('viewer-content')?.textContent.slice(0,1200)})).catch(()=>null);await page?.screenshot({path:path.join(config.output,'failure.png')}).catch(()=>{});throw error;}
