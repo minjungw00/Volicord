@@ -866,11 +866,17 @@ fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_public
                 String::from_utf8_lossy(&errors)
             );
             let human = String::from_utf8(out)?;
-            assert!(human.contains(if command == "decisions" {
-                "Fake decision lifecycle paragraph"
+            if command == "recall" {
+                assert!(!human.contains("Fake unit-test paragraph"));
+                assert!(!human.contains("Fake decision lifecycle paragraph"));
+                assert!(human.contains("work verification"));
             } else {
-                "Fake unit-test paragraph"
-            }));
+                assert!(human.contains(if command == "decisions" {
+                    "Fake decision lifecycle paragraph"
+                } else {
+                    "Fake unit-test paragraph"
+                }));
+            }
             assert!(!human.contains("Audit record"));
             assert!(!human.contains(&f.project.to_string()));
             assert!(!human.contains(&work.to_string()));
@@ -888,6 +894,89 @@ fn shared_answers_survive_restart_and_block_deleted_document_and_snapshot_public
                 "Recorded facts and derived states"
             }));
         }
+    }
+    // The compact Recall supplies exact subject/language references instead of
+    // embedding the full reader. Recover both actual publications through that
+    // public Operations page path; later deletion/forgetting checks stay below.
+    let (mut out, mut errors) = (Vec::new(), Vec::new());
+    assert_eq!(
+        run_cli(
+            vec![
+                "--runtime".into(),
+                f.operations.layout().root().to_string_lossy().into_owned(),
+                "--project".into(),
+                f.project.to_string(),
+                "--json".into(),
+                "recall".into(),
+                "--language".into(),
+                "ko".into()
+            ],
+            &mut out,
+            &mut errors
+        ),
+        CliExit::SUCCESS
+    );
+    let recalled: serde_json::Value = serde_json::from_slice(&out)?;
+    assert_eq!(recalled["reading_profile"], "resume");
+    let decision_ref = &recalled["decisions"]
+        .as_array()
+        .ok_or("decisions")?
+        .iter()
+        .find(|row| row["identity"] == decision.to_string())
+        .ok_or("Decision reference")?["reading_reference"];
+    for (reference, subject, text, expected_plan) in [
+        (
+            &recalled["selected_work"]["reading_references"]["article"],
+            subject,
+            "Fake unit-test paragraph",
+            plan.fingerprint.as_str(),
+        ),
+        (
+            decision_ref,
+            ExplanationSubject::Decision(decision),
+            "Fake decision lifecycle paragraph",
+            dp.fingerprint.as_str(),
+        ),
+    ] {
+        let args = &reference["inspect"]["arguments"];
+        assert_eq!(reference["inspect"]["tool"], "explanation_read");
+        assert_eq!(args["project_id"], f.project.to_string());
+        assert_eq!(
+            args["subject_id"],
+            match subject {
+                ExplanationSubject::Work(id) => id.to_string(),
+                ExplanationSubject::Decision(id) => id.to_string(),
+                _ => return Err("unexpected subject".into()),
+            }
+        );
+        assert_eq!(args["language"], "ko");
+        assert_eq!(reference["plan_fingerprint"], expected_plan);
+        let mut offset = args["offset"].as_u64().ok_or("offset")? as usize;
+        let mut fingerprint: Option<String> = None;
+        let mut recovered = String::new();
+        loop {
+            let page = restarted.read_explanation_page(
+                f.project,
+                subject,
+                args["language"].as_str().ok_or("language")?,
+                offset,
+                fingerprint.as_deref(),
+            )?;
+            assert_eq!(page["publication_id"], reference["publication_id"]);
+            recovered.push_str(page["chunk"].as_str().ok_or("chunk")?);
+            let Some(next) = page["next_offset"].as_u64() else {
+                break;
+            };
+            offset = next as usize;
+            fingerprint = Some(
+                page["fingerprint"]
+                    .as_str()
+                    .ok_or("fingerprint")?
+                    .to_owned(),
+            );
+        }
+        let complete: serde_json::Value = serde_json::from_str(&recovered)?;
+        assert!(complete.to_string().contains(text));
     }
     let request = DocumentRequest {
         requested_language: "ko".into(),

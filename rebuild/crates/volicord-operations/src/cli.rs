@@ -2322,10 +2322,23 @@ fn render_field(
     let padding = "  ".repeat(indent);
     if value["reading_profile"] == "resume" && value.get("work_item_id").is_some() {
         write_line(stdout, format_args!("{padding}{key}:"))?;
+        render_resume_interpretation(stdout, &value["reading_references"]["article"], locale)?;
         if let Some(title) = value["reading_title"].as_str() {
             write_line(
                 stdout,
                 format_args!("{padding}  {}", terminal_explanation_text(title)),
+            )?;
+        } else if let Some(goal) = value["evidence"]["goal"]["original_text"].as_str() {
+            write_line(
+                stdout,
+                format_args!(
+                    "{padding}  {}: {}",
+                    match locale {
+                        CliLocale::English => "Recorded Goal quotation",
+                        CliLocale::Korean => "기록된 목표 인용",
+                    },
+                    terminal_explanation_text(goal)
+                ),
             )?;
         }
         if let Some(summary) = value["reading_summary"]["text"].as_str() {
@@ -2334,6 +2347,7 @@ fn render_field(
                 format_args!("{padding}  {}", terminal_explanation_text(summary)),
             )?;
         }
+        render_resume_fact_heading(stdout, locale)?;
         for fact in value["status_facts"]
             .as_array()
             .into_iter()
@@ -2347,7 +2361,13 @@ fn render_field(
                 )?;
             }
         }
-        if let Some(result) = value["evidence"]["result"]["original_text"].as_str() {
+        if let Some(result) = value["evidence"]["result"]["original_text"]
+            .as_str()
+            .filter(|_| {
+                value["reading_references"]["article"]["explanation_state"] != "current"
+                    && value["reading_summary"].is_null()
+            })
+        {
             write_line(
                 stdout,
                 format_args!(
@@ -2360,23 +2380,157 @@ fn render_field(
                 ),
             )?;
         }
-        if let Some(arguments) = value["verification_report"]["inspect"]["arguments"].as_array() {
-            let command = arguments
-                .iter()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>()
-                .join(" ");
+        if value["verification_report"]["inspect"]["arguments"].is_array() {
             write_line(
                 stdout,
                 format_args!(
-                    "{padding}  {}: volicord {}",
+                    "{padding}  {}",
                     match locale {
-                        CliLocale::English => "Full verification audit",
-                        CliLocale::Korean => "전체 검증 기록",
-                    },
-                    terminal_explanation_text(&command)
+                        CliLocale::English => "Full verification audit: use --json for the exact work verification arguments.",
+                        CliLocale::Korean => "전체 검증 기록: 정확한 work verification 인수는 --json으로 확인하세요.",
+                    }
                 ),
             )?;
+        }
+        return Ok(());
+    }
+    if value["reading_profile"] == "resume" && value.get("identity").is_some() {
+        write_line(stdout, format_args!("{padding}{key}:"))?;
+        render_resume_interpretation(stdout, &value["reading_reference"], locale)?;
+        render_resume_fact_heading(stdout, locale)?;
+        let state = match (locale, value["state"].as_str()) {
+            (CliLocale::English, Some("current")) => "Decision state: current",
+            (CliLocale::Korean, Some("current")) => "결정 상태: 현재 유효",
+            (CliLocale::English, Some("stale_basis")) => "Decision state: stale basis",
+            (CliLocale::Korean, Some("stale_basis")) => "결정 상태: 오래된 근거",
+            (CliLocale::English, Some("review_required")) => "Decision state: review required",
+            (CliLocale::Korean, Some("review_required")) => "결정 상태: 재검토 필요",
+            (CliLocale::English, Some("superseded")) => "Decision state: superseded",
+            (CliLocale::Korean, Some("superseded")) => "결정 상태: 대체됨",
+            (CliLocale::English, Some("unavailable_basis")) => "Decision state: basis unavailable",
+            (CliLocale::Korean, Some("unavailable_basis")) => "결정 상태: 근거 이용 불가",
+            (CliLocale::English, _) => "Decision state is unavailable here; inspect --json.",
+            (CliLocale::Korean, _) => "결정 상태는 --json으로 확인하세요.",
+        };
+        write_line(stdout, state)?;
+        if let Some(prompt) = value["evidence"]["question_context"]["prompt"].as_str() {
+            write_line(
+                stdout,
+                format_args!(
+                    "{padding}  {}: {}",
+                    match locale {
+                        CliLocale::English => "Recorded question quotation",
+                        CliLocale::Korean => "기록된 질문 인용",
+                    },
+                    terminal_explanation_text(prompt)
+                ),
+            )?;
+        }
+        for (field, en, ko) in [
+            ("chosen_alternative_key", "User choice", "사용자 선택"),
+            (
+                "recommended_alternative_key",
+                "Agent recommendation",
+                "에이전트 권고",
+            ),
+        ] {
+            let key = value[field].as_str();
+            let label = key.and_then(|key| {
+                value["displayed_alternatives"]
+                    .as_array()?
+                    .iter()
+                    .find(|alternative| alternative["alternative_key"] == key)?["label"]
+                    .as_str()
+            });
+            let fallback = if field == "chosen_alternative_key" {
+                value["choice"].as_str()
+            } else {
+                None
+            };
+            let text = label.or(fallback).unwrap_or(match locale {
+                CliLocale::English => "Exact choice detail is unavailable here; inspect --json.",
+                CliLocale::Korean => "정확한 선택 상세는 --json으로 확인하세요.",
+            });
+            write_line(
+                stdout,
+                format_args!(
+                    "{padding}  {}: {}",
+                    match locale {
+                        CliLocale::English => en,
+                        CliLocale::Korean => ko,
+                    },
+                    terminal_explanation_text(text)
+                ),
+            )?;
+        }
+        for alternative in value["displayed_alternatives"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            if let (Some(label), Some(consequence)) = (
+                alternative["label"].as_str(),
+                alternative["expected_consequence"].as_str(),
+            ) {
+                write_line(
+                    stdout,
+                    format_args!(
+                        "{padding}  {}: {}",
+                        terminal_explanation_text(label),
+                        terminal_explanation_text(consequence)
+                    ),
+                )?;
+            }
+        }
+        let scope = match (locale, value["work_scope"]["kind"].as_str()) {
+            (CliLocale::English, Some("project_wide")) => {
+                "Declared scope: this Project; this does not establish applicability everywhere."
+            }
+            (CliLocale::Korean, Some("project_wide")) => {
+                "선언 범위: 이 프로젝트. 모든 곳의 적용 가능성을 입증하지 않습니다."
+            }
+            (CliLocale::English, Some("work_item")) => {
+                "Declared scope: a recorded Work; use --json for the exact Work identity."
+            }
+            (CliLocale::Korean, Some("work_item")) => {
+                "선언 범위: 기록된 작업. 정확한 작업 식별자는 --json으로 확인하세요."
+            }
+            (CliLocale::English, _) => "Declared Work scope is unresolved.",
+            (CliLocale::Korean, _) => "선언된 작업 범위가 미해결입니다.",
+        };
+        write_line(stdout, scope)?;
+        for (field, en, ko) in [
+            (
+                "user_rationale",
+                "Recorded user reason quotation",
+                "기록된 사용자 이유 인용",
+            ),
+            (
+                "recommendation_rationale",
+                "Recorded agent recommendation reason quotation",
+                "기록된 에이전트 권고 이유 인용",
+            ),
+        ] {
+            if let Some(text) = value["evidence"][field].as_str() {
+                write_line(
+                    stdout,
+                    format_args!(
+                        "{padding}  {}: {}",
+                        match locale {
+                            CliLocale::English => en,
+                            CliLocale::Korean => ko,
+                        },
+                        terminal_explanation_text(text)
+                    ),
+                )?;
+            } else if field == "user_rationale" {
+                write_line(stdout, match (locale, value["evidence"].get(field)) {
+                    (CliLocale::English, Some(Value::Null)) => "User reason is not recorded; agent recommendation does not supply it.",
+                    (CliLocale::Korean, Some(Value::Null)) => "사용자 이유가 기록되지 않았습니다. 에이전트 권고가 이를 대신하지 않습니다.",
+                    (CliLocale::English, _) => "User reason is unavailable in this brief; inspect --json.",
+                    (CliLocale::Korean, _) => "사용자 이유는 --json으로 확인하세요.",
+                })?;
+            }
         }
         return Ok(());
     }
@@ -2661,7 +2815,7 @@ fn render_field(
                 match item {
                     Value::Object(fields) => {
                         write_line(stdout, format_args!("{padding}  -"))?;
-                        if item.get("answers").is_some() {
+                        if item.get("answers").is_some() || item["reading_profile"] == "resume" {
                             render_field(stdout, key, item, indent + 2, locale)?;
                         } else {
                             for (child, value) in fields {
@@ -2685,6 +2839,52 @@ fn render_field(
             Ok(())
         }
     }
+}
+
+fn render_resume_fact_heading(stdout: &mut dyn Write, locale: CliLocale) -> Result<(), Error> {
+    write_line(
+        stdout,
+        match locale {
+            CliLocale::English => "Recorded facts and derived states:",
+            CliLocale::Korean => "기록된 사실과 파생 상태:",
+        },
+    )
+}
+
+fn render_resume_interpretation(
+    stdout: &mut dyn Write,
+    reference: &Value,
+    locale: CliLocale,
+) -> Result<(), Error> {
+    if !matches!(
+        reference["explanation_state"].as_str(),
+        Some(
+            "current"
+                | "stale"
+                | "missing"
+                | "deleted"
+                | "withheld"
+                | "unavailable"
+                | "unsupported"
+                | "corrupt"
+        )
+    ) {
+        return write_line(
+            stdout,
+            match locale {
+                CliLocale::English => {
+                    "Host interpretation status is unavailable in this brief; inspect --json."
+                }
+                CliLocale::Korean => "이 재개 요약의 호스트 해석 상태는 --json으로 확인하세요.",
+            },
+        );
+    }
+    write_line(stdout, match (locale, reference["explanation_state"] == "current") {
+        (CliLocale::English, true) => "Host interpretation is available separately; use --json for its exact reading reference.",
+        (CliLocale::Korean, true) => "호스트 해석은 별도로 읽을 수 있습니다. 정확한 읽기 참조는 --json으로 확인하세요.",
+        (CliLocale::English, false) => "Host interpretation is unavailable in the requested language; use --json for its status and reading reference.",
+        (CliLocale::Korean, false) => "요청한 언어의 호스트 해석을 사용할 수 없습니다. 상태와 읽기 참조는 --json으로 확인하세요.",
+    })
 }
 
 fn write_line(stdout: &mut dyn Write, args: impl std::fmt::Display) -> Result<(), Error> {

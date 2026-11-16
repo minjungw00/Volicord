@@ -3183,6 +3183,19 @@ every Source's permission, lifetime, deletion and forgetting scope remain unchan
 
 ### Actual human CLI explanation consumption
 
+Human Recall renders the compact profile as reading rather than recursively
+printing its internal object fields. It distinguishes the separately readable
+host interpretation, canonical facts/states, user choice/reason and agent
+recommendation/reason. Exact Project/Work IDs and full inspection arguments stay
+behind the explicit JSON route; a missing generated title retains a labeled
+canonical Goal quotation. A separately current article or independent summary
+does not require dumping original audit paragraphs into ordinary reading.
+The bounded JSON still retains canonical result evidence and exact full-article
+references. Viewer lifecycle controls recover the complete Work and Decision
+publications through those actual references, while deletion and forgetting
+still block stale document/snapshot publication. Unknown transport state is
+distinct from an explicitly unavailable interpretation.
+
 Repository and Work human output share the same explanation renderer. In addition
 to admitted prose, it emits figure IDs, distinct node/message/edge endpoints,
 conditions, sequential/parallel semantics, captions, managed publication/realization
