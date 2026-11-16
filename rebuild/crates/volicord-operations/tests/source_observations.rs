@@ -39,6 +39,103 @@ fn stored(
 }
 
 #[test]
+fn local_command_uses_the_explicit_deadline_without_a_five_minute_ceiling(
+) -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let repository = temp.path().join("repository");
+    fs::create_dir(&repository)?;
+    fs::write(repository.join("main.py"), "value = 1\n")?;
+    let ops = LocalOperations::new(RuntimeLayout::new(temp.path().join("runtime"))?);
+    let project = ops
+        .initialize_project("deadline fixture", Some(&repository))?
+        .project
+        .id;
+    let work = ops
+        .record_current_host_user_context(
+            project,
+            "fixture".into(),
+            "local".into(),
+            "Run the explicitly scoped local check.".into(),
+            ContextItemRole::Goal,
+            "Run the explicitly scoped local check.".into(),
+        )?
+        .context_item_id;
+    let analysis = ops
+        .analyze(project, vec![])?
+        .value
+        .ok_or("analysis")?
+        .analysis
+        .identity;
+    let args = vec![
+        "--runtime".into(),
+        ops.layout().root().to_string_lossy().into_owned(),
+        "--project".into(),
+        project.to_string(),
+        "--json".into(),
+        "work".into(),
+        "source".into(),
+        "run".into(),
+        "--work".into(),
+        work.to_string(),
+        "--analysis".into(),
+        analysis.to_string(),
+        "--label".into(),
+        "explicit long-deadline check".into(),
+        "--timeout-seconds".into(),
+        "86400".into(),
+        "--retain-seconds".into(),
+        "3600".into(),
+        "--".into(),
+        "/bin/sh".into(),
+        "-c".into(),
+        "printf completed > completed.txt".into(),
+    ];
+    let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+    assert_eq!(
+        volicord_operations::run_cli(args, &mut stdout, &mut stderr),
+        volicord_operations::CliExit::SUCCESS,
+        "{}",
+        String::from_utf8_lossy(&stderr)
+    );
+    let captured: Value = serde_json::from_slice(&stdout)?;
+    assert_eq!(captured["operation"], "work_source_capture");
+    assert!(captured["source_id"]
+        .as_str()
+        .is_some_and(|id| id.len() == 32));
+    assert_eq!(
+        fs::read_to_string(repository.join("completed.txt"))?,
+        "completed"
+    );
+    let request = |timeout, command: &str| WorkCommandRequest {
+        project_id: project,
+        work_item_id: work,
+        analysis_snapshot_id: analysis,
+        command_label: "deadline control".into(),
+        program: "/bin/sh".into(),
+        arguments: vec!["-c".into(), command.into()],
+        timeout,
+        retain_seconds: 3600,
+    };
+    let sources = ops.canonical_basis(project)?.sources.len();
+    for timeout in [Duration::ZERO, Duration::MAX] {
+        assert!(ops
+            .run_work_command(request(timeout, "printf invalid > never.txt"))
+            .is_err());
+        assert!(!repository.join("never.txt").exists());
+        assert_eq!(ops.canonical_basis(project)?.sources.len(), sources);
+    }
+    // A larger admissible requested deadline does not disable actual timeouts.
+    let timed = ops.run_work_command(request(
+        Duration::from_millis(30),
+        "sleep 10; printf late > late.txt",
+    ))?;
+    let body = stored(&ops, project, timed.source_id)?;
+    assert_eq!(body["detail"]["timeout_detected"], true);
+    assert!(!repository.join("late.txt").exists());
+    Ok(())
+}
+
+#[test]
 fn actual_dirty_work_records_changed_and_no_change_sources_before_any_checkpoint(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;

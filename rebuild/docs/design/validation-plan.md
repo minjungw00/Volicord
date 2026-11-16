@@ -1408,6 +1408,12 @@ credentials, compact/reformatted JSON, clean artifacts and refreshed staging val
 
 ### V11 resource regression qualification
 
+시간 경계의 단위·장기 이력 적용 여부와 로컬 명령의 caller-selected deadline은
+[time-boundaries/report.md](../../validation/time-boundaries/report.md)에 정리한다.
+고정 workload의 regression ceiling, 검증 watchdog, 개별 runtime 요청 deadline과
+Source retention은 서로 대체하지 않는다. 아래 수치는 해당 여정의 기준으로
+유지하며, 임의 크기의 장기 Project에 대한 일정한 latency를 보장하지 않는다.
+
 Official V11은 `performance-budgets.json`의 maintained Linux regression ceiling을 함께
 검사한다. 이 예산은 workload identity
 `three-target-installed-journey-volicord-three-work-1`에 묶인다: MCP process high-water

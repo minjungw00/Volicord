@@ -819,6 +819,13 @@ receive no command execution authority. No capture of internal reasoning, arbitr
 conversations, credentials, environment dumps or unbounded command streams is allowed.
 The operator remains responsible for choosing permitted non-secret commands/outputs.
 
+The explicit command timeout is a positive, finite per-invocation choice that must
+fit the platform monotonic clock. There is no universal five-minute command ceiling.
+It does not inherit a qualification workload's RPC deadline, a Work's age or a Source
+body's separate retention lifetime. Actual timeout still terminates the child tree
+and preserves its observed outcome. This adds no implicit execution or retention
+authority and does not enlarge stream/body bounds.
+
 Inspector filters, search, relations, snippets/counts, paging and export apply the
 same server-side Project/Work/Source/revision, Candidate, deletion and read-time
 retention barriers as detail reads. A Source ID/locator or aggregate query supplies

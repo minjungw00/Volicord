@@ -5,7 +5,13 @@ use crate::{Error, LocalOperations};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::{ffi::OsString, fs::File, io::Read, path::Path, time::Duration};
+use std::{
+    ffi::OsString,
+    fs::File,
+    io::Read,
+    path::Path,
+    time::{Duration, Instant},
+};
 use volicord_context::{
     Availability, CanonicalReadBasis, ContextItemId, ContextItemRole, Principal, PrincipalKind,
     ProjectId, Source, SourceDraft, SourceId, SourcePayload, TimestampMicros,
@@ -462,11 +468,14 @@ impl LocalOperations {
     ) -> Result<SourceObservationReceipt, Error> {
         let now = now_micros()?;
         retention_until(now, request.retain_seconds)?;
+        if request.timeout.is_zero() || Instant::now().checked_add(request.timeout).is_none() {
+            return Err(Error::new(
+                "Work command timeout must be positive and fit the monotonic clock",
+            ));
+        }
         if request.command_label.trim().is_empty()
             || request.command_label.len() > 4096
             || request.program.is_empty()
-            || request.timeout.is_zero()
-            || request.timeout > Duration::from_secs(300)
             || request.arguments.len() > 128
         {
             return Err(Error::new("invalid bounded Work command request"));

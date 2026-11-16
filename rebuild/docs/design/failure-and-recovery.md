@@ -464,6 +464,14 @@ projection으로 복사하지 않는다. `not_run`은 execution fingerprint나 p
 
 ### Cancellation, timeout과 termination
 
+시간 제한은 적용 단위와 목적을 함께 유지한다. 고정 fixture의 regression ceiling과
+검증 client의 watchdog은 모든 Project의 latency SLA나 누적 사용 기간 상한이 아니다.
+Local Work command는 호출자가 지정한 양수의 유한 monotonic deadline을 사용하며,
+일률적인 300초 상한으로 더 긴 명시적 요청을 거부하지 않는다. Deadline 초과·취소·
+실제 종료와 cleanup 결과는 계속 독립적으로 보존한다. 저장소·이력 증가에 따른 비용은
+규모와 실행 환경을 기록해 별도로 평가하며, 실패 결과를 지우거나 작업 범위를 줄여
+기존 성능 검사를 통과시키지 않는다.
+
 - Cancellation intent와 process termination 완료는 별도 사실이다.
 - Timeout은 종료 요청의 원인이며 actual exit/termination/child cleanup을 대신하지
   않는다.

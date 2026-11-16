@@ -387,7 +387,7 @@ fn public_command_preserves_failure_termination_and_rejects_invalid_execution(
     assert_eq!(timed["observation"]["detail"]["timeout_detected"], true);
     assert_ne!(timed["observation"]["detail"]["termination"], "exited");
     assert!(timed["observation"]["detail"]["exit_code"].is_null());
-    for seconds in ["0", "301"] {
+    for seconds in ["0", "not-a-number"] {
         let invalid = f.call(&[
             "work",
             "source",
