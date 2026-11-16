@@ -87,10 +87,16 @@ def _text_digest(value: Any) -> str | None:
 
 
 def _recorded_action_proof(work: dict[str, Any]) -> dict[str, Any]:
-    answers = work.get("answers") or {}
-    facts = answers.get("facts", []) if isinstance(answers, dict) else []
-    matches = [a for a in facts if isinstance(a, dict) and a.get("question") == "RecordedNextStep"] if isinstance(facts, list) else []
-    fact = matches[0] if len(matches) == 1 else {}
+    if work.get("reading_profile") == "resume":
+        # Current compact Recall carries this same canonical fact directly.
+        # Never recover missing/wrong evidence from a parallel full-reader copy.
+        fact = work.get("next_action")
+        fact = fact if isinstance(fact, dict) else {}
+    else:
+        answers = work.get("answers") or {}
+        facts = answers.get("facts", []) if isinstance(answers, dict) else []
+        matches = [a for a in facts if isinstance(a, dict) and a.get("question") == "RecordedNextStep"] if isinstance(facts, list) else []
+        fact = matches[0] if len(matches) == 1 else {}
     basis = fact.get("recorded_action") or {}
     if not isinstance(basis, dict):
         basis = {}
@@ -147,6 +153,15 @@ def _restart_read(value: dict[str, Any] | None, goal_id: str, decision_id: str) 
         "checkpoint_work_id": checkpoint.get("work_item_id"),
         "checkpoint_decision_ids": sorted(checkpoint.get("applied_decisions", [])),
     }
+
+
+def checked_lifecycle_proof(evidence: dict[str, Any], restart: dict[str, Any]) -> dict[str, Any]:
+    """Fail at the emitting step, retaining an ordinary failed V11 result."""
+    proof = make_lifecycle_proof(evidence, restart)
+    errors = lifecycle_errors(proof)
+    if errors:
+        raise ValueError("V11 lifecycle proof is inconsistent: " + "; ".join(errors))
+    return proof
 
 
 def make_lifecycle_proof(evidence: dict[str, Any], restart: dict[str, Any]) -> dict[str, Any]:

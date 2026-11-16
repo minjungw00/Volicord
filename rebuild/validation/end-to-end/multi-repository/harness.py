@@ -2874,7 +2874,7 @@ def rehearse_target(
         proof = None
         if multi_work_evidence["status"] == "passed":
             try:
-                proof = result_contract.make_lifecycle_proof(
+                proof = result_contract.checked_lifecycle_proof(
                     multi_work_evidence, steps["restart_recall"]["evidence"]
                 )
             except (KeyError, TypeError, ValueError) as error:

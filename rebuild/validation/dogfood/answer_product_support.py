@@ -108,6 +108,31 @@ def run(config):
     original_config = copy.deepcopy(config)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'end-to-end/multi-repository'))
     import restart_recall
+    import result_contract as v11_contract
+    bundle = h.load_canonical_bundle(Path(config['bundle']))
+    checkpoint = bundle.one('checkpoints', project_id=config['project'], id=config['checkpoint'])
+    assert checkpoint and checkpoint['work_item_id'] == config['work'] and checkpoint['next_step'] == config['next_step']
+    sources = [r['source_id'] for r in sorted(bundle.rows('checkpoint_source_relations'), key=lambda r: r['position'])
+        if r['project_id'] == config['project'] and r['checkpoint_id'] == config['checkpoint'] and r['relation_kind'] == 'supported_by']
+    expected_action = v11_contract._expected_action_proof({'goal_id': checkpoint['work_item_id'],
+        'checkpoint_id': checkpoint['id'], 'checkpoint_revision': checkpoint['revision'],
+        'checkpoint_sources': sources, 'next_step': checkpoint['next_step']})
+    for key in ('before', 'after', 'before_cli', 'before_full', 'after_full'):
+        actual = v11_contract._recorded_action_proof(config[key]['selected_work'])
+        assert actual == expected_action, (key, actual, expected_action)
+    for mutation in ('quotation', 'revision', 'field', 'source', 'missing', 'omitted', 'decoy_full_reader'):
+        work = copy.deepcopy(config['after']['selected_work'])
+        fact = work['next_action']
+        if mutation == 'quotation': fact['text'] = 'Recorded next action quotation (original language): Foreign action'
+        elif mutation == 'revision': fact['recorded_action']['revision'] += 1
+        elif mutation == 'field': fact['recorded_action']['field'] = 'verification'
+        elif mutation == 'source': fact['recorded_action']['source_ids'] = ['0' * 32]
+        elif mutation == 'missing': work.pop('next_action')
+        elif mutation == 'omitted': work['next_action'] = {'transport_omission': {'reason': 'serialized_byte_budget'}}
+        else:
+            work['answers'] = {'facts': [copy.deepcopy(fact)]}
+            fact['recorded_action']['revision'] += 1
+        assert v11_contract._recorded_action_proof(work) != expected_action, mutation
     for key in ('before', 'after', 'before_cli'):
         check_private_resume_projection(config[key])
         answer = config[key]

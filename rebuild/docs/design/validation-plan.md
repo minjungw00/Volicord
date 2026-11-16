@@ -6181,3 +6181,12 @@ for stop cases, and retain expected failure/timeout/cancellation plus actual out
 diagnostics. An explicit observer-pause counterfactual proves this fixture premise,
 not the cause of an earlier failure whose actual return was not retained. No provider
 default, production stop/cleanup semantics or qualification ceiling changes.
+
+V11 bounded lifecycle proof must read the recorded action from the current Resume
+DTO's direct `next_action`, while full readers expose the same fact through
+`answers.facts`. Validate the emitted proof before labelling the lifecycle step
+passed so malformed evidence remains a structured failed leaf with timing evidence.
+Couple actual Rust CLI/MCP/full-reader returns and independent canonical Checkpoints
+to this portable projection; missing/omitted facts, foreign quotation/revision/Source
+and a decoy full-reader copy must not pass. Retained original CLI returns permit a
+pure diagnostic replay, never a retroactive V11 pass or new external execution.

@@ -109,6 +109,7 @@ def contract_fixture(contract, project_id="p" * 32):
         }
     scope = {"kind": "work_item", "work_item_id": a["goal_id"]}
     recall = {
+        "reading_profile": "resume",
         "project_id": project_id,
         "goal_basis": [{"identity": a["goal_id"], "source_ids": [a["source_id"]]}],
         "decisions": [{"identity": expected_ids["decision_id"], "revision": 1,
@@ -126,6 +127,9 @@ def contract_fixture(contract, project_id="p" * 32):
                        "work_item_id": a["goal_id"],
                        "applied_decisions": [expected_ids["decision_id"]]},
     }
+    selected = recall["selected_work"]
+    selected["next_action"] = selected.pop("answers")["facts"][0]
+    selected["reading_profile"] = "resume"
     restart = {
         "expected_state": {
             "project_id": project_id,
@@ -160,13 +164,14 @@ def contract_self_check(contract):
         row["source_basis"] = row.pop("source_ids")
         assert contract.lifecycle_errors(contract.make_lifecycle_proof(changed, restart)), view
         assert not contract.lifecycle_errors(contract.make_lifecycle_proof(raw, restart)), view
-    # Exercise the actual bounded proof producer, with legacy fields unchanged.
+    assert contract.checked_lifecycle_proof(raw, restart) == original
+    # Exercise the actual compact DTO through the emitting and consuming boundaries.
     for transport in ("cli_recall", "restarted_recall", "both"):
-        for mutation in ("selected_work", "top_level_action", "ordinary_action", "revision", "evidence"):
+        for mutation in ("selected_work", "top_level_action", "ordinary_action", "revision", "evidence", "missing", "omitted", "decoy_full_reader"):
             changed = copy.deepcopy(restart)
             for name in ("cli_recall", "restarted_recall") if transport == "both" else (transport,):
                 value = changed[name]
-                fact = value["selected_work"]["answers"]["facts"][0]
+                fact = value["selected_work"]["next_action"]
                 if mutation == "selected_work":
                     value["selected_work"]["work_item_id"] = "other Work"
                 elif mutation == "top_level_action":
@@ -175,9 +180,22 @@ def contract_self_check(contract):
                     fact["text"] = "Recorded next action quotation (original language): Ship another Work's CSV service."
                 elif mutation == "revision":
                     fact["recorded_action"]["revision"] = 2
-                else:
+                elif mutation == "evidence":
                     fact["evidence_keys"] = []
+                elif mutation == "missing":
+                    value["selected_work"].pop("next_action")
+                elif mutation == "omitted":
+                    value["selected_work"]["next_action"] = {"transport_omission": {"reason": "serialized_byte_budget"}}
+                else:
+                    value["selected_work"]["answers"] = {"facts": [copy.deepcopy(fact)]}
+                    fact["recorded_action"]["revision"] = 2
             assert contract.lifecycle_errors(contract.make_lifecycle_proof(raw, changed)), (transport, mutation)
+            try:
+                contract.checked_lifecycle_proof(raw, changed)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError((transport, mutation, 'invalid proof emitted as passing'))
     mutations = (
         ("wrong Project", lambda p: p["views"]["cli"].update(project_id="wrong")),
         ("wrong Work", lambda p: p["views"]["portable"]["history"][0].update(work_id="wrong")),
