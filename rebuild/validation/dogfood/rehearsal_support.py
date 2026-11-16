@@ -6,6 +6,32 @@ These authored assertions demonstrate transport and validation, not semantic tru
 from typing import Any
 
 
+def session_readback(call, project, work):
+    """Observe both actual surfaces; compact Recall never supplies full prose."""
+    from pathlib import Path
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'end-to-end/multi-repository'))
+    import restart_recall
+    args = {'project_id': project, 'requested_language': 'en'}
+    compact = call('recall', args)
+    full = call('repository_understanding', args)
+    errors = restart_recall.resume_reader_errors(
+        {'project_id': project, 'goal_id': work}, compact, full)
+    if errors:
+        raise ValueError('session resume/full reader mismatch: ' + '; '.join(errors))
+    return compact, full
+
+
+def change_returned_goal_revision(answer, revision):
+    """Authored negative mutation of an actual current Resume DTO, never a read."""
+    if answer.get('reading_profile') != 'resume':
+        raise ValueError('temporal control requires actual current Resume profile')
+    basis = answer['selected_work']['evidence']['goal']['basis']
+    if basis['identity'] != answer['selected_work']['work_item_id'] or type(basis['revision']) is not int:
+        raise ValueError('temporal control lacks independent selected Goal revision')
+    basis['revision'] = revision
+
+
 def realization(plan):
     """Authored structural input; the Product alone supplies plan/receipt/readback."""
     import explanation_evidence as e

@@ -13,6 +13,8 @@ from answer_observations_self_test import AnswerTests
 import harness as h
 import machine_findings as machine
 import answer_projection
+import rehearsal_support
+import explanation_evidence
 
 
 def check_private_resume_projection(answer):
@@ -103,6 +105,33 @@ def run(config):
     import restart_recall
     for key in ('before', 'after', 'before_cli'):
         check_private_resume_projection(config[key])
+        answer = config[key]
+        for kind, selected in [('work', answer['selected_work'])] + [
+                ('decision', item) for item in answer['decisions']]:
+            observed = explanation_evidence.measured_subject_reading(selected, kind)
+            reference = selected['reading_references']['article'] if kind == 'work' else selected['reading_reference']
+            assert observed['explanation_state'] == reference['explanation_state'], observed
+            assert observed['reading_body'] == 'deferred' and observed['returned_answer_sha256'] is None
+            assert observed['returned_reference_sha256'] == explanation_evidence.binding(
+                explanation_evidence.api().json_bytes(reference))['sha256']
+    for key in ('before', 'after'):
+        calls = []
+        def call(name, arguments):
+            calls.append(name)
+            assert arguments == {'project_id': config['project'], 'requested_language': 'en'}
+            return config[key] if name == 'recall' else config[key + '_full']
+        compact, full = rehearsal_support.session_readback(call, config['project'], config['work'])
+        assert calls == ['recall', 'repository_understanding']
+        assert compact is config[key] and full is config[key + '_full']
+        wrong = copy.deepcopy(config[key + '_full'])
+        wrong['selected_work']['work_item_id'] = 'ab' * 16
+        try:
+            rehearsal_support.session_readback(lambda name, args: config[key] if name == 'recall' else wrong,
+                config['project'], config['work'])
+        except ValueError as error:
+            assert 'session resume/full reader mismatch' in str(error)
+        else:
+            raise AssertionError('foreign full reader accepted as deferred Resume content')
     for key in ('before', 'after'):
         errors = restart_recall.resume_reader_errors(
             {'project_id': config['project'], 'goal_id': config['work']}, config[key], config[key + '_full'])
@@ -158,6 +187,52 @@ def run(config):
             assert h.load_codex_capture(f.path).calls('canonical_mutate')[0].outcome == 'succeeded'
             if expected == 'confirmed_violation':
                 assert machine.disposition('shared_answer_integrity', fact['status']) == 'hard_blocking'
+        finally:
+            f.doCleanups()
+    # Exercise the actual rehearsal's temporal controls over actual Rust DTOs.
+    # Independent canonical Goal revision cannot be inferred from article metadata.
+    for key, revision in [('before', 2), ('after', 1)]:
+        value = copy.deepcopy(config[key])
+        rehearsal_support.change_returned_goal_revision(value, revision)
+        f = fixture(config)
+        try:
+            correction(f, config, after=key == 'before')
+            _, fact = f.evaluate(value)
+            assert fact['status'] == 'confirmed_violation', (key, fact)
+        finally:
+            f.doCleanups()
+    for field, bad in [('identity', 'ab' * 16), ('record_kind', 'decision'),
+            ('field', 'user_rationale'), ('source_ids', ['ab' * 16]), ('revision', True)]:
+        value = copy.deepcopy(config['after'])
+        value['selected_work']['evidence']['goal']['basis'][field] = bad
+        f = fixture(config)
+        try:
+            correction(f, config)
+            _, fact = f.evaluate(value)
+            assert fact['status'] == 'confirmed_violation', (field, fact)
+        finally:
+            f.doCleanups()
+    for mode in ('whole_revision', 'source_suffix', 'source_suffix_conflict'):
+        value = copy.deepcopy(config['after'])
+        basis = value['selected_work']['evidence']['goal']['basis']
+        if mode == 'whole_revision':
+            basis['revision'] = {'transport_omission': {'reason': 'serialized_byte_budget',
+                'exact_json_bytes': len(json.dumps(basis['revision']).encode()),
+                'basis': 'inspect the complete field on the authoritative parent record'}}
+        else:
+            sources = basis['source_ids']
+            basis['source_ids'] = [sources[0] if mode == 'source_suffix' else 'ab' * 16,
+                {'transport_omission': {'reason': 'serialized_byte_budget',
+                    'omitted_count': len(sources), 'first_omitted_identity': None,
+                    'basis': 'same parent identity, field and stable input order; inspect the authoritative record'}}]
+            # Keep an independently valid prefix/count for the positive omission.
+            if mode == 'source_suffix':
+                basis['source_ids'] = [dict(basis['source_ids'][-1])]
+        f = fixture(config)
+        try:
+            correction(f, config)
+            _, fact = f.evaluate(value)
+            assert fact['status'] == ('confirmed_violation' if mode.endswith('conflict') else 'indeterminate'), (mode, fact)
         finally:
             f.doCleanups()
     f = fixture(config)

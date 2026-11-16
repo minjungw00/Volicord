@@ -2236,6 +2236,19 @@ omissions remain incomplete. Large verification-outcome pressure must retain all
 four independent state dimensions without repeating the original report, and the
 real canonical inspection consumer must recover the complete original outcome.
 
+The Product-backed rehearsal observes compact Recall and a separate actual
+`repository_understanding` response through the same session recorder. Their
+exact subject/publication references must agree before complete explanation
+lifecycle validation uses the full response. A deferred reader reference is never
+substituted for returned prose. Temporal counterfactuals mutate the actual selected
+Goal basis, and the Naturalistic observer compares both global and selected Goal
+copies with observation-time authoring witnesses. A correct global copy cannot
+excuse a wrong selected revision/identity/Source basis. Valid whole-field and Source
+suffix omissions stay insufficient; a visible contradiction remains blocking.
+The measured explanation index records deferred reference identity and claimed
+availability separately from an absent returned article-body hash. Historical full
+reader captures and original failed rehearsal artifacts remain unchanged.
+
 Maintained Host/Operations tests scale a validated learning lifecycle to 80 historical
 Candidates with 16 rounds each and large polyglot capability coverage. They characterize
 the previous full-inspection Recall shape above 1 MiB, assert current Goal/behavior

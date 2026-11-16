@@ -13,6 +13,11 @@ independent state dimensions carry their own exact field inspection and offset.
 Verification outcomes are recovered from that original field, rather than copied
 into each dimension. Wrong field/revision/Work/index and omitted/type-invalid
 locator controls run through this same consumer.
+The Product-backed rehearsal reads complete explanation content separately from
+Recall and validates their exact publication binding before lifecycle checks.
+Its temporal controls and the Naturalistic observer check the selected canonical
+Goal basis even when the global Goal list is complete. Deferred reading references
+are indexed as references, with no invented returned-body hash or content approval.
 Historical full-reader captures retain their original mandatory fields and exact
 collector proof. They are not a second Product decoding path or a new campaign.
 

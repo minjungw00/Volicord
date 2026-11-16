@@ -109,6 +109,24 @@ def list_items(value):
     return value if isinstance(value, list) else []
 
 
+def measured_subject_reading(selected, kind):
+    """Index returned availability without promoting deferred references to prose."""
+    if selected.get('reading_profile') == 'resume':
+        import answer_projection as projection
+        references = selected.get('reading_references')
+        reference = (references.get('article') if isinstance(references, dict) else None
+            ) if kind == 'work' else selected.get('reading_reference')
+        safe = projection.select(reference, projection.RESUME_REFERENCE)
+        state = safe.get('explanation_state') if isinstance(safe, dict) else None
+        return {'reading_profile': 'resume', 'reading_body': 'deferred',
+            'explanation_state': state if isinstance(state, str) else 'unresolvable',
+            'returned_answer_sha256': None,
+            'returned_reference_sha256': binding(api().json_bytes(safe))['sha256']}
+    answers = selected.get('answers')
+    return {'explanation_state': answers.get('explanation_state') if isinstance(answers, dict) else 'unresolvable',
+        'returned_answer_sha256': binding(api().json_bytes(answers))['sha256'] if isinstance(answers, dict) else None}
+
+
 def subject_answers(readback, subject):
     if subject['kind'] == 'decision':
         candidates = list_items(readback.get('decisions'))
@@ -1013,12 +1031,9 @@ def collection_index(root, mapped):
             if not subjects:
                 measured.append(common | {'state': 'returned_no_subject_answer', 'project_id': result.get('project_id')})
             for kind, selected in subjects:
-                answers = selected.get('answers')
                 measured.append(common | {'project_id': result.get('project_id'),
                     'subject': {'kind': kind, 'identity': selected.get('work_item_id' if kind == 'work' else 'identity')},
-                    'language': returned.get('requested_language'),
-                    'explanation_state': answers.get('explanation_state') if isinstance(answers, dict) else 'unresolvable',
-                    'returned_answer_sha256': binding(api().json_bytes(answers))['sha256'] if isinstance(answers, dict) else None})
+                    'language': returned.get('requested_language'), **measured_subject_reading(selected, kind)})
     relations = publication_relations(root)
     steward = []
     for path in preparations(root):

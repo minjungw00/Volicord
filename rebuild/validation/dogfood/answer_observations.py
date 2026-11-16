@@ -15,7 +15,7 @@ from recorded_action_evidence import (
     ANSWER_DTO_FIELDS, ANSWER_DTO_OPTIONAL, PROVENANCE_DTO_FIELDS,
     field_omission, recorded_action_evidence, transport_omission,
 )
-from answer_projection import PROVENANCE, ANSWERS, CLAIM, EVIDENCE
+from answer_projection import PROVENANCE, ANSWERS, CLAIM, EVIDENCE, BASIS, RESUME_WORK, RESUME_EVIDENCE, RESUME_TEXT
 
 
 def resume_reading_observation(selected, project, work, language):
@@ -568,23 +568,42 @@ def observe(work, resume, bundle, work_id):
                         limits.append('observation-time Goal revision unavailable')
                     elif revision != goal['revision']:
                         errors.append('observation-time Goal revision')
-                if not matching and omitted_goal(result, goal_work):
-                    # The global Goal list is bounded independently of selected
-                    # Work. Its exact omission cannot erase visible contradictions
-                    # or replace missing observation-time authoring evidence.
-                    selected_goal = result.get('selected_work')
+                selected_goal = result.get('selected_work')
+                global_goal_omitted = not matching and omitted_goal(result, goal_work)
+                if (isinstance(selected_goal, dict) and selected_goal.get('reading_profile') == 'resume'
+                        or global_goal_omitted):
+                    # Both canonical copies must agree with independent witnesses.
+                    # A complete global list cannot excuse a wrong selected Goal;
+                    # its exact omission also cannot erase visible contradictions.
                     evidence = selected_goal.get('evidence') if isinstance(selected_goal, dict) else None
                     reading = evidence.get('goal') if isinstance(evidence, dict) else None
                     basis = reading.get('basis') if isinstance(reading, dict) else None
+                    omitted(selected_goal, 'evidence', RESUME_WORK, '/selected_work')
+                    omitted(evidence, 'goal', RESUME_EVIDENCE, '/selected_work/evidence')
+                    omitted(reading, 'basis', RESUME_TEXT, '/selected_work/evidence/goal')
+                    unavailable = ('selected Goal basis unavailable after exact Goal-list bound omission'
+                        if global_goal_omitted else 'selected Goal observation-time basis unavailable')
                     if not isinstance(basis, dict):
-                        limits.append('selected Goal basis unavailable after exact Goal-list bound omission')
+                        limits.append(unavailable)
                     else:
                         for field, expected in (('record_kind', 'context_item'), ('identity', goal_work),
                                 ('field', 'statement'), ('revision', goal['revision']), ('source_ids', goal['sources'])):
-                            if expected is None or field not in basis:
-                                limits.append('selected Goal basis unavailable after exact Goal-list bound omission')
-                            elif basis[field] != expected or field == 'revision' and type(basis[field]) is not int:
+                            actual = basis.get(field)
+                            if field == 'source_ids' and suffix_omission(actual):
+                                prefix = actual[:-1]
+                                if (not all(isinstance(v, str) and re.fullmatch(r'[0-9a-f]{32}', v) for v in prefix)
+                                        or expected is not None and (prefix != expected[:len(prefix)]
+                                            or actual[-1]['transport_omission']['omitted_count'] != len(expected) - len(prefix))):
+                                    errors.append('selected Goal observation-time basis')
+                                limits.append(unavailable)
+                                omissions.append({'scope': '/selected_work/evidence/goal/basis/source_ids',
+                                    'placement': 'stable_suffix', 'marker': actual[-1]['transport_omission']})
+                            elif (omitted(basis, field, BASIS, '/selected_work/evidence/goal/basis')
+                                    or expected is None or field not in basis):
+                                limits.append(unavailable)
+                            elif actual != expected or field == 'revision' and type(actual) is not int:
                                 errors.append('selected Goal observation-time basis')
+                    if global_goal_omitted:
                         limits.append('supported omission: exact Goal identity omitted from bounded global list')
                 if bundle and result.get('project_id') != bundle.project_id:
                     errors.append('Project identity')

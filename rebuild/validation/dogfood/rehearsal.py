@@ -210,9 +210,9 @@ def temporal_controls(root, campaign_root, manifest, temporal):
             and e['payload'].get('invocation', {}).get('tool') == 'recall']
         require(len(recalls) == 2, 'control needs two actual captured Recalls')
         if control in {'post_correction_old_revision', 'future_correction_scope'}:
-            answer = recalls[1 if control == 'post_correction_old_revision' else 0]['result']['Ok']['structuredContent']['selected_work']['answers']
-            require(answer['explanation_state'] == 'current', 'old-revision control lacks a current claim')
-            next(e for e in answer['provenance']['evidence'] if e['key'] == 'goal')['revision'] = 1 if control == 'post_correction_old_revision' else 2
+            answer = recalls[1 if control == 'post_correction_old_revision' else 0]['result']['Ok']['structuredContent']
+            rehearsal_support.change_returned_goal_revision(answer,
+                1 if control == 'post_correction_old_revision' else 2)
         else:
             mutation = next(e['payload'] for e in events if e['payload'].get('type') == 'mcp_tool_call_end'
                 and e['payload'].get('invocation', {}).get('tool') == 'canonical_mutate')
@@ -645,18 +645,18 @@ def run_sessions(root, campaign_root, binary, logs):
                 work = goal['context_item_id']
                 before_plan, before_response, before_receipt = rehearsal_support.product_explanation(
                     root, binary, runtime, project, work, logs, 'recall-before')
-                before = call('recall', {'project_id': project, 'requested_language': 'en'})
+                before, before_full = rehearsal_support.session_readback(call, project, work)
                 explanation_evidence.validate_lifecycle({'plan': before_plan, 'project_id': project,
                     'subject': {'kind': 'work', 'identity': work}, 'language': 'en'},
-                    before_response, before_receipt, before)
+                    before_response, before_receipt, before_full)
                 mutation = rehearsal_support.correction(call, project, work, 1, scenario)
                 after_plan, after_response, after_receipt = rehearsal_support.product_explanation(
                     root, binary, runtime, project, work, logs, 'recall-after')
-                after = call('recall', {'project_id': project, 'requested_language': 'en'})
+                after, after_full = rehearsal_support.session_readback(call, project, work)
                 rehearsal_support.check_sources(before_plan, after_plan, mutation)
                 explanation_evidence.validate_lifecycle({'plan': after_plan, 'project_id': project,
                     'subject': {'kind': 'work', 'identity': work}, 'language': 'en'},
-                    after_response, after_receipt, after)
+                    after_response, after_receipt, after_full)
             else:
                 call("recall", {"project_id": project, "requested_language": "en"})
         path = root / (c.session_slot_id(kind, label, role) + ".jsonl")
