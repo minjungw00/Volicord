@@ -832,6 +832,15 @@ publication을 이 참조에서 되살리지 않는다. 검증 요약은 Checkpo
 scope를 명시하며 test 개수, 해결 여부 또는 최신 변경의 coverage로 해석하지 않는다.
 기존 full reader와 canonical history는 lossless 조회 책임을 유지한다.
 
+독립 상태 observation은 해당 dimension만 전달한다. Work에는 work state와 Source
+basis, verification에는 검증 상태와 Source identity, review/acceptance에는 각각의
+상태와 Source identity를 둔다. 네 observation마다 다른 dimension이나 검증 원문을
+반복하지 않는다. 각 observation은 정확한 Checkpoint identity/revision과 dimension
+field의 offset 0 inspection을 유지한다. 검증 fact의 `outcome_recorded`는 원문의 존재만
+나타내며 결과의 성공이나 해결을 뜻하지 않는다. 원문과 scoped run은 verification
+field inspection 및 fact index로 lossless 복원한다. 이 분리는 selection이나 canonical
+상태, 전체 이력 및 기존 byte budget을 변경하지 않는다.
+
 인간용 Recall은 같은 shared fact의 독립 상태와 recorded action을 표시하고 전체
 검증 조회 경로를 제공한다. 큰 generated article이나 반복 검증 report는 canonical
 Decision 이유와 행동보다 먼저 budget을 소비할 수 없다. 비정상적으로 큰 canonical

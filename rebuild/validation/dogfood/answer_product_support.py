@@ -12,6 +12,54 @@ import sys
 from answer_observations_self_test import AnswerTests
 import harness as h
 import machine_findings as machine
+import answer_projection
+
+
+def check_private_resume_projection(answer):
+    """Actual Rust DTO, including field expansion locators, through review custody."""
+    projected = answer_projection.project(answer, 'recall')
+    answer_projection.validate(projected)
+    assert projected['semantic_complete'] and not projected['consistency_errors'], projected
+    evidence = answer['selected_work']['evidence']
+    for name, field in [('latest_state', 'work_state'), ('verification', 'verification'),
+            ('review', 'user_review'), ('acceptance', 'user_acceptance')]:
+        state = evidence[name]
+        assert isinstance(state, dict), (name, state)
+        for mutation in ('field', 'revision', 'checkpoint', 'offset_type', 'omission'):
+            value = copy.deepcopy(answer)
+            changed = value['selected_work']['evidence'][name]
+            locator = changed['detail_inspection']
+            if mutation == 'field':
+                locator['field'] = 'goal'
+            elif mutation == 'revision':
+                locator['revision'] += 1
+            elif mutation == 'checkpoint':
+                changed['checkpoint_id'] = locator['record_id'] = 'ab' * 16
+            elif mutation == 'offset_type':
+                locator['offset'] = '0'
+            else:
+                changed['detail_inspection'] = {'transport_omission': {
+                    'reason': 'serialized_byte_budget', 'exact_json_bytes': len(json.dumps(locator).encode()),
+                    'basis': 'inspect the complete field on the authoritative parent record'}}
+            result = answer_projection.project(value, 'recall')
+            answer_projection.validate(result)
+            if mutation in {'offset_type', 'omission'}:
+                assert not result['semantic_complete'], (name, mutation, result)
+            else:
+                assert result['consistency_errors'], (name, mutation, result)
+            if mutation == 'omission':
+                assert not result['consistency_errors'], result
+    reports = evidence['verification']['verification']
+    assert reports and reports[0]['outcome_recorded']
+    for mutation in ('field', 'index'):
+        value = copy.deepcopy(answer)
+        report = value['selected_work']['evidence']['verification']['verification'][0]
+        if mutation == 'field':
+            report['detail_inspection']['field'] = 'next_step'
+        else:
+            report['verification_index'] += 1
+        result = answer_projection.project(value, 'recall')
+        assert 'resume verification field/index mismatch' in result['consistency_errors'], result
 
 
 def fixture(config):
@@ -53,6 +101,8 @@ def correction(f, config, *, after=False):
 def run(config):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'end-to-end/multi-repository'))
     import restart_recall
+    for key in ('before', 'after', 'before_cli'):
+        check_private_resume_projection(config[key])
     for key in ('before', 'after'):
         errors = restart_recall.resume_reader_errors(
             {'project_id': config['project'], 'goal_id': config['work']}, config[key], config[key + '_full'])

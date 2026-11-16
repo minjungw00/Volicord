@@ -2228,6 +2228,14 @@ completeness or a replacement/Human pass. Earlier original transport omissions a
 blocked qualifications remain immutable; Product changes require fresh gate and
 naturalistic evidence under the existing campaign contract.
 
+The actual Rust CLI/MCP DTO also passes the strict private returned-meaning
+projection, including every dimension-specific state field locator and offset.
+Counterfactual wrong fields, revisions, foreign-Work Checkpoints and verification
+indices retain consistency failures; wrong offset types and exact transport
+omissions remain incomplete. Large verification-outcome pressure must retain all
+four independent state dimensions without repeating the original report, and the
+real canonical inspection consumer must recover the complete original outcome.
+
 Maintained Host/Operations tests scale a validated learning lifecycle to 80 historical
 Candidates with 16 rounds each and large polyglot capability coverage. They characterize
 the previous full-inspection Recall shape above 1 MiB, assert current Goal/behavior

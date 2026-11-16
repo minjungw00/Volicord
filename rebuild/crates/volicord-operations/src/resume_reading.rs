@@ -16,23 +16,62 @@ pub(crate) fn verification_json(
     index: usize,
 ) -> Value {
     json!({"state":crate::recall::verification_state_name(fact.state),
-        "source_id":fact.source_id.map(|id|id.to_string()),"outcome":fact.outcome,
+        "source_id":fact.source_id.map(|id|id.to_string()),"outcome_recorded":fact.outcome.is_some(),
         "scoped_run_recorded":fact.scoped_run.is_some(),"verification_index":index,
         "detail_inspection":inspection("checkpoint",checkpoint,revision,"verification")})
 }
 
-fn state_json(state: &volicord_projections::WorkStateObservation) -> Value {
-    json!({"checkpoint_id":state.checkpoint_id.to_string(),"checkpoint_revision":state.checkpoint_revision,
+#[derive(Clone, Copy)]
+enum StateDimension {
+    Work,
+    Verification,
+    Review,
+    Acceptance,
+}
+
+fn state_json(
+    state: &volicord_projections::WorkStateObservation,
+    dimension: StateDimension,
+) -> Value {
+    let field = match dimension {
+        StateDimension::Work => "work_state",
+        StateDimension::Verification => "verification",
+        StateDimension::Review => "user_review",
+        StateDimension::Acceptance => "user_acceptance",
+    };
+    let mut value = json!({"checkpoint_id":state.checkpoint_id.to_string(),"checkpoint_revision":state.checkpoint_revision,
         "observed_at_unix_micros":state.observed_at.as_unix_micros(),
-        "work_state":crate::recall::work_state_name(state.work_state),
-        "work_source_basis":state.work_source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        "verification":state.verification.iter().enumerate().map(|(index,fact)|
-            verification_json(fact,&state.checkpoint_id.to_string(),state.checkpoint_revision,index)).collect::<Vec<_>>(),
-        "user_review":{"state":crate::recall::user_review_state_name(state.user_review.state),"source_id":state.user_review.source_id.map(|id|id.to_string())},
-        "user_acceptance":{"state":crate::recall::user_acceptance_state_name(state.user_acceptance.state),"source_id":state.user_acceptance.source_id.map(|id|id.to_string())},
         "later_changed_checkpoint_ids":state.later_changed_checkpoint_ids.iter().map(ToString::to_string).collect::<Vec<_>>(),
-        "detail_inspection":{"tool":"canonical_inspect","record_kind":"checkpoint",
-            "record_id":state.checkpoint_id.to_string(),"revision":state.checkpoint_revision,"offset":0}})
+        "detail_inspection":inspection("checkpoint",&state.checkpoint_id.to_string(),state.checkpoint_revision,field)});
+    let fact = match dimension {
+        StateDimension::Work => {
+            value["work_source_basis"] = json!(state
+                .work_source_basis
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>());
+            json!(crate::recall::work_state_name(state.work_state))
+        }
+        StateDimension::Verification => json!(state
+            .verification
+            .iter()
+            .enumerate()
+            .map(|(index, fact)| verification_json(
+                fact,
+                &state.checkpoint_id.to_string(),
+                state.checkpoint_revision,
+                index
+            ))
+            .collect::<Vec<_>>()),
+        StateDimension::Review => {
+            json!({"state":crate::recall::user_review_state_name(state.user_review.state),"source_id":state.user_review.source_id.map(|id|id.to_string())})
+        }
+        StateDimension::Acceptance => {
+            json!({"state":crate::recall::user_acceptance_state_name(state.user_acceptance.state),"source_id":state.user_acceptance.source_id.map(|id|id.to_string())})
+        }
+    };
+    value[field] = fact;
+    value
 }
 
 fn text_json(text: &volicord_projections::ReadingText) -> Value {
@@ -128,10 +167,10 @@ pub(crate) fn work_json(
             "result":work.reading.answers.result.as_ref().map(text_json),
             "result_observed_at":work.reading.answers.result_observed_at.map(|t|t.as_unix_micros()),
             "next_step":text_json(&work.reading.next_step),
-            "latest_state":work.reading.answers.latest_state.as_ref().map(state_json),
-            "verification":work.reading.answers.verification.as_ref().map(state_json),
-            "review":work.reading.answers.review.as_ref().map(state_json),
-            "acceptance":work.reading.answers.acceptance.as_ref().map(state_json),
+            "latest_state":work.reading.answers.latest_state.as_ref().map(|s|state_json(s,StateDimension::Work)),
+            "verification":work.reading.answers.verification.as_ref().map(|s|state_json(s,StateDimension::Verification)),
+            "review":work.reading.answers.review.as_ref().map(|s|state_json(s,StateDimension::Review)),
+            "acceptance":work.reading.answers.acceptance.as_ref().map(|s|state_json(s,StateDimension::Acceptance)),
             "code_availability":format!("{:?}",work.reading.code_availability).to_lowercase(),
             "analysis_snapshot_ids":work.reading.analysis_snapshot_basis,
             "repository_snapshot_ids":work.reading.repository_snapshot_basis,

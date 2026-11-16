@@ -223,13 +223,18 @@ RESUME_INSPECT = {'tool': S, 'arguments': {'project_id': S, 'subject_kind': S,
     'subject_id': S, 'language': S, 'action': S, 'offset': I}}
 RESUME_REFERENCE = {'role': S, 'explanation_state': S, 'diagnostic': nullable(S),
     'publication_id': nullable(S), 'plan_fingerprint': nullable(S), 'inspect': RESUME_INSPECT}
-RESUME_VERIFICATION = {'state': S, 'source_id': nullable(S), 'outcome': nullable(S),
-    'scoped_run_recorded': B, 'verification_index': I, 'detail_inspection': DETAIL_INSPECTION}
-RESUME_STATE = {**STATE, 'verification': [RESUME_VERIFICATION]}
+RESUME_FIELD_INSPECTION = {**DETAIL_INSPECTION, 'offset': I}
+RESUME_VERIFICATION = {'state': S, 'source_id': nullable(S), 'outcome_recorded': B,
+    'scoped_run_recorded': B, 'verification_index': I, 'detail_inspection': RESUME_FIELD_INSPECTION}
+RESUME_STATE_BASIS = {'checkpoint_id': S, 'checkpoint_revision': I,
+    'observed_at_unix_micros': I, 'later_changed_checkpoint_ids': [S], 'detail_inspection': RESUME_FIELD_INSPECTION}
 RESUME_TEXT = {k: v for k, v in READING.items() if k not in {'display_english', 'display_korean'}}
 RESUME_EVIDENCE = {k: v for k, v in WORK_EVIDENCE.items() if k not in {'states', 'original_changes'}}
-RESUME_EVIDENCE.update(goal=RESUME_TEXT, next_step=RESUME_TEXT, result=nullable(RESUME_TEXT))
-RESUME_EVIDENCE.update({k: nullable(RESUME_STATE) for k in ('latest_state', 'verification', 'review', 'acceptance')})
+RESUME_EVIDENCE.update(goal=RESUME_TEXT, next_step=RESUME_TEXT, result=nullable(RESUME_TEXT),
+    latest_state=nullable({**RESUME_STATE_BASIS, 'work_state': S, 'work_source_basis': [S]}),
+    verification=nullable({**RESUME_STATE_BASIS, 'verification': [RESUME_VERIFICATION]}),
+    review=nullable({**RESUME_STATE_BASIS, 'user_review': {'state': S, 'source_id': nullable(S)}}),
+    acceptance=nullable({**RESUME_STATE_BASIS, 'user_acceptance': {'state': S, 'source_id': nullable(S)}}))
 RESUME_REPORT = {'scope': S, 'report_count_unit': S, 'report_count_scope': S,
     'reported_test_count_basis': S, 'report_counts': {k: I for k in ('total', 'passed', 'failed', 'partial', 'not_run')},
     'execution_count': I, 'limit': S, 'inspect': {'interface': S, 'arguments': [S]}}
@@ -391,6 +396,31 @@ def consistency(value, operation):
                 if contradicts(reference.get('role', missing), 'generated_interpretation'):
                     errors.append('resume reading role mismatch')
             if kind == 'work':
+                evidence = work.get('evidence')
+                checkpoints = work.get('checkpoint_ids')
+                for name, field in [('latest_state', 'work_state'), ('verification', 'verification'),
+                        ('review', 'user_review'), ('acceptance', 'user_acceptance')]:
+                    state = evidence.get(name) if isinstance(evidence, dict) else None
+                    if not isinstance(state, dict) or unknown(state):
+                        continue
+                    locator = state.get('detail_inspection')
+                    expected = {'tool': 'canonical_inspect', 'record_kind': 'checkpoint',
+                        'record_id': state.get('checkpoint_id', missing),
+                        'revision': state.get('checkpoint_revision', missing), 'field': field, 'offset': 0}
+                    if contradicts(locator, expected):
+                        errors.append('resume state field/Checkpoint mismatch')
+                    if (isinstance(checkpoints, list) and not omissions(checkpoints)
+                            and isinstance(state.get('checkpoint_id'), str)
+                            and state['checkpoint_id'] not in checkpoints):
+                        errors.append('resume state Work/Checkpoint mismatch')
+                    reports = state.get('verification')
+                    if isinstance(reports, list):
+                        for index, report in enumerate(reports):
+                            if not isinstance(report, dict) or unknown(report):
+                                continue
+                            if (contradicts(report.get('detail_inspection', missing), expected)
+                                    or contradicts(report.get('verification_index', missing), index)):
+                                errors.append('resume verification field/index mismatch')
                 fact = work.get('next_action')
                 action = fact.get('recorded_action') if isinstance(fact, dict) else None
                 if isinstance(action, dict) and not unknown(action):

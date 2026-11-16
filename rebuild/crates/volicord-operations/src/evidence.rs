@@ -134,7 +134,7 @@ impl LocalOperations {
                         "changed_source_basis" => sources = cp.changed_source_basis.clone(),
                         _ => {}
                     }
-                    fields = json!({"goal":cp.goal,"state_change":cp.state_change,"next_step":cp.next_step,
+                    fields = json!({"goal":cp.goal,"work_state":crate::recall::work_state_name(cp.work_state),"state_change":cp.state_change,"next_step":cp.next_step,
                     "changed_paths":cp.changed_paths,"source_basis":ids(&cp.source_basis),"changed_source_basis":ids(&cp.changed_source_basis),
                     "applied_decisions":cp.applied_decisions.iter().map(ToString::to_string).collect::<Vec<_>>(),
                     "verification":cp.verification.iter().map(|v|json!({"state":crate::recall::verification_state_name(v.state),"source_id":v.source_id.map(|s|s.to_string()),"outcome":v.outcome,"scoped_run":v.scoped_run})).collect::<Vec<_>>(),
@@ -417,6 +417,7 @@ pub(crate) fn canonical_fields(kind: &str) -> &'static [&'static str] {
         "checkpoint" => &[
             "source_status",
             "goal",
+            "work_state",
             "state_change",
             "next_step",
             "verification",

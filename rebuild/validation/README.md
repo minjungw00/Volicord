@@ -8,6 +8,11 @@ CLI/MCP consumers; canonical identity, distinct Decision reasons, independent
 states and full-reader expansion remain required. The private observer checks
 explicit resume references rather than synthesizing missing full answers. Exact
 scoped omissions remain insufficient and visible contradictions remain blocking.
+Actual Rust returns must pass the strict private returned-meaning projection;
+independent state dimensions carry their own exact field inspection and offset.
+Verification outcomes are recovered from that original field, rather than copied
+into each dimension. Wrong field/revision/Work/index and omitted/type-invalid
+locator controls run through this same consumer.
 Historical full-reader captures retain their original mandatory fields and exact
 collector proof. They are not a second Product decoding path or a new campaign.
 

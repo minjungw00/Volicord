@@ -984,6 +984,52 @@ fn mcp_work_consumers_recover_omitted_verification_through_operations_detail_rea
         json!({"project_id":f.project.to_string()}),
     )?;
     assert!(recall.to_string().contains("serialized_byte_budget"));
+    // A large original verification report must not be repeated across the
+    // independently selected current state dimensions in the resume response.
+    let evidence = &recall["selected_work"]["evidence"];
+    for (dimension, field) in [
+        ("latest_state", "work_state"),
+        ("verification", "verification"),
+        ("review", "user_review"),
+        ("acceptance", "user_acceptance"),
+    ] {
+        let state = &evidence[dimension];
+        assert!(state.get(field).is_some(), "{dimension}: {state}");
+        assert_eq!(state["detail_inspection"]["field"], field);
+        assert_eq!(state["detail_inspection"]["offset"], 0);
+        for other in [
+            "work_state",
+            "verification",
+            "user_review",
+            "user_acceptance",
+        ] {
+            assert_eq!(state.get(other).is_some(), other == field);
+        }
+        let mut args = state["detail_inspection"].clone();
+        args.as_object_mut().ok_or("locator")?.remove("tool");
+        args["project_id"] = json!(f.project.to_string());
+        let mut recovered = String::new();
+        loop {
+            let page = invoke(&mut host, "canonical_inspect", args.clone())?;
+            recovered.push_str(page["chunk"].as_str().ok_or("state chunk")?);
+            let Some(next) = page["next_offset"].as_u64() else {
+                break;
+            };
+            args["offset"] = json!(next);
+            args["expected_fingerprint"] = page["fingerprint"].clone();
+        }
+        let original: Value = serde_json::from_str(&recovered)?;
+        if field == "verification" {
+            assert_eq!(original[0]["outcome"], exact);
+        } else {
+            assert_eq!(original, state[field], "{dimension} exact original field");
+        }
+    }
+    let report = &evidence["verification"]["verification"][0];
+    assert_eq!(report["outcome_recorded"], true);
+    assert!(report.get("outcome").is_none());
+    assert_eq!(report["detail_inspection"]["record_id"], cp.id.to_string());
+    assert_eq!(report["detail_inspection"]["revision"], cp.revision);
     let mut offset = 0;
     let mut fingerprint = None;
     let mut found = false;
