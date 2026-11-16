@@ -170,6 +170,12 @@ read-time translation. Original artifacts without this inventory are not upgrade
 `review_operations_self_test.py` cover language swaps, failed export, a third
 reader language with an independent UI locale, and copied-package consumption.
 
+Connection-detail browser checks inspect the displayed claim header and selected
+wording against independently admitted endpoints, direction and condition. The
+hidden former endpoint-card DOM is not a geometry oracle. Actual visibility,
+horizontal fit, exact evidence selection/return and previous/next description
+scroll preservation remain separate assertions across the selected figures.
+
 An explicitly selected `prepare-qualitative-review --code-source WORK_SLOT=REPOSITORY`
 adds bounded, indexed before/after code bodies at that Work's recorded Git boundaries.
 Commit/tree/blob witnesses and native evidence bindings remain verifiable without

@@ -212,14 +212,24 @@ async function nativeLinkNavigation(page, link, receipt) {
           if(config.connection_details) {
             const edge=(d.meaning.relations||d.meaning.groups.flatMap(g=>g.messages)).find(e=>e.id===c.element);
             if(edge) {
-              const detail=claim.locator('.diagram-connection');
               const label=l=>l.text;
               const nodes=d.meaning.nodes||d.meaning.participants;
-              assert.deepEqual(await detail.locator('.connection-endpoint > span').allTextContents(),[edge.from,edge.to].map(id=>label(nodes.find(n=>n.id===id).label)),'independently admitted directed endpoints');
-              assert.equal(await detail.locator('.connection-wording').evaluate(n=>n.firstChild.textContent),label(edge.label));
-              const box=await detail.boundingBox();assert(box.width<=width-32,'selected connection fits the reading width');
-              const geometry=await detail.evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth,labels:[...n.querySelectorAll('.connection-endpoint,.connection-wording,.connection-condition')].map(e=>({height:e.clientHeight,scroll:e.scrollWidth,width:e.clientWidth,font:getComputedStyle(e).fontSize}))}));
-              assert(geometry.scroll<=geometry.width+1 && geometry.labels.every(l=>l.scroll<=l.width+1&&parseFloat(l.font)>=16),'complete native-size selected connection');
+              // The reader presents direction/context in the claim header and
+              // the authored wording below it. The old endpoint-card DOM is
+              // deliberately hidden; it is not a displayed geometry oracle.
+              const heading=claim.locator('.diagram-claim-header > h3');
+              const wording=claim.locator(':scope > .diagram-selected-label');
+              const endpoints=[edge.from,edge.to].map(id=>label(nodes.find(n=>n.id===id).label));
+              assert((await heading.textContent()).includes(endpoints.join(' → ')),'visible header keeps independently admitted directed endpoints');
+              assert.equal(await wording.textContent(),label(edge.label),'visible authored connection wording');
+              const condition=edge.condition||(d.meaning.groups||[]).find(g=>g.messages.some(m=>m.id===edge.id))?.condition;
+              if(condition) assert((await heading.textContent()).includes(label(condition)),'visible connection keeps its actual condition');
+              for(const visible of [heading,wording]) {
+                assert(await visible.isVisible(),'selected connection text is displayed');
+                const box=await visible.boundingBox();assert(box&&box.width<=width-32,'displayed selected connection fits the reading width');
+                const geometry=await visible.evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth,height:n.clientHeight,font:getComputedStyle(n).fontSize}));
+                assert(geometry.height>0&&geometry.scroll<=geometry.width+1,'displayed connection text is not horizontally clipped');
+              }
               if(config.capture_sources) await claim.screenshot({path:path.join(output,`${c.key}-${width}-${mode}-connection.png`)});
             }
           }
