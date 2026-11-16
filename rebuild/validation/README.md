@@ -170,6 +170,12 @@ read-time translation. Original artifacts without this inventory are not upgrade
 `review_operations_self_test.py` cover language swaps, failed export, a third
 reader language with an independent UI locale, and copied-package consumption.
 
+Copied-package loading recomputes each selected reader binding from its retained
+HTML and navigation inventory before qualification/lineage compares immutable
+campaign source bytes. Display metadata extends the verified Viewer origin;
+it does not replace the exact original path/byte/hash check. Missing or relabelled
+languages, substituted failed exports and changed publication identities refuse.
+
 Connection-detail browser checks inspect the displayed claim header and selected
 wording against independently admitted endpoints, direction and condition. The
 hidden former endpoint-card DOM is not a geometry oracle. Actual visibility,

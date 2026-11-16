@@ -306,6 +306,11 @@ def verify_campaign_work_scope(index, manifest):
             else:
                 expected = {'bytes': entry['bytes'], 'sha256': entry['sha256']}
                 expected_origin = {'kind': 'evidence_set_member', 'path': origin['path'], **expected}
+                if entry['surface'] == 'viewer_snapshot' and 'requested_language' in origin:
+                    # Recomputed from retained HTML/summary by package loading;
+                    # the original evidence-set path/bytes/hash stay mandatory.
+                    expected_origin.update(requested_language=entry['locale'],
+                        ui_locale=origin['ui_locale'], publication_ids=origin['publication_ids'])
             review.require(origin == expected_origin
                 and manifest['artifacts'].get(origin['path']) == expected,
                 'review source differs from immutable campaign evidence')
@@ -1100,7 +1105,7 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
         "completion_obligations": review.completion_obligations(index, policy),
         "preparer_revision": c.harness.git_head(c.ROOT),
         "preparer_files": {name: c.harness.sha256(Path(__file__).parent / name) for name in
-            (("review_operations.py", "human_review.py", "viewer_observation.py", "human_observation_plan.py", "fixtures/human-observation-surfaces.json", "review_captures.py", "review_explanations.py", "answer_projection.py", "explanation_evidence.py", "answer_observations.py", "codex_events.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
+            (("review_operations.py", "reading_surfaces.py", "human_review.py", "viewer_observation.py", "human_observation_plan.py", "fixtures/human-observation-surfaces.json", "review_captures.py", "review_explanations.py", "answer_projection.py", "explanation_evidence.py", "answer_observations.py", "codex_events.py", "qualitative_review.py", "cli_observations.py", "identity_provenance.py",
               "authority_obligations.py", "interaction_diagnostics.py", "workload_intents.py", "evaluation.json")
              + (("collector_provenance.py",) if code_sources else ()))}}
     preparation_bytes = encoded(preparation)
@@ -1122,6 +1127,59 @@ def prepare(root, output, *, reviewer_kind, session_id=None, identity=None, eval
     return {"state": "prepared", "review_root": str(output), "package_id": package_id,
         "review_run_id": reviewer["run_id"], "reviewer_kind": reviewer_kind,
         "preparation_sha256": digest(preparation_bytes), "qualification_state": "not_run"}
+
+
+def verify_reader_snapshot_scope(index, contents, candidate):
+    """Bind selected languages to complete retained displays, including copied runs."""
+    for journey in index['journey_samples']:
+        scope = journey['sample_id']
+        navigations = [e for e in index['evidence'].values()
+            if e['surface'] == 'viewer_navigation_machine' and e['sample_id'] == scope]
+        review.require(len(navigations) <= 1, 'duplicate reader navigation scope')
+        navigation = json.loads(contents[navigations[0]['path']]) if navigations else {}
+        readers = [e for e in index['evidence'].values()
+            if e['surface'] == 'viewer_snapshot' and e['sample_id'] == scope]
+        if 'reader_languages' not in navigation and 'reader_snapshots' not in navigation:
+            review.require('reader_languages' not in journey and not any(
+                'requested_language' in e['origin'] for e in readers),
+                'reader languages lack a retained navigation inventory')
+            continue  # Historical unspecified scope receives no invented language inventory.
+        languages = reading_surfaces.languages(navigation['requested_language'],
+            navigation.get('reader_languages'), [])
+        projects = {s['project_id'] for s in index['samples']
+            if s['sample_id'] in journey['represented_work_sample_ids']}
+        review.require(len(projects) == 1 and navigation['project_id'] in projects
+            and navigation['candidate_head'] == candidate
+            and journey.get('reader_languages') == languages,
+            'reader language Project/candidate/inventory differs from retained evidence')
+        snapshots = navigation['reader_snapshots']
+        review.require(isinstance(snapshots, dict) and set(snapshots) == set(languages),
+            'reader snapshot language inventory changed')
+        selected = [e for e in readers if e.get('locale') in languages
+            or 'requested_language' in e['origin']]
+        review.require(all(e.get('locale') in languages for e in selected),
+            'reader snapshot claims an unselected language')
+        for language in languages:
+            row = snapshots[language]
+            entries = [e for e in selected if e.get('locale') == language]
+            review.require(row['requested_language'] == language
+                and row['locale'] in {'en', 'ko'} and row['status'] in {'passed', 'failed'},
+                'invalid retained reader language scope')
+            if row['status'] == 'failed':
+                review.require(not entries, 'unavailable reader language was substituted')
+                continue
+            review.require(len(entries) == 1, 'complete selected-language reader missing or duplicated')
+            entry = entries[0]
+            observed = reading_surfaces.inspect(contents[entry['path']],
+                navigation['project_id'], language, row['locale'])
+            expected = {'kind': 'evidence_set_member', 'path': row['relative_evidence_path'],
+                'bytes': row['bytes'], 'sha256': row['sha256'],
+                'requested_language': language, 'ui_locale': row['locale'],
+                'publication_ids': observed['publication_ids']}
+            review.require(entry['origin'] == expected
+                and entry['bytes'] == row['bytes'] and entry['sha256'] == row['sha256']
+                and observed['publication_ids'] == row['publication_ids'],
+                'reader display language/publication/source binding changed')
 
 
 def load_package(root):
@@ -1276,6 +1334,7 @@ def _load_package(root):
                 and entry['sample_ids'] == canonical_entry['sample_ids']
                 and contents[entry['path']] == encoded(review_captures.source_details(bundle)),
                 'Source detail projection differs from retained canonical bundle')
+    verify_reader_snapshot_scope(index, contents, binding['candidate_head'])
     if any(e['origin'].get('kind') in {'recorded_git_code_witness', 'recorded_git_code_body'}
             for e in index['evidence'].values()):
         RecordedCode.validate(index, contents, binding)

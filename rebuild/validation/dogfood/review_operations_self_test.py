@@ -247,6 +247,46 @@ def append_reviewable_execution(events):
 code = ops.RecordedCode
 
 class ReadingSurfaceTests(unittest.TestCase):
+    def test_reader_scope_survives_immutable_campaign_source_checks_and_refuses_forgery(self):
+        body = b'<html lang="en"><body data-viewer-mode="snapshot" data-project-id="p" data-requested-language="en"><article data-reader-publication="pub">Complete body</article></body></html>'
+        binding = {'bytes':len(body), 'sha256':ops.digest(body)}
+        origin = {'kind':'evidence_set_member', 'path':'reader.html', **binding,
+                  'requested_language':'en', 'ui_locale':'en', 'publication_ids':['pub']}
+        navigation = {'requested_language':'en', 'project_id':'p', 'candidate_head':'a'*40,
+            'reader_languages':['en'], 'reader_snapshots':{'en':{'status':'passed',
+                'requested_language':'en', 'locale':'en', 'relative_evidence_path':'reader.html',
+                'publication_ids':['pub'], **binding}}}
+        raw_navigation = ops.encoded(navigation)
+        nav_binding = {'bytes':len(raw_navigation), 'sha256':ops.digest(raw_navigation)}
+        index = {'samples':[{'sample_id':'w', 'project_id':'p', 'work_item_id':'work'}],
+            'journey_samples':[{'sample_id':'j', 'represented_work_sample_ids':['w'], 'reader_languages':['en']}],
+            'evidence':{'reader':{'sample_id':'j', 'surface':'viewer_snapshot', 'path':'copied-reader.html',
+                'locale':'en', 'origin':origin, **binding},
+                'navigation':{'sample_id':'j', 'surface':'viewer_navigation_machine', 'path':'nav.json',
+                    'origin':{'kind':'evidence_set_member', 'path':'nav.json', **nav_binding}, **nav_binding}}}
+        contents = {'copied-reader.html':body, 'nav.json':raw_navigation}
+        manifest = {'work_evidence':[{'work_slot_id':'w','work_item_id':'work','project_id':'p'}],
+            'journey_final_evidence':[{'journey_id':'j'}],
+            'artifacts':{'reader.html':binding, 'nav.json':nav_binding}}
+        ops.verify_reader_snapshot_scope(index,contents,'a'*40)
+        ops.verify_campaign_work_scope(index,manifest)
+        for mutation in ['language','locale','publications','missing_metadata','inventory','foreign_project','substitution','html']:
+            changed=copy.deepcopy(index);data=dict(contents);nav=copy.deepcopy(navigation)
+            if mutation=='language':changed['evidence']['reader']['origin']['requested_language']='ko'
+            elif mutation=='locale':changed['evidence']['reader']['locale']='ko'
+            elif mutation=='publications':changed['evidence']['reader']['origin']['publication_ids']=['foreign']
+            elif mutation=='missing_metadata':del changed['evidence']['reader']['origin']['requested_language']
+            elif mutation=='inventory':changed['journey_samples'][0]['reader_languages']=[]
+            elif mutation=='foreign_project':nav['project_id']='foreign'
+            elif mutation=='substitution':nav['reader_snapshots']['en']['status']='failed'
+            else:data['copied-reader.html']=body.replace(b'data-requested-language="en"', b'data-requested-language="ko"')
+            data['nav.json']=ops.encoded(nav)
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                ops.verify_reader_snapshot_scope(changed,data,'a'*40)
+        bad=copy.deepcopy(manifest);bad['artifacts']['reader.html']['sha256']='f'*64
+        with self.assertRaisesRegex(ValueError,'immutable campaign evidence'):
+            ops.verify_campaign_work_scope(index,bad)
+
     def test_languages_are_explicit_independent_and_never_paths(self):
         import reading_surfaces as reader
         self.assertEqual(reader.languages('en',None,['en','ko']),['en','ko'])
