@@ -2,10 +2,49 @@
 import unittest
 import tempfile
 import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import resource_observer as o
+
+
+class InitializationReadinessTests(unittest.TestCase):
+    """Controlled real pipes; no Product or naturalistic measurement claim."""
+    def child(self, body):
+        child = subprocess.Popen([sys.executable, '-B', '-c', body],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        def cleanup():
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=2)
+            child.stdout.close(); child.stderr.close()
+        self.addCleanup(cleanup)
+        return child
+
+    def test_complete_line_returns_before_eof_and_preserves_extra_bytes(self):
+        from resource_boundary_controls import initialize_line
+        child = self.child('import os,time; os.write(1,b\'{"id":1}\\ntrailing\'); time.sleep(10)')
+        first, extra = initialize_line(child.stdout, timeout=2)
+        self.assertEqual(first, b'{"id":1}\n')
+        self.assertEqual(extra, b'trailing')
+        self.assertIsNone(child.poll())
+
+    def test_partial_line_times_out_while_the_writer_is_still_running(self):
+        from resource_boundary_controls import initialize_line
+        child = self.child('import os,time; os.write(1,b\'{"id":\'); os.write(2,b\'ready\\n\'); time.sleep(10)')
+        self.assertEqual(initialize_line(child.stderr, timeout=2)[0], b'ready\n')
+        with self.assertRaisesRegex(TimeoutError, 'fixture deadline'):
+            initialize_line(child.stdout, timeout=.05)
+        self.assertIsNone(child.poll())
+
+    def test_zero_exit_without_complete_response_is_a_protocol_failure(self):
+        from resource_boundary_controls import initialize_line
+        child = self.child('import os; os.write(1,b\'{"id":\')')
+        with self.assertRaisesRegex(ValueError, 'complete initialize response'):
+            initialize_line(child.stdout, timeout=2)
+        self.assertEqual(child.wait(timeout=2), 0)
 
 
 def observation(processes=1, ticks=7, candidate='a' * 64, purpose='dogfood_rehearsal'):

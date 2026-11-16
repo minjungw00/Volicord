@@ -5,8 +5,29 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import selectors
+import threading
 import time
 import resource_observer as o
+
+
+def initialize_line(stream, timeout=10):
+    """Bound complete protocol readiness, including a stalled partial line."""
+    response, deadline = bytearray(), time.monotonic() + timeout
+    with selectors.DefaultSelector() as ready:
+        ready.register(stream, selectors.EVENT_READ)
+        while b'\n' not in response:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not ready.select(timeout=remaining):
+                raise TimeoutError('candidate initialize response was not ready within fixture deadline')
+            chunk = os.read(stream.fileno(), 4096)
+            if not chunk:
+                raise ValueError('candidate exited before complete initialize response')
+            response.extend(chunk)
+            if len(response) > 1 << 20:
+                raise ValueError('candidate initialize response exceeds fixture bound')
+    first, extra = bytes(response).split(b'\n', 1)
+    return first + b'\n', extra
 
 
 def coverage_primitives(value):
@@ -33,7 +54,7 @@ def run(binary, root):
         children.append(child)
         child.started = time.monotonic_ns()
         child.stdin.write(b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n'); child.stdin.flush()
-        child.first = child.stdout.readline()
+        child.first, child.initial_extra = initialize_line(child.stdout)
         assert json.loads(child.first)['id'] == 1
         return child
 
@@ -41,7 +62,7 @@ def run(binary, root):
         if abrupt: child.kill()
         else: child.stdin.close()
         child.wait(timeout=5)
-        stdout, stderr = child.first + child.stdout.read(), child.stderr.read()
+        stdout, stderr = child.first + child.initial_extra + child.stdout.read(), child.stderr.read()
         name = 'mcp-' + str(children.index(child))
         (root/(name+'.stdout')).write_bytes(stdout); (root/(name+'.stderr')).write_bytes(stderr)
         record = {'label':name,'exit_code':child.returncode,'termination':'sigkill' if abrupt else 'stdin_eof',
@@ -116,18 +137,54 @@ def run(binary, root):
         # Future Homes stay waiting across three sequential real activations.
         sequential = [root/'sequential-a', root/'sequential-b', root/'sequential-c']
         for r in sequential: r.mkdir()
-        phase, current = 0, None
+        # Starting/closing a real process can be slow. Doing either inside the
+        # sampling callback manufactures a gap in the very observer being tested.
+        initialized = [threading.Event() for _ in sequential]
+        release = [threading.Event() for _ in sequential]
+        cancel, completed = threading.Event(), threading.Event()
+        driver_errors, observed_ticks = [], [0] * len(sequential)
+        done_seen = False
+        def drive():
+            try:
+                for index, runtime in enumerate(sequential):
+                    if cancel.is_set():
+                        break
+                    child = launch(runtime)
+                    initialized[index].set()
+                    if not release[index].wait(timeout=30):
+                        raise TimeoutError('sequential observer did not acknowledge candidate samples')
+                    finish(child)
+            except BaseException as error:
+                driver_errors.append(error)
+            finally:
+                completed.set()
         def events():
-            nonlocal phase, current
-            phase += 1
-            if phase == 2: current = launch(sequential[0])
-            if phase == 5: finish(current); current = launch(sequential[1])
-            if phase == 8: finish(current); current = launch(sequential[2])
-            if phase == 11: finish(current)
+            nonlocal done_seen
+            for index in range(len(sequential)):
+                if initialized[index].is_set() and not release[index].is_set():
+                    observed_ticks[index] += 1
+                    # Release on the fourth callback: three complete preceding
+                    # ticks had an opportunity to sample this active process.
+                    if observed_ticks[index] >= 4:
+                        release[index].set()
+            # Stop only after a subsequent tick can observe final stopped state.
+            done_seen = completed.is_set()
             return {}
-        seq = observe('sequential_eof', sequential, duration_seconds=3, interval_ms=250,
-            expectations={o.path_binding(r):'waiting' for r in sequential}, expectation_reader=events)
-        assert phase >= 11 and seq['status'] == 'measured' and len(seq['instances']) == 3
+        driver = threading.Thread(target=drive, name='resource-fixture-lifecycle')
+        driver.start()
+        try:
+            seq = observe('sequential_eof', sequential, duration_seconds=60, interval_ms=250,
+                expectations={o.path_binding(r):'waiting' for r in sequential},
+                expectation_reader=events, stop=lambda: done_seen)
+        finally:
+            cancel.set()
+            for event in release:
+                event.set()
+            driver.join(timeout=16)
+        assert not driver.is_alive(), 'bounded lifecycle driver did not stop'
+        if driver_errors:
+            raise driver_errors[0]
+        assert all(ticks >= 4 for ticks in observed_ticks) and seq['status'] == 'measured' and len(seq['instances']) == 3
         assert all(i['samples'] and i['identity']['state']=='stopped' and i['lifecycle']=='stopped' for i in seq['instances'])
         # Real sampled instance killed after one tick; useful samples cannot erase disappearance.
         abrupt_runtime = root/'abrupt'; abrupt_runtime.mkdir(); killed = launch(abrupt_runtime)

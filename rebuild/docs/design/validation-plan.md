@@ -2249,6 +2249,15 @@ The measured explanation index records deferred reference identity and claimed
 availability separately from an absent returned article-body hash. Historical full
 reader captures and original failed rehearsal artifacts remain unchanged.
 
+Sequential process-coverage support drives real candidate initialization and EOF
+on a separate bounded lifecycle worker. The observer callback only acknowledges
+completed sampling opportunities; it never waits for a process to initialize or
+exit. The fixture stops after a later tick can see the final stopped registrations,
+with a 60-second fixture ceiling. This does not change Product observation budgets
+or gap/missing-sample rejection. Complete initialization-line readiness has its own
+deadline and preserves bytes after the first line. Controlled real-pipe tests cover
+partial responses, clean EOF without a complete response, and readiness before EOF.
+
 Maintained Host/Operations tests scale a validated learning lifecycle to 80 historical
 Candidates with 16 rounds each and large polyglot capability coverage. They characterize
 the previous full-inspection Recall shape above 1 MiB, assert current Goal/behavior
