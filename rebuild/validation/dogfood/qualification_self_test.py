@@ -1554,12 +1554,18 @@ class FileBoundaryTests(unittest.TestCase):
             prep, sha, _ = ops.load_package(target)
             draft = review.template(prep, sha)
             a = next(a for a in draft['assessments'] if a['criterion_id'] == cid)
-            eid, entry = next((eid, e) for eid,e in prep['index']['evidence'].items()
-                if e['surface'] == 'viewer_snapshot' and review.evidence_applies(e, 'journey-volicord'))
+            readers = [(eid, e) for eid,e in prep['index']['evidence'].items()
+                if e['surface'] == 'viewer_snapshot' and review.evidence_applies(e, 'journey-volicord')]
+            # A concrete failure can be observed in one language. A positive
+            # whole-reader claim needs every actually selected language.
+            selected = readers if state == 'satisfied' else readers[:1]
+            eid, entry = selected[0]
+            inspected = [identity for identity, _ in selected]
             a.update(assessment=state, reasoning='Authored inspection of concrete behavior only.',
                 uncertainty='Other dimensions remain unobserved in this authored partial control.',
-                inspected_evidence=[eid], evidence=[{'evidence_id': eid, 'locator': {'kind': 'line', 'value': 1},
-                    'criterion_id': cid, 'relevance': 'The actual retained Viewer body exposes the authored behavior.'}],
+                inspected_evidence=inspected, evidence=[{'evidence_id': identity, 'locator': {'kind': 'line', 'value': 1},
+                    'criterion_id': cid, 'relevance': 'This selected-language retained Viewer body was inspected for the authored behavior.'}
+                    for identity, _ in selected],
                 counterevidence={'state': 'cited', 'reasoning': 'Contradictory details remain visible for review.',
                     'evidence': [{'evidence_id': eid, 'locator': {'kind': 'line', 'value': 1}, 'criterion_id': cid,
                         'relevance': 'Authored contrary detail in the same retained body.'}]},
@@ -1568,7 +1574,15 @@ class FileBoundaryTests(unittest.TestCase):
                 for item in a['criterion_observations']:
                     item.update(state='unobserved', evidence_indexes=[])
                 a['criterion_observations'][1].update(state='observed_failure', evidence_indexes=[0])
-            draft['observation_scope']['inspected_evidence'] = [eid]
+            draft['observation_scope']['inspected_evidence'] = inspected
+            if state == 'satisfied':
+                incomplete = copy.deepcopy(draft)
+                partial = next(x for x in incomplete['assessments'] if x['criterion_id'] == cid)
+                partial['inspected_evidence'] = [eid]
+                partial['evidence'] = partial['evidence'][:1]
+                incomplete['observation_scope']['inspected_evidence'] = [eid]
+                with self.assertRaisesRegex(ValueError, 'every selected reading language'):
+                    review.validate_value(prep, sha, incomplete)
             changed = copy.deepcopy(draft)
             next(a for a in changed['assessments'] if a['criterion_id'] == cid)['evidence'][0]['locator']['value'] = '/invalid'
             with self.assertRaisesRegex(ValueError, 'locator'):
