@@ -60,7 +60,7 @@ GROUP_PROMPTS = {
     "campaign_interaction": "Assess whether planned workload intents and actual interactions provide reliable evidence for replacement Question/Learning behavior. Inspect bounded projected conversation turns and explicit omissions, diagnostic facts, source/authority evidence and independent agent semantic review. Correct no-question behavior counts as evidence. Weak selection or sparse evidence means insufficient_evidence; violated requires substantive observed Product behavior failure. No operation-count threshold applies.",
     "interaction": "Judge necessary and omitted Questions against actual material outcomes, user-owned authority and source evidence. Do not require evaluator wording, answers, counts or a manufactured Question. Assess comprehension, repetition and interruption cost; distinguish user judgment from agent recommendation.",
     "documents": "Inspect all four documents: architecture guide, Decision report, implementation plan and handoff/resume. Compare each with current Sources and Decisions; assess practical understanding/handoff value, accurate remaining work and gaps, and actual requested-language prose rather than metadata-only language claims.",
-    "viewer_snapshot": "Assess retained artifact fidelity and structure against its own evidence, independently of personal current comprehension: whether Project Understanding explains completed/current/remaining work, next steps, Decision rationale, affected code and component/request/data flow. Distinguish source facts from generated interpretation; inspect evidence-grounded diagram topology and useful readability rather than raw record listings.",
+    "viewer_snapshot": "Inspect the complete reader artifacts in every explicitly selected reader language, including Repository, Work and related Decision bodies, figures and evidence. Another language or transcript fragment cannot substitute. Preserve missing/unavailable surfaces. Assess artifact fidelity/structure against its own evidence, independently of Human comprehension: purpose, work/state/next action, Decision reasons, code and component/data flow. Host reader-review positives and byte bindings prove no semantic quality.",
     "viewer_navigation": "Assess candidate-bound Viewer request responsiveness from retained monotonic machine evidence and its declared scope. Snapshot export duration is a bounded request proxy, not browser interaction latency; do not substitute human stopwatch prose or claim unmeasured live navigation timing.",
     "repository_intelligence": "Assess useful navigation and analysis for actual work, honest source snapshot/coverage/freshness/uncertainty, semantic value beyond structure, and language/component boundaries and flows in polyglot work. Unsupported or unavailable capabilities must remain visible.",
     "cli": "Inspect observed help discovery and representative repository-relative tasks without opaque Project IDs. Assess readable outcomes and next actions. Captured invocation is evidence of a surface, not proof that every CLI task was usable.",
@@ -583,6 +583,13 @@ def validate_assessment(value, spec, preparation, inspected):
     else:
         require(value["applicability_reason"] is None, "applicability reason only belongs to not_applicable")
     if state in {"satisfied", "violated"}:
+        if state == 'satisfied' and spec['group'] == 'viewer_snapshot':
+            sample = next(s for s in index['journey_samples'] if s['sample_id'] == spec['sample_id'])
+            required_languages = set(sample.get('reader_languages', []))
+            inspected_languages = {index['evidence'][identity].get('locale') for identity in criterion_inspected
+                if index['evidence'][identity]['surface'] == 'viewer_snapshot' and evidence_applies(index['evidence'][identity], spec['sample_id'])}
+            require(required_languages <= inspected_languages,
+                'positive reader review must inspect every selected reading language; missing bodies remain insufficient_evidence')
         surfaces = {index["evidence"][r["evidence_id"]]["surface"] for r in value["evidence"]
             if spec["locale"] is None or index["evidence"][r["evidence_id"]].get("locale") == spec["locale"]}
         if spec["group"] == "live_viewer":

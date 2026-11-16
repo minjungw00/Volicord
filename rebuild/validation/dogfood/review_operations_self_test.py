@@ -246,6 +246,62 @@ def append_reviewable_execution(events):
 
 code = ops.RecordedCode
 
+class ReadingSurfaceTests(unittest.TestCase):
+    def test_languages_are_explicit_independent_and_never_paths(self):
+        import reading_surfaces as reader
+        self.assertEqual(reader.languages('en',None,['en','ko']),['en','ko'])
+        self.assertEqual(reader.languages('en',['ko','ja'],['en']),['ko','ja'])
+        self.assertNotIn('/', reader.basename('../../ja'))
+        for invalid in ([],['en','en'],[True],[' '],['x'*129]):
+            with self.assertRaises(ValueError):reader.languages('en',invalid,[])
+        body=b'<html lang="en"><body data-viewer-mode="snapshot" data-project-id="p" data-requested-language="ja"></body></html>'
+        observed=reader.inspect(body,'p','ja','en')
+        self.assertEqual(observed['publication_ids'],[])
+        self.assertFalse(observed['semantic_quality_verified'])
+        for args in [('foreign','ja','en'),('p','ko','en'),('p','ja','ko')]:
+            with self.assertRaises(ValueError):reader.inspect(body,*args)
+
+    def test_collector_keeps_whole_selected_language_documents_and_exact_publications(self):
+        import reading_surfaces as reader
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);slot=root/'slots/sample';(slot/'evidence').mkdir(parents=True)
+            project='1'*32;calls=[]
+            def snapshotter(binary,runtime,project,destination,locale,language):
+                calls.append((locale,language))
+                content=''.join('<article data-reader-publication="'+kind+'-'+language+'"><h2>'+kind+'</h2><table><tr><td>complete row '+language+'</td></tr></table><pre>exact code</pre></article>' for kind in ('repository','work','decision'))
+                destination.write_text('<html lang="'+locale+'"><body data-viewer-mode="snapshot" data-project-id="'+project+'" data-requested-language="'+language+'">'+content+'</body></html>')
+                return {'status':'passed'}
+            with patch.object(c,'work_root',return_value=slot),patch.object(c,'load_campaign',return_value={'reader_languages':['en','ko','ja']}):
+                summary,paths=c.collect_viewer_snapshot_evidence(root,'small-python','A',root/'bin',root/'runtime',project,'a'*40,'en','en',snapshotter)
+            self.assertEqual(calls,[('en','en'),('ko','ko'),('en','ja')])
+            self.assertEqual(len(paths),4)
+            for language,row in summary['reader_snapshots'].items():
+                data=(root/row['relative_evidence_path']).read_bytes()
+                self.assertEqual(row['sha256'],ops.digest(data))
+                self.assertEqual(len(row['publication_ids']),3)
+                for kind in ('repository','work','decision'):
+                    self.assertIn((kind+'-'+language).encode(),data)
+                self.assertIn(('complete row '+language).encode(),data)
+                self.assertIn(b'exact code',data)
+                self.assertEqual(reader.inspect(data,project,language,row['locale'])['publication_ids'],row['publication_ids'])
+
+    def test_swapped_language_is_integrity_failure_and_unavailable_language_stays_missing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);slot=root/'slots/sample';(slot/'evidence').mkdir(parents=True)
+            project='1'*32
+            def wrong(binary,runtime,project,destination,locale,language):
+                return fixtures.snapshotter(binary,runtime,project,destination,locale,'en')
+            with patch.object(c,'work_root',return_value=slot),patch.object(c,'load_campaign',return_value={'reader_languages':['en','ko']}):
+                with self.assertRaisesRegex(c.CampaignError,'integrity rejected'):
+                    c.collect_viewer_snapshot_evidence(root,'small-python','A',root/'bin',root/'runtime',project,'a'*40,'en','en',wrong)
+            self.assertFalse((slot/'viewer-snapshot-summary.json').exists())
+            def missing(binary,runtime,project,destination,locale,language):
+                return {'status':'failed','basis':'selected publication unavailable'} if language=='ko' else fixtures.snapshotter(binary,runtime,project,destination,locale,language)
+            with patch.object(c,'work_root',return_value=slot),patch.object(c,'load_campaign',return_value={'reader_languages':['en','ko']}):
+                summary,_=c.collect_viewer_snapshot_evidence(root,'small-python','A',root/'bin',root/'runtime',project,'a'*40,'en','en',missing)
+            self.assertEqual(summary['reader_snapshots']['ko']['status'],'failed')
+            self.assertNotIn('relative_evidence_path',summary['reader_snapshots']['ko'])
+
 class CodeEvidenceTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='volicord-review-code-')
@@ -865,6 +921,25 @@ class ProjectionTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_selected_language_readers_are_complete_copied_inputs_without_runtime_or_raw(self):
+        target = self.target()
+        ops.prepare(self.root, target, reviewer_kind='agent', session_id='reader-languages')
+        prep, _, package = ops.load_package(target)
+        for journey in prep['index']['journey_samples']:
+            self.assertEqual(journey['reader_languages'], ['en','ko','ja'])
+            readers = [entry for entry in prep['index']['evidence'].values()
+                       if entry['surface'] == 'viewer_snapshot' and entry['sample_id'] == journey['sample_id']]
+            self.assertEqual({entry['locale'] for entry in readers}, {'en','ko','ja'})
+            for entry in readers:
+                body = (target / entry['path']).read_text()
+                self.assertIn('data-requested-language="'+entry['locale']+'"', body)
+                self.assertEqual(entry['origin']['requested_language'], entry['locale'])
+                self.assertFalse(any(name.startswith('private-rollouts/') for name in package['artifacts']))
+        copied = self.parent / (self._testMethodName+'-copy')
+        shutil.copytree(target, copied)
+        with patch.object(c, 'load_evidence_set', side_effect=AssertionError('original campaign forbidden')):
+            self.assertEqual(ops.load_package(copied)[0]['index'], prep['index'])
+
     def test_batch_inspection_shares_only_one_verified_byte_snapshot(self):
         target = self.target()
         ops.prepare(self.root, target, reviewer_kind='agent', session_id='batch-review')
@@ -990,7 +1065,7 @@ class WorkflowTests(unittest.TestCase):
         binary = cls.parent / "bin/volicord"
         fixtures.write_fake_binary(binary)
         with patch.object(harness, "git_clean", return_value=True):
-            cls.root, raw, bundles = fixtures.prepared_batch(cls.parent, "campaign", binary)
+            cls.root, raw, bundles = fixtures.prepared_batch(cls.parent, "campaign", binary, reader_languages=['en','ko','ja'])
             import hashlib
             import explanation_evidence as explanations
             from explanation_evidence_self_test import publish_fixture

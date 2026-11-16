@@ -56,6 +56,23 @@ Neither claim proves the other; structural continuity remains separately measure
 
 ## Assessment and evidence discipline
 
+Campaign preparation selects `reader_languages` independently of fixed UI locale;
+the maintained default includes English and Korean plus the requested primary
+language. Collection retains the complete script-free Viewer document for each
+selected language, with exact Project, requested language, UI locale, publication
+identities, bytes and hash. Failed exports remain explicitly unavailable; another
+language, a short transcript return or host reader-review declarations cannot
+substitute. Four generated document kinds retain their own declared primary
+language scope. Export never authors a translation.
+
+Review preparation verifies those bindings before selecting each complete reader
+surface into the immutable reviewer package. Positive Viewer-snapshot assessments
+must cite inspected surfaces in every selected language. A concrete violation may
+be established in one language; missing inspection cannot become a positive
+judgment. These are inspection-coverage and integrity checks, not language or
+semantic quality classifiers. Historical artifacts without this explicit inventory
+retain their limited scope and acquire no retrospective review.
+
 Each criterion has exactly one state: `satisfied`, `violated`,
 `insufficient_evidence`, `not_observed`, `not_applicable`, or
 `not_reviewed`. `not_observed` means an optional naturalistic opportunity

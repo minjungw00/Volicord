@@ -41,6 +41,7 @@ import result_lineage
 import repository_state
 import resource_observer
 import collection_runs
+import reading_surfaces
 from codex_events import EvidenceError, command_is_repository_inspection, load_codex_capture
 
 
@@ -1284,6 +1285,8 @@ def prepare_campaign(
     viewer_locale = raw_input.get("viewer_locale", "en")
     if viewer_locale not in {"en", "ko"}:
         raise CampaignError("campaign Viewer locale must be en or ko")
+    reader_languages = reading_surfaces.languages(document_language, raw_input.get('reader_languages'),
+        definition['qualitative_review_contract']['reader_languages'])
     _, identities = harness.load_repository_specs(repository_input, candidate_head, definition)
     if any(item["status"] != "passed" for item in identities):
         raise CampaignError("one or more source repository identities do not qualify")
@@ -1362,6 +1365,7 @@ def prepare_campaign(
         "live_evidence_obligations": live_evidence_obligations(candidate_artifacts,
             resource_observer.initial(candidate_artifacts, purpose=purpose)),
         "document_language": document_language, "viewer_locale": viewer_locale,
+        "reader_languages": reader_languages,
         "document_realization_route": realization_route,
         "repository_input": relative(root, root / "repository-input.json"),
         "terminal_outcome": None, "collection_state": "pending",
@@ -1857,6 +1861,35 @@ def collect_viewer_snapshot_evidence(
             if isinstance(basis, str) and basis.strip()
             else "public Viewer snapshot export did not produce usable evidence"
         )
+    selected_languages = reading_surfaces.languages(language, load_campaign(root).get('reader_languages'),
+        harness.load_definition()['qualitative_review_contract']['reader_languages'])
+    reader_snapshots = {}
+    for requested in selected_languages:
+        ui_locale = requested if requested in {'en', 'ko'} else locale
+        path = destination if requested == language and ui_locale == locale else destination.with_name(reading_surfaces.basename(requested))
+        if path == destination:
+            observed = result
+        else:
+            try:
+                observed = snapshotter(binary, runtime, project_id, path, ui_locale, requested)
+            except (OSError, ValueError, CampaignError) as error:
+                observed = {'status': 'failed', 'basis': f'reader snapshot adapter failed: {type(error).__name__}'}
+        row = {'status': 'failed', 'requested_language': requested, 'locale': ui_locale}
+        if observed.get('status') == 'passed' and path.is_file():
+            try:
+                row.update(reading_surfaces.inspect(path.read_bytes(), project_id, requested, ui_locale))
+            except ValueError as error:
+                raise CampaignError('reader snapshot integrity rejected: ' + str(error)) from error
+            row.update({'status': 'passed', 'relative_evidence_path': relative(root, path),
+                        'bytes': path.stat().st_size, 'sha256': harness.sha256(path)})
+            if path not in produced:
+                produced.append(path)
+        else:
+            row['basis'] = str(observed.get('basis', 'reader snapshot unavailable'))[:512]
+        reader_snapshots[requested] = row
+    evidence['reader_languages'] = selected_languages
+    evidence['reader_snapshots'] = reader_snapshots
+    evidence['reader_snapshot_scope'] = 'Complete selected-language static documents and publication identities; not semantic quality or direct Human observation'
     summary = work_root(root, kind, work) / "viewer-snapshot-summary.json"
     write_json(summary, evidence)
     produced.append(summary)

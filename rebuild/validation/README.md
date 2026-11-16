@@ -159,6 +159,17 @@ Read-only qualitative inspection accepts `inspect-agent-review --review-root <pr
 inspection uses the same presentation. Recording and publication recheck current bytes.
 See [the qualitative review owner](../docs/design/qualitative-review.md).
 
+Campaign `reader_languages` selects complete static reader documents separately
+from UI locale (default en/ko plus primary language). Collection binds each to
+Project, requested language, UI locale, publication identities and exact bytes;
+review packages verify and retain each complete surface. A positive Viewer
+snapshot assessment requires inspection citations for every selected language.
+Unavailable exports remain unavailable, without another-language substitution or
+read-time translation. Original artifacts without this inventory are not upgraded.
+`reading_surfaces.py` and its actual collector/package controls in
+`review_operations_self_test.py` cover language swaps, failed export, a third
+reader language with an independent UI locale, and copied-package consumption.
+
 An explicitly selected `prepare-qualitative-review --code-source WORK_SLOT=REPOSITORY`
 adds bounded, indexed before/after code bodies at that Work's recorded Git boundaries.
 Commit/tree/blob witnesses and native evidence bindings remain verifiable without
@@ -1986,6 +1997,17 @@ change the selected explanation, preserve document and figure scroll coordinates
 continue focus on an available description control, and open no Source. Initial
 embedding omissions remain observable in exact evidence inspection rather than
 adding notices below ordinary or diagram evidence actions.
+
+Normal active-host article production additionally records an exact-realization
+reader review. With CLI, use `SUBJECT explain production-review --production-id ID
+--realization REALIZATION.json --input CHECKS.json`; `CHECKS.json` contains only
+`checks`, while the composed realization keeps its independent existing input
+bound. MCP Work/Decision `action=review` takes that generation request, realization
+and checks. Cover the returned subject-specific obligations once with rationale,
+unit indices and addressed/not_applicable/insufficient_evidence/needs_revision.
+An absence or changed realization refuses guarded record; an explicitly incomplete
+review remains readable but cannot make `content_complete` true. This mechanical
+control and the host's declaration do not supply independent semantic/Human approval.
 
 Whole-result document journeys set `whole_result: true` and `reading_contract` to
 `fixtures/viewer-reading/grounded-reading-obligations.json`. That independently

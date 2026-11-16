@@ -369,14 +369,15 @@ impl ViewerAdapter {
         }
         html.push_str(STYLE);
         html.push_str(&format!(
-            "</head><body data-view=\"{}\" data-viewer-mode=\"{}\" data-project-id=\"{}\">",
+            "</head><body data-view=\"{}\" data-viewer-mode=\"{}\" data-project-id=\"{}\" data-requested-language=\"{}\">",
             request.view.key(),
             if matches!(mode, ViewerRenderMode::Live { .. }) {
                 "live"
             } else {
                 "snapshot"
             },
-            request.project_id
+            request.project_id,
+            escape(&request.requested_language)
         ));
         let choices = if snapshot {
             Vec::new()

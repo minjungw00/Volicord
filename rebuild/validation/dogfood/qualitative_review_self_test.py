@@ -123,6 +123,23 @@ def compatibility_review_result():
 
 
 class ContractTests(unittest.TestCase):
+    def test_positive_snapshot_review_cannot_substitute_one_selected_language_for_another(self):
+        p = preparation()
+        p['index']['journey_samples'][0]['reader_languages'] = ['en','ko']
+        base = p['index']['evidence']['viewer_snapshot']
+        base['locale'] = 'en'
+        other = copy.deepcopy(base); other['locale'] = 'ko'; other['path'] = 'viewer-ko'
+        p['index']['evidence']['viewer-ko'] = other
+        value = completed(p)
+        assessment = next(a for a in value['assessments'] if '/viewer_snapshot/' in a['criterion_id'])
+        fill(assessment,p)
+        spec = next(s for s in q.criterion_specs(p['index'],p['rubric']) if s['criterion_id'] == assessment['criterion_id'])
+        q.validate_assessment(assessment,spec,p,set(assessment['inspected_evidence']))
+        assessment['inspected_evidence'].remove('viewer-ko')
+        assessment['evidence'] = [e for e in assessment['evidence'] if e['evidence_id'] != 'viewer-ko']
+        with self.assertRaisesRegex(ValueError,'every selected reading language'):
+            q.validate_assessment(assessment,spec,p,set(assessment['inspected_evidence']))
+
     def test_partial_failure_and_partial_citations_preserve_unobserved_dimensions(self):
         p = preparation()
         value = completed(p)

@@ -315,6 +315,8 @@ fn native_snapshot_context_is_independent_of_the_export_request(
             let snapshot = viewer
                 .render_snapshot(&request, TimestampMicros::from_unix_micros(123))?
                 .html;
+            assert!(snapshot.contains("data-requested-language=\"en\""));
+            assert!(snapshot.contains(&format!("data-project-id=\"{}\"", f.project)));
             let header = snapshot
                 .split("class=\"mobile-location\"")
                 .nth(1)
@@ -357,6 +359,13 @@ fn native_snapshot_context_is_independent_of_the_export_request(
                 !live.contains("data-page-context=\""),
                 "live location remains request-owned"
             );
+            let mut other = request.clone();
+            other.requested_language = "ja\"<&".into();
+            let other = viewer
+                .render_snapshot(&other, TimestampMicros::from_unix_micros(123))?
+                .html;
+            assert!(other.contains("data-requested-language=\"ja&quot;&lt;&amp;\""));
+            assert!(!other.contains("data-requested-language=\"en\""));
         }
     }
     assert_eq!(before, f.operations.canonical_basis(f.project)?);

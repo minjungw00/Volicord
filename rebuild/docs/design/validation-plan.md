@@ -5993,6 +5993,22 @@ verdict, Product execution, or human acceptance.
 
 ## Quiet evidence scope and historical-only opening notices — 2026-11-15
 
+Subsequent direct feedback removed the ordinary embedding-omission cue entirely;
+exact omission facts remain inside evidence inspection. Description-step browser
+controls exercise actual previous/next activation, unchanged document/figure
+scroll and keyboard focus on an available local control. Preserve the initial
+native-fragment focus regression and its corrected actual browser observations.
+
+Normal article production now separates current publication, diagram applicability
+and exact-realization host reader review. Exercise missing/stale/wrong-scope reviews,
+partial useful text, independent language coverage, no-change investigations,
+unchanged Source retention, corrupt/non-current metadata and explicit recovery
+through actual CLI/MCP consumers. Host-positive declarations are not semantic or
+Human acceptance. Campaign collection additionally retains complete explicitly
+selected reader languages; reviewer package controls reject swapped identities
+and positive judgments missing a selected language. Existing historical runs and
+deferred Human answers remain unchanged.
+
 Independent rendered review found repeated per-citation embedding diagnostics in
 ordinary Repository prose. Preserve the original HTML, screenshots and two
 violated assessments. Ordinary evidence actions now aggregate missing embedded

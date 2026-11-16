@@ -31,6 +31,7 @@ import interaction_diagnostics
 import codex_events
 import review_captures
 import review_explanations
+import reading_surfaces
 
 MAX_FILES = 512
 MAX_FILE_BYTES = 32 * 1024 * 1024
@@ -470,7 +471,7 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
                 "capture_projections": {identity: entry["projection"] for identity, entry in evidence.items()
                     if entry["sample_id"] == sample_id and entry["surface"] in review_captures.CAPTURE_SURFACES}}), "availability", sample_id,
                 {"kind": "evidence_set_selection"})
-        source(journey_sample_id + "-viewer", f"{projection_prefix}/evidence/viewer-snapshot.html",
+        primary_viewer_id = source(journey_sample_id + "-viewer", f"{projection_prefix}/evidence/viewer-snapshot.html",
             "viewer_snapshot", journey_sample_id, sample_ids=journey_scope)
         navigation_id = source(journey_sample_id + "-viewer-navigation",
             f"{projection_prefix}/viewer-snapshot-summary.json", "viewer_navigation_machine",
@@ -492,6 +493,31 @@ def select_evidence(root, manifest, evaluation, *, include_raw, cli_observation_
                     timing["measured"] == ["snapshot_export_request_completion", "snapshot_export_request_duration"]
                     and timing["unmeasured"] == ["browser_input_latency", "browser_paint_latency"])),
                 "Viewer navigation machine evidence is malformed or overclaims its scope")
+            if 'reader_languages' in navigation or 'reader_snapshots' in navigation:
+                languages = reading_surfaces.languages(navigation['requested_language'], navigation.get('reader_languages'), [])
+                snapshots = navigation.get('reader_snapshots')
+                review.require(isinstance(snapshots, dict) and set(snapshots) == set(languages), 'reader language inventory changed')
+                review.require(navigation['candidate_head'] == manifest['candidate_head'] and navigation['project_id'] == projection_state['project_id'], 'reader language scope Project/candidate mismatch')
+                journey_samples[-1]['reader_languages'] = languages
+                for language in languages:
+                    row = snapshots[language]
+                    review.require(row['requested_language'] == language and row['locale'] in {'en', 'ko'} and row['status'] in {'passed', 'failed'}, 'invalid reader language scope')
+                    if row['status'] != 'passed':
+                        unavailable.append({'sample_id':journey_sample_id, 'surface':'viewer_snapshot', 'language':language, 'reason':'Selected-language complete reader snapshot was unavailable; no other language substitutes.'})
+                        continue
+                    path = row['relative_evidence_path']
+                    primary = f'{projection_prefix}/evidence/viewer-snapshot.html'
+                    review.require(path in {primary, f'{projection_prefix}/evidence/{reading_surfaces.basename(language)}'}, 'reader snapshot escaped its declared scope')
+                    target = primary_viewer_id if path == primary else source(journey_sample_id+'-viewer-language-'+digest(language.encode()), path, 'viewer_snapshot', journey_sample_id, sample_ids=journey_scope)
+                    review.require(target is not None, 'selected reader snapshot is not evidence-set-bound')
+                    entry = evidence[target]
+                    review.require(entry['bytes'] == row['bytes'] and entry['sha256'] == row['sha256'], 'selected reader snapshot identity changed')
+                    observed = reading_surfaces.inspect(files[entry['path']], navigation['project_id'], language, row['locale'])
+                    review.require(observed['publication_ids'] == row['publication_ids'], 'reader publication inventory changed')
+                    entry['locale'] = language
+                    entry['origin']['requested_language'] = language
+                    entry['origin']['ui_locale'] = row['locale']
+                    entry['origin']['publication_ids'] = row['publication_ids']
         for document_kind in c.DOCUMENT_KINDS:
             for format_name, suffix in c.DOCUMENT_FORMATS:
                 target = source(journey_sample_id + "-" + document_kind + "-" + format_name,

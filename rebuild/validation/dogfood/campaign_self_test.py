@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import html
 from pathlib import Path
 import shutil
 import tempfile
@@ -36,10 +37,13 @@ def write_fake_binary(path: Path) -> None:
     mcp.chmod(0o755)
     viewer = path.with_name("volicord-viewer")
     viewer.write_text(
-        "#!/bin/sh\n"
-        "destination=\n"
-        "for argument in \"$@\"; do destination=$argument; done\n"
-        "printf '%s\\n' '<!doctype html><html lang=\"en\"><body data-viewer-mode=\"snapshot\">fixture</body></html>' > \"$destination\"\n",
+        "#!/usr/bin/env -S python3 -B\n"
+        "import html,sys\nfrom pathlib import Path\n"
+        "args=sys.argv[1:]\n"
+        "if '--help' in args: print('Authored snapshot transport fixture');sys.exit(0)\n"
+        "values={args[i]:args[i+1] for i in range(0,len(args),2)}\n"
+        "locale=values['--locale'];language=html.escape(values['--language'],quote=True);project=values['--project']\n"
+        "Path(values['--snapshot']).write_text(f'<!doctype html><html lang=\"{locale}\"><body data-viewer-mode=\"snapshot\" data-project-id=\"{project}\" data-requested-language=\"{language}\">fixture {language}</body></html>')\n",
         encoding="utf-8",
     )
     viewer.chmod(0o755)
@@ -255,9 +259,13 @@ def prepare(
     root: Path,
     source_root: Path,
     binary: Path,
+    reader_languages=None,
     **preparation_options,
 ) -> None:
     source = repository_input(root.parent / f"{root.name}-repositories.json", source_root)
+    configuration = json.loads(source.read_text())
+    configuration['reader_languages'] = ['en'] if reader_languages is None else reader_languages
+    campaign.write_json(source, configuration)
     original_clean = harness.git_clean
     original_specs = harness.load_repository_specs
     harness.git_clean = lambda _path: True
@@ -433,10 +441,10 @@ def snapshotter(
     language: str,
 ) -> dict[str, object]:
     assert campaign.PROJECT_ID.fullmatch(project_id)
-    assert locale == "en"
-    assert language == "en"
+    assert locale in {'en', 'ko'}
+    assert isinstance(language, str) and language.strip()
     destination.write_text(
-        '<!doctype html><html lang="en"><body data-viewer-mode="snapshot">fixture</body></html>\n',
+        f'<!doctype html><html lang="{locale}"><body data-viewer-mode="snapshot" data-project-id="{project_id}" data-requested-language="{html.escape(language, quote=True)}">fixture {html.escape(language)}</body></html>\n',
         encoding="utf-8",
     )
     return {"status": "passed"}
