@@ -6171,3 +6171,13 @@ all three stopped lifecycles are sampled; this is `stop_requested`, not a reache
 watchdog deadline. Require that exact combination and continue rejecting active,
 partial, interrupted or deadline-ended substitutions. Observer bounds and Product
 process/resource semantics are unchanged.
+
+Provider process classification fixtures must separate an ordinary nonzero exit's
+execution allowance from the short timeout trigger being tested. A timeout or
+cancellation fixture must stay alive for observation; a two-second child can finish
+normally while its observer is descheduled, correctly producing Failed instead of
+TimedOut. Keep the actual 30ms negative deadline, use a long-lived finite sleeper
+for stop cases, and retain expected failure/timeout/cancellation plus actual outcome
+diagnostics. An explicit observer-pause counterfactual proves this fixture premise,
+not the cause of an earlier failure whose actual return was not retained. No provider
+default, production stop/cleanup semantics or qualification ceiling changes.

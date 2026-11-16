@@ -25,6 +25,7 @@ Project 전체의 수명·작업 수 제한으로 적용하거나 실패 측정�
 | Git status 30초 / code-origin Git 관측 10초 | 개별 로컬 저장소·파일 관측 process | Canonical Work 이력 수에 대한 상한이 아니다. 큰 working tree/blob·저장장치·부하에 따라 실패할 수 있으며 실패를 기록한다. 임의의 대형 저장소에 대한 성공 보장은 아니다. 현재 유지한다. |
 | Provider 기본 180초, 인증 15초, cleanup 5초 | 제한된 provider 요청 및 process 수명 | 요청별 기본값이며 library configuration의 요청 timeout은 별도로 지정 가능하다. 저장소 규모 증가를 단일 무제한 요청으로 해석하지 않는다. 유지한다. |
 | 관측 대조 fixture의 초기 응답 10초 / 샘플 확인 30초 / 관측 최대 60초 / worker join 16초 | 실제 child 3개의 시작·관측·정리를 검증하는 지원 코드 | Project 이력 한계가 아니다. Sampler 안에서 child 시작을 기다리지 않으며 누락·gap·조기 종료를 계속 거부한다. |
+| Provider 분류 fixture의 30ms | 실제 timeout 분기를 검증하는 음성 입력 | timeout 입력의 30ms는 유지한다. 즉시 실패 입력은 실행 기회를 주는 2초로 분리하고, timeout/취소 입력은 관측 전에 정상 종료하지 않도록 60초 sleeper를 사용한다. 이는 fixture 수명이며 Product provider 기본값·cleanup 제한을 늘리지 않는다. |
 | 로컬 Work command 300초 최대값 | 사용자가 직접 지정한 로컬 실행 요청 | 긴 정상 명령을 거부하는 제품 제한이었다. CLI와 Operations의 중복 상한을 제거하고, 필수 양수·유한 deadline 및 clock 표현 가능성 검사를 유지한다. |
 
 Source retention·cache 수명·확인 시각은 성능 시간 제한과 별개의 의미다. 이
@@ -52,6 +53,15 @@ MCP timeout은 이 저장소의 코드로 검증하거나 보장한 값이 아�
 - 같은 검사에서 0 / clock에 표현 불가능한 timeout은 명령 실행이나 Source
   생성 전에 거부한다. 실제 30ms deadline을 넘기는 별도 명령은 시간 초과로
   종료되고 `timeout_detected`를 보존하며 뒤의 파일 쓰기를 수행하지 않는다.
+- Provider 분류 fixture의 기존 2초 sleeper는 관측기를 명시적으로 일시 중지한
+  대조에서 먼저 정상 종료했다. 재개된 Product는 관측된 종료와 누락된 응답을
+  `Failed`로 정확히 보고했지만 fixture는 `TimedOut`만 요구해 실패했다.
+  이 대조는 가능한 잘못된 전제를 재현한 것이며, 원본 gate의 실제 반환값과
+  scheduling 상태가 보존되지 않아 원래 실패의 원인으로 확정하지 않는다.
+  실패·timeout·취소 기대 결과는 완화하지 않고 fixture의 의도된 수명을 분리한다.
+  수정 후에는 관측기를 약 2.3초 중지해도 fixture가 살아 있었고, 재개 후
+  `TimedOut`으로 분류되어 검사가 통과했다. 실제 중지 시간을 정확히 30ms로
+  보장한다는 결과나 일반적인 공급자 latency 측정은 아니다.
 
 ## 한계와 후속 기준
 

@@ -828,32 +828,41 @@ printf '%s\n' '{{"type":"turn.completed"}}'
 
     #[test]
     fn process_failure_timeout_and_cancellation_are_distinct() {
-        let cases = [(9, "exit 19", "failed"), (10, "sleep 2", "timed_out")];
-        for (request_byte, script, expected) in cases {
+        // Immediate failure needs room to run. Timeout/cancellation fixtures
+        // must remain alive until observed: a short sleeper can legitimately
+        // finish while the observer is descheduled, producing Failed instead.
+        let cases = [
+            (9, "exit 19", Duration::from_secs(2), "failed"),
+            (10, "exec sleep 60", Duration::from_millis(30), "timed_out"),
+        ];
+        for (request_byte, script, timeout, expected) in cases {
             let temporary = tempfile::tempdir().expect("temporary directory");
             let executable = write_script(temporary.path(), script);
-            let mut provider = provider(
-                &temporary,
-                executable,
-                Duration::from_millis(30),
-                CancellationFlag::default(),
-            );
+            let mut provider =
+                provider(&temporary, executable, timeout, CancellationFlag::default());
             let result = provider.invoke(invocation(request_byte));
-            assert!(matches!(
-                (expected, result),
-                ("failed", ProviderExecution::Failed { .. })
-                    | ("timed_out", ProviderExecution::TimedOut { .. })
-            ));
+            eprintln!(
+                "provider process case {request_byte}: expected={expected}; actual={result:?}"
+            );
+            assert!(
+                matches!(
+                    (expected, &result),
+                    ("failed", ProviderExecution::Failed { .. })
+                        | ("timed_out", ProviderExecution::TimedOut { .. })
+                ),
+                "provider process case {request_byte}: expected={expected}; actual={result:?}"
+            );
         }
 
         let temporary = tempfile::tempdir().expect("temporary directory");
-        let executable = write_script(temporary.path(), "sleep 2");
+        let executable = write_script(temporary.path(), "exec sleep 60");
         let cancellation = CancellationFlag::default();
         cancellation.request();
         let mut provider = provider(&temporary, executable, Duration::from_secs(2), cancellation);
-        assert!(matches!(
-            provider.invoke(invocation(11)),
-            ProviderExecution::Cancelled { .. }
-        ));
+        let result = provider.invoke(invocation(11));
+        assert!(
+            matches!(result, ProviderExecution::Cancelled { .. }),
+            "provider process case 11: expected=cancelled; actual={result:?}"
+        );
     }
 }
