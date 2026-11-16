@@ -97,6 +97,20 @@ fn field_priority(key: &str) -> u8 {
     if matches!(
         key,
         "project_id"
+            | "reading_profile"
+            | "read_only"
+            | "identity"
+            | "work_item_id"
+            | "revision"
+            | "state"
+            | "selected_work"
+    ) {
+        return 0;
+    }
+    if matches!(
+        key,
+        "project_id"
+            | "reading_profile"
             | "transport_budget"
             | "checkpoint"
             | "goal_basis"
@@ -109,7 +123,7 @@ fn field_priority(key: &str) -> u8 {
             | "fingerprint"
             | "generator_identity_status"
     ) {
-        return 0;
+        return 1;
     }
     if key == "identity"
         || key.ends_with("_id")
@@ -137,6 +151,11 @@ fn field_priority(key: &str) -> u8 {
                 | "field"
                 | "sources"
                 | "basis"
+                | "next_action"
+                | "chosen_alternative_key"
+                | "recommended_alternative_key"
+                | "displayed_alternatives"
+                | "evidence"
                 | "detail_inspection"
                 | "detail_fields"
                 | "content_omission"
@@ -174,6 +193,12 @@ fn field_priority(key: &str) -> u8 {
     ) {
         1
     } else {
+        if matches!(
+            key,
+            "reading_reference" | "reading_references" | "reading_title" | "reading_summary"
+        ) {
+            return 3;
+        }
         2
     }
 }

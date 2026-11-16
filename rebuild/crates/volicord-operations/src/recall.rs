@@ -23,7 +23,7 @@ pub fn resume_brief_json(
             "changed_source_basis":value.changed_source_basis.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
             "changed_paths":value.changed_paths,
             "applied_decisions":value.applied_decisions.iter().map(|id| id.to_string()).collect::<Vec<_>>(),
-            "verification":value.verification.iter().map(|fact| json!({"state":verification_state_name(fact.state),"source_id":fact.source_id.map(|id| id.to_string()),"outcome":fact.outcome,"scoped_run":fact.scoped_run})).collect::<Vec<_>>(),
+            "verification":value.verification.iter().enumerate().map(|(index,fact)| crate::resume_reading::verification_json(fact,&value.id.to_string(),value.revision,index)).collect::<Vec<_>>(),
             "user_review":{"state":user_review_state_name(value.user_review.state),"source_id":value.user_review.source_id.map(|id| id.to_string())},
             "user_acceptance":{"state":user_acceptance_state_name(value.user_acceptance.state),"source_id":value.user_acceptance.source_id.map(|id| id.to_string())},
             "known_limits":value.known_limits,
@@ -33,15 +33,23 @@ pub fn resume_brief_json(
             "handoff_to":value.handoff_to,
             "recorded_at_unix_micros":value.recorded_at.as_unix_micros(),
         }));
+    let selected_work = brief
+        .selected_work
+        .as_ref()
+        .map(|work| crate::resume_reading::work_json(work, brief.project_id, language, locale));
+    let next_step = selected_work
+        .as_ref()
+        .and_then(|work| work["next_action"]["recorded_action"]["recorded_text"].as_str());
     let output = json!({
-        "selected_work":brief.selected_work.as_ref().map(|w|work_reading_json(w,language,locale)),
+        "reading_profile":"resume",
+        "selected_work":selected_work,
         "project_id":brief.project_id.to_string(), "project_name":brief.project_name,
         "project_purpose":brief.project_purpose.iter().map(context_json).collect::<Vec<_>>(),
         "goals":brief.goals_and_why.iter().map(|item| &item.statement).collect::<Vec<_>>(),
         "goal_basis":brief.goals_and_why.iter().map(context_json).collect::<Vec<_>>(),
         "behaviorally_relevant_context":brief.behaviorally_relevant_context.iter().map(context_json).collect::<Vec<_>>(),
         "active_decision_count":brief.decisions.iter().filter(|item| item.state != BriefDecisionState::Superseded).count(),
-        "decisions":brief.decisions.iter().map(|d| decision_reading_json(d,language,locale)).collect::<Vec<_>>(),
+        "decisions":brief.decisions.iter().map(|d| crate::resume_reading::decision_json(d,brief.project_id,language,locale)).collect::<Vec<_>>(),
         "checkpoint":checkpoint,
         "open_questions":brief.open_questions.iter().map(|item| json!({
             "identity":item.question_id.to_string(), "revision":item.revision, "prompt":item.prompt,
@@ -51,7 +59,7 @@ pub fn resume_brief_json(
         })).collect::<Vec<_>>(),
         "risks_assumptions_and_limits":brief.risks_assumptions_and_limits.iter().map(context_json).collect::<Vec<_>>(),
         "declared_assumptions":brief.declared_assumptions, "known_limits":brief.known_limits,
-        "next_step":brief.selected_work.as_ref().and_then(|w|volicord_projections::work_answers(w,language,locale).recorded_next_action().map(|a|a.recorded_text.clone())),
+        "next_step":next_step,
         "used_sources":brief.used_sources.iter().map(|item| item.source.id.to_string()).collect::<Vec<_>>(),
         "source_details":brief.used_sources.iter().map(|item| json!({
             "identity":item.source.id.to_string(), "actor":item.source.actor,
@@ -228,7 +236,7 @@ fn debug_name(value: impl std::fmt::Debug) -> String {
     format!("{value:?}").to_lowercase()
 }
 
-const fn understanding_work_state_name(
+pub(crate) const fn understanding_work_state_name(
     state: volicord_projections::UnderstandingWorkState,
 ) -> &'static str {
     use volicord_projections::UnderstandingWorkState::*;
@@ -246,9 +254,18 @@ pub fn decision_reading_json(
     language: &str,
     locale: volicord_projections::FixedLocale,
 ) -> Value {
+    let mut value = decision_record_json(d, locale);
+    value["answers"] = json!(volicord_projections::decision_answers(d, language, locale));
+    value
+}
+
+pub(crate) fn decision_record_json(
+    d: &volicord_projections::BriefDecision,
+    locale: volicord_projections::FixedLocale,
+) -> Value {
     json!({"identity":d.decision_id.to_string(),"revision":d.revision,
         "state":match d.state {BriefDecisionState::Current=>"current",BriefDecisionState::StaleBasis=>"stale_basis",BriefDecisionState::ReviewRequired=>"review_required",BriefDecisionState::Superseded=>"superseded",BriefDecisionState::UnavailableBasis=>"unavailable_basis"},
-        "answers":volicord_projections::decision_answers(d,language,locale),"work_scope":decision_work_scope_json(d.work_scope),
+        "work_scope":decision_work_scope_json(d.work_scope),
         "choice":format!("{:?}",d.choice),"chosen_alternative_key":d.chosen_alternative_key,"recommended_alternative_key":d.recommended_alternative_key,
         "displayed_alternatives":d.displayed_alternatives.iter().map(|a|json!({"alternative_key":a.key,"label":a.label,"expected_consequence":a.consequence})).collect::<Vec<_>>(),
         "source_basis":d.source_basis.iter().map(ToString::to_string).collect::<Vec<_>>(),

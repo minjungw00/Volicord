@@ -73,6 +73,34 @@ def fixture(oracle):
 def self_check(oracle) -> None:
     expected, recall, resolved, continued, canonical = fixture(oracle)
     assert not oracle.recall_errors(expected, recall)
+    # The full reader is an independently retained response, never inserted
+    # into a saved compact Recall. A reference alone cannot pass the oracle.
+    detail = {'project_id': expected['project_id'], 'selected_work': copy.deepcopy(recall['selected_work'])}
+    compact = copy.deepcopy(recall)
+    compact['reading_profile'] = 'resume'
+    work = compact['selected_work']; answers = work.pop('answers')
+    work.update(reading_profile='resume', next_action=copy.deepcopy(answers['facts'][0]),
+        status_facts=[copy.deepcopy(answers['facts'][1])], reading_references={})
+    for name, kind in [('name', 'work_name'), ('summary', 'work_summary'), ('article', 'work')]:
+        work['reading_references'][name] = {'role': 'generated_interpretation',
+            'explanation_state': 'unavailable' if name == 'article' else 'missing',
+            'publication_id': None, 'plan_fingerprint': None,
+            'inspect': {'tool': 'explanation_read', 'arguments': {'project_id': expected['project_id'],
+                'subject_id': expected['goal_id'], 'subject_kind': kind, 'language': 'en', 'action': 'page', 'offset': 0}}}
+    assert not oracle.recall_errors(expected, compact, detail)
+    assert 'resume full reader recovery' in oracle.recall_errors(expected, compact)
+    assert not oracle.verify_restart(expected, compact, compact, resolved, canonical, continued, canonical,
+        cli_reading=detail, mcp_reading=detail)
+    for mutation in ('project', 'work', 'selector', 'publication', 'status', 'body', 'missing_body'):
+        value, full = copy.deepcopy(compact), copy.deepcopy(detail)
+        if mutation == 'project': full['project_id'] = 'foreign'
+        elif mutation == 'work': full['selected_work']['work_item_id'] = 'foreign'
+        elif mutation == 'selector': value['selected_work']['reading_references']['article']['inspect']['arguments']['language'] = 'ko'
+        elif mutation == 'publication': value['selected_work']['reading_references']['article']['publication_id'] = 'unproven'
+        elif mutation == 'status': value['selected_work']['status_facts'][0]['text'] = 'Work: completed'
+        elif mutation == 'body': full['selected_work']['answers']['facts'][2]['text'] = 'Another Goal'
+        else: del full['selected_work']['answers']
+        assert oracle.recall_errors(expected, value, full), mutation
     assert not oracle.binding_errors(expected, resolved)
     assert not oracle.continuation_errors(expected, recall, continued, canonical)
     assert not oracle.verify_restart(expected, recall, copy.deepcopy(recall),

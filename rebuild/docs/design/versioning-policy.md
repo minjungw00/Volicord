@@ -1,5 +1,12 @@
 # Versioning 정책
 
+Recall's `reading_profile: resume` is a purpose-specific transient read projection,
+not a durable-format decoder or a retained explanation. It changes no canonical,
+bundle, SourceObservation, explanation or reader-review format version. Full reader
+and canonical inspection retain their existing format checks. Private historical
+review observations are interpreted with their exact captured shape; they are never
+rewritten into current Product output or used as an alternate production decoder.
+
 Active-host reader reviews use independent managed Derived metadata
 `volicord_explanation_reader_review`, current version `1`. It binds exact
 production/plan/subject/language and the complete realization fingerprint. Absence

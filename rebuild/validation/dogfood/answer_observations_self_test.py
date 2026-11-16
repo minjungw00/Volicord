@@ -476,6 +476,7 @@ class AnswerTests(unittest.TestCase):
     def test_corrected_goal_revision_is_resolved_before_recall(self):
         self.insert_correction()
         correct = self.generated_answer()
+        correct['goal_basis'][0]['revision'] = 2
         correct['selected_work']['answers']['provenance']['evidence'][1]['revision'] = 2
         _, fact = self.evaluate(correct)
         self.assertEqual(h.load_codex_capture(self.path).calls('canonical_mutate')[0].outcome, 'succeeded')
@@ -486,6 +487,14 @@ class AnswerTests(unittest.TestCase):
         _, fact = self.evaluate(self.generated_answer())
         self.assertEqual(fact['status'], 'confirmed_violation', fact)
         self.assertEqual(m.disposition('shared_answer_integrity', fact['status']), 'hard_blocking')
+
+    def test_missing_goal_revision_is_not_attested_by_generated_prose(self):
+        answer = self.generated_answer()
+        del answer['goal_basis'][0]['revision']
+        _, fact = self.evaluate(answer)
+        self.assertEqual(fact['status'], 'indeterminate', fact)
+        self.assertIn('observation-time Goal revision unavailable', fact['basis']['observations'][0]['limits'])
+        self.assertEqual(m.disposition('shared_answer_integrity', fact['status']), 'qualitative_review_required')
 
     def test_conflicting_creation_receipts_do_not_choose_a_revision_or_source(self):
         for conflict in ('revision', 'source'):
@@ -514,6 +523,7 @@ class AnswerTests(unittest.TestCase):
     def test_pre_and_post_correction_recalls_keep_their_own_basis(self):
         self.insert_correction()
         new = self.generated_answer()
+        new['goal_basis'][0]['revision'] = 2
         new['selected_work']['answers']['provenance']['evidence'][1]['revision'] = 2
         _, fact = self.evaluate(new, cli=self.generated_answer(), cli_before=True)
         self.assertEqual(fact['status'], 'confirmed_pass', fact)
@@ -576,7 +586,8 @@ class AnswerTests(unittest.TestCase):
         self.insert_correction(call_id='correction-replay')
         self.insert_correction(expected=2, revision=3, call_id='correction-third')
         self.insert_correction(call_id='old-replay-after-third')
-        answer = self.generated_answer(); answer['selected_work']['answers']['provenance']['evidence'][1]['revision'] = 3
+        answer = self.generated_answer(); answer['goal_basis'][0]['revision'] = 3
+        answer['selected_work']['answers']['provenance']['evidence'][1]['revision'] = 3
         _, fact = self.evaluate(answer)
         self.assertEqual(fact['status'], 'confirmed_pass', fact)
         basis = fact['basis']['observations'][0]['goal_basis']
@@ -670,6 +681,7 @@ class AnswerTests(unittest.TestCase):
                         'output': [{'type': 'input_text', 'text': 'Script completed\nWall time 0.1 seconds\nOutput:\n' + json.dumps({'output': json.dumps(receipt), 'exit_code': 0})}],
                         'internal_chat_message_metadata_passthrough': {'turn_id': turn}}}]
                 answer = self.generated_answer(); answer['selected_work']['answers']['provenance']['evidence'][1]['revision'] = 2
+                answer['goal_basis'][0]['revision'] = 2
                 _, fact = self.evaluate(answer)
                 self.assertEqual(fact['status'], 'confirmed_pass' if has_project else 'indeterminate', fact)
                 if has_project:
@@ -720,6 +732,7 @@ class AnswerTests(unittest.TestCase):
         events[-1:-1] = [wrapper, event]
         path.write_text(''.join(json.dumps(e) + '\n' for e in events)); reference['sha256'] = h.sha256(path)
         answer = self.generated_answer(); answer['selected_work']['answers']['provenance']['evidence'][1]['revision'] = 2
+        answer['goal_basis'][0]['revision'] = 2
         _, fact = self.evaluate(answer)
         self.assertEqual(fact['status'], 'confirmed_pass', fact)
         basis = fact['basis']['observations'][0]['goal_basis']

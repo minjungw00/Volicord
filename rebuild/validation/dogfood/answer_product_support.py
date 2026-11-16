@@ -51,6 +51,12 @@ def correction(f, config, *, after=False):
 
 
 def run(config):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'end-to-end/multi-repository'))
+    import restart_recall
+    for key in ('before', 'after'):
+        errors = restart_recall.resume_reader_errors(
+            {'project_id': config['project'], 'goal_id': config['work']}, config[key], config[key + '_full'])
+        assert not errors, (key, errors)
     def retained_goal_status(answer):
         # Product bounds the global Goal section separately from selected Work.
         # The support oracle uses the actual DTO's availability, not observer
@@ -114,6 +120,38 @@ def run(config):
         assert [o['goal_basis']['revision'] for o in fact['basis']['observations']] == [1, 2]
     finally:
         f.doCleanups()
+    # Mutate actual Product DTOs, retaining real identity/Source/Checkpoint and
+    # correction witnesses. Deferred reader references cannot excuse a visible
+    # foreign selector, a revived unavailable publication or a wrong action.
+    for case in ('project', 'work', 'language', 'role', 'unavailable', 'action', 'envelope', 'omitted_reference'):
+        f = fixture(config)
+        try:
+            correction(f, config)
+            value = copy.deepcopy(config['after'])
+            selected = value['selected_work']
+            reference = selected['reading_references']['article']
+            if case in {'project', 'work', 'language'}:
+                key = {'project': 'project_id', 'work': 'subject_id', 'language': 'language'}[case]
+                reference['inspect']['arguments'][key] = 'foreign'
+            elif case == 'role':
+                reference['role'] = 'user_judgment'
+            elif case == 'unavailable':
+                reference['explanation_state'] = 'deleted'
+            elif case == 'action':
+                selected['next_action']['recorded_action']['checkpoint_id'] = 'ab' * 16
+            elif case == 'envelope':
+                del value['reading_profile']
+            else:
+                selected['reading_references']['article'] = {'transport_omission': {
+                    'reason': 'serialized_byte_budget', 'exact_json_bytes': len(json.dumps(reference).encode()),
+                    'basis': 'inspect the complete field on the authoritative parent record'}}
+            _, fact = f.evaluate(value)
+            expected = 'indeterminate' if case == 'omitted_reference' else 'confirmed_violation'
+            assert fact['status'] == expected, (case, fact)
+            if expected == 'confirmed_violation':
+                assert machine.disposition('shared_answer_integrity', fact['status']) == 'hard_blocking'
+        finally:
+            f.doCleanups()
     print('actual MCP/CLI Recall and correction receipt: pre/post revisions verified with bounded Goal uncertainty retained, stale-current hard violation, later correction isolation passed; synthetic capture support only')
 
 

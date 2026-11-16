@@ -217,6 +217,40 @@ for schema in SCHEMAS.values():
     if 'operation' not in schema:
         schema['operation'] = optional(S)
 
+# Explicit purpose, not a permissive fallback for a missing full-reader answer.
+# Historical full-reader observations keep their original mandatory fields.
+RESUME_INSPECT = {'tool': S, 'arguments': {'project_id': S, 'subject_kind': S,
+    'subject_id': S, 'language': S, 'action': S, 'offset': I}}
+RESUME_REFERENCE = {'role': S, 'explanation_state': S, 'diagnostic': nullable(S),
+    'publication_id': nullable(S), 'plan_fingerprint': nullable(S), 'inspect': RESUME_INSPECT}
+RESUME_VERIFICATION = {'state': S, 'source_id': nullable(S), 'outcome': nullable(S),
+    'scoped_run_recorded': B, 'verification_index': I, 'detail_inspection': DETAIL_INSPECTION}
+RESUME_STATE = {**STATE, 'verification': [RESUME_VERIFICATION]}
+RESUME_TEXT = {k: v for k, v in READING.items() if k not in {'display_english', 'display_korean'}}
+RESUME_EVIDENCE = {k: v for k, v in WORK_EVIDENCE.items() if k not in {'states', 'original_changes'}}
+RESUME_EVIDENCE.update(goal=RESUME_TEXT, next_step=RESUME_TEXT, result=nullable(RESUME_TEXT))
+RESUME_EVIDENCE.update({k: nullable(RESUME_STATE) for k in ('latest_state', 'verification', 'review', 'acceptance')})
+RESUME_REPORT = {'scope': S, 'report_count_unit': S, 'report_count_scope': S,
+    'reported_test_count_basis': S, 'report_counts': {k: I for k in ('total', 'passed', 'failed', 'partial', 'not_run')},
+    'execution_count': I, 'limit': S, 'inspect': {'interface': S, 'arguments': [S]}}
+RESUME_WORK = {'work_item_id': S, 'checkpoint_ids': [S],
+    **{k: [S] for k in ('changed_paths', 'changed_components', 'decision_ids', 'open_question_ids', 'source_ids')},
+    **{k: nullable(WORK[k][1]) for k in ('creation_event', 'latest_work_record_event')}}
+RESUME_WORK.update(reading_profile=S, state=S, reading_title=nullable(S), reading_summary=nullable(CLAIM),
+    status_facts=[CLAIM],
+    next_action=nullable(CLAIM), evidence=RESUME_EVIDENCE, verification_report=RESUME_REPORT,
+    known_limits=[S], non_goals=[S], reading_references={k: RESUME_REFERENCE for k in ('name', 'summary', 'article')})
+RESUME_DECISION_EVIDENCE = {**DECISION_EVIDENCE, 'user_rationale': nullable(S),
+    'recommendation_rationale': S, 'user_source_basis': [S], 'recommendation_source_basis': [S]}
+RESUME_DECISION = {'identity': S}
+RESUME_DECISION.update(reading_profile=S, reading_reference=RESUME_REFERENCE, revision=I, state=S,
+    choice=S, chosen_alternative_key=nullable(S), recommended_alternative_key=nullable(S),
+    displayed_alternatives=[{k: S for k in ('alternative_key', 'label', 'expected_consequence')}],
+    work_scope=SCOPE, source_basis=[S], evidence=RESUME_DECISION_EVIDENCE)
+RESUME_CHECKPOINT = {**CHECKPOINT, 'verification': optional([RESUME_VERIFICATION])}
+RESUME_RECALL = {**SCHEMAS['recall'], 'reading_profile': S, 'read_only': B,
+    'selected_work': nullable(RESUME_WORK), 'decisions': [RESUME_DECISION], 'checkpoint': nullable(RESUME_CHECKPOINT)}
+
 # Deliberately excluded Source observation prose and generator instructions are
 # never treated as trusted review instructions. Other nested unknowns are visible
 # semantic omissions rather than an apparently complete identifier-only record.
@@ -230,6 +264,8 @@ def pointer(path, key):
 
 
 def select(value, schema, path='', *, validating=False, root=False):
+    if schema is SCHEMAS['recall'] and isinstance(value, dict) and value.get('reading_profile') == 'resume':
+        schema = RESUME_RECALL
     if validating and isinstance(value, dict) and set(value) == {MARKER}:
         if value[MARKER] not in OMISSIONS:
             raise ValueError('invalid typed semantic omission')
@@ -338,7 +374,39 @@ def consistency(value, operation):
     if isinstance(value, dict) and isinstance(value.get('operation'), str) and value['operation'] != operation:
         errors.append('returned operation differs from request')
     def answers(work, kind, project):
-        if not isinstance(work, dict) or not isinstance(work.get('answers'), dict):
+        if not isinstance(work, dict):
+            return
+        if work.get('reading_profile') == 'resume':
+            identity = work.get('work_item_id' if kind == 'work' else 'identity', missing)
+            references = work.get('reading_references', {}) if kind == 'work' else {'decision': work.get('reading_reference')}
+            for name, subject in ({'name':'work_name','summary':'work_summary','article':'work'} if kind == 'work' else {'decision':'decision'}).items():
+                reference = references.get(name) if isinstance(references, dict) else None
+                if not isinstance(reference, dict) or unknown(reference):
+                    continue
+                locator = reference.get('inspect', {})
+                args = locator.get('arguments', {}) if isinstance(locator, dict) else {}
+                if any(contradicts(args.get(key, missing), expected) for key, expected in
+                        [('project_id', project), ('subject_kind', subject), ('subject_id', identity)]):
+                    errors.append('resume reading Project/subject mismatch')
+                if contradicts(reference.get('role', missing), 'generated_interpretation'):
+                    errors.append('resume reading role mismatch')
+            if kind == 'work':
+                fact = work.get('next_action')
+                action = fact.get('recorded_action') if isinstance(fact, dict) else None
+                if isinstance(action, dict) and not unknown(action):
+                    if (contradicts(action.get('work_item_id', missing), identity)
+                            or contradicts(action.get('field', missing), 'next_step')
+                            or contradicts(fact.get('question', missing), 'RecordedNextStep')
+                            or contradicts(fact.get('role', missing), 'deterministic_facts')):
+                        errors.append('recorded action Work/role mismatch')
+                    checkpoints = work.get('checkpoint_ids')
+                    if (isinstance(checkpoints, list) and not omissions(checkpoints)
+                            and isinstance(action.get('checkpoint_id'), str) and action['checkpoint_id'] not in checkpoints):
+                        errors.append('recorded action Work/Checkpoint mismatch')
+                    if contradicts(action.get('recorded_text', missing), value.get('next_step', missing)):
+                        errors.append('top-level recorded action mismatch')
+            return
+        if not isinstance(work.get('answers'), dict):
             return
         a = work['answers']; identity = work.get('work_item_id' if kind == 'work' else 'identity')
         p = a.get('provenance')

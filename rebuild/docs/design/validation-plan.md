@@ -2212,6 +2212,22 @@ spike 코드 또는 legacy primitive를 production에 넣으려면 다음을 만
 
 ### Focused host transport regression
 
+Host `resume_brief` records real en/ko Work and Decision publications with labeled
+large reader detail, then checks actual MCP Recall retains canonical selected and
+recommended alternatives and their separate reasons inside the unchanged wire bound.
+The complete final reader unit remains accessible in repository_understanding and
+canonical state is unchanged. `answer_consumers` couples actual CLI/MCP resume
+profiles, full readers, lossless verification audit and exact canonical expansion;
+its Naturalistic consumer uses real Product correction receipts and bundle with
+explicitly synthetic host envelopes. Negative mutations of those actual DTOs retain
+hard failures for foreign Project/Work/language, changed roles, revived deleted
+publications and wrong action basis; exact scoped transport omissions remain
+insufficient. Goal revision is checked independently of generated article provenance.
+Current profile references do not establish content adequacy, original capture
+completeness or a replacement/Human pass. Earlier original transport omissions and
+blocked qualifications remain immutable; Product changes require fresh gate and
+naturalistic evidence under the existing campaign contract.
+
 Maintained Host/Operations tests scale a validated learning lifecycle to 80 historical
 Candidates with 16 rounds each and large polyglot capability coverage. They characterize
 the previous full-inspection Recall shape above 1 MiB, assert current Goal/behavior

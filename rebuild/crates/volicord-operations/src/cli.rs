@@ -2320,6 +2320,66 @@ fn render_field(
     locale: CliLocale,
 ) -> Result<(), Error> {
     let padding = "  ".repeat(indent);
+    if value["reading_profile"] == "resume" && value.get("work_item_id").is_some() {
+        write_line(stdout, format_args!("{padding}{key}:"))?;
+        if let Some(title) = value["reading_title"].as_str() {
+            write_line(
+                stdout,
+                format_args!("{padding}  {}", terminal_explanation_text(title)),
+            )?;
+        }
+        if let Some(summary) = value["reading_summary"]["text"].as_str() {
+            write_line(
+                stdout,
+                format_args!("{padding}  {}", terminal_explanation_text(summary)),
+            )?;
+        }
+        for fact in value["status_facts"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .chain(std::iter::once(&value["next_action"]))
+        {
+            if let Some(text) = fact["text"].as_str() {
+                write_line(
+                    stdout,
+                    format_args!("{padding}  {}", terminal_explanation_text(text)),
+                )?;
+            }
+        }
+        if let Some(result) = value["evidence"]["result"]["original_text"].as_str() {
+            write_line(
+                stdout,
+                format_args!(
+                    "{padding}  {}: {}",
+                    match locale {
+                        CliLocale::English => "Recorded result quotation (original language)",
+                        CliLocale::Korean => "기록된 결과 인용 (원문 언어)",
+                    },
+                    terminal_explanation_text(result)
+                ),
+            )?;
+        }
+        if let Some(arguments) = value["verification_report"]["inspect"]["arguments"].as_array() {
+            let command = arguments
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(" ");
+            write_line(
+                stdout,
+                format_args!(
+                    "{padding}  {}: volicord {}",
+                    match locale {
+                        CliLocale::English => "Full verification audit",
+                        CliLocale::Korean => "전체 검증 기록",
+                    },
+                    terminal_explanation_text(&command)
+                ),
+            )?;
+        }
+        return Ok(());
+    }
     if let Some(answers) = value.get("answers") {
         write_line(stdout, format_args!("{padding}{key}:"))?;
         if let Some(title) = value["reading_title"].as_str() {

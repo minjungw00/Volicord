@@ -353,9 +353,12 @@ supplied from recommendation. Declared Work/Project scope does not establish wid
 applicability. Original text is explicit supporting evidence.
 
 Overview categories, Work/Decision detail, offline snapshot, all four documents,
-CLI status/decisions/Recall and MCP Recall/repository_understanding use these answers.
-CLI/MCP JSON has `answers` and separate `evidence`; human CLI prints answer paragraphs
-and facts. Recall retains bounded typed Checkpoint evidence for host resumption. Its selected Work
+CLI status/decisions and MCP repository_understanding use these complete answers.
+Their JSON has `answers` and separate `evidence`; human CLI prints answer paragraphs
+and facts. CLI/MCP Recall uses the purpose-specific `reading_profile: resume`
+representation below, selecting its ordinary state facts, independent name/summary
+and recorded action from the same answer producer without embedding the full article.
+Recall retains bounded typed Checkpoint evidence for host resumption. Its selected Work
 uses the common LatestWork selector over complete canonical history: the latest
 Checkpoint’s explicit Work association, or a latest Goal when no Checkpoint exists.
 An unassociated/unknown latest Checkpoint never falls back to an older Work or prose.
@@ -815,6 +818,25 @@ acceptance, Question frontier, risk/assumption, snapshot capability/coverage/fre
 omission reason을 adapter에서 버리지 않는다. `used_sources` identity 목록의
 `source_details`는 provenance와 availability/freshness를 제공하지만 raw user turn이나
 repository body를 복제하지 않는다.
+
+`reading_profile: resume`는 transport 용도 구분이며 canonical 또는 retained
+explanation format이 아니다. Selected Work는 shared selector와 answer producer의
+독립 name/summary, 현재 상태 fact와 canonical next action을 사용한다. Goal/result의
+원문 인용과 정확한 revision/Source basis, independently selected verification/review/
+acceptance observation, Checkpoint 목록과 한계를 유지한다. Decision은 canonical
+선택지·예상 결과·선택/권고 identity·각각의 이유와 Source basis를 먼저 전달한다.
+전체 Work/Decision article, 그 provenance와 전체 검증 이력을 Recall에 중복 복제하지
+않고, subject/language가 고정된 `explanation_read` 및 정확한 canonical inspection
+참조와 전체 `work verification` 조회를 제공한다. 현재가 아닌 설명의 본문이나
+publication을 이 참조에서 되살리지 않는다. 검증 요약은 Checkpoint report 개수와
+scope를 명시하며 test 개수, 해결 여부 또는 최신 변경의 coverage로 해석하지 않는다.
+기존 full reader와 canonical history는 lossless 조회 책임을 유지한다.
+
+인간용 Recall은 같은 shared fact의 독립 상태와 recorded action을 표시하고 전체
+검증 조회 경로를 제공한다. 큰 generated article이나 반복 검증 report는 canonical
+Decision 이유와 행동보다 먼저 budget을 소비할 수 없다. 비정상적으로 큰 canonical
+field는 기존 whole-field omission과 inspection 계약을 그대로 따른다. Resume profile이
+없거나 잘못된 참조·role·identity가 있는 응답을 정상적인 full answer로 추정하지 않는다.
 
 ### Bounded selection과 omission
 

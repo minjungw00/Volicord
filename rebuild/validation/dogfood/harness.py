@@ -11847,7 +11847,7 @@ def real_session_fixture(
                                     "availability": "available", "freshness": "current", "snapshot_basis": None}]} }],
                         "prose": [{"question": "ExplanationAvailability", "role": "unavailable",
                             "text": "No generated explanation recorded.", "evidence_keys": []}]}},
-                "goal_basis": [{"identity": context, "role": "goal",
+                "goal_basis": [{"identity": context, "revision": 1, "role": "goal",
                     "statement": work_user_task, "source_ids": [goal_source]}],
                 "behaviorally_relevant_context": [],
                 "decisions": (

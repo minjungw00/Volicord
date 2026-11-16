@@ -101,7 +101,50 @@ def expected_state(project_id: str, binding: dict[str, Any], initial_binding: di
     }
 
 
-def shared_answer_errors(expected: dict[str, Any], recall: dict[str, Any]) -> list[str]:
+def resume_reader_errors(expected: dict[str, Any], recall: dict[str, Any],
+                         full_reading: dict[str, Any] | None) -> list[str]:
+    """Bind a separately observed full reader to every compact reader reference."""
+    errors = []
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            errors.append(message)
+    work = recall.get('selected_work')
+    if not isinstance(work, dict) or work.get('reading_profile') != 'resume':
+        return ['resume reading profile']
+    require(recall.get('reading_profile') == 'resume' and 'answers' not in work,
+            'resume reading envelope')
+    detail = full_reading.get('selected_work') if isinstance(full_reading, dict) else None
+    require(isinstance(full_reading, dict) and full_reading.get('project_id') == expected['project_id']
+            and isinstance(detail, dict) and detail.get('work_item_id') == expected['goal_id']
+            and isinstance(detail.get('answers'), dict), 'resume full reader recovery')
+    if not isinstance(detail, dict) or not isinstance(detail.get('answers'), dict):
+        return errors
+    references = work.get('reading_references', {})
+    for name, kind in [('name', 'work_name'), ('summary', 'work_summary'), ('article', 'work')]:
+        ref = references.get(name) if isinstance(references, dict) else None
+        args = ref.get('inspect', {}).get('arguments') if isinstance(ref, dict) else None
+        require(isinstance(ref, dict) and ref.get('role') == 'generated_interpretation'
+                and ref.get('inspect', {}).get('tool') == 'explanation_read'
+                and args == {'project_id': expected['project_id'], 'subject_id': expected['goal_id'],
+                    'subject_kind': kind, 'language': 'en', 'action': 'page', 'offset': 0},
+                'resume exact reader reference')
+        answer = detail['answers'] if name == 'article' else detail['answers'].get('work_' + name)
+        state = answer.get('explanation_state') if isinstance(answer, dict) else 'missing'
+        provenance = answer.get('provenance') if isinstance(answer, dict) else None
+        require(isinstance(ref, dict) and ref.get('explanation_state') == state
+                and ref.get('publication_id') == (provenance.get('publication_id') if provenance else None)
+                and ref.get('plan_fingerprint') == (provenance.get('fingerprint') if provenance else None),
+                'resume reader publication binding')
+    facts = work.get('status_facts')
+    expected_facts = detail['answers'].get('facts', [])
+    require(isinstance(facts, list) and all(fact in expected_facts for fact in facts)
+            and any(fact.get('question') == 'WorkState' for fact in facts if isinstance(fact, dict)),
+            'resume shared state facts')
+    return errors
+
+
+def shared_answer_errors(expected: dict[str, Any], recall: dict[str, Any],
+                         full_reading: dict[str, Any] | None = None) -> list[str]:
     """Known-fixture direction and basis, not a general generated-prose grader.
 
     Expectations come from canonical authoring, never work_answers or the observed
@@ -118,7 +161,12 @@ def shared_answer_errors(expected: dict[str, Any], recall: dict[str, Any]) -> li
     if action.omissions:
         return errors
     work = recall.get("selected_work")
+    if isinstance(work, dict) and work.get('reading_profile') == 'resume':
+        errors.extend(resume_reader_errors(expected, recall, full_reading))
+        # Retain the later read separately; never rewrite the saved Recall.
+        work = full_reading.get('selected_work') if isinstance(full_reading, dict) else None
     if not isinstance(work, dict) or not isinstance(work.get("answers"), dict):
+        require(False, 'shared reader answers missing')
         return errors
     answers = work["answers"]
     facts, prose = answers.get("facts"), answers.get("prose")
@@ -172,7 +220,8 @@ def shared_answer_errors(expected: dict[str, Any], recall: dict[str, Any]) -> li
     return errors
 
 
-def recall_errors(expected: dict[str, Any], recall: dict[str, Any] | None) -> list[str]:
+def recall_errors(expected: dict[str, Any], recall: dict[str, Any] | None,
+                  full_reading: dict[str, Any] | None = None) -> list[str]:
     if not isinstance(recall, dict):
         return ["recall missing"]
     errors = []
@@ -220,7 +269,7 @@ def recall_errors(expected: dict[str, Any], recall: dict[str, Any] | None) -> li
         require(decision.get("chosen_alternative_key") == "local", "Decision choice")
         require(set(expected["decision_sources"]) <= set(decision.get("source_basis", [])), "Decision Source basis")
         require(expected["decision_source_id"] in decision.get("source_basis", []), "Decision response Source")
-    errors.extend(shared_answer_errors(expected, recall))
+    errors.extend(shared_answer_errors(expected, recall, full_reading))
     require(isinstance(recall.get("active_decision_count"), int) and recall["active_decision_count"] >= 1, "active Decision count")
     sources = recall.get("source_details", [])
     snapshots_section = recall.get("snapshots", [])
@@ -304,10 +353,12 @@ def verify_restart(expected: dict[str, Any], cli_recall: dict[str, Any] | None,
                    mcp_recall: dict[str, Any] | None, resolved: dict[str, Any] | None,
                    canonical_after_read: dict[str, Any] | None,
                    continued: dict[str, Any] | None,
-                   canonical_after_continue: dict[str, Any] | None) -> list[str]:
+                   canonical_after_continue: dict[str, Any] | None,
+                   *, cli_reading: dict[str, Any] | None = None,
+                   mcp_reading: dict[str, Any] | None = None) -> list[str]:
     """The producer's single verdict for both transports and same-Work continuation."""
-    errors = [f"CLI: {error}" for error in recall_errors(expected, cli_recall)]
-    errors.extend(f"MCP: {error}" for error in recall_errors(expected, mcp_recall))
+    errors = [f"CLI: {error}" for error in recall_errors(expected, cli_recall, cli_reading)]
+    errors.extend(f"MCP: {error}" for error in recall_errors(expected, mcp_recall, mcp_reading))
     errors.extend(binding_errors(expected, resolved))
     if canonical_evidence(canonical_after_read) != expected["canonical"]:
         errors.append("read changed canonical identity/revision/provenance")

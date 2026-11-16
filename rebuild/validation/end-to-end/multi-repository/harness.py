@@ -2760,7 +2760,12 @@ def rehearse_target(
     recall_before, recall_op = cli_json(
         recorder, "recall", cli, env, "recall", cwd=repository
     )
+    restart_cli_reading, restart_cli_reading_op = cli_json(
+        recorder, "restart-full-reading", cli, env, "status", cwd=repository
+    )
     resolved_after = recall_after = continued = canonical_after_read = canonical_after_continue = None
+    restart_mcp_reading = None
+    restart_mcp_reading_ok = False
     recall_after_ok = continue_ok = read_inspection_ok = continue_inspection_ok = False
     try:
         restarted = Mcp(mcp_binary, env)
@@ -2769,10 +2774,13 @@ def rehearse_target(
             "project_resolve", {"repository": str(repository.resolve())}
         )
         recall_after, recall_after_ok = restarted.tool("recall", {"project_id": project_id})
+        restart_mcp_reading, restart_mcp_reading_ok = restarted.tool(
+            "repository_understanding", {"project_id": project_id, "requested_language": "en"}
+        )
         canonical_after_read, read_inspection_ok = restarted.tool(
             "canonical_inspect", {"project_id": project_id}
         )
-        if expected and recall_after_ok and not restart_recall.recall_errors(expected, recall_after):
+        if expected and recall_after_ok and restart_mcp_reading_ok and not restart_recall.recall_errors(expected, recall_after, restart_mcp_reading):
             continued, continue_ok = restarted.tool("context_record", {
                 "project_id": project_id, "role": "goal", "work_transition": "continue",
                 "goal_context_id": expected["goal_id"],
@@ -2788,6 +2796,7 @@ def rehearse_target(
         restart_errors.extend(restart_recall.verify_restart(
             expected, recall_before, recall_after, resolved_after,
             canonical_after_read, continued, canonical_after_continue,
+            cli_reading=restart_cli_reading, mcp_reading=restart_mcp_reading,
         ))
     recalled_learning = (recall_after or {}).get("learning_context", [])
     learning_recall_ok = (
@@ -2798,6 +2807,7 @@ def rehearse_target(
     restart_ok = bool(
         checkpoint_status == "passed" and expected and recall_before
         and recall_op.get("exit_code") == 0 and resolved_after_ok and recall_after_ok
+        and restart_cli_reading_op.get("exit_code") == 0 and restart_mcp_reading_ok
         and continue_ok and read_inspection_ok and continue_inspection_ok
         and recall_after.get("learning_context_health", {}).get("state") == "available"
         and learning_recall_ok and not restart_errors
@@ -2809,6 +2819,8 @@ def rehearse_target(
         pre_restart_resolution=pre_restart_resolution, pre_restart_canonical=pre_restart_canonical,
         pre_restart_cleanup=pre_cleanup, cli_recall=recall_before, cli_operation=recall_op,
         restarted_resolution=resolved_after, restarted_recall=recall_after,
+        cli_full_reading=restart_cli_reading, cli_full_reading_operation=restart_cli_reading_op,
+        mcp_full_reading=restart_mcp_reading,
         canonical_after_read=canonical_after_read, continuation=continued,
         canonical_after_continue=canonical_after_continue, cleanup=restart_cleanup,
     )

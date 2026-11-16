@@ -45,6 +45,7 @@ mod payload;
 mod provider;
 mod recall;
 mod repository_explanation;
+mod resume_reading;
 #[cfg(test)]
 mod semantic_receiver_tests;
 mod source_observations;

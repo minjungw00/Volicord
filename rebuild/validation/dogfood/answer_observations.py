@@ -18,6 +18,73 @@ from recorded_action_evidence import (
 from answer_projection import PROVENANCE, ANSWERS, CLAIM, EVIDENCE
 
 
+def resume_reading_observation(selected, project, work, language):
+    """Check the actually returned resume scopes, never invent deferred prose."""
+    from answer_projection import RESUME_WORK, RESUME_REFERENCE, RESUME_INSPECT
+    errors, limits = [], []
+    if not isinstance(selected, dict) or selected.get('reading_profile') != 'resume':
+        return ['resume reading profile'], []
+    references = selected.get('reading_references')
+    if bounded_field(selected, 'reading_references', RESUME_WORK):
+        return [], ['resume reading references unavailable through scoped transport omission']
+    if not isinstance(references, dict):
+        return ['resume reading references'], []
+    for name, kind in [('name', 'work_name'), ('summary', 'work_summary'), ('article', 'work')]:
+        reference = references.get(name)
+        if transport_omission(reference):
+            limits.append('resume reading reference unavailable through scoped transport omission')
+            continue
+        if not isinstance(reference, dict):
+            errors.append('resume reading reference')
+            continue
+        state = reference.get('explanation_state')
+        if state not in {'current', 'missing', 'deleted', 'withheld', 'unavailable', 'stale', 'corrupt', 'unsupported'}:
+            if bounded_field(reference, 'explanation_state', RESUME_REFERENCE):
+                limits.append('resume reading availability unavailable through scoped transport omission')
+            else:
+                errors.append('resume reading availability')
+        if reference.get('role') != 'generated_interpretation':
+            if not bounded_field(reference, 'role', RESUME_REFERENCE):
+                errors.append('resume reading role')
+        locator = reference.get('inspect')
+        args = locator.get('arguments') if isinstance(locator, dict) else None
+        if not isinstance(args, dict):
+            if bounded_field(reference, 'inspect', RESUME_REFERENCE):
+                limits.append('resume reading selector unavailable through scoped transport omission')
+            else:
+                errors.append('resume reading selector')
+        else:
+            if not bounded_field(locator, 'tool', RESUME_INSPECT) and locator.get('tool') != 'explanation_read':
+                errors.append('resume reading selector')
+            if transport_omission(args):
+                limits.append('resume reading selector unavailable through scoped transport omission')
+            else:
+                for key, expected in [('project_id', project), ('subject_id', work), ('subject_kind', kind),
+                        ('language', language), ('action', 'page'), ('offset', 0)]:
+                    if bounded_field(args, key, RESUME_INSPECT['arguments']):
+                        limits.append('resume reading selector unavailable through scoped transport omission')
+                    elif args.get(key) != expected:
+                        errors.append('resume reading Project/Work/language scope')
+        if state == 'current':
+            for key in ['publication_id', 'plan_fingerprint']:
+                if bounded_field(reference, key, RESUME_REFERENCE):
+                    limits.append('resume publication reference unavailable through scoped transport omission')
+                elif not isinstance(reference.get(key), str) or not reference[key]:
+                    errors.append('resume current publication reference')
+        elif state in {'missing', 'deleted', 'withheld', 'unavailable', 'stale', 'corrupt', 'unsupported'}:
+            if reference.get('publication_id') is not None or reference.get('plan_fingerprint') is not None:
+                errors.append('unusable resume publication revived')
+            if (name == 'name' and selected.get('reading_title') is not None
+                    or name == 'summary' and selected.get('reading_summary') is not None):
+                errors.append('unusable resume interpretation revived')
+    summary = selected.get('reading_summary')
+    if isinstance(summary, dict) and not transport_omission(summary):
+        if summary.get('role') != 'generated_interpretation' or summary.get('question') != 'Synopsis':
+            errors.append('resume summary role')
+    limits.append('generated reading reference/content adequacy requires qualitative review')
+    return errors, limits
+
+
 def omitted_goal(result, work_id):
     """An exact canonical section-bound report, never generic omission authority."""
     reports = result.get('omissions') if isinstance(result, dict) else None
@@ -495,6 +562,12 @@ def observe(work, resume, bundle, work_id):
                     and g.get('identity') == goal_work] if isinstance(goals, list) else []
                 if len(matching) == 1 and goal['sources'] is not None and 'source_ids' in matching[0] and matching[0]['source_ids'] != goal['sources']:
                     errors.append('observation-time Goal supporting Sources')
+                if len(matching) == 1 and goal['revision'] is not None:
+                    revision = matching[0].get('revision')
+                    if type(revision) is not int:
+                        limits.append('observation-time Goal revision unavailable')
+                    elif revision != goal['revision']:
+                        errors.append('observation-time Goal revision')
                 if not matching and omitted_goal(result, goal_work):
                     # The global Goal list is bounded independently of selected
                     # Work. Its exact omission cannot erase visible contradictions
@@ -564,7 +637,14 @@ def observe(work, resume, bundle, work_id):
                                 ('work_item_id', latest.arguments.get('goal_context_id')))):
                             errors.append('observation-time Checkpoint identity/revision')
                 answers = selected.get('answers') if isinstance(selected, dict) else None
-                if isinstance(answers, dict):
+                if isinstance(selected, dict) and selected.get('reading_profile') == 'resume':
+                    if result.get('reading_profile') != 'resume' or 'answers' in selected:
+                        errors.append('resume reading envelope')
+                    profile_errors, profile_limits = resume_reading_observation(selected,
+                        project, expected_work or selected.get('work_item_id'), returned['requested_language'])
+                    errors.extend(profile_errors)
+                    limits.extend(profile_limits)
+                elif isinstance(answers, dict):
                     state, provenance = answers.get('explanation_state'), answers.get('provenance')
                     prose = answers.get('prose')
                     if not isinstance(prose, list):

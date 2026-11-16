@@ -168,34 +168,50 @@ fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
             let data: Value = result["result"]["structuredContent"].clone();
             let selected = &data["selected_work"];
             assert_eq!(selected["work_item_id"], work.to_string(), "{data}");
-            assert_eq!(
-                selected["answers"]["prose"][1]["text"],
-                "Transport-only Korean-requested paragraph ReportedChange"
-            );
-            assert_eq!(selected["answers"]["provenance"]["subject"]["kind"], "work");
-            assert_eq!(
-                selected["answers"]["provenance"]["fingerprint"],
-                plan.fingerprint
-            );
-            assert!(selected["answers"].to_string().contains(if locale == "ko" {
-                "통과"
+            if tool == "recall" {
+                assert_eq!(selected["reading_profile"], "resume");
+                assert!(selected.get("answers").is_none());
+                let reference = &selected["reading_references"]["article"];
+                assert_eq!(reference["plan_fingerprint"], plan.fingerprint);
+                assert_eq!(
+                    reference["inspect"]["arguments"]["subject_id"],
+                    work.to_string()
+                );
+                assert_eq!(reference["inspect"]["arguments"]["language"], "ko");
+                let page = host.handle(json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
+                    "name":reference["inspect"]["tool"],"arguments":reference["inspect"]["arguments"]
+                }})).ok_or("referenced publication")?;
+                assert_eq!(page["result"]["isError"], false, "{page}");
             } else {
-                "passed"
-            }));
-            // Retained canonical facts (including exact next-action quotations) survive.
-            // Only generated prose must disappear; the whole DTO is not a prose surface.
-            assert!(!selected["answers"]["prose"]
-                .to_string()
-                .contains("감사 참고"));
-            let basis = selected["answers"]["provenance"]["evidence"]
-                .as_array()
-                .ok_or("answer basis")?
-                .iter()
-                .find(|e| e["key"] == "result")
-                .ok_or("exact result basis")?;
-            assert_eq!(basis["identity"], f.checkpoints["relay-change"].to_string());
-            assert_eq!(basis["revision"], 1);
-            assert_eq!(basis["field"], "state_change");
+                assert_eq!(
+                    selected["answers"]["prose"][1]["text"],
+                    "Transport-only Korean-requested paragraph ReportedChange"
+                );
+                assert_eq!(selected["answers"]["provenance"]["subject"]["kind"], "work");
+                assert_eq!(
+                    selected["answers"]["provenance"]["fingerprint"],
+                    plan.fingerprint
+                );
+                assert!(selected["answers"].to_string().contains(if locale == "ko" {
+                    "통과"
+                } else {
+                    "passed"
+                }));
+                // Retained canonical facts (including exact next-action quotations) survive.
+                // Only generated prose must disappear; the whole DTO is not a prose surface.
+                assert!(!selected["answers"]["prose"]
+                    .to_string()
+                    .contains("감사 참고"));
+                let basis = selected["answers"]["provenance"]["evidence"]
+                    .as_array()
+                    .ok_or("answer basis")?
+                    .iter()
+                    .find(|e| e["key"] == "result")
+                    .ok_or("exact result basis")?;
+                assert_eq!(basis["identity"], f.checkpoints["relay-change"].to_string());
+                assert_eq!(basis["revision"], 1);
+                assert_eq!(basis["field"], "state_change");
+            }
             if let Some(original) = selected["evidence"]["result"]["original_text"].as_str() {
                 assert!(original.contains("감사 참고"));
             } else {
@@ -217,13 +233,15 @@ fn mcp_consumers_preserve_question_answers_and_separate_original_evidence(
     let mut host = HostAdapter::new(LocalOperations::new(f.operations.layout().clone()));
     let result=host.handle(json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall","arguments":{"project_id":f.project.to_string(),"requested_language":"ko","fixed_locale":"ko"}}})).ok_or("MCP response")?;
     let selected = &result["result"]["structuredContent"]["selected_work"];
-    assert_eq!(selected["answers"]["explanation_state"], "deleted");
+    assert_eq!(
+        selected["reading_references"]["article"]["explanation_state"],
+        "deleted"
+    );
+    assert!(selected["reading_references"]["article"]["publication_id"].is_null());
     // Retained canonical facts (including exact next-action quotations) survive.
     // Only generated prose must disappear; the whole DTO is not a prose surface.
-    assert!(!selected["answers"]["prose"]
-        .to_string()
-        .contains("감사 참고"));
-    assert!(!selected["answers"].to_string().contains("Transport-only"));
+    assert!(selected.get("answers").is_none());
+    assert!(!selected.to_string().contains("Transport-only"));
     assert!(
         selected["evidence"]["result"]["original_text"].is_string()
             || selected["evidence"]["transport_omission"]["omitted_field_count"]
@@ -307,14 +325,23 @@ fn recorded_action_is_readable_without_generated_interpretation(
                     "params":{"name":tool,"arguments":{"project_id":f.project.to_string(),"requested_language":"en","fixed_locale":locale}}})).ok_or("MCP")?;
                 assert_eq!(response["result"]["isError"], false, "{response}");
                 let data = &response["result"]["structuredContent"];
-                let answers = &data["selected_work"]["answers"];
-                assert_eq!(answers["explanation_state"], state);
-                let fact = answers["facts"]
-                    .as_array()
-                    .ok_or("facts")?
-                    .iter()
-                    .find(|a| a["question"] == "RecordedNextStep")
-                    .ok_or("recorded action")?;
+                let selected = &data["selected_work"];
+                let fact = if tool == "recall" {
+                    assert_eq!(
+                        selected["reading_references"]["article"]["explanation_state"],
+                        state
+                    );
+                    &selected["next_action"]
+                } else {
+                    let answers = &selected["answers"];
+                    assert_eq!(answers["explanation_state"], state);
+                    answers["facts"]
+                        .as_array()
+                        .ok_or("facts")?
+                        .iter()
+                        .find(|a| a["question"] == "RecordedNextStep")
+                        .ok_or("recorded action")?
+                };
                 assert_eq!(fact["role"], "deterministic_facts");
                 assert!(fact["text"]
                     .as_str()
@@ -340,7 +367,7 @@ fn recorded_action_is_readable_without_generated_interpretation(
                 if tool == "recall" {
                     assert_eq!(data["next_step"], action);
                     assert_eq!(cli["next_step"], action);
-                    assert_eq!(cli["selected_work"]["answers"], *answers);
+                    assert_eq!(cli["selected_work"]["next_action"], *fact);
                 }
             }
         }
@@ -562,9 +589,16 @@ fn naturalistic_consumer_checks_product_recalls_across_correction(
     );
     let cli: Value = serde_json::from_slice(&stdout)?;
     assert_eq!(
-        cli["selected_work"]["answers"],
-        before["structuredContent"]["selected_work"]["answers"]
+        cli["selected_work"],
+        before["structuredContent"]["selected_work"]
     );
+    assert_eq!(cli["reading_profile"], "resume");
+    assert!(cli["selected_work"].get("answers").is_none());
+    let before_full = call(
+        &mut host,
+        "repository_understanding",
+        json!({"project_id":f.project.to_string(),"requested_language":"en"}),
+    )?;
     let args = json!({"project_id":f.project.to_string(),"action":"correct_context","record_id":work.to_string(),
         "expected_revision":1,"corrected_text":format!("{}.",goal.statement),"user_turn":"Correct punctuation only."});
     let mutation = call(&mut host, "canonical_mutate", args.clone())?;
@@ -591,11 +625,16 @@ fn naturalistic_consumer_checks_product_recalls_across_correction(
         "recall",
         json!({"project_id":f.project.to_string(),"requested_language":"en"}),
     )?;
+    let after_full = call(
+        &mut host,
+        "repository_understanding",
+        json!({"project_id":f.project.to_string(),"requested_language":"en"}),
+    )?;
     let bundle = f._temporary.path().join("final.bundle.json");
     f.operations.export_bundle(f.project, &bundle)?;
     let config = json!({"project":f.project.to_string(),"work":work.to_string(),"source":goal.source_basis[0].to_string(),
         "checkpoint":cp.id.to_string(),"next_step":cp.next_step,"before":before["structuredContent"],"before_cli":cli,
-        "after":after["structuredContent"],"mutation_arguments":args,"mutation_result":mutation,"bundle":bundle});
+        "after":after["structuredContent"],"before_full":before_full["structuredContent"],"after_full":after_full["structuredContent"],"mutation_arguments":args,"mutation_result":mutation,"bundle":bundle});
     let config_path = f._temporary.path().join("consumer.json");
     std::fs::write(&config_path, serde_json::to_vec(&config)?)?;
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -604,6 +643,7 @@ fn naturalistic_consumer_checks_product_recalls_across_correction(
         .parent()
         .ok_or("rebuild")?;
     let output = std::process::Command::new("python3")
+        .arg("-B")
         .arg(root.join("validation/dogfood/answer_product_support.py"))
         .arg(config_path)
         .env("PYTHONDONTWRITEBYTECODE", "1")
@@ -743,8 +783,27 @@ fn historical_adversity_keeps_lossless_cli_and_exact_bounded_mcp_audit(
             assert_eq!(response["result"]["isError"], false);
             let selected = &response["result"]["structuredContent"]["selected_work"];
             assert_eq!(selected["work_item_id"], f.goals["older"].to_string());
-            assert_eq!(selected["answers"], cli["selected_work"]["answers"]);
-            let facts = selected["answers"]["facts"].as_array().ok_or("facts")?;
+            if tool == "recall" {
+                assert_eq!(selected["reading_profile"], "resume");
+                assert_eq!(
+                    selected["checkpoint_ids"],
+                    cli["selected_work"]["checkpoint_ids"]
+                );
+                assert_eq!(
+                    selected["verification_report"]["report_counts"],
+                    cli["selected_work"]["verification_report"]["report_counts"]
+                );
+                assert_eq!(
+                    selected["verification_report"]["report_counts"]["failed"],
+                    1
+                );
+                assert!(selected.get("answers").is_none());
+            } else {
+                assert_eq!(selected["answers"], cli["selected_work"]["answers"]);
+            }
+            let facts = cli["selected_work"]["answers"]["facts"]
+                .as_array()
+                .ok_or("facts")?;
             assert_eq!(
                 facts
                     .iter()
@@ -759,7 +818,7 @@ fn historical_adversity_keeps_lossless_cli_and_exact_bounded_mcp_audit(
             assert_eq!(states.len(), 3);
             if let Some(delivered) = selected["evidence"]["states"].as_array() {
                 assert_eq!(delivered, states);
-            } else {
+            } else if tool != "recall" {
                 assert!(
                     selected.to_string().contains("transport_omission"),
                     "missing audit requires an explicit transport omission"
@@ -862,10 +921,17 @@ fn historical_adversity_keeps_lossless_cli_and_exact_bounded_mcp_audit(
             } else {
                 "과거 문제 이력"
             }));
-            for cp in &before.checkpoint_history {
+            if command == "status" {
+                for cp in &before.checkpoint_history {
+                    assert!(
+                        text.contains(&cp.recorded_at.as_unix_micros().to_string()),
+                        "full status keeps every original event time readable"
+                    );
+                }
+            } else {
                 assert!(
-                    text.contains(&cp.recorded_at.as_unix_micros().to_string()),
-                    "typed verification keeps each original event time readable"
+                    text.contains("work verification"),
+                    "resume links the full verification audit"
                 );
             }
         }

@@ -106,9 +106,20 @@ def recorded_action_evidence(expected, recall):
             if expected["checkpoint_id"] is not None else not checkpoints),
             "selected Work Checkpoint scope")
     answers = work.get("answers")
-    if not isinstance(answers, dict):
-        return finish(["Recall question answers"])
-    facts, prose = answers.get("facts"), answers.get("prose")
+    if work.get('reading_profile') == 'resume':
+        # The same canonical fact is delivered directly in the resume profile;
+        # no full reader answer or generated direction is synthesized here.
+        fact = work.get('next_action')
+        if transport_omission(fact):
+            omissions.append('recorded action unavailable through scoped whole-field transport omission')
+            return finish()
+        if not isinstance(fact, dict):
+            return finish(['Recall recorded action'])
+        facts, prose = [fact], []
+    else:
+        if not isinstance(answers, dict):
+            return finish(["Recall question answers"])
+        facts, prose = answers.get("facts"), answers.get("prose")
     if not isinstance(prose, list):
         if not field_omission(answers, 'prose',
                 fields=ANSWER_DTO_FIELDS, optional=ANSWER_DTO_OPTIONAL):

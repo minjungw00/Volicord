@@ -1,5 +1,16 @@
 # Reconstruction validation assets
 
+Recall uses a purpose-specific `reading_profile: resume` DTO. Run focused Host
+`--test resume_brief --test answer_consumers`, Operations transport controls and
+`dogfood/answer_observations_self_test.py`/`review_meaning_self_test.py` together for
+changes to its meaning. The pressure fixture uses actual publications and actual
+CLI/MCP consumers; canonical identity, distinct Decision reasons, independent
+states and full-reader expansion remain required. The private observer checks
+explicit resume references rather than synthesizing missing full answers. Exact
+scoped omissions remain insufficient and visible contradictions remain blocking.
+Historical full-reader captures retain their original mandatory fields and exact
+collector proof. They are not a second Product decoding path or a new campaign.
+
 `review_meaning_self_test.py` covers current returned-meaning schema 3. Whole and
 partial omissions remain incomplete while visible contradictory identities, roles,
 grounding and directions remain diagnosable. Reprepare private review packages from
