@@ -247,8 +247,13 @@
       }
     }
     if (!point && !restoredSource && navigationChanged && target?.matches('.diagram-claim')) {
-      target.dataset.active='true';target.focus({preventScroll:true});
-      const activation=diagramReturns.get(state().diagramReturn);
+      target.dataset.active='true';
+      const candidate=diagramReturns.get(state().diagramReturn);
+      const activation=candidate?.element===target.dataset.element?candidate:null;
+      const step=activation?.descriptionStep;
+      const stepControl=step && target.querySelector('[data-description-step="'+step+'"]');
+      const destination=stepControl || (step && target.querySelector('[data-description-step]')) || target;
+      destination.focus({preventScroll:true});
       if(activation?.keepFigure && activation.element===target.dataset.element) {
         // Ordinary element selection reveals its local explanation without
         // replacing the visible graph with a fragment's top-aligned paragraph.
@@ -257,7 +262,10 @@
         const restore=()=>{
           if(selected || location.hash!==hash || !activation.trigger?.isConnected)return;
           const active=document.activeElement;
-          if(active!==target && active!==activation.trigger && active!==document.body)return;
+          if(active!==target && active!==destination && active!==activation.trigger && active!==document.body)return;
+          // Native fragment targeting can focus the section after activation.
+          // Continue keyboard stepping at the corresponding new control too.
+          if(step)destination.focus({preventScroll:true});
           const figure=activation.trigger.closest('.admitted-diagram');
           const viewport=activation.trigger.closest('.diagram-viewport');
           if(viewport?.isConnected) {
@@ -267,8 +275,8 @@
             viewport.scrollLeft=activation.left;viewport.scrollTop=activation.top;
           }
           if(figure?.isConnected){figure.scrollLeft=activation.figureLeft;figure.scrollTop=activation.figureTop;}
-          window.scrollTo(0,activation.y);
-          window.scrollBy(0,activation.trigger.getBoundingClientRect().top-activation.triggerTop);
+          window.scrollTo(activation.x||0,activation.y);
+          if(!step)window.scrollBy(0,activation.trigger.getBoundingClientRect().top-activation.triggerTop);
         };
         restore();lifetime.frame(()=>lifetime.frame(restore));
       } else target.scrollIntoView({block:'nearest'});
@@ -327,9 +335,9 @@
         event.preventDefault();
         const figure=viewport.closest('.admitted-diagram');
         const claim=[...figure.querySelectorAll('.diagram-claim')].find(n=>n.getClientRects().length);
-        const token=remember(diagramReturns,{camera:figures.capture(figure,id),element:id,trigger:element,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop,
+        const token=remember(diagramReturns,{camera:figures.capture(figure,id),element:id,trigger:element,x:scrollX,y:scrollY,left:viewport.scrollLeft,top:viewport.scrollTop,
           claim:claim?.id || null,figureLeft:figure.scrollLeft,figureTop:figure.scrollTop,
-          triggerTop:element.getBoundingClientRect().top,keepFigure:diagramLink.matches('.diagram-element')});
+          triggerTop:element.getBoundingClientRect().top,keepFigure:diagramLink.matches('.diagram-element')||!!diagramLink.dataset.descriptionStep,descriptionStep:diagramLink.dataset.descriptionStep||null});
         const next={...state(),diagramReturn:token};
         // Both the native Back destination and the new selected claim retain
         // this activation, even if a later activation uses the same element.

@@ -1980,6 +1980,13 @@ rendering must omit the live toolbar, retaining exact maps, captions, native
 claim/code/return links and complete permitted Source bytes. The direct diagram
 publication test checks both live controls and their absence from static exports.
 
+Live precise-return diagram journeys also run `diagram_description_steps.cjs` on
+actual pairs of related descriptions. Keyboard previous/next activation must
+change the selected explanation, preserve document and figure scroll coordinates,
+continue focus on an available description control, and open no Source. Initial
+embedding omissions remain observable in exact evidence inspection rather than
+adding notices below ordinary or diagram evidence actions.
+
 Whole-result document journeys set `whole_result: true` and `reading_contract` to
 `fixtures/viewer-reading/grounded-reading-obligations.json`. That independently
 maintained seven-case contract requires complete language/figure membership and

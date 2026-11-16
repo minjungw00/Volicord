@@ -4250,3 +4250,8 @@ purpose. Both changes operate on existing admitted text and claim coordinates.
 Production review includes complete-unit rereading after edits in each language
 and recorded-time/scope wording for historical checks. Read/export does not fix
 editorial fragments or rewrite original verification records automatically.
+Embedding omissions are described within exact evidence inspection rather than
+under each reading action. Actual Source unavailability remains distinct. Live
+previous/next diagram-description navigation preserves the document/figure scroll
+and transfers keyboard focus to an equivalent local control without scrolling.
+Direct deep links and native script-free navigation retain their explicit targets.

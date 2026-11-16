@@ -1701,9 +1701,14 @@ Git basis when available. A match does not establish public-release availability
 authors must ground and distinguish relevant local changes, baseline behavior and
 unestablished comparisons without inferring Work links from paths or chronology.
 
-Quiet evidence actions remain icon-free. Affected authored claims may show a short
-text availability note based on exact Source-window inclusion/availability, not
-prose role or an inferred missing range. Shared complete windows count as included.
+Quiet evidence actions remain icon-free. Initial-page embedding omissions do not
+add notices below prose or diagram evidence actions. Exact inclusion and omitted
+ranges remain inspectable inside the evidence view; actual unavailable Source
+bodies retain their separate availability notice and recovery boundary.
+Previous/next diagram-description controls select the related explanation while
+preserving the document and figure scroll positions. Keyboard focus continues at
+the corresponding control in the selected explanation without scrolling; native
+deep links and modified-link navigation retain their ordinary behavior.
 These presentation and preparation improvements are general across repository
 languages and Work kinds; no repository-name or reviewed-output detector supplies
 content, source priority or status. Technical support does not certify explanation

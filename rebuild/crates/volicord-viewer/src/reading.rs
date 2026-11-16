@@ -449,50 +449,17 @@ fn reader_citation_actions(
         let unavailable = scope.unavailable_citation_indices.iter().any(|&i| {
             citations[i].use_kind == volicord_projections::ExplanationSourceUse::CurrentCode
         });
-        let omitted = scope.omitted_citation_indices.iter().any(|&i| {
-            citations[i].use_kind == volicord_projections::ExplanationSourceUse::CurrentCode
-        });
-        if unavailable || omitted {
+        if unavailable {
             html.push_str(&format!(
                 "<p class=\"claim-evidence-availability\">{}</p>",
-                if unavailable {
-                    text(
-                        r.locale,
-                        "Some code evidence is unavailable.",
-                        "코드 근거 일부 이용 불가",
-                    )
-                } else {
-                    text(
-                        r.locale,
-                        "Some code evidence is not included in this page.",
-                        "이 화면에 일부 코드 근거 미포함",
-                    )
-                }
+                text(
+                    r.locale,
+                    "Some code evidence is unavailable.",
+                    "코드 근거 일부 이용 불가",
+                )
             ));
         }
     }
-}
-
-fn source_window_omitted(
-    answers: &ReaderAnswers<'_>,
-    citation: &volicord_projections::ExplanationCitation,
-) -> bool {
-    !answers.source_excerpts.iter().any(|e| {
-        e.citation.same_source_range(citation)
-            && e.omitted_utf8_bytes == 0
-            && e.text.len() == citation.end_byte - citation.start_byte
-    })
-}
-
-fn source_window_omission(html: &mut String, r: &ViewerRequest) {
-    html.push_str(&format!(
-        "<small class=\"source-window-omission\">{}</small>",
-        text(
-            r.locale,
-            "Complete code window is not embedded; unavailable offline.",
-            "전체 코드 범위가 포함되지 않아 오프라인에서 읽을 수 없습니다."
-        )
-    ));
 }
 
 /// Visibility is a reading hierarchy, never a change to admitted dependencies.
@@ -908,7 +875,8 @@ fn render_diagrams(
                     ] {
                         if let Some(other) = other {
                             let next = escape(connections[other]);
-                            html.push_str(&format!("<a class=\"button secondary diagram-text-link\" data-element=\"{ns}-{next}\" href=\"#{ns}-{next}-claim\">{title}</a>"));
+                            let direction = if other < position { "previous" } else { "next" };
+                            html.push_str(&format!("<a class=\"button secondary diagram-text-link\" data-description-step=\"{direction}\" data-element=\"{ns}-{next}\" href=\"#{ns}-{next}-claim\">{title}</a>"));
                         }
                     }
                     html.push_str("</nav>");
@@ -929,12 +897,6 @@ fn render_diagrams(
                     .collect::<Vec<_>>();
                 if let Some(first) = targets.first() {
                     html.push_str(&format!("<a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{claim}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{} · {}\">{}</a>",escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),text(r.locale,"Choose an exact range for the selected element","선택한 요소의 정확한 근거 범위 선택"),targets.len(),text(r.locale,"Evidence","근거 보기")));
-                }
-                if covering
-                    .iter()
-                    .any(|(_, c)| source_window_omitted(answers, c))
-                {
-                    source_window_omission(html, r);
                 }
                 html.push_str("</div></section>");
             }

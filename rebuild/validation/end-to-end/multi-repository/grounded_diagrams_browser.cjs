@@ -17,7 +17,7 @@ fs.mkdirSync(output, {recursive:false});
 const hash = p => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const executionIdentities={viewer:hash(config.viewer),driver:hash(__filename),chromium:hash(config.chromium)};
 if(config.fontconfig) executionIdentities.fontconfig=hash(config.fontconfig);
-for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs','diagram_context.cjs','publication_coverage.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
+for(const helper of ['overview_entry.cjs','diagram_focus.cjs','diagram_geometry.cjs','diagram_context.cjs','publication_coverage.cjs','diagram_description_steps.cjs']) executionIdentities[helper]=hash(path.join(__dirname,helper));
 const sleep = ms => new Promise(r => setTimeout(r,ms));
 const {openEmbeddedCode,returnFromEmbeddedCode,citationResponse,criticalBytes,embeddedCode,citationInspection,citationReady,citationPoint}=require('../../viewer-design/product_review_controls.cjs');
 executionIdentities.controls=hash(path.resolve(__dirname,'../../viewer-design/product_review_controls.cjs'));
@@ -293,6 +293,8 @@ async function nativeLinkNavigation(page, link, receipt) {
             assert.equal(page.url(),deep,'same exact publication/claim deep link');
             await page.keyboard.press('Escape');
             await page.waitForFunction(id=>document.activeElement?.id===id,elementId);
+            const descriptionSteps=await require('./diagram_description_steps.cjs').inspect(page,figure);
+            fs.writeFileSync(path.join(output,`${c.key}-${width}-${mode}-description-steps.json`),JSON.stringify(descriptionSteps,null,2),{flag:'wx'});
             if(config.adverse_navigation){
               const checks=await require('./evidence_interactions.cjs').inspect(page,context,{address:base+query,figureId:await figure.getAttribute('id'),elementId,claimId,sourceId:pointId,width});
               fs.writeFileSync(path.join(output,`${c.key}-${width}-${mode}-interactions.json`),JSON.stringify(checks,null,2),{flag:'wx'});

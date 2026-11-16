@@ -2866,7 +2866,8 @@ fn selected_connections_keep_endpoints_guards_and_sequence_context_in_live_and_o
 }
 
 #[test]
-fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<dyn Error>> {
+fn embedding_omissions_stay_in_evidence_inspection_not_reading_actions(
+) -> Result<(), Box<dyn Error>> {
     for needs_omission in [false, true] {
         // Preserve the original input, which now fits. Add an independent larger
         // negative control; qualification workload and existing originals are unchanged.
@@ -2922,12 +2923,14 @@ fn supporting_omissions_stay_at_the_affected_diagram_claim() -> Result<(), Box<d
             .split("</section>")
             .next()
             .ok_or("claim close")?;
-        assert_eq!(
-            claim.matches("class=\"source-window-omission\"").count(),
-            usize::from(needs_omission),
-            "one relevant scope message, even when many supporting windows are omitted"
-        );
-        assert_eq!(claim.contains("unavailable offline"), needs_omission);
+        assert!(!claim.contains("source-window-omission"));
+        assert!(!claim.contains("unavailable offline"));
+        for locale in ["en", "ko"] {
+            let page = f.get(&format!("/?view=repository&locale={locale}"))?;
+            assert!(!page.contains("Some code evidence is not included in this page."));
+            assert!(!page.contains("이 화면에 일부 코드 근거 미포함"));
+            assert!(!page.contains("<p class=\"claim-evidence-availability\""));
+        }
         let inline_actions = html
             .split("<div class=\"unit\"")
             .skip(1)
