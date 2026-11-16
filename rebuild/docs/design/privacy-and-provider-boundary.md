@@ -96,6 +96,13 @@ Host가 제공하지 않는 권한을 Volicord가 발명하지 않는다. Curren
 
 ### Explicit local explanation retention
 
+An explicit active-host reader review is managed Derived metadata, independent of
+canonical user judgment and Human acceptance. Its exact production/realization
+binding, bounded rationale and unit references retain the prepared canonical and
+actual cited Source dependencies. Recording it reads permitted Sources only; it
+does not collect bodies, renew Source/publication deadlines, grant transmission or
+dispatch a model. Forgetting/deletion barriers apply before selecting its content.
+
 Explanation and exact Source readers may inspect complete managed dependency
 metadata without loading retained bodies or provider request/authority history.
 This is a purpose-specific read view, not general privacy inspection. It preserves

@@ -31,10 +31,10 @@ const CONCISE_EFFECT_REVIEW: &str = "Freeze Source-first conditions/state/effect
 /// One authoring contract for CLI/MCP preparation, independent of transport.
 /// These are investigation obligations, never prewritten subject answers.
 const DECISION_RESPONSE_AUTHORING: &str = "Explain the supplied response and its substantive reasons on their merits, separately from the working agent's recommendation. Relay, transmission-permission and authoring-context instructions are not reasons for the selected technical outcome. Keep their exact provenance in supporting records rather than turning them into the primary Decision narrative, unless the Decision itself concerns that context. Preserve original records; infer neither human authorship nor personal comprehension from a relay or an authorship assumption.";
-const ARTICLE_AUTHORING: &str = "For a new colleague, lead with prior problem, actual change versus pre-existing behavior and user-visible result. Explain terms and a grounded use example before internals; illustrations are not observed runs. Explain mechanism, supported reason and consequence. Separate independent claims; cite complete implementing branches for every stated action, including publication, metadata and cleanup. Table rows may bind separate claim spans. Reports or paths alone prove no effect. Keep latest state, earlier completion, unknown retests, next action and acceptance distinct. Give next action its own section, action first; invent no closure condition or repeat the lead under a mechanism. Keep detailed verification/observation limits in their roles and material caveats near claims. Compare measured modes under actual conditions; invent no cause. Preserve missing/no-change/failed/paused outcomes, choice versus recommendation and substantive reasons. Reread edited units in every language for stale fragments and repeated qualifiers. Label retained checks by recorded time/scope, not unqualified fresh/new. No fixed template, length quota, invented execution or semantic approval from admission.";
+const ARTICLE_AUTHORING: &str = "For a new colleague, lead with prior problem, actual change versus pre-existing behavior and user-visible result. Explain terms and a grounded use example before internals; illustrations are not observed runs. Explain mechanism, supported reason and consequence. Separate independent claims; cite complete implementing branches for every stated action, including publication, metadata and cleanup. Table rows may bind separate claim spans. Reports or paths alone prove no effect. Keep latest state, earlier completion, unknown retests, next action and acceptance distinct. Give next action its own section, action first; invent no closure condition or repeat the lead under a mechanism. Keep detailed verification/observation limits in their roles and material caveats near claims. Compare measured modes under actual conditions; invent no cause. Preserve missing/no-change/failed/paused outcomes, choice versus recommendation and substantive reasons. Reread every unit/language; production-review binds the exact draft before record. Label retained checks by recorded time/scope, not unqualified fresh/new. No fixed template, length quota, invented execution or semantic approval from admission.";
 /// Repository investigation is independent of a Work and precedes authoring.
 /// Inventory commitments are discovery inputs, not an architectural answer key.
-const REPOSITORY_AUTHORING: &str = "Investigate permitted originals before drafting: README/configuration, exact analysis, entry points, implementations/callees, storage/transport and failure paths across material responsibilities. Start with what the repository enables and one representative user journey before internal vocabulary. Follow inputs, state, cooperating owners, output and failure boundary; add a distinct end-to-end operation when complexity warrants it, not a Work-centered catalog or fixed template. Give useful exact code entry points and responsibilities after the journey. Bind each table row to its implementing Source subclaim. To navigate a known related Work, explicitly author [its displayed title](work:32-lowercase-hex-id); verify its exact same-Project identity and title, never infer a link from prose or paths. Distinguish public/baseline behavior, actually inspected local changes and unestablished comparisons; explain which relevant Work introduced a local feature only with an explicit evidence basis, never infer from paths/time. Inventory, analyzed topology, investigated Sources and explained topics differ. State historical code basis and analysis limits honestly; do not imply a public release from a local snapshot match. Use section_heading at topic changes; separate independent claims and narrow citations to complete relevant branches. Use grounded command/output examples or comparison tables when useful, distinguishing examples from observed runs. Keep causal/temporal/ownership boundaries and element-specific figure explanations; do not repeat the whole caption for each element. Explain supported reasons and consequences, not a role/filename list. Keep material caveats near claims and detailed observation/verification limits in their own roles without repetitive blanket disclaimers. Reread edited units and labels in every language against originals; remove stale fragments/repeated qualifiers and label retained checks by recorded time/scope. No invented canonical Project Purpose, execution, rationale, Work relationship or semantic completeness. Prepare/compose/record fresh from permitted evidence; read/export never authors or captures. If necessary meaning cannot fit, report its exact obligation and measured preparation/response/retained pressure; do not silently omit it or raise limits.";
+const REPOSITORY_AUTHORING: &str = "Investigate permitted originals before drafting: README/configuration, exact analysis, entry points, implementations/callees, storage/transport and failure paths across material responsibilities. Start with what the repository enables and one representative user journey before internal vocabulary. Follow inputs, state, cooperating owners, output and failure boundary; add a distinct end-to-end operation when complexity warrants it, not a Work-centered catalog or fixed template. Give useful exact code entry points and responsibilities after the journey. Bind each table row to its implementing Source subclaim. To navigate a known related Work, explicitly author [its displayed title](work:32-lowercase-hex-id); verify its exact same-Project identity and title, never infer a link from prose or paths. Distinguish public/baseline behavior, actually inspected local changes and unestablished comparisons; explain which relevant Work introduced a local feature only with an explicit evidence basis, never infer from paths/time. Inventory, analyzed topology, investigated Sources and explained topics differ. State historical code basis and analysis limits honestly; do not imply a public release from a local snapshot match. Use section_heading at topic changes; separate independent claims and narrow citations to complete relevant branches. Use grounded command/output examples or comparison tables when useful, distinguishing examples from observed runs. Keep causal/temporal/ownership boundaries and element-specific figure explanations; do not repeat the whole caption for each element. Explain supported reasons and consequences, not a role/filename list. Keep material caveats near claims and detailed observation/verification limits in their own roles without repetitive blanket disclaimers. Use production-review on the exact draft/language before record. Reread edited units and labels against originals; remove stale fragments/repeated qualifiers and label checks by recorded time/scope. No invented canonical Project Purpose, execution, rationale, Work relationship or semantic completeness. Prepare/compose/record fresh from permitted evidence; read/export never authors or captures. If necessary meaning cannot fit, report its exact obligation and measured preparation/response/retained pressure; do not silently omit it or raise limits.";
 
 // Within the current editorial policy, compact diagram/effect guidance only
 // when the complete ordinary plan would be refused. Neither path prunes facts.
@@ -84,6 +84,40 @@ impl ExplanationSubject {
             "summary" => Ok(Self::WorkSummary(work)),
             _ => Err("Work publication scope must be article, name or summary".into()),
         }
+    }
+}
+
+/// Active-host investigation questions, not templates or semantic acceptance.
+/// The exact language and realization are reviewed independently.
+pub fn reader_review_obligations(subject: ExplanationSubject) -> &'static [&'static str] {
+    match subject {
+        ExplanationSubject::Work(_) => &[
+            "problem_change_result",
+            "use_and_effect",
+            "state_and_next_action",
+            "related_decisions",
+            "grounding_and_limits",
+            "readable_structure",
+            "language_review",
+        ],
+        ExplanationSubject::Repository(_) => &[
+            "purpose_and_journey",
+            "responsibilities_and_entry_points",
+            "local_and_baseline_scope",
+            "known_related_work_navigation",
+            "grounding_and_limits",
+            "readable_structure",
+            "language_review",
+        ],
+        ExplanationSubject::Decision(_) => &[
+            "question_and_alternatives",
+            "choice_and_recommendation",
+            "reason_effect_scope",
+            "grounding_and_limits",
+            "readable_structure",
+            "language_review",
+        ],
+        ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_) => &[],
     }
 }
 

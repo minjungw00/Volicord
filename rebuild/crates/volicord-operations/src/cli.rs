@@ -296,6 +296,14 @@ fn explanation_command(kind: &'static str) -> Command {
                         ),
                 )
                 .subcommand(
+                    Command::new("production-review")
+                        .about("Record active-host reader review of one exact realization; not independent semantic approval")
+                        .arg(subject()).arg(language())
+                        .arg(Arg::new("production-id").long("production-id").required(true))
+                        .arg(path_arg("realization", "realization", "Exact composed realization JSON; independent unchanged input bound").required(true))
+                        .arg(path_arg("input", "input", "Reader review JSON with checks only").required(true)),
+                )
+                .subcommand(
                     Command::new("produce")
                         .about(
                             "Explicit host production intent; unchanged current bases are skipped",
@@ -404,6 +412,7 @@ fn explanation_command(kind: &'static str) -> Command {
                     "production-status",
                     "production-fail",
                     "production-assess",
+                    "production-review",
                 ]
                 .into_iter()
                 .fold(explain, |command, action| {
@@ -1243,6 +1252,26 @@ fn dispatch_explanation_action(
                     .map(String::as_str),
             },
         ),
+        "production-review" => {
+            let metadata = read_explanation_input(args)?;
+            if !metadata
+                .as_object()
+                .is_some_and(|o| o.len() == 1 && o.contains_key("checks"))
+            {
+                return Err(Error::new("reader review input requires checks only; supply the exact composed response separately with --realization"));
+            }
+            let realization = read_bounded_input(required_path(args, "realization")?)?;
+            operations.assess_explanation_reader(
+                project,
+                subject,
+                required(args, "language")?,
+                required(args, "production-id")?,
+                serde_json::from_value(
+                    json!({"realization":realization,"checks":metadata["checks"]}),
+                )
+                .map_err(|error| Error::explanation_input("invalid reader review", error))?,
+            )
+        }
         "production-assess" => operations.assess_explanation_diagrams(
             project,
             subject,

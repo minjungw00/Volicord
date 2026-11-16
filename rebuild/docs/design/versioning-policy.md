@@ -1,5 +1,13 @@
 # Versioning 정책
 
+Active-host reader reviews use independent managed Derived metadata
+`volicord_explanation_reader_review`, current version `1`. It binds exact
+production/plan/subject/language and the complete realization fingerprint. Absence
+is unreviewed; non-current or corrupt metadata is never a positive review and is
+not decoded through an older-format branch. Existing canonical, portable,
+SourceObservation and explanation formats are unchanged. Earlier diagram-only
+assessments or readable publications are not converted into reader reviews.
+
 Local pinned code-origin annotations use the independent exact-current
 `volicord_code_origin` format version `1`, under the existing managed Derived
 `CodeOrigin` kind. It stores only verification metadata for an exact command

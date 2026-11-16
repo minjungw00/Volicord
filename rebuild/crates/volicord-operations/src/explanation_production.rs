@@ -100,12 +100,15 @@ impl LocalOperations {
         subject: ExplanationSubject,
         language: &str,
         plan: &ExplanationPlan,
-    ) -> Result<(Option<String>, bool), Error> {
+    ) -> Result<(Option<String>, bool, Option<String>), Error> {
         let records = self.explanation_dependencies(canonical.project.id)?;
         match self.permitted_publication_from(canonical, &records, subject, language) {
             Ok((publication, id)) => Ok((
                 Some(id),
                 publication.realization.plan_fingerprint == plan.fingerprint,
+                Some(crate::explanation_reader_review::realization_fingerprint(
+                    &publication.realization,
+                )?),
             )),
             Err(e) if e.reading_failure().is_some() => Ok((
                 records
@@ -117,6 +120,7 @@ impl LocalOperations {
                     })
                     .map(|r| r.id.to_string()),
                 false,
+                None,
             )),
             Err(e) => Err(e),
         }
@@ -132,7 +136,7 @@ impl LocalOperations {
     ) -> Result<Value, Error> {
         let canonical = self.canonical_basis(project)?;
         let plan = self.prepare_subject_explanation(&canonical, subject, language)?;
-        let (publication_id, current) =
+        let (publication_id, current, realization_fingerprint) =
             self.publication_for_production(&canonical, subject, language, &plan)?;
         let intent = self.production_intent(project, subject, language)?;
         let state = match &intent {
@@ -173,17 +177,39 @@ impl LocalOperations {
                 | ExplanationSubject::Repository(_)
                 | ExplanationSubject::Decision(_)
         );
+        let reader_review = intent
+            .as_ref()
+            .filter(|(_, intent)| intent.plan_fingerprint == plan.fingerprint)
+            .map(|(id, _)| {
+                self.explanation_reader_review(project, subject, language, id, &plan.fingerprint)
+            })
+            .transpose()?
+            .flatten();
+        let review_applies = current
+            && reader_review.as_ref().is_some_and(|review| {
+                Some(&review.realization_fingerprint) == realization_fingerprint.as_ref()
+            });
+        let reader_complete = !article
+            || (review_applies
+                && reader_review
+                    .as_ref()
+                    .is_some_and(|review| review.complete()));
         let content_complete = matches!(state, "complete" | "current")
+            && reader_complete
             && (!article
                 || assessment.as_ref().is_some_and(|a| {
                     a.outcome != crate::DiagramAssessmentOutcome::InsufficientEvidence
                 }));
         Ok(
             json!({"diagram_assessment":assessment,"content_complete":content_complete,"project_id":project.to_string(),"subject":subject,"language":language,
+            "reader_review":reader_review,"reader_review_applies_to_publication":review_applies,
+            "reader_review_required":article&&!reader_complete,
+            "reader_review_obligations":volicord_projections::reader_review_obligations(subject),
+            "semantic_quality_verified":false,
             "state":state,"plan_fingerprint":plan.fingerprint,"publication_id":publication_id,
             "production_id":intent.as_ref().map(|(id,_)|id),"intent":intent.as_ref().map(|(_,i)|i),
             "read_only":true,"generation_required":!matches!(state,"complete"|"current"),
-            "recovery":"Explicitly produce this exact scope/language from current evidence; restart requires fresh request-local Source reads. Ordinary Work and independently permitted publications remain usable."}),
+            "recovery":"Publication currentness is not host reader-review completion. Explicitly refine needed current prose; review each exact realization/language and every applicable obligation before normal record. Inspect incomplete outcomes. No keyword/length or host-positive verdict proves semantic quality. Restart needs scoped Source reads; ordinary Work and permitted publications remain usable."}),
         )
     }
 
@@ -218,7 +244,7 @@ impl LocalOperations {
                 json!({"production":status,"generation_status":"skipped_unchanged_basis","retention_renewed":false}),
             );
         }
-        let (previous_publication_id, _) =
+        let (previous_publication_id, _, _) =
             self.publication_for_production(&canonical, subject, language, &plan)?;
         let intent = Intent {
             format_kind: "volicord_explanation_production".into(),
@@ -233,7 +259,9 @@ impl LocalOperations {
         };
         let id = self.store_production_intent(&plan, &intent)?;
         Ok(
-            json!({"production_id":id,"plan":plan,"generation_status":"awaiting_host_interpretation","retention_renewed":false}),
+            json!({"production_id":id,"plan":plan,"generation_status":"awaiting_host_interpretation","retention_renewed":false,
+                "reader_review_obligations":volicord_projections::reader_review_obligations(subject),
+                "reader_review_required":!volicord_projections::reader_review_obligations(subject).is_empty()}),
         )
     }
 
@@ -299,6 +327,43 @@ impl LocalOperations {
             retention_basis:"Explicit host production intent and recovery metadata; no prose, Source bodies, background dispatch or provider authority".into(),
         }).map_err(|e|Error::with_source("production intent was not retained",e))?;
         Ok(record.id.to_string())
+    }
+
+    pub(crate) fn read_production_metadata(
+        &self,
+        project: ProjectId,
+        purpose: &str,
+    ) -> Result<Option<String>, Error> {
+        let records = self.explanation_dependencies(project)?;
+        let Some(record) = records
+            .managed_derived
+            .iter()
+            .rfind(|r| r.kind == ManagedDerivedKind::CachedSummary && r.purpose == purpose)
+        else {
+            return Ok(None);
+        };
+        if record.state != ManagedDerivedState::Current
+            || records
+                .withheld_for_canonical_forgetting
+                .contains(&record.id)
+        {
+            return Ok(None);
+        }
+        let store = PrivacyStore::open(self.layout().privacy_store())
+            .map_err(|e| Error::with_source("production metadata storage unavailable", e))?;
+        let full = store
+            .get_derived(project, record.id)
+            .map_err(|e| Error::with_source("production metadata unavailable", e))?;
+        let mut metadata = full.clone();
+        metadata.content = None;
+        if metadata != *record {
+            return Err(Error::new(
+                "production metadata changed during selection; retry",
+            ));
+        }
+        full.content
+            .map(Some)
+            .ok_or_else(|| Error::new("production metadata withheld"))
     }
 
     pub fn validate_explanation_production(

@@ -1171,6 +1171,25 @@ fn changed_article_basis_preserves_old_assessment_and_allows_explicit_cli_recove
     );
     f.operations
         .assess_explanation_diagrams(f.project, subject, "en", next_id, assessment)?;
+    assert!(
+        f.operations
+            .record_explanation_for_production(
+                f.project,
+                subject,
+                "en",
+                realized.clone(),
+                Some(next_id)
+            )
+            .is_err(),
+        "diagram assessment alone is not reader completion"
+    );
+    f.operations.assess_explanation_reader(f.project, subject, "en", next_id, ExplanationReaderReview {
+        checks: reader_review_obligations(subject).iter().map(|obligation| ReaderReviewCheck {
+            obligation: (*obligation).into(), outcome: ReaderReviewOutcome::Addressed,
+            rationale: "Controlled exact-language resumed-investigation fixture; this protocol declaration is not independent semantic or Human acceptance.".into(),
+            unit_indices: if *obligation == "language_review" { (0..realized.paragraphs.len()).collect() } else { vec![realized.paragraphs.len() - 1] },
+        }).collect(), realization: realized.clone(),
+    })?;
     f.operations.record_explanation_for_production(
         f.project,
         subject,

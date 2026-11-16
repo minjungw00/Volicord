@@ -2952,6 +2952,16 @@ fn normal_article_production_requires_an_actual_diagram_assessment_and_preserves
     assert_eq!(call(&mut f.host, args.clone())["result"]["isError"], true);
     assess["assessment"] = json!({"outcome":"not_needed","rationale":"The reader question is only whether this one expression returns a constant. The exact single return statement and concise prose answer it; there is no relational or temporal explanation requiring a figure."});
     success(&mut f.host, assess)?;
+    assert_eq!(
+        call(&mut f.host, args.clone())["result"]["isError"],
+        true,
+        "diagram-only assessment cannot complete reader review"
+    );
+    let mut reader = f.args("review");
+    reader["generation_id"] = generation["generation_id"].clone();
+    reader["realization"] = serde_json::to_value(&realized)?;
+    reader["checks"] = json!(generation["reader_review_obligations"].as_array().ok_or("reader inventory")?.iter().map(|id|json!({"obligation":id,"outcome":"addressed","rationale":"Controlled single-expression Source fixture; this active-host declaration is not an independent meaning or Human verdict.","unit_indices":if id == "language_review" {(0..realized.paragraphs.len()).collect::<Vec<_>>()}else{vec![0]}})).collect::<Vec<_>>());
+    success(&mut f.host, reader)?;
     success(&mut f.host, args)?;
     let status = production_status(&mut f, "article", "en")?;
     assert_eq!(status["content_complete"], true);
@@ -2962,6 +2972,15 @@ fn normal_article_production_requires_an_actual_diagram_assessment_and_preserves
         f.host.operations().workflow_after_recall(f.project)?
     );
     let generation = produce(&mut f, "article", "en", "refinement")?;
+    // An exact valid realization from the previous generation carries no
+    // Source-reading authority into this one, even on an unchanged plan.
+    let mut borrowed = f.args("review");
+    borrowed["generation_id"] = generation["generation_id"].clone();
+    borrowed["realization"] = serde_json::to_value(&realized)?;
+    borrowed["checks"] = json!(generation["reader_review_obligations"].as_array().ok_or("reader inventory")?.iter().map(|id|json!({"obligation":id,"outcome":"addressed","rationale":"Adversarial attempt to reuse the preceding request's Source retrieval.","unit_indices":(0..realized.paragraphs.len()).collect::<Vec<_>>()})).collect::<Vec<_>>());
+    let before = f.host.operations().privacy_status(f.project)?;
+    assert_eq!(call(&mut f.host, borrowed)["result"]["isError"], true);
+    assert_eq!(before, f.host.operations().privacy_status(f.project)?);
     let read = f.read(&generation, f.source)?;
     let realized = response(&generation, &read)?;
     let mut assess = f.args("assess");
@@ -2972,6 +2991,11 @@ fn normal_article_production_requires_an_actual_diagram_assessment_and_preserves
     wrong["work_item_id"] = json!("01".repeat(16));
     assert_eq!(call(&mut f.host, wrong)["result"]["isError"], true);
     let args = f.record_args(&generation, &realized)?;
+    let mut reader = f.args("review");
+    reader["generation_id"] = generation["generation_id"].clone();
+    reader["realization"] = serde_json::to_value(&realized)?;
+    reader["checks"] = json!(generation["reader_review_obligations"].as_array().ok_or("reader inventory")?.iter().map(|id|json!({"obligation":id,"outcome":"insufficient_evidence","rationale":"The wider caller meaning remains unobserved in this controlled Source fixture.","unit_indices":if id == "language_review" {(0..realized.paragraphs.len()).collect::<Vec<_>>()}else{vec![0]}})).collect::<Vec<_>>());
+    success(&mut f.host, reader)?;
     success(&mut f.host, args)?;
     let status = production_status(&mut f, "article", "en")?;
     assert_eq!(status["content_complete"], false);

@@ -4255,3 +4255,42 @@ under each reading action. Actual Source unavailability remains distinct. Live
 previous/next diagram-description navigation preserves the document/figure scroll
 and transfers keyboard focus to an equivalent local control without scrolling.
 Direct deep links and native script-free navigation retain their explicit targets.
+
+### Exact-production host reader review
+
+Publication currentness and a diagram assessment do not establish that the host
+has checked the reader obligations. Normal guarded article production additionally
+requires an explicit active-host reader review before recording. The review binds
+Project, subject, language, production identity, current plan and the hash of the
+complete realization, including wording, claim ranges, citations and diagram roles.
+Editing that realization or changing its language, scope or basis needs a new review.
+
+Projection owns the common obligation inventory. Work review covers the actual
+problem/change/result, useful examples, state/next action, related decisions,
+grounding/limits, readable organization and the actual language. Repository review
+covers purpose/journey, responsibilities/code entry points, local/baseline scope,
+known related Work navigation, grounding/limits, organization and actual language.
+Decision review covers question/alternatives, choice versus recommendation,
+reason/effect/scope, grounding/limits and actual language. These are questions for
+the host, not prescribed headings, tables, lengths or repository-specific answers.
+
+For each applicable obligation the host records addressed, justified not-applicable,
+insufficient-evidence or needs-revision, a bounded rationale and exact unit indices.
+Addressed needs actual units. The validator checks complete unique obligations,
+unit bounds and exact bindings; it does not infer semantic adequacy from keywords,
+formatting, citation counts or the host's positive declaration. Missing evidence
+must remain insufficient rather than being converted into non-applicability.
+Grounding/limits, readable structure and actual-language review always apply.
+A positive language review references every prose unit, including unchanged units,
+and covers the diagram wording in the same whole-realization review. This is an
+inspection-scope requirement, not a minimum section, example or length quota.
+
+Operations retains the review as separate managed Derived metadata under the
+existing dependency, forgetting and deletion boundary. An absent review cannot
+complete normal production. An acknowledged incomplete review may accompany a
+readable partial publication, but cannot make content complete. Deliberate legacy
+prepare/compose/record remains readable and has no invented retrospective review.
+Status separates readability/currentness, diagram assessment and reader review;
+unchanged-basis skipping never manufactures a review, authors prose, renews Source
+retention or blocks ordinary development. Explicit refinement obtains a new production.
+Host reader review is neither independent semantic acceptance nor Human judgment.

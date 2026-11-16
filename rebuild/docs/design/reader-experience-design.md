@@ -1719,3 +1719,11 @@ the transition into unchanged text. Remove superseded titles, dangling fragments
 and duplicated qualifications rather than splicing by an ambiguous title prefix.
 Refer to retained verification by its recorded time/scope (or an explicitly
 recorded follow-up); unqualified “new/fresh” must not imply an export-time run.
+
+Normal article production retains a whole-realization-bound active-host reader
+review, separate from currentness and diagram applicability. Each language checks
+its actual reader obligations, including known related Work navigation when
+supported; justified non-applicability imposes no table/example quota. Missing or
+incomplete review cannot establish content completion. Readable deliberate
+publications remain readable without invented review. The host's positive review
+is neither independent meaning acceptance nor personal Human comprehension.

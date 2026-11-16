@@ -14,7 +14,11 @@ mod evidence;
 mod explanation;
 mod explanation_assessment;
 mod explanation_production;
+mod explanation_reader_review;
 pub use explanation_assessment::{DiagramAssessmentOutcome, ExplanationDiagramAssessment};
+pub use explanation_reader_review::{
+    ExplanationReaderReview, ReaderReviewCheck, ReaderReviewOutcome,
+};
 mod explanation_sources;
 pub use explanation::{ExplanationCitationSelection, ExplanationEvidencePage};
 pub use explanation_production::{ExplanationProductionFailure, ExplanationProductionReason};

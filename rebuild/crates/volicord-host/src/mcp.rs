@@ -86,12 +86,12 @@ pub const HOST_TOOL_NAMES: [&str; 28] = [
 fn work_production_followup(project: ProjectId, work: ContextItemId, reason: &str) -> Value {
     let mut followup = json!({"tool":"work_explanation","action":"produce","project_id":project.to_string(),"work_item_id":work.to_string(),"reason":reason,
         "scopes":if reason == "boundary" {vec!["summary","article"]} else {vec!["name","summary"]},
-        "instruction":"The authorized active host authors useful independent names at initiation and summaries after meaningful progress, in the actually requested language. At switch/pause/completion assess needed Work, repository and related Decision explanations and diagrams. Invoke Work produce explicitly for each needed Work scope; use the separate repository CLI and Decision routes at that boundary. Inspect status after record and preserve failures. Unchanged current bases skip; refinement explicitly requests another edition. This follow-up starts no generation or retention and is not a per-turn or per-Checkpoint quota, work blocker, Learning activation or provider grant."});
+        "instruction":"The authorized active host authors useful independent names at initiation and summaries after meaningful progress, in the actually requested language. At switch/pause/completion assess needed Work, repository and related Decision explanations and diagrams. Invoke Work produce explicitly for each needed Work scope; use the separate repository CLI and Decision routes at that boundary. For articles, use assess for diagram applicability and review for exact-realization reader obligations before record. Inspect content_complete and reader_review_required, not currentness alone; preserve incomplete outcomes and failures. Unchanged current bases skip; refinement explicitly requests another edition. This follow-up starts no generation or retention and is not a per-turn or per-Checkpoint quota, work blocker, Learning activation or provider grant."});
     if reason == "boundary" {
         followup["repository_reading"] = json!({
             "inspect":{"tool":"repository_understanding","arguments":{"project_id":project.to_string(),"reading_focus":"repository_explanation"}},
-            "authoring":{"interface":"local_cli","project_id":project.to_string(),"analysis_basis":"Use this handoff's current_analysis_snapshot_id; prepare revalidates the exact analysis","commands":["repository explain prepare","repository explain compose","repository explain record"]},
-            "instruction":"Inspect repository prose independently of this Work. If needed and authorized, use the pinned CLI route with this Project, the exact analysis and requested language. Follow preparation instructions, investigate repository-wide responsibilities and flows through permitted Sources, then explicitly compose/record prose and needed diagrams. Work produce does not create repository prose. Missing authority or evidence remains incomplete; do not invent a Goal, Question, consent or content. Reads never author, capture or renew."});
+            "authoring":{"interface":"local_cli","project_id":project.to_string(),"analysis_basis":"Use this handoff's current_analysis_snapshot_id; prepare revalidates the exact analysis","commands":["repository explain produce","repository explain compose","repository explain production-assess","repository explain production-review","repository explain record"]},
+            "instruction":"Inspect repository prose independently of this Work. If needed and authorized, use the pinned CLI route with this Project, the exact analysis and requested language. Follow preparation instructions, investigate repository-wide responsibilities and flows through permitted Sources, then explicitly produce/compose, assess diagrams, review the exact realization against every reader obligation and record it with production-id. Reread current prose before preserving it; readability/currentness alone does not certify reader completion. Work produce does not create repository prose. Missing authority or evidence remains incomplete; do not invent a Goal, Question, consent or content. Reads never author, capture or renew."});
         followup["related_decision_reading"] = json!({
             "tool":"decision_explanation","action":"produce","project_id":project.to_string(),
             "selection":"Only actual canonical Decisions related to this Work; use each exact decision_id and requested language",
@@ -101,7 +101,7 @@ fn work_production_followup(project: ProjectId, work: ContextItemId, reason: &st
 }
 
 fn server_instructions() -> String {
-    "Project work starts with project_resolve. For ordinary implementation follow workflow.required_next_action; never bypass a blocker. Failed required transitions stay blocking; prose is not canonical resolution. Relevant evidence is not authority: material outcomes need an exact current-Goal specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects scope. A Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes. Authorized explanation-only production needs no new Goal, Discovery, Decision or Checkpoint; it never clears ordinary-work blockers. work_explanation produce; host compose/record/status. Unchanged bases skip; reads never generate.".into()
+    "Project work starts with project_resolve. For ordinary implementation follow workflow.required_next_action; never bypass a blocker. Failed required transitions stay blocking; prose is not canonical resolution. Relevant evidence is not authority: material outcomes need an exact current-Goal specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects scope. A Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes. Authorized explanation-only production needs no new Goal, Discovery, Decision or Checkpoint; it never clears ordinary-work blockers. work_explanation produce; host compose/assess/review/record/status. Exact article reader review is required before normal record; currentness is not semantic approval. Unchanged bases skip; reads never generate.".into()
 }
 
 #[derive(Debug)]
@@ -1744,6 +1744,48 @@ impl HostAdapter {
                 }
                 Ok(status)
             }
+            "review" => {
+                let request = self
+                    .explanation_requests
+                    .get(required_str(args, "generation_id")?)
+                    .ok_or_else(|| {
+                        HostError::new("request unavailable; explicitly produce again")
+                    })?;
+                if request.project != project || request.subject != subject {
+                    return Err(HostError::new("reader review Project/subject mismatch"));
+                }
+                let production_id = request.production_id.as_deref().ok_or_else(|| {
+                    HostError::new("reader review requires an explicit produce request")
+                })?;
+                let review: volicord_operations::ExplanationReaderReview = serde_json::from_value(
+                    json!({"realization":args["realization"],"checks":args["checks"]}),
+                )
+                .map_err(|_| HostError::new("invalid exact-realization reader review"))?;
+                if review.realization.plan_fingerprint != request.fingerprint
+                    || review.realization.language != request.language
+                {
+                    return Err(HostError::new(
+                        "reader review preparation/language mismatch",
+                    ));
+                }
+                for citation in review.realization.citations() {
+                    if !request.retrieved.contains(&(
+                        citation.source_id.clone(),
+                        citation.observation_fingerprint.clone(),
+                    )) {
+                        return Err(HostError::new("reader review requires exact Source retrieval in this current explanation request"));
+                    }
+                }
+                self.operations
+                    .assess_explanation_reader(
+                        project,
+                        subject,
+                        &request.language,
+                        production_id,
+                        review,
+                    )
+                    .map_err(operation_error)
+            }
             "assess" => {
                 let request_id = required_str(args, "generation_id")?;
                 let request = self.explanation_requests.get(request_id).ok_or_else(|| {
@@ -1864,8 +1906,14 @@ impl HostAdapter {
                             ExplanationSubject::Work(_) | ExplanationSubject::Decision(_)
                         )
                     {
-                        let instruction = result["next_action"].as_str().unwrap_or_default();
-                        result["next_action"] = json!(format!("{instruction} Before record, use assess for this generation_id: authored with actual grounded diagrams, not_needed with a reader-question rationale, or insufficient_evidence with the missing relationship/evidence. Omission is not assessment. Inspect roles, conditions, claim citations and accessible linear meaning; byte-valid admission is not semantic approval. Insufficient evidence leaves content incomplete and needs explicit refinement when evidence becomes available."));
+                        let instruction = result["next_action"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_owned();
+                        result["reader_review_obligations"] =
+                            json!(volicord_projections::reader_review_obligations(subject));
+                        result["reader_review_required"] = json!(true);
+                        result["next_action"] = json!(format!("{instruction} Before record, use assess for diagram applicability: authored, justified not_needed or insufficient_evidence. Then use review with this generation_id, exact composed realization and every returned reader obligation: outcome, concrete rationale and exact unit_indices. Review the actual language, claims, examples, scope, next action and known related Work navigation; missing evidence stays insufficient. Currentness, byte bindings and a positive host review are not independent semantic or Human approval. Inspect content_complete/reader_review_required after record. No automatic reauthoring or Source renewal."));
                     }
                     explanation_tool_result(result.clone())?;
                     self.explanation_requests.insert(
@@ -3163,6 +3211,22 @@ fn work_explanation_schema() -> Value {
             ("rationale",text_schema("Reader question, relationships/order, and evidence sufficiency; self-reported, not semantic approval",1,2048)),
         ], &["outcome","rationale"]); schema["description"] = json!("Explicit diagram applicability and actual authoring outcome for this production; no Source authority or semantic approval"); schema }),
     ]);
+    let mut review = scope();
+    review.extend([
+        ("action", enum_schema("Explicit active-host review before normal article recording; never independent or Human approval", &["review"])),
+        ("generation_id", identity_schema("Current explicit produce request")),
+        ("realization", explanation_realization_schema()),
+        ("checks", json!({"type":"array","maxItems":16,"items":object_schema(vec![
+            ("obligation", enum_schema("Exact inventory from production/status; cover each once", &[
+                "problem_change_result","use_and_effect","state_and_next_action","related_decisions",
+                "purpose_and_journey","responsibilities_and_entry_points","local_and_baseline_scope","known_related_work_navigation",
+                "question_and_alternatives","choice_and_recommendation","reason_effect_scope",
+                "grounding_and_limits","readable_structure","language_review"])),
+            ("outcome", enum_schema("Actual host judgment; missing evidence is insufficient, not non-applicability", &["addressed","not_applicable","insufficient_evidence","needs_revision"])),
+            ("rationale", text_schema("Concrete rationale within1536 UTF-8 bytes; examples/tables are useful only when applicable; no quality inference from formatting",1,1536)),
+            ("unit_indices", json!({"type":"array","maxItems":128,"uniqueItems":true,"items":{"type":"integer","minimum":0},"description":"Exact realization units; addressed requires nonempty references"})),
+        ], &["obligation","outcome","rationale","unit_indices"]) })),
+    ]);
     let mut read = scope();
     read.extend([
         (
@@ -3244,7 +3308,7 @@ fn work_explanation_schema() -> Value {
             &["verification"],
         ),
     ));
-    json!({"oneOf":[object_schema(evidence_read,&["action","project_id","work_item_id","generation_id","evidence_key"]),object_schema(assess,&["action","project_id","work_item_id","generation_id","assessment"]),object_schema(produce,&["action","project_id","work_item_id","language","reason"]),object_schema(status,&["action","project_id","work_item_id","language"]),object_schema(fail,&["action","project_id","work_item_id","generation_id","failure"]),object_schema(verification,&["action","project_id","work_item_id"]),object_schema(prepare,&["action","project_id","work_item_id","language"]),
+    json!({"oneOf":[object_schema(review,&["action","project_id","work_item_id","generation_id","realization","checks"]),object_schema(evidence_read,&["action","project_id","work_item_id","generation_id","evidence_key"]),object_schema(assess,&["action","project_id","work_item_id","generation_id","assessment"]),object_schema(produce,&["action","project_id","work_item_id","language","reason"]),object_schema(status,&["action","project_id","work_item_id","language"]),object_schema(fail,&["action","project_id","work_item_id","generation_id","failure"]),object_schema(verification,&["action","project_id","work_item_id"]),object_schema(prepare,&["action","project_id","work_item_id","language"]),
         object_schema(read,&["action","project_id","work_item_id","generation_id","source_id"]),
         object_schema(record,&["action","project_id","work_item_id","generation_id","realization"]),
         object_schema(compose,&["action","project_id","work_item_id","generation_id","draft"]),
@@ -3874,7 +3938,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_understanding" => (
-            "Read the bounded human-oriented Project Understanding: purpose; current, completed, and remaining Work with stable identities; Decisions and rationale; next steps; current-work code, component, and flow basis; coverage, freshness, gaps, uncertainty, and explicit omissions. For retained repository prose without the full topology, select reading_focus=repository_explanation; this uses the existing bounded complete explanation transport and never generates. Repository-wide authoring is a separate explicit local CLI repository explain prepare/compose/record operation: investigate the exact analysis and permitted repository Sources across material responsibilities and distinct flows first, following the prepared instructions. A recent Work or a single subsystem is not a repository-wide explanation. This read grants no Source collection, retention or model authority and never mutates canonical or Candidate state.",
+            "Read the bounded human-oriented Project Understanding: purpose; current, completed, and remaining Work with stable identities; Decisions and rationale; next steps; current-work code, component, and flow basis; coverage, freshness, gaps, uncertainty, and explicit omissions. For retained repository prose without the full topology, select reading_focus=repository_explanation; this uses the existing bounded complete explanation transport and never generates. Repository-wide normal authoring uses local CLI repository explain produce/compose/production-assess/production-review/record with the exact production-id; deliberate prepare/compose/record remains available without invented reader review: investigate the exact analysis and permitted repository Sources across material responsibilities and distinct flows first, following the prepared instructions. A recent Work or a single subsystem is not a repository-wide explanation. This read grants no Source collection, retention or model authority and never mutates canonical or Candidate state.",
             object_schema(vec![("project_id",identity_schema("Project identity")),("requested_language",text_schema("Exact generated language",1,128)),("fixed_locale",enum_schema("Fixed labels", &["en","ko"])),("reading_focus",enum_schema("Read the full overview or only the exact retained repository document", &["overview","repository_explanation"]))], &["project_id"]),
             ToolBehavior::ReadOnlyClosed,
         ),
