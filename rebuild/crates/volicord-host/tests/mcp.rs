@@ -6371,8 +6371,10 @@ fn grounded_checkpoint_preserves_repository_decision_verification_and_restart_re
     assert_eq!(
         repository_route["authoring"]["commands"],
         json!([
-            "repository explain prepare",
+            "repository explain produce",
             "repository explain compose",
+            "repository explain production-assess",
+            "repository explain production-review",
             "repository explain record"
         ])
     );
@@ -7845,6 +7847,25 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
                     "work_item_id",
                     "scope",
                     "generation_id",
+                    "realization",
+                    "checks",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "generation_id",
+                    "realization",
+                    "checks",
+                ],
+            ),
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "work_item_id",
+                    "scope",
+                    "generation_id",
                     "evidence_key",
                     "offset",
                     "expected_fingerprint",
@@ -7971,6 +7992,24 @@ fn expected_shapes(name: &str) -> Vec<(BTreeSet<String>, BTreeSet<String>)> {
             ),
         ],
         "decision_explanation" => vec![
+            shape(
+                &[
+                    "action",
+                    "project_id",
+                    "decision_id",
+                    "generation_id",
+                    "realization",
+                    "checks",
+                ],
+                &[
+                    "action",
+                    "project_id",
+                    "decision_id",
+                    "generation_id",
+                    "realization",
+                    "checks",
+                ],
+            ),
             shape(
                 &[
                     "action",

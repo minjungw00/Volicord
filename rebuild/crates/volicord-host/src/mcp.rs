@@ -101,7 +101,7 @@ fn work_production_followup(project: ProjectId, work: ContextItemId, reason: &st
 }
 
 fn server_instructions() -> String {
-    "Project work starts with project_resolve. For ordinary implementation follow workflow.required_next_action; never bypass a blocker. Failed required transitions stay blocking; prose is not canonical resolution. Relevant evidence is not authority: material outcomes need an exact current-Goal specification, Decision, or delegation. Destructive wording must distinguish canonical, Candidate, derived/local, provider, and Project/binding effects; execution confirmation never selects scope. A Goal delegates only through an explicit current-host statement covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes. Authorized explanation-only production needs no new Goal, Discovery, Decision or Checkpoint; it never clears ordinary-work blockers. work_explanation produce; host compose/assess/review/record/status. Exact article reader review is required before normal record; currentness is not semantic approval. Unchanged bases skip; reads never generate.".into()
+    "Project work starts with project_resolve. For ordinary implementation follow workflow.required_next_action; never bypass a blocker. Failed required transitions stay blocking; prose is not canonical resolution. Relevant evidence is not authority; material outcomes need exact current Goal/Decision/delegation. Destructive scope separates canonical, Candidate, derived/local, provider and Project/binding effects; execution confirmation never selects scope. A Goal delegates only via explicit current-host statements covering the exact dimension or containing scope. Decisions need explicit current-host responses. Learning is not authority. Background transmission needs separate authorization. Checkpoints report observed outcomes. Authorized explanation-only production needs no new Goal, Discovery, Decision or Checkpoint; it never clears ordinary-work blockers. work_explanation produce/compose/assess/review/record: review exact text/language. Currentness is not approval; unchanged bases skip; reads never generate.".into()
 }
 
 #[derive(Debug)]
@@ -3216,7 +3216,7 @@ fn work_explanation_schema() -> Value {
         ("action", enum_schema("Explicit active-host review before normal article recording; never independent or Human approval", &["review"])),
         ("generation_id", identity_schema("Current explicit produce request")),
         ("realization", explanation_realization_schema()),
-        ("checks", json!({"type":"array","maxItems":16,"items":object_schema(vec![
+        ("checks", json!({"type":"array","description":"Exact-realization obligations reviewed once in the requested language; host declarations are not independent semantic approval","maxItems":16,"items":object_schema(vec![
             ("obligation", enum_schema("Exact inventory from production/status; cover each once", &[
                 "problem_change_result","use_and_effect","state_and_next_action","related_decisions",
                 "purpose_and_journey","responsibilities_and_entry_points","local_and_baseline_scope","known_related_work_navigation",

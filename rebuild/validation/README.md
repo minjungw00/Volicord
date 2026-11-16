@@ -176,6 +176,12 @@ campaign source bytes. Display metadata extends the verified Viewer origin;
 it does not replace the exact original path/byte/hash check. Missing or relabelled
 languages, substituted failed exports and changed publication identities refuse.
 
+MCP explanation interface or host-guidance changes also need the Host `--test mcp`
+contracts alongside the subject-specific explanation tests. They check every
+client-visible schema description, bounded server instructions and actual
+Checkpoint authoring handoffs. Subject-specific record tests alone do not cover
+those shared transport and discovery responsibilities.
+
 Connection-detail browser checks inspect the displayed claim header and selected
 wording against independently admitted endpoints, direction and condition. The
 hidden former endpoint-card DOM is not a geometry oracle. Actual visibility,
