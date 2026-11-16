@@ -216,8 +216,11 @@ def run(binary, root):
             except (ValueError, TypeError, KeyError): pass
             else: raise AssertionError('forged coverage accepted: '+mutation)
         results['forged_completion']={'status':'rejected','mutations':5,'basis_sha256':o.digest(root/'missing_expected.json')}
-        return {'kind':'resource_boundary_support','candidate_mcp_sha256':artifacts['volicord-mcp']['sha256'],
+        result = {'kind':'resource_boundary_support','candidate_mcp_sha256':artifacts['volicord-mcp']['sha256'],
             'results':results,'processes':process_records,'evidence_role':'real_sibling_support_not_host_or_naturalistic'}
+        from rehearsal_contract import validate_resource_boundary_result
+        validate_resource_boundary_result(result, artifacts['volicord-mcp']['sha256'])
+        return result
     finally:
         for child in children:
             if child.poll() is None: child.kill(); child.wait(timeout=5)

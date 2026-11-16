@@ -6156,3 +6156,18 @@ packages with their original collector proof and verification; prepare new revie
 packages from unchanged captures under the new collector identity. Product runtime
 execution, earlier user acceptance and Human observations are not replayed or
 upgraded by this collector correction.
+
+The Product-backed rehearsal's portable temporal summaries use the canonical
+selected-Goal observation-time error class. The emitter and closed result reader
+must agree before writing a summary. Actual Rust DTO counterfactuals exercise this
+portable emission/validation boundary as well as the Naturalistic observer; rehashed
+old generated-provenance labels, unknown/private messages, wrong-cause errors and
+hidden errors must reject. Preserve the original result-contract failure and
+independently verified failed archive. Diagnosing its completed inner pipeline is
+not a new gate pass, native conversation, qualitative result or Human observation.
+The same portable consumer must run over the real resource support result before
+it is returned. A completed three-child EOF fixture requests observer stop after
+all three stopped lifecycles are sampled; this is `stop_requested`, not a reached
+watchdog deadline. Require that exact combination and continue rejecting active,
+partial, interrupted or deadline-ended substitutions. Observer bounds and Product
+process/resource semantics are unchanged.

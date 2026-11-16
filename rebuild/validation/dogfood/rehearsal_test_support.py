@@ -47,8 +47,8 @@ def temporal_fixture():
             'basis_sha256': contract.digest({'lifecycles':lives}) if name == 'historical_explanation_regeneration' else 'c'*64,
             'finding': dict(artifact), 'artifacts': [v['stages']['receipt'] for v in lives] if name == 'historical_explanation_regeneration' else [dict(artifact)],
             'observation_statuses': statuses, 'goal_revisions': revisions,
-            'error_classes': ['generated goal revision basis'] if name in {'post_correction_old_revision', 'future_correction_scope'} else (
-                ['top-level recorded next action'] if name == 'missing_temporal_evidence_with_violation' else []),
+            'error_classes': [contract.GOAL_BASIS_ERROR] if name in {'post_correction_old_revision', 'future_correction_scope'} else (
+                [contract.NEXT_ACTION_ERROR] if name == 'missing_temporal_evidence_with_violation' else []),
             'rejection_sha256': None if recall or name == 'historical_explanation_regeneration' else 'd' * 64}
     return {'regeneration': {'work_slot_id': 'journey-polyglot-medium-work-a', 'project_id': '02'*16,
         'work_item_id': '03'*16, 'authorization_source_id': '05'*16, 'correction_process': 'support-process-0',
@@ -83,7 +83,7 @@ def boundary_fixture():
         'sequential_eof':('measured',None), 'abrupt_exit':('partial','process_gone'),
         'pre_attachment_exit':('not_observed','unsampled_instance'), 'zero_expected_samples':('not_observed','missing_registration')}
     results={name:{'status':status,'sample_count':1 if status in {'measured','partial'} else 0,
-        'measurement_errors':[error] if error else [],'termination':'stop_requested' if name=='stop_during_active' else 'interrupted' if name=='observer_interruption' else 'duration_elapsed',
+        'measurement_errors':[error] if error else [],'termination':'stop_requested' if name in {'stop_during_active','sequential_eof'} else 'interrupted' if name=='observer_interruption' else 'duration_elapsed',
         'lifecycles':['stopped','stopped','stopped'] if name=='sequential_eof' else ['gone'] if name=='abrupt_exit' else ['running_at_detach'],
         'artifact_sha256':'1'*64} for name,(status,error) in cases.items()}
     results['forged_completion']={'status':'rejected','mutations':5,'basis_sha256':'1'*64}

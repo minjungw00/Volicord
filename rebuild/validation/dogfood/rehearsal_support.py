@@ -34,8 +34,9 @@ def change_returned_goal_revision(answer, revision):
 
 def require_goal_revision_rejection(observation):
     """The actual canonical-basis counterfactual must fail for its own reason."""
+    from rehearsal_contract import GOAL_BASIS_ERROR
     if (observation.get('status') != 'confirmed_violation'
-            or 'selected Goal observation-time basis' not in observation.get('errors', [])):
+            or GOAL_BASIS_ERROR not in observation.get('errors', [])):
         raise ValueError('canonical Goal revision control rejected for wrong reason')
 
 

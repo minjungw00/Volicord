@@ -690,6 +690,9 @@ def rejected_for(operation, message):
 
 
 def control_evidence(root, name, check, status, consumer, basis, artifacts):
+    from rehearsal_contract import validate_control_error_classes
+    errors = sorted({e for o in basis.get('observations', []) for e in o['errors']})
+    validate_control_error_classes(name, errors)
     finding = machine_findings.finding(check, status, basis)
     path = root / (name + '-finding.json')
     c.write_json(path, finding)
@@ -698,7 +701,7 @@ def control_evidence(root, name, check, status, consumer, basis, artifacts):
         'finding': explanation_evidence.binding(path.read_bytes()), 'artifacts': artifacts,
         'observation_statuses': [o['status'] for o in basis.get('observations', [])],
         'goal_revisions': [o['goal_basis']['revision'] for o in basis.get('observations', [])],
-        'error_classes': sorted({e for o in basis.get('observations', []) for e in o['errors']}),
+        'error_classes': errors,
         'rejection_sha256': basis.get('reason_sha256') or (machine_findings.digest(basis['rejections']) if 'rejections' in basis else None)}
 
 

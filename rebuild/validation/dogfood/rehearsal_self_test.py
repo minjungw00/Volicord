@@ -300,6 +300,42 @@ class ByteOversizeTests(unittest.TestCase):
 
 
 class ContractTests(unittest.TestCase):
+    def test_portable_temporal_errors_use_actual_emitter_and_closed_consumer(self):
+        import tempfile
+        original = passed_result()
+        contract.validate_result(original, 'a' * 40)
+        for name, errors in (
+                ('post_correction_old_revision', [contract.GOAL_BASIS_ERROR]),
+                ('future_correction_scope', [contract.GOAL_BASIS_ERROR]),
+                ('missing_temporal_evidence_with_violation', [contract.NEXT_ACTION_ERROR]),
+                ('missing_temporal_evidence', [])):
+            with tempfile.TemporaryDirectory() as directory:
+                basis = {'observations': [{'status': contract.TEMPORAL_CONTROLS[name][2],
+                    'goal_basis': {'revision': 2}, 'errors': errors}]}
+                emitted = rehearsal.control_evidence(Path(directory), name, 'shared_answer_integrity',
+                    contract.TEMPORAL_CONTROLS[name][2], 'naturalistic_observation', basis,
+                    [{'bytes': 1, 'sha256': '1' * 64}])
+                self.assertEqual(emitted['error_classes'], errors)
+                contract.validate_control_error_classes(name, emitted['error_classes'])
+        for errors in (['generated goal revision basis'], ['private body /home/secret'],
+                ['unknown'], [contract.NEXT_ACTION_ERROR], [],
+                [contract.GOAL_BASIS_ERROR] * 3, [contract.GOAL_BASIS_ERROR, contract.NEXT_ACTION_ERROR]):
+            value = copy.deepcopy(original)
+            value['pipeline']['temporal_evidence']['outcomes']['post_correction_old_revision']['error_classes'] = errors
+            value['result_id'] = contract.digest({k: v for k, v in value.items() if k != 'result_id'})
+            with self.subTest(errors=errors), self.assertRaises(ValueError):
+                contract.validate_result(value, 'a' * 40)
+            if errors == [contract.GOAL_BASIS_ERROR] * 3:
+                # The emitter deliberately deduplicates observation errors;
+                # this mutation targets the closed portable field itself.
+                continue
+            with tempfile.TemporaryDirectory() as directory:
+                basis = {'observations': [{'errors': errors}]}
+                with self.assertRaises(ValueError):
+                    rehearsal.control_evidence(Path(directory), 'post_correction_old_revision',
+                        'shared_answer_integrity', 'confirmed_violation', 'naturalistic_observation', basis, [])
+                self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_temporal_receipt_accepts_missing_before_recording_without_reviving_old_content(self):
         value = passed_result()
         temporal = value['pipeline']['temporal_evidence']
@@ -501,7 +537,8 @@ class ContractTests(unittest.TestCase):
     def test_rehashed_boundary_claims_require_actual_semantic_and_process_evidence(self):
         original=passed_result()
         for mutation in ('missing','labels_only','missing_process','missing_stage','old_limit','locale','oversize_success',
-                'few_sources','wrong_cli','hide_shadow','host_claim','active_gap_as_measured','gone_as_eof','zero_as_measured','no_identity','changed_output'):
+                'few_sources','wrong_cli','hide_shadow','host_claim','active_gap_as_measured','gone_as_eof','zero_as_measured','no_identity','changed_output',
+                'sequential_deadline','sequential_interrupted','sequential_active','sequential_gap','active_stop_as_elapsed'):
             value=copy.deepcopy(original); boundary=value['pipeline']['boundary_evidence']
             if mutation=='missing': value['pipeline'].pop('boundary_evidence')
             elif mutation=='labels_only': value['pipeline']['boundary_evidence']=dict.fromkeys(contract.BOUNDARY_CONTROLS,'passed')
@@ -519,6 +556,11 @@ class ContractTests(unittest.TestCase):
             elif mutation=='zero_as_measured': boundary['resource']['result']['results']['zero_expected_samples']['status']='measured'
             elif mutation=='no_identity': boundary['resource']['identity_controls'].pop('pid_reuse')
             elif mutation=='changed_output': boundary['retention']['output']['sha256']='0'*64
+            elif mutation=='sequential_deadline': boundary['resource']['result']['results']['sequential_eof']['termination']='duration_elapsed'
+            elif mutation=='sequential_interrupted': boundary['resource']['result']['results']['sequential_eof']['termination']='interrupted'
+            elif mutation=='sequential_active': boundary['resource']['result']['results']['sequential_eof']['lifecycles'][-1]='running_at_detach'
+            elif mutation=='sequential_gap': boundary['resource']['result']['results']['sequential_eof']['status']='partial'
+            elif mutation=='active_stop_as_elapsed': boundary['resource']['result']['results']['stop_during_active']['termination']='duration_elapsed'
             value['result_id']=contract.digest({k:v for k,v in value.items() if k!='result_id'})
             with self.subTest(mutation=mutation),self.assertRaises((ValueError,TypeError,KeyError)):
                 contract.validate_result(value,'a'*40)

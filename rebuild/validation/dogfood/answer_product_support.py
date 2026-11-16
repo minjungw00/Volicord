@@ -14,6 +14,9 @@ import harness as h
 import machine_findings as machine
 import answer_projection
 import rehearsal_support
+import rehearsal
+import rehearsal_contract
+import tempfile
 import explanation_evidence
 
 
@@ -202,6 +205,15 @@ def run(config):
             _, fact = f.evaluate(value)
             assert fact['status'] == 'confirmed_violation', (key, fact)
             rehearsal_support.require_goal_revision_rejection(fact['basis']['observations'][0])
+            # Exercise the actual portable emitter and its closed consumer with
+            # this Rust-produced DTO's actual observation, not a copied error label.
+            name = 'future_correction_scope' if key == 'before' else 'post_correction_old_revision'
+            with tempfile.TemporaryDirectory() as directory:
+                summary = rehearsal.control_evidence(Path(directory), name, 'shared_answer_integrity',
+                    fact['status'], 'naturalistic_observation', fact['basis'],
+                    [explanation_evidence.binding(f.path.read_bytes())])
+                rehearsal_contract.validate_control_error_classes(name, summary['error_classes'])
+                assert summary['error_classes'] == [rehearsal_contract.GOAL_BASIS_ERROR], summary
         finally:
             f.doCleanups()
     for visible_violation in (False, True):

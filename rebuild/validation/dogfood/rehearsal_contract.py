@@ -79,6 +79,8 @@ COLLECTION_CONTROLS = {
 
 
 EXPECTED_INNER = "unresolved"
+GOAL_BASIS_ERROR = 'selected Goal observation-time basis'
+NEXT_ACTION_ERROR = 'top-level recorded next action'
 TEMPORAL_CONTROLS = {
     'historical_explanation_regeneration': ('explanation_readiness', 'realization_binding', 'confirmed_pass', 'advisory'),
     'temporal_recall_correction': ('naturalistic_observation', 'shared_answer_integrity', 'confirmed_pass', 'advisory'),
@@ -220,9 +222,18 @@ def validate_boundaries(value, processes, executables):
             and r['cli_sha256']==executables['volicord'] and r['mcp_sha256']==executables['volicord-mcp'], 'shadow route identity changed')
         hash_value(r['runtime_binding']);hash_value(r['repository_binding']);process_ref(r['process'],r['output'])
     require(routes[0]['runtime_binding']==routes[1]['runtime_binding'] and routes[0]['repository_binding']==routes[1]['repository_binding'], 'shell binding drift')
-    resource=value['resource']['result']
+    validate_resource_boundary_result(value['resource']['result'], executables['volicord-mcp'])
+    checks=value['resource']['identity_controls']
+    require(set(checks)=={'pid_reuse','executable_mismatch','inaccessible','disappearance','pid_reuse_simulated','observer_failure','sample_gap','registration_failure'}
+        and checks['pid_reuse']==checks['executable_mismatch']=='rejected' and checks['observer_failure']=='failed'
+        and checks['sample_gap']=='partial', 'missing resource identity/error controls')
+    for name in ('inaccessible','disappearance','pid_reuse_simulated','registration_failure'): hash_value(checks[name])
+
+
+def validate_resource_boundary_result(resource, candidate_mcp_sha256):
+    """Portable lifecycle facts, also checked at the real support emitter."""
     require(set(resource)=={'kind','candidate_mcp_sha256','results','processes','evidence_role'}
-        and resource['kind']=='resource_boundary_support' and resource['candidate_mcp_sha256']==executables['volicord-mcp']
+        and resource['kind']=='resource_boundary_support' and resource['candidate_mcp_sha256']==candidate_mcp_sha256
         and resource['evidence_role']=='real_sibling_support_not_host_or_naturalistic', 'resource identity changed')
     expected={'active_runtime':('measured',None), 'concurrent_runtime':('measured',None), 'active_plus_waiting':('measured',None),
         'active_plus_unknown':('partial','unknown_coverage'), 'missing_expected':('partial','missing_registration'),
@@ -236,7 +247,7 @@ def validate_boundaries(value, processes, executables):
             and result['status']==status and type(result['sample_count']) is int
             and (result['sample_count']>0 if status in {'measured','partial'} else result['sample_count']==0)
             and (not result['measurement_errors'] if error is None else error in result['measurement_errors']), 'resource semantic outcome changed')
-        require(result['termination']==('stop_requested' if name=='stop_during_active' else 'interrupted' if name=='observer_interruption' else 'duration_elapsed'), 'resource stop/interruption fact changed')
+        require(result['termination']==('stop_requested' if name in {'stop_during_active','sequential_eof'} else 'interrupted' if name=='observer_interruption' else 'duration_elapsed'), 'resource stop/interruption fact changed')
         hash_value(result['artifact_sha256'])
     require(resource['results']['sequential_eof']['lifecycles']==['stopped','stopped','stopped']
         and resource['results']['abrupt_exit']['lifecycles']==['gone'], 'normal/uncertain termination conflated')
@@ -250,11 +261,6 @@ def validate_boundaries(value, processes, executables):
             and p['exit_code']==(-9 if p['termination']=='sigkill' else 0) and p['termination'] in {'sigkill','stdin_eof'}
             and type(p['duration_ns']) is int and p['duration_ns']>=0, 'resource process outcome missing')
         hash_value(p['stdout_sha256']);hash_value(p['stderr_sha256'])
-    checks=value['resource']['identity_controls']
-    require(set(checks)=={'pid_reuse','executable_mismatch','inaccessible','disappearance','pid_reuse_simulated','observer_failure','sample_gap','registration_failure'}
-        and checks['pid_reuse']==checks['executable_mismatch']=='rejected' and checks['observer_failure']=='failed'
-        and checks['sample_gap']=='partial', 'missing resource identity/error controls')
-    for name in ('inaccessible','disappearance','pid_reuse_simulated','registration_failure'): hash_value(checks[name])
 
 
 def validate_partial_sampling(value, positive):
@@ -346,6 +352,20 @@ def artifact(value):
     hash_value(value['sha256'])
 
 
+def validate_control_error_classes(name, classes):
+    """Closed portable error vocabulary, shared with the emitting boundary."""
+    require(name in TEMPORAL_CONTROLS and isinstance(classes, list) and len(classes) <= 2
+        and all(isinstance(error, str) for error in classes)
+        and set(classes) <= {GOAL_BASIS_ERROR, NEXT_ACTION_ERROR},
+        'unbounded/private control error content')
+    if name in {'post_correction_old_revision', 'future_correction_scope'}:
+        require(classes == [GOAL_BASIS_ERROR], 'old-current claim was not detected')
+    elif name == 'missing_temporal_evidence_with_violation':
+        require(classes == [NEXT_ACTION_ERROR], 'independent hard error was hidden by missing evidence')
+    else:
+        require(classes == [], 'positive/gap contains a hard violation')
+
+
 def validate_temporal(value, processes):
     """Closed portable facts, tied to actual lifecycles, observation and process outcomes."""
     require(isinstance(value, dict) and set(value) == {'regeneration', 'recall', 'outcomes', 'copied'},
@@ -424,9 +444,7 @@ def validate_temporal(value, processes):
             and tuple(outcome[k] for k in ('consumer', 'check', 'status', 'disposition')) == expected,
             'control outcome differs from maintained consumer/policy')
         hash_value(outcome['basis_sha256']); artifact(outcome['finding'])
-        require(isinstance(outcome['error_classes'], list) and len(outcome['error_classes']) <= 2
-            and set(outcome['error_classes']) <= {'generated goal revision basis', 'top-level recorded next action'},
-            'unbounded/private control error content')
+        validate_control_error_classes(name, outcome['error_classes'])
         require(isinstance(outcome['artifacts'], list) and outcome['artifacts'], 'pass label has no control artifacts')
         for item in outcome['artifacts']: artifact(item)
         if outcome['consumer'] == 'naturalistic_observation':
@@ -442,11 +460,6 @@ def validate_temporal(value, processes):
                 require(outcome['observation_statuses'] == statuses
                     and outcome['goal_revisions'] == ([1, None, None] if name.startswith('missing_temporal') else [1, 2, 2]),
                     'missing scoped temporal observation outcomes')
-            if name in {'post_correction_old_revision', 'future_correction_scope'}:
-                require('generated goal revision basis' in outcome['error_classes'], 'old-current claim was not detected')
-            elif name == 'missing_temporal_evidence_with_violation':
-                require(outcome['error_classes'], 'independent hard error was hidden by missing evidence')
-            else: require(outcome['error_classes'] == [], 'positive/gap contains a hard violation')
         else:
             require(outcome['observation_statuses'] == [] and outcome['goal_revisions'] == []
                 and outcome['error_classes'] == [], 'unexpected explanation observation summary')
