@@ -234,7 +234,7 @@ def temporal_controls(root, campaign_root, manifest, temporal):
             'temporal negative control outcome differs: ' + str(finding))
         require(finding['basis']['observations'][1 if control == 'future_correction_scope' else 0]['status'] == 'confirmed_pass', 'scoped control damaged an unchanged observation')
         if control in {'post_correction_old_revision', 'future_correction_scope'}:
-            require('generated goal revision basis' in target['errors'], 'old revision rejected for wrong reason')
+            rehearsal_support.require_goal_revision_rejection(target)
         else:
             require(target['goal_basis']['revision'] is None and target['limits'], 'missing revision fabricated certainty')
         outcomes[control] = control_evidence(root, control, 'shared_answer_integrity', finding['status'],

@@ -94,13 +94,15 @@ def fixture(config):
 
 def correction(f, config, *, after=False):
     event = f.insert_correction(after=after)
-    event['payload']['invocation']['arguments'] = config['mutation_arguments']
-    event['payload']['result'] = {'Ok': config['mutation_result']}
+    event['payload']['invocation']['arguments'] = copy.deepcopy(config['mutation_arguments'])
+    event['payload']['result'] = {'Ok': copy.deepcopy(config['mutation_result'])}
     wrapper = next(e for e in f.events if e['payload'].get('call_id') == 'correction-wrapper')
     wrapper['payload']['input'] = 'const r=await tools.mcp__volicord__canonical_mutate(' + json.dumps(config['mutation_arguments']) + '); text(JSON.stringify(r));'
+    return event
 
 
 def run(config):
+    original_config = copy.deepcopy(config)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'end-to-end/multi-repository'))
     import restart_recall
     for key in ('before', 'after', 'before_cli'):
@@ -199,6 +201,21 @@ def run(config):
             correction(f, config, after=key == 'before')
             _, fact = f.evaluate(value)
             assert fact['status'] == 'confirmed_violation', (key, fact)
+            rehearsal_support.require_goal_revision_rejection(fact['basis']['observations'][0])
+        finally:
+            f.doCleanups()
+    for visible_violation in (False, True):
+        f = fixture(config)
+        try:
+            event = correction(f, config)
+            del event['payload']['result']['Ok']['structuredContent']['revision']
+            value = copy.deepcopy(config['after'])
+            if visible_violation:
+                value['next_step'] = 'Deliberately contradictory verifier input'
+            _, fact = f.evaluate(value)
+            observed = fact['basis']['observations'][0]
+            assert fact['status'] == ('confirmed_violation' if visible_violation else 'indeterminate'), fact
+            assert observed['goal_basis']['revision'] is None and observed['limits'], observed
         finally:
             f.doCleanups()
     for field, bad in [('identity', 'ab' * 16), ('record_kind', 'decision'),
@@ -277,6 +294,7 @@ def run(config):
                 assert machine.disposition('shared_answer_integrity', fact['status']) == 'hard_blocking'
         finally:
             f.doCleanups()
+    assert config == original_config, 'counterfactual support changed an original Product DTO'
     print('actual MCP/CLI Recall and correction receipt: pre/post revisions verified with bounded Goal uncertainty retained, stale-current hard violation, later correction isolation passed; synthetic capture support only')
 
 

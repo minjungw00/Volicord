@@ -32,6 +32,13 @@ def change_returned_goal_revision(answer, revision):
     basis['revision'] = revision
 
 
+def require_goal_revision_rejection(observation):
+    """The actual canonical-basis counterfactual must fail for its own reason."""
+    if (observation.get('status') != 'confirmed_violation'
+            or 'selected Goal observation-time basis' not in observation.get('errors', [])):
+        raise ValueError('canonical Goal revision control rejected for wrong reason')
+
+
 def realization(plan):
     """Authored structural input; the Product alone supplies plan/receipt/readback."""
     import explanation_evidence as e
