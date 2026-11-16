@@ -2203,6 +2203,14 @@ current labels and MCP operation labels remain exact. A corrected interpretation
 appends a new evaluation of unchanged originals rather than rewriting the first
 projection or replaying Product conversations.
 
+Selected-language reading capture uses the `ReadingSurfaceTests` class in
+`review_operations_self_test.py`, including the actual collection adapter and process
+Recorder. Its controlled executable checks separate receipts for every body
+language, including shared UI locales, a genuine nonzero language export and
+continued later exports. Keep receipt/inventory failures and unavailable-language
+metadata separate from semantic quality; another language never substitutes for
+a failed selected reading. Reprocess unchanged originals after collector fixes.
+
 Private result lineages retain `provenance/collector-revision-proof.json`: bounded
 Git commit/tree metadata bound to the collection run and exact retained producer
 bytes. `verify-result-lineage` verifies that witness without Git, original campaign

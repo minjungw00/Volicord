@@ -6009,6 +6009,17 @@ selected reader languages; reviewer package controls reject swapped identities
 and positive judgments missing a selected language. Existing historical runs and
 deferred Human answers remain unchanged.
 
+Selected-language collection also exercises the actual `observed_snapshot`
+adapter with the maintained process Recorder and a controlled local executable.
+An injected snapshot writer alone cannot expose receipt-directory collisions.
+Each output document owns separate create-only command/result/stream evidence;
+registering a later language must not register an earlier receipt again. Include
+multiple body languages sharing a UI locale, a real nonzero selected-language
+process, continued capture of later languages, and complete inventory checks.
+Keep the first failed capture unchanged and reprocess the same completed original
+conversations with the corrected collector; do not replay user work or substitute
+one language's HTML for another.
+
 Independent rendered review found repeated per-citation embedding diagnostics in
 ordinary Repository prose. Preserve the original HTML, screenshots and two
 violated assessments. Ordinary evidence actions now aggregate missing embedded

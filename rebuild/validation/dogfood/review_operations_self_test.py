@@ -9,6 +9,7 @@ from qualitative_review_self_test import dimensions
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -247,6 +248,68 @@ def append_reviewable_execution(events):
 code = ops.RecordedCode
 
 class ReadingSurfaceTests(unittest.TestCase):
+    def observed_reader_languages(self, failing_language=None):
+        import collection_runs
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            slot = root / 'slots/sample'
+            (slot / 'evidence').mkdir(parents=True)
+            binary = root / 'bin/volicord'
+            viewer = binary.with_name('volicord-viewer')
+            viewer.parent.mkdir()
+            viewer.write_text('#!' + sys.executable + ' -B\n' + '''import argparse
+from pathlib import Path
+import sys
+p = argparse.ArgumentParser()
+for name in ('runtime', 'project', 'locale', 'language', 'snapshot'):
+    p.add_argument('--' + name, required=True)
+a = p.parse_args()
+if a.language == ''' + repr(failing_language) + ''':
+    print('controlled selected-language failure', file=sys.stderr)
+    raise SystemExit(7)
+with Path(a.snapshot).open('x') as output:
+    output.write('<html lang="' + a.locale + '"><body data-viewer-mode="snapshot" data-project-id="' + a.project + '" data-requested-language="' + a.language + '"><article data-reader-publication="pub-' + a.language + '">Complete ' + a.language + '</article></body></html>')
+print('snapshot ' + a.language)
+''')
+            viewer.chmod(0o700)
+            with patch.object(c, 'work_root', return_value=slot), patch.object(
+                    c, 'load_campaign', return_value={'reader_languages': ['en', 'ko', 'ja']}):
+                summary, paths = c.collect_viewer_snapshot_evidence(
+                    root, 'small-python', 'A', binary, root / 'runtime', '1' * 32,
+                    'a' * 40, 'en', 'en', collection_runs.observed_snapshot)
+            for path in paths:
+                c.register_artifact(root, path)
+            c.verify_inventory(root)
+            commands = {}
+            results = {}
+            for command in (slot / 'evidence/snapshot-process').rglob('command.json'):
+                argv = json.loads(command.read_text())['argv']
+                language = argv[argv.index('--language') + 1]
+                self.assertNotIn(language, commands)
+                commands[language] = argv
+                results[language] = json.loads(command.with_name('result.json').read_text())
+            self.assertEqual(set(commands), {'en', 'ko', 'ja'})
+            self.assertEqual({key: argv[argv.index('--locale') + 1]
+                              for key, argv in commands.items()}, {'en': 'en', 'ko': 'ko', 'ja': 'en'})
+            for language, row in summary['reader_snapshots'].items():
+                expected = 7 if language == failing_language else 0
+                self.assertEqual(results[language]['exit_code'], expected)
+                self.assertEqual(row['status'], 'failed' if expected else 'passed')
+                if not expected:
+                    data = (root / row['relative_evidence_path']).read_bytes()
+                    self.assertIn(('Complete ' + language).encode(), data)
+                    self.assertEqual(row['publication_ids'], ['pub-' + language])
+                else:
+                    self.assertNotIn('relative_evidence_path', row)
+            return summary
+
+    def test_real_recorder_keeps_separate_selected_language_process_evidence(self):
+        self.observed_reader_languages()
+
+    def test_real_recorder_keeps_a_language_failure_separate_and_continues(self):
+        summary = self.observed_reader_languages('ko')
+        self.assertEqual(summary['reader_snapshots']['ja']['status'], 'passed')
+
     def test_reader_scope_survives_immutable_campaign_source_checks_and_refuses_forgery(self):
         body = b'<html lang="en"><body data-viewer-mode="snapshot" data-project-id="p" data-requested-language="en"><article data-reader-publication="pub">Complete body</article></body></html>'
         binding = {'bytes':len(body), 'sha256':ops.digest(body)}

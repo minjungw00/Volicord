@@ -488,11 +488,15 @@ def observed_export(binary, runtime, repository, destination):
 
 def observed_snapshot(binary, runtime, project, destination, locale, language):
     c = api()
-    recorder = c.harness.load_v11().Recorder(destination.parent / "snapshot-process")
+    # Each selected reading has its own create-only process receipts. A new
+    # Recorder starts at sequence one, so sharing its root loses later languages.
+    process_root = destination.parent / "snapshot-process" / machine.digest({
+        "snapshot_destination": destination.name})
+    recorder = c.harness.load_v11().Recorder(process_root)
     process = recorder.run("post-session-viewer", [str(binary.with_name("volicord-viewer")),
         "--runtime", str(runtime), "--project", project, "--locale", locale,
         "--language", language, "--snapshot", str(destination)], __import__("os").environ.copy(), cwd=c.ROOT)
-    for path in (destination.parent / "snapshot-process").rglob("*"):
+    for path in process_root.rglob("*"):
         if path.is_file():
             c.register_artifact(destination.parents[3], path)
     return {"status": "passed" if process.get("exit_code") == 0 and not process.get("termination")
