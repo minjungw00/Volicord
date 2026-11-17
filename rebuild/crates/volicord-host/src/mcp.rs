@@ -90,7 +90,8 @@ fn work_production_followup(project: ProjectId, work: ContextItemId, reason: &st
     if reason == "boundary" {
         followup["repository_reading"] = json!({
             "inspect":{"tool":"repository_understanding","arguments":{"project_id":project.to_string(),"reading_focus":"repository_explanation"}},
-            "authoring":{"interface":"local_cli","project_id":project.to_string(),"analysis_basis":"Use this handoff's current_analysis_snapshot_id; prepare revalidates the exact analysis","commands":["repository explain produce","repository explain compose","repository explain production-assess","repository explain production-review","repository explain record"]},
+            "analysis_inspect":{"tool":"repository_understanding","arguments":{"project_id":project.to_string()}},
+            "authoring":{"interface":"local_cli","project_id":project.to_string(),"analysis_basis":"Use this handoff's current_analysis_snapshot_id when supplied; otherwise inspect the current repository analysis through analysis_inspect before producing. Preparation revalidates the exact analysis; a retained check receipt alone does not assert current whole-repository coverage.","commands":["repository explain produce","repository explain compose","repository explain production-assess","repository explain production-review","repository explain record"]},
             "instruction":"Inspect repository prose independently of this Work. If needed and authorized, use the pinned CLI route with this Project, the exact analysis and requested language. Follow preparation instructions, investigate repository-wide responsibilities and flows through permitted Sources, then explicitly produce/compose, assess diagrams, review the exact realization against every reader obligation and record it with production-id. Reread current prose before preserving it; readability/currentness alone does not certify reader completion. Work produce does not create repository prose. Missing authority or evidence remains incomplete; do not invent a Goal, Question, consent or content. Reads never author, capture or renew."});
         followup["related_decision_reading"] = json!({
             "tool":"decision_explanation","action":"produce","project_id":project.to_string(),
@@ -2129,9 +2130,15 @@ impl HostAdapter {
                         "recording Work differs from authorized Work",
                     ));
                 }
-                Ok(
-                    json!({"receipt":self.operations.record_work_check(project, request).map_err(operation_error)?}),
-                )
+                let receipt = self
+                    .operations
+                    .record_work_check(project, request)
+                    .map_err(operation_error)?;
+                Ok(json!({
+                    "receipt":receipt,
+                    "recorded_work_state":"paused",
+                    "explanation_production":work_production_followup(project,work,"boundary"),
+                }))
             }
             "observe_file" => {
                 let receipt = self
@@ -4061,7 +4068,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "work_source" => (
-            "Explicitly observe one included repository-relative UTF-8 file (at most 16384 retained bytes); optional byte_range explicitly selects a half-open UTF-8 excerpt (at most 16384 bytes) from a file verified in full up to 16 MiB. Excerpts preserve absolute file byte/line coordinates and explicitly omit other context, for an exact Project/Work and Analysis Snapshot, within the current host's already authorized source scope. The observed hash must equal the selected inventory hash. Optional before_source_id must be an available strictly earlier observation of the same Work/path; absent before-state is not reconstructed. retain_seconds explicitly permits local disposable retention for 1..604800 seconds, never background transmission. Read through the returned canonical_inspect selector. delete_source_copy removes that exact managed body while preserving canonical Source and unrelated context. record_check attaches an explicit assertion report to one already retained declared local check run; recording includes Work/source, assertion_state (not_observed/passed/failed), optional assertion_evidence (stream, UTF-8 byte interval, sha256), optional exact prior Checkpoint/source retest basis, outcome and next_step. It executes nothing and creates no trusted-host attestation. This tool cannot execute commands or read URLs, arbitrary absolute paths, symlinks, excluded files or full user turns.",
+            "Explicitly observe one included repository-relative UTF-8 file (at most 16384 retained bytes); optional byte_range explicitly selects a half-open UTF-8 excerpt (at most 16384 bytes) from a file verified in full up to 16 MiB. Excerpts preserve absolute file byte/line coordinates and explicitly omit other context, for an exact Project/Work and Analysis Snapshot, within the current host's already authorized source scope. The observed hash must equal the selected inventory hash. Optional before_source_id must be an available strictly earlier observation of the same Work/path; absent before-state is not reconstructed. retain_seconds explicitly permits local disposable retention for 1..604800 seconds, never background transmission. Read through the returned canonical_inspect selector. delete_source_copy removes that exact managed body while preserving canonical Source and unrelated context. record_check attaches an explicit assertion report to one already retained declared local check run; recording includes Work/source, assertion_state (not_observed/passed/failed), optional assertion_evidence (stream, UTF-8 byte interval, sha256), optional exact prior Checkpoint/source retest basis, outcome and next_step. It creates a pause Checkpoint with paused Work state, independently of the assertion outcome, and returns explicit boundary explanation follow-up without generating content or renewing Sources. It executes nothing and creates no trusted-host attestation. This tool cannot execute commands or read URLs, arbitrary absolute paths, symlinks, excluded files or full user turns.",
             json!({"oneOf":[object_schema(vec![
                 ("action",enum_schema("Explicit Source operation", &["record_check"])),
                 ("project_id",identity_schema("Project identity")),("work_item_id",identity_schema("Exact Work")),

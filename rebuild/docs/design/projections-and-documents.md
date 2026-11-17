@@ -4074,6 +4074,15 @@ create a Work/Question/Decision, impose an authoring quota or block ordinary wor
 Missing evidence/authority and failed production remain explicit; current bases
 skip without renewal. Existing publications and independent lifetimes are unchanged.
 
+Explicit scoped-check recording creates the domain owner's pause Checkpoint even
+when the recorded assertion passes. Its Host receipt exposes that paused state and
+the same Work, repository and related-Decision authoring follow-up as an ordinary
+pause boundary. Inspect affected publication bases after the last canonical record;
+refreshing a summary alone does not refresh its independent article. The follow-up
+supplies a read-only analysis inspection route when the receipt has no current
+analysis identity. It neither changes check admission or Work lifecycle nor starts
+generation, renews Sources, infers completion or creates a new authority requirement.
+
 Current Work and Repository authoring guidance distinguishes a concise synopsis
 from detailed explanation. Detail follows a concrete reader question or use case
 through relevant inputs/state, mechanism, supported reason, consequence and failure
