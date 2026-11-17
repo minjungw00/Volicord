@@ -397,7 +397,7 @@ fn source_expiry_preserves_admitted_summary_and_name_without_authorizing_new_cla
         path: "python/worker.py".into(),
         byte_range: None,
         before_source_id: None,
-        retain_seconds: 1,
+        retain_seconds: 3600,
     })?;
     let plan = f.operations.prepare_explanation(f.project, summary, "en")?;
     let mut input = draft(&plan,"The requested relay investigation has a retained Python worker observation; no result is reported.");
@@ -418,7 +418,19 @@ fn source_expiry_preserves_admitted_summary_and_name_without_authorizing_new_cla
         work(&f, id)?.reading.summary_explanations[0].state,
         ExplanationState::Current
     );
-    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let mut privacy = volicord_privacy::PrivacyStore::open_with(
+        f.operations.layout().privacy_store(),
+        SystemIdGenerator,
+        FixedClock::new(TimestampMicros::from_unix_micros(
+            observed.retained_until_unix_micros + 1,
+        )),
+    )?;
+    assert_eq!(privacy.cleanup_expired(f.project)?.len(), 1);
+    drop(privacy);
+    assert!(f
+        .operations
+        .read_explanation_source(f.project, id, observed.source_id)
+        .is_err());
     let expired = work(&f, id)?;
     assert_eq!(
         expired.reading.name_explanations[0].state,
