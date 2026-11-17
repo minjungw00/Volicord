@@ -1792,6 +1792,82 @@ fn project_surface_and_four_documents_are_grounded_equivalent_and_read_only(
         assert_eq!(realized_claim.analysis_basis, plan_claim.analysis_basis);
     }
 
+    // Literal examples must survive the public document realization/rendering
+    // path in every document kind, independently of a repository or tool name.
+    let example =
+        "value = {\"raw_key\": [\"한글_*<tag>\", r\"C:\\sample\"]}\nprint(value[\"raw_key\"][0])";
+    let literal_units = format!(
+        "\n\nAn illustrative example; not an observed run.\n\n```python\n{example}\n```\n\nOutside <script> stays text.\n\n```sh\nprintf '%s\\n' '[key_*] <tag>'\n```\n\n```json\r\n{{\"raw_key\":\"a\\\\b\"}}\r\n```\r\n\n```invalid language\nUnclosed [literal_*] <script>"
+    );
+    for (language, fixed_locale) in [("en", FixedLocale::English), ("ko", FixedLocale::Korean)] {
+        let incomplete_language = if language == "ko" {
+            "python"
+        } else {
+            "invalid language"
+        };
+        let literal_units = literal_units.replace("invalid language", incomplete_language);
+        let literal_request = DocumentRequest {
+            requested_language: language.to_owned(),
+            fixed_locale,
+            requested_destinations: Vec::new(),
+            ..request.clone()
+        };
+        for kind in DocumentKind::ALL {
+            let plan = prepare_narrative_plan(&projection, &literal_request, kind)?;
+            let mut literal_realization = NarrativeRealization {
+                requested_language: language.to_owned(),
+                plan_fingerprint: plan.plan_fingerprint,
+                all_generated_prose_realized: true,
+                title: plan.source_title,
+                sections: plan
+                    .sections
+                    .iter()
+                    .map(|section| RealizedNarrativeSection {
+                        key: section.key.clone(),
+                        title: section.source_title.clone(),
+                        claims: section
+                            .claims
+                            .iter()
+                            .map(|claim| RealizedNarrativeClaim {
+                                identity: claim.identity.clone(),
+                                text: claim.source_text.clone(),
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+                generator: request.generator.clone(),
+            };
+            let claim = literal_realization
+                .sections
+                .iter_mut()
+                .flat_map(|section| &mut section.claims)
+                .next()
+                .ok_or("literal rendering fixture needs one grounded claim")?;
+            claim.text.push_str(&literal_units);
+            let original_text = claim.text.clone();
+            let document =
+                realize_narrative(&projection, &literal_request, kind, &literal_realization)?;
+            assert!(document
+                .body
+                .sections
+                .iter()
+                .flat_map(|section| &section.claims)
+                .any(|claim| claim.text == original_text));
+            let markdown = &document.markdown.content;
+            assert!(markdown.contains(&format!(
+                "  ```python\n  {}\n  ```",
+                example.replace('\n', "\n  ")
+            )));
+            assert!(markdown.contains("  ```sh\n  printf '%s\\n' '[key_*] <tag>'\n  ```"));
+            assert!(markdown.contains("  ```json\r\n  {\"raw_key\":\"a\\\\b\"}\r\n  ```\r\n"));
+            assert!(markdown.contains("Outside &lt;script&gt; stays text."));
+            assert!(markdown.contains(&format!("\\`\\`\\`{incomplete_language}")));
+            assert!(markdown.contains("Unclosed \\[literal\\_\\*\\] &lt;script&gt;"));
+            assert!(!document.html.content.contains("<script>"));
+            assert!(document.html.content.contains("&lt;script&gt;"));
+        }
+    }
+
     let korean = generate_documents(
         &projection,
         &DocumentRequest {

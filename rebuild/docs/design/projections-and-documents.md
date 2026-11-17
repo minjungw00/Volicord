@@ -4123,6 +4123,14 @@ Its complete admitted prose, diagram linear meaning and scope/coverage facts
 precede Work material; canonical Project Purpose remains separate, including
 its explicit absence. Structural records remain inspectable supporting evidence.
 Generated Markdown and HTML preserve paragraph boundaries within complete claims.
+Markdown rendering preserves literal bytes inside complete, explicitly fenced
+examples, including when several authored units are gathered into one document
+claim. Ordinary text remains escaped; malformed or unclosed fences remain literal
+escaped text and cannot consume following generated sections. List-continuation
+indentation is presentation only, with no added Markdown escapes or hard-break
+spaces inside the example. Examples remain illustrative authored content, not
+Source quotations or observed command execution. This changes neither the original
+claim, citations, retained publication nor generated-document metadata format.
 No read authors, transmits, captures Sources or renews a publication.
 
 Operations supplies exact canonical Source-status witnesses for the materialized

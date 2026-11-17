@@ -2237,10 +2237,11 @@ fn render_markdown(
                 output.push_str(fixed(locale, "Inference", "추론"));
                 output.push_str("]** ");
             }
-            output.push_str(
-                &escape_markdown(&bounded_rendered_field(&claim.text, "claim text", locale))
-                    .replace('\n', "  \n  "),
-            );
+            output.push_str(&render_markdown_claim(&bounded_rendered_field(
+                &claim.text,
+                "claim text",
+                locale,
+            )));
             if !claim.uncertainty.is_empty() {
                 output.push_str("  \n  ");
                 output.push_str(fixed(
@@ -3278,6 +3279,62 @@ const fn fixed(locale: FixedLocale, english: &'static str, korean: &'static str)
         FixedLocale::English => english,
         FixedLocale::Korean => korean,
     }
+}
+
+/// Document claims can contain several complete authored units. Markdown
+/// escaping belongs to ordinary text, never to the literal bytes of an example.
+/// Only closed, explicit fences are recognized; no HTML or general
+/// Markdown interpretation is introduced for the remaining text.
+fn render_markdown_claim(value: &str) -> String {
+    let lines: Vec<_> = value.split_inclusive('\n').collect();
+    let mut output = String::new();
+    let mut index = 0;
+    while index < lines.len() {
+        let line = lines[index].trim_end_matches(['\r', '\n']);
+        let opening = line.strip_prefix("```").filter(|language| {
+            language
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || "_-".contains(character))
+        });
+        let closing = opening.and_then(|_| {
+            lines[index + 1..]
+                .iter()
+                .position(|line| line.trim_end_matches(['\r', '\n']) == "```")
+                .map(|offset| index + 1 + offset)
+                .filter(|closing| *closing > index + 1)
+        });
+        if let Some(closing) = closing {
+            // A leading example must start its own list-continuation block,
+            // after the optional inference label emitted by the caller.
+            if index == 0 {
+                output.push_str("\n\n  ");
+            }
+            for line in &lines[index..=closing] {
+                output.push_str(line);
+                if line.ends_with('\n') {
+                    output.push_str("  ");
+                }
+            }
+            index = closing + 1;
+        } else if line.starts_with("```") {
+            // An incomplete or malformed example cannot consume later claims
+            // or turn an apparent closing delimiter into another opening one.
+            output.push_str(
+                &escape_markdown(&lines[index..].concat())
+                    .replace('`', "\\`")
+                    .replace('\n', "  \n  "),
+            );
+            break;
+        } else {
+            output.push_str(
+                &escape_markdown(lines[index])
+                    .replace('`', "\\`")
+                    .replace('\n', "  \n  "),
+            );
+            index += 1;
+        }
+    }
+    output
 }
 
 fn escape_markdown(value: &str) -> String {
