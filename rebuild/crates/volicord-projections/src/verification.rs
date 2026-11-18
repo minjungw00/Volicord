@@ -576,11 +576,11 @@ fn compare_retest_runs(run: &ScopedCheckRun, prior: Option<&ScopedCheckRun>) -> 
     }
 }
 
-/// Metadata-only catalogue count. Reuse the detail comparison rules without
+/// Metadata-only catalogue status. Reuse the detail comparison rules without
 /// constructing WorkReading, execution streams or quadratic later-change lists.
-pub(crate) fn unresolved_failed_report_count(
+pub(crate) fn unresolved_failed_report_status(
     checkpoints: &[&volicord_context::Checkpoint],
-) -> usize {
+) -> (usize, bool) {
     use std::collections::{BTreeMap, BTreeSet};
     let facts = checkpoints
         .iter()
@@ -616,19 +616,27 @@ pub(crate) fn unresolved_failed_report_count(
     let last_change = checkpoints
         .iter()
         .rposition(|cp| crate::reading::has_reported_change(cp));
-    checkpoints
-        .iter()
-        .enumerate()
-        .filter(|(index, _)| last_change.is_none_or(|last| *index >= last))
-        .map(|(_, cp)| {
-            cp.verification
-                .iter()
-                .enumerate()
-                .filter(|(index, fact)| {
-                    fact.state == VerificationState::Failed
-                        && !resolved.contains(&(cp.id, cp.revision, *index, fact.source_id))
-                })
-                .count()
-        })
-        .sum()
+    let mut latest_pass = None;
+    let mut count = 0;
+    let mut has_pass_report = false;
+    for cp in checkpoints[last_change.unwrap_or(0)..].iter().rev() {
+        let mut same_checkpoint_pass = false;
+        let mut unresolved = 0;
+        for (index, fact) in cp.verification.iter().enumerate() {
+            if fact.state == VerificationState::Passed {
+                same_checkpoint_pass = true;
+            } else if fact.state == VerificationState::Failed
+                && !resolved.contains(&(cp.id, cp.revision, index, fact.source_id))
+            {
+                unresolved += 1;
+            }
+        }
+        if same_checkpoint_pass {
+            latest_pass.get_or_insert(cp.recorded_at);
+        }
+        count += unresolved;
+        has_pass_report |= unresolved > 0
+            && (same_checkpoint_pass || latest_pass.is_some_and(|time| time > cp.recorded_at));
+    }
+    (count, has_pass_report)
 }

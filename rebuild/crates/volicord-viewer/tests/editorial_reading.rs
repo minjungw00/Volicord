@@ -52,11 +52,11 @@ fn repository_introduction_is_not_user_purpose_and_formatting_keeps_lifecycle(
             (ExplanationQuestion::Heading,"Greeting engine"),
             (ExplanationQuestion::Synopsis,synopsis),
             (ExplanationQuestion::Narrative,"Illustrative input and output, inferred from the inspected function; no execution is claimed."),
-            (ExplanationQuestion::ReadingPoint,"```json\n{\"input\":\"Ada\",\"result\":\"hello Ada\",\"literal\":\"<script>\"}\n```"),
-            (ExplanationQuestion::Narrative,"| Input | Expected prefix |\n| --- | --- |\n| Ada | hello |\n| λ \\| 이름 | hello |"),
+            (ExplanationQuestion::ReadingPoint,"Illustrative result for `greet`.\n\n```json\n{\"input\":\"Ada\",\"result\":\"hello Ada\",\"literal\":\"<script>\"}\n```\n\nThe example shows the shape."),
+            (ExplanationQuestion::Narrative,"Compare the effect of `greet`.\n\n| Input | Expected prefix |\n| --- | --- |\n| Ada | `hello` |\n| λ \\| 이름 | hello |\n\nBoth use the same prefix."),
             (ExplanationQuestion::Limits,"The example explains the selected function, not execution or whole-repository coverage."),
         ].into_iter().map(|(question,text)|{
-            let claims=if text.starts_with('|') {text.split_inclusive('\n').scan(0,|offset,line|{let start=*offset;*offset+=line.len();Some((start,*offset))}).skip(2).map(|(start,end)|Some(FileByteRange{start_byte:start,end_byte:end})).collect()}else{vec![None]};
+            let claims=if let Some(start) = text.find("| Ada") {text[start..].split_inclusive('\n').take(2).scan(start,|offset,line|{let start=*offset;*offset+=line.len();Some(Some(FileByteRange{start_byte:start,end_byte:*offset}))}).collect()}else{vec![None]};
             RepositoryReaderUnit{question,text:text.into(),evidence_keys:vec!["repository_basis".into()],sources:if question==ExplanationQuestion::Limits {vec![]}else{claims.into_iter().map(|claim|RepositoryClaimRange{source_id,start_byte:0,end_byte:code.len(),claim}).collect()}}
         }).collect();
         let response = ops.compose_repository_explanation(
@@ -128,6 +128,9 @@ fn repository_introduction_is_not_user_purpose_and_formatting_keeps_lifecycle(
             .html;
         assert!(snapshot.contains("class=\"authored-table\""));
         assert!(snapshot.contains("class=\"authored-example\""));
+        assert!(snapshot.contains("Compare the effect of <code>greet</code>."));
+        assert!(snapshot.contains("<td><code>hello</code></td>"));
+        assert!(snapshot.contains("Both use the same prefix."));
         let introduction = snapshot
             .split("class=\"repository-card\"")
             .nth(1)

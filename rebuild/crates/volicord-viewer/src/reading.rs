@@ -221,7 +221,7 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
     };
     html.push_str(&format!("<article class=\"work-card\" data-work-id=\"{}\" data-work-state=\"{}\"{}><div class=\"work-card-heading\"><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3>{}</div>",w.work_item_id,understanding_work_state_key(w.state),publication_attributes,escape(&language),basis,escape(&title),work_state_badge(w.state,r.locale)));
     if let Some(synopsis) = answers.card_summary() {
-        html.push_str(&format!("<p class=\"work-summary\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p>",escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),escape(&synopsis.text)));
+        html.push_str(&format!("<p class=\"work-summary\" data-question=\"Synopsis\" lang=\"{}\" data-content-language=\"{}\">{}</p>",escape(&content_language_tag(&r.requested_language)),escape(&r.requested_language),crate::authored_text::code_only(&synopsis.text)));
         if answers.card_name().is_none() {
             html.push_str(&format!(
                 "<p class=\"content-unavailable\">{}</p>",
@@ -239,6 +239,12 @@ fn work_summary(html: &mut String, r: &ViewerRequest, w: &UnderstandingWork, sna
     }
     if answers.explanation_state != volicord_projections::ExplanationState::Current {
         html.push_str(&format!("<p class=\"content-unavailable\" data-publication-scope=\"article\" data-publication-state=\"{:?}\">{}</p>",answers.explanation_state,text(r.locale,"Technical detail is unavailable; valid card content remains readable.","상세 설명을 사용할 수 없습니다. 유효한 카드 내용은 계속 읽을 수 있습니다.")));
+    }
+    if verification::has_pass_alongside_unresolved_failure(&w.reading.verification_report) {
+        html.push_str(&format!(
+            "<p class=\"overview-verification-note\">{}</p>",
+            pass_with_unresolved_failure(r.locale)
+        ));
     }
     html.push_str("<div class=\"work-card-footer\">");
     work_event_times(html, r, w);
@@ -441,24 +447,25 @@ fn reader_citation_actions(
         targets.len()
     );
     html.push_str(&format!("<div class=\"evidence-actions\"><a class=\"evidence-link paragraph-evidence-action\" data-origin=\"{}\" data-citation-targets=\"{}\" href=\"{}\" aria-label=\"{}\">{}</a></div>",reader_claim_anchor(answers,index),escape(&serde_json::to_string(&targets).unwrap_or_default()),escape(first),escape(&base_label),text(r.locale,"Evidence","근거 보기")));
-    if let Some(scope) = answers
+}
+
+fn document_evidence_availability(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+) {
+    if answers
         .embedded_source_scope
         .iter()
-        .find(|s| s.unit_index == index)
+        .any(|scope| !scope.unavailable_citation_indices.is_empty())
     {
-        let unavailable = scope.unavailable_citation_indices.iter().any(|&i| {
-            citations[i].use_kind == volicord_projections::ExplanationSourceUse::CurrentCode
-        });
-        if unavailable {
-            html.push_str(&format!(
-                "<p class=\"claim-evidence-availability\">{}</p>",
-                text(
-                    r.locale,
-                    "Some code evidence is unavailable.",
-                    "코드 근거 일부 이용 불가",
-                )
-            ));
-        }
+        html.push_str(&format!(
+            "<p class=\"document-evidence-availability source-note\"{}>{}</p>",
+            publication_scope(answers),
+            text(r.locale,
+                "Some cited evidence is unavailable. Open Evidence to check which ranges can still be read.",
+                "인용 근거 일부를 이용할 수 없습니다. 근거 보기에서 범위별 열람 상태를 확인할 수 있습니다.")
+        ));
     }
 }
 
@@ -1444,6 +1451,7 @@ fn render_document_body(
     }
     opening_context(html, r, answers, work, decision);
     explanation_diagnostic(html, r, answers);
+    document_evidence_availability(html, r, answers);
     if grouped {
         html.push_str(&format!("<h2 class=\"reading-group-heading\" data-toc-group-heading id=\"{}\" tabindex=\"-1\">{}</h2>",document_anchor(answers,"reading"),if work.is_some() {text(r.locale,"Work explanation","작업 설명")} else {text(r.locale,"Repository explanation","저장소 설명")}));
     }
@@ -1497,6 +1505,14 @@ fn render_document_body(
     if grouped {
         html.push_str(&format!("</section><section class=\"work-reading-group\" data-reading-group=\"checks\" id=\"{}\" tabindex=\"-1\" aria-label=\"{}\"><h2 class=\"reading-group-heading\" data-toc-group-heading>{}</h2>",document_anchor(answers,"checks"),text(r.locale,"Verification and limits","검증과 한계"),text(r.locale,"Verification and limits","검증과 한계")));
     }
+    if let Some(work) = work {
+        verification::render_pass_comparison_limits(
+            html,
+            r,
+            answers,
+            &work.reading.verification_report,
+        );
+    }
     if let Some(d) = decision {
         render_recorded_choice(html, r, answers, d);
     }
@@ -1548,7 +1564,17 @@ fn render_document_body(
             format!("{anchor}-{count}")
         };
         let level = if grouped { 3 } else { 2 };
-        html.push_str(&format!("<section class=\"reading-section {class}\" id=\"{}\" tabindex=\"-1\"><h{level} class=\"reading-layer-heading\"{}>{title}</h{level}>", document_anchor(answers,&anchor),if grouped{" data-toc-entry"}else{""}));
+        let authored_heading = answers.sections[offset].heading_index.is_some();
+        html.push_str(&format!(
+            "<section class=\"reading-section {class}\" id=\"{}\" tabindex=\"-1\">",
+            document_anchor(answers, &anchor)
+        ));
+        if !authored_heading {
+            html.push_str(&format!(
+                "<h{level} class=\"reading-layer-heading\"{}>{title}</h{level}>",
+                if grouped { " data-toc-entry" } else { "" }
+            ));
+        }
         render_article_sections(
             html,
             r,
@@ -1556,7 +1582,7 @@ fn render_document_body(
             &answers.sections[offset..end],
             work.is_some(),
             snapshot,
-            grouped.then_some(4),
+            grouped.then_some(if authored_heading { 3 } else { 4 }),
         );
         html.push_str("</section>");
         offset = end;
@@ -2377,22 +2403,18 @@ fn opening_context(
             }
             actions.push_str("</div></details></div>");
         }
-        let later_pass = work.is_some_and(|w| {
-            let report = &w.reading.verification_report;
-            report.checks.iter().any(|earlier| {
-                earlier.reported_state == volicord_projections::ReportedCheckState::Failed
-                    && !verification::historical_check(earlier, report)
-                    && report.checks.iter().any(|later| {
-                        later.reported_state == volicord_projections::ReportedCheckState::Passed
-                            && later.reported_at_unix_micros > earlier.reported_at_unix_micros
-                    })
-            })
+        let pass_alongside_failure = work.is_some_and(|w| {
+            verification::has_pass_alongside_unresolved_failure(&w.reading.verification_report)
         });
         reading_notice(
             html,
             "failure",
-            if later_pass { "caution" } else { "danger" },
-            if later_pass {
+            if pass_alongside_failure {
+                "caution"
+            } else {
+                "danger"
+            },
+            if pass_alongside_failure {
                 text(
                     r.locale,
                     "Retest comparison not established",
@@ -2405,8 +2427,8 @@ fn opening_context(
                     "기록된 검증 실패",
                 )
             },
-            if later_pass {
-                text(r.locale,"Later passing reports are recorded. These earlier failed reports remain in the review list because an explicit comparison of check identity, coverage and execution conditions is not established. Read the recorded outcomes alongside this comparison limit.","이후 통과 보고가 기록되어 있습니다. 검사 이름·확인 범위·실행 조건을 비교할 명시적 연결 근거가 충분하지 않아 이전 실패 보고가 확인 목록에 남아 있습니다. 기록된 결과와 이 비교 한계를 함께 읽으세요.")
+            if pass_alongside_failure {
+                pass_with_unresolved_failure(r.locale)
             } else {
                 text(r.locale,"A failed report is recorded without an established comparable passing retest. The original outcome and its applicability remain inspectable.","실패 보고가 기록되어 있으며 비교 가능한 후속 통과는 확인되지 않았습니다. 원래 결과와 적용 범위는 실패 보고에서 확인할 수 있습니다.")
             },
@@ -2505,6 +2527,12 @@ fn opening_context(
             ));
         }
     }
+}
+
+pub(super) fn pass_with_unresolved_failure(locale: ViewerLocale) -> &'static str {
+    text(locale,
+        "This Work also has passing reports. The record does not establish a comparable passing retest for every failed report listed here.",
+        "이 작업에는 통과 보고도 있습니다. 확인 목록의 각 실패 보고에 대해 비교 가능한 재검증에서 통과했는지는 기록상 확인되지 않았습니다.")
 }
 
 fn limitation_label(
@@ -3390,6 +3418,7 @@ fn decision_detail(
     html.push_str(&format!("<p class=\"decision-state-note\">{}</p>",text(r.locale,"Decision applicability describes the recorded choice; repository comparison describes the explanation’s code basis. These are independent states.","결정 적용 상태는 기록된 선택의 효력을, 저장소 비교 상태는 설명의 코드 기준을 나타냅니다. 두 상태는 서로 별개입니다.")));
     opening_context(html, r, &reader, None, Some(d));
     explanation_diagnostic(html, r, &reader);
+    document_evidence_availability(html, r, &reader);
     let mut content = String::new();
     for (index, _) in reader
         .prose

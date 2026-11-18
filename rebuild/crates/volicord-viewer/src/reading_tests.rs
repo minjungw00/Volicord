@@ -601,13 +601,45 @@ fn failure_notices_own_actions_and_preserve_exact_report_targets(
         )));
         assert!(html.contains(text(
             locale,
-            "Later passing reports are recorded.",
-            "이후 통과 보고가 기록되어 있습니다."
+            "This Work also has passing reports.",
+            "이 작업에는 통과 보고도 있습니다."
         )));
         assert!(
             html.contains("data-warning=\"failure\""),
             "an unrelated pass cannot erase the original failed report"
         );
+    }
+    let checks = &mut later_pass.reading.verification_report.checks;
+    let failed = checks.first().ok_or("original failed report")?.clone();
+    let passed = checks.last_mut().ok_or("passing report")?;
+    passed.reported_at_unix_micros = failed.reported_at_unix_micros;
+    passed.original = failed.original.clone();
+    passed.original.verification_index += 1;
+    passed.retest_comparison = RetestComparison::NotComparable {
+        previous: failed.original,
+        reason: ComparisonLimit::InvocationChanged,
+    };
+    for snapshot in [false, true] {
+        let request = ViewerRequest {
+            project_id: f.project,
+            locale: ViewerLocale::English,
+            view: ViewerView::Work { work: Some(id) },
+            requested_language: "en".into(),
+            guarded_request: None,
+        };
+        let mut html = String::new();
+        work_detail(&mut html, &request, &p, &later_pass, snapshot);
+        assert!(html.contains("This Work also has passing reports."));
+        assert!(html.contains("data-warning=\"failure\" data-severity=\"caution\""));
+        let comparison = html
+            .split("class=\"verification-comparison-note\"")
+            .nth(1)
+            .ok_or("comparison note")?;
+        assert!(comparison
+            .split("</div>")
+            .next()
+            .unwrap_or("")
+            .contains("Invocation fingerprint differs"));
     }
     let mut historical = w.clone();
     for check in &mut historical.reading.verification_report.checks {

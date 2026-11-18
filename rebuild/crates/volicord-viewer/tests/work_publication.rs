@@ -204,6 +204,27 @@ fn same_work_independent_publications_reach_cli_mcp_http_documents_and_offline(
             let live = get(&f, &path)?;
             assert_fragments(&live);
             assert!(live.contains(text[0]) && live.contains(text[1]), "{path}");
+            if path.contains("view=overview") && live.contains(&format!("id=\"row-{id}\"")) {
+                let featured = live
+                    .split("class=\"continue-card\"")
+                    .nth(1)
+                    .ok_or("featured Work")?;
+                if featured
+                    .split("</section>")
+                    .next()
+                    .unwrap_or("")
+                    .contains(text[1])
+                {
+                    let recent = live
+                        .split("class=\"work-list recent\"")
+                        .nth(1)
+                        .ok_or("recent Work")?;
+                    assert!(
+                        !recent.contains(text[1]),
+                        "featured synopsis repeated in Recent Work"
+                    );
+                }
+            }
             if path.contains("&work=") {
                 assert!(live.contains(&f.decisions["explicit"].to_string()));
                 let decision = get(

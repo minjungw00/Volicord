@@ -98,6 +98,23 @@ pub(super) fn historical_check(
     check.applicability == VerificationApplicability::HistoricalAfterRecordedChange || report.checks.iter().any(|later|
         matches!(&later.retest_comparison, RetestComparison::Comparable {previous,later_assertion:volicord_context::AssertionState::Passed,..} if previous == &check.original))
 }
+
+pub(super) fn has_pass_alongside_unresolved_failure(report: &WorkVerificationReport) -> bool {
+    let mut latest_pass = None;
+    let mut checkpoints_with_pass = std::collections::BTreeSet::new();
+    for check in &report.checks {
+        if check.reported_state == ReportedCheckState::Passed {
+            latest_pass = latest_pass.max(Some(check.reported_at_unix_micros));
+            checkpoints_with_pass.insert(&check.original.checkpoint_id);
+        }
+    }
+    report.checks.iter().any(|failed| {
+        failed.reported_state == ReportedCheckState::Failed
+            && (latest_pass.is_some_and(|time| time > failed.reported_at_unix_micros)
+                || checkpoints_with_pass.contains(&failed.original.checkpoint_id))
+            && !historical_check(failed, report)
+    })
+}
 pub(super) fn render_digest(
     html: &mut String,
     r: &ViewerRequest,
@@ -110,6 +127,42 @@ pub(super) fn render_digest(
         " <a href=\"#{}\">{}</a></p>",
         document_anchor(answers, "verification-originals"),
         text(r.locale, "Verification details", "검증 상세")
+    ));
+}
+
+/// Preserve the structured comparison verdict beside the authored verification
+/// narrative, where a passing result or matching file samples can otherwise
+/// be mistaken for a comparable retest.
+pub(super) fn render_pass_comparison_limits(
+    html: &mut String,
+    r: &ViewerRequest,
+    answers: &ReaderAnswers<'_>,
+    report: &WorkVerificationReport,
+) {
+    let mut reasons = std::collections::BTreeSet::new();
+    for check in &report.checks {
+        if let (ReportedCheckState::Passed, RetestComparison::NotComparable { reason, .. }) =
+            (check.reported_state, &check.retest_comparison)
+        {
+            reasons.insert(comparison_limit(*reason, r.locale));
+        }
+    }
+    if reasons.is_empty() {
+        return;
+    }
+    html.push_str(&format!(
+        "<div class=\"verification-comparison-note\"><p>{}</p><ul>",
+        text(r.locale,
+            "Passing reports include reruns whose recorded comparison was rejected. Matching file samples alone do not establish comparable execution conditions.",
+            "통과 보고 중에는 기록된 비교가 성립하지 않은 재실행이 있습니다. 표본 파일의 해시가 같아도 실행 조건의 비교 가능성이 확인되는 것은 아닙니다.")
+    ));
+    for reason in reasons {
+        html.push_str(&format!("<li>{}</li>", escape(reason)));
+    }
+    html.push_str(&format!(
+        "</ul><a href=\"#{}\">{}</a></div>",
+        document_anchor(answers, "verification-originals"),
+        text(r.locale, "Read verification records", "검증 원문 보기")
     ));
 }
 fn check(
@@ -540,11 +593,9 @@ fn comparison_limit(reason: ComparisonLimit, locale: ViewerLocale) -> &'static s
             "Check identity, purpose or intended assertion differs",
             "검증 식별자·목적 또는 의도한 검사 조건 다름",
         ),
-        ComparisonLimit::InvocationChanged => text(
-            locale,
-            "Invocation fingerprint differs",
-            "호출 fingerprint 다름",
-        ),
+        ComparisonLimit::InvocationChanged => {
+            text(locale, "Invocation fingerprint differs", "호출 지문이 다름")
+        }
         ComparisonLimit::CoverageMissingOrDifferent => text(
             locale,
             "Declared coverage missing or different",

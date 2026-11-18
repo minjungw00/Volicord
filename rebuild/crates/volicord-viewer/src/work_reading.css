@@ -106,6 +106,16 @@
 .doc[data-reading-layout="grouped"] .related-decisions .decision-reading > .related-decision{margin:0;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{min-height:48px;padding:12px 0}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary h3{font:inherit;color:inherit}
+.doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{
+  display:grid;grid-template-columns:12px minmax(0,1fr) minmax(0,2fr);align-items:baseline
+}
+.related-decision > summary .decision-choice-summary{margin:0;min-width:0;overflow-wrap:anywhere}
+@media(max-width:760px){
+  .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{
+    grid-template-columns:12px minmax(0,1fr);row-gap:7px
+  }
+  .related-decision > summary .decision-choice-summary{grid-column:2}
+}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision[open]{padding-bottom:14px}
 .doc[data-reading-layout="grouped"] .related-decision-body > .article-section .unit-text,.doc[data-reading-layout="grouped"] .related-decision-body > .unit > .unit-text{font-size:14px;line-height:1.9;color:var(--body)}
 .doc[data-reading-layout="grouped"] .document-nav nav ol a{padding-left:28px}

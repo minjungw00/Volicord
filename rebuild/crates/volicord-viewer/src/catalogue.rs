@@ -33,6 +33,7 @@ fn row(
     r: &ViewerRequest,
     e: &WorkCatalogueEntry,
     origin: Option<&WorkCatalogueQuery>,
+    show_summary: bool,
 ) {
     let target = reading::url(
         r,
@@ -54,7 +55,20 @@ fn row(
         .ok()
         .and_then(|v| v.as_str().map(str::to_owned))
         .unwrap_or_default();
-    html.push_str(&format!("<a class=\"work-row\" id=\"row-{}\" data-work-link=\"{}\" data-work-id=\"{}\" data-work-state=\"{}\" href=\"{}\"><div class=\"work-main\"><div class=\"work-row-kicker\"><code>{}</code></div><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3><p lang=\"{}\">{}</p></div><div class=\"work-row-state\">{}<span class=\"catalogue-reading-status\"><span class=\"catalogue-status-icon\" data-article-state=\"{:?}\" title=\"{article}\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M6 3h8l4 4v14H6zM14 3v5h4M8 12h7m-7 4h5\"/></svg><span>{article}</span></span><span class=\"catalogue-status-icon\" data-comparison-state=\"{comparison_state}\" title=\"{comparison}\">{}<span>{comparison}</span></span></span>{warning}</div><div class=\"work-row-date\">",e.id,e.id,e.id,work_state_key(e.state),escape(&target),e.id,if e.name.is_some(){escape(&content_language_tag(&r.requested_language))}else{locale_key(r.locale).into()},if e.name.is_some(){"generated-interpretation"}else{"neutral-label"},escape(name(e,r)),if e.summary.is_some(){escape(&content_language_tag(&r.requested_language))}else{locale_key(r.locale).into()},escape(summary(e,r)),reading::work_state_badge(e.state,r.locale),e.article,reading::repository_comparison_icon()));
+    let summary = if show_summary {
+        format!(
+            "<p lang=\"{}\">{}</p>",
+            if e.summary.is_some() {
+                content_language_tag(&r.requested_language)
+            } else {
+                locale_key(r.locale).into()
+            },
+            crate::authored_text::code_only(summary(e, r))
+        )
+    } else {
+        String::new()
+    };
+    html.push_str(&format!("<a class=\"work-row\" id=\"row-{}\" data-work-link=\"{}\" data-work-id=\"{}\" data-work-state=\"{}\" href=\"{}\"><div class=\"work-main\"><div class=\"work-row-kicker\"><code>{}</code></div><h3 lang=\"{}\" data-title-basis=\"{}\">{}</h3>{summary}</div><div class=\"work-row-state\">{}<span class=\"catalogue-reading-status\"><span class=\"catalogue-status-icon\" data-article-state=\"{:?}\" title=\"{article}\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><path d=\"M6 3h8l4 4v14H6zM14 3v5h4M8 12h7m-7 4h5\"/></svg><span>{article}</span></span><span class=\"catalogue-status-icon\" data-comparison-state=\"{comparison_state}\" title=\"{comparison}\">{}<span>{comparison}</span></span></span>{warning}</div><div class=\"work-row-date\">",e.id,e.id,e.id,work_state_key(e.state),escape(&target),e.id,if e.name.is_some(){escape(&content_language_tag(&r.requested_language))}else{locale_key(r.locale).into()},if e.name.is_some(){"generated-interpretation"}else{"neutral-label"},escape(name(e,r)),reading::work_state_badge(e.state,r.locale),e.article,reading::repository_comparison_icon()));
     date(html, r, e.updated_at);
     html.push_str(&format!(
         "<small>{} {}</small></div><span class=\"row-arrow\" aria-hidden=\"true\">›</span></a>",
@@ -176,7 +190,7 @@ pub(super) fn index(
     html.push_str(&format!("<div class=\"result-summary\" role=\"status\" data-result-count=\"{}\"><span>{}: {} · {}–{} {}</span><a href=\"{}\">{}</a></div>",c.matched_count,text(r.locale,"Results","검색 결과"),c.matched_count,start,start.saturating_sub(1)+c.entries.len(),text(r.locale,"shown","표시"),escape(&href(r,WorkCatalogueQuery::default())),text(r.locale,"Reset","조건 초기화")));
     html.push_str(&format!("<div class=\"work-list-header\" aria-hidden=\"true\"><span>{}</span><span>{}</span><span>{}</span></div><div class=\"work-list\">",text(r.locale,"Work · summary","작업 · 요약"),text(r.locale,"State","상태"),text(r.locale,"Latest record","최근 기록")));
     for entry in &c.entries {
-        row(html, r, entry, Some(&c.query));
+        row(html, r, entry, Some(&c.query), true);
     }
     if c.entries.is_empty() {
         html.push_str(&format!(
@@ -242,8 +256,29 @@ pub(super) fn overview(
     html.push_str(&format!("<section id=\"overview\" class=\"snapshot-page overview-page\"><header class=\"page-header\"><p class=\"eyebrow\">PROJECT OVERVIEW</p><div class=\"project-title\"><span class=\"project-emblem\" aria-hidden=\"true\">{}</span><div><h1>{}</h1><p class=\"project-meta\">{}</p></div></div>",escape(&p.overview.project_name.chars().next().unwrap_or('V').to_string()),escape(&p.overview.project_name),text(r.locale,"Local Project · retained records","로컬 프로젝트 · 보존된 기록")));
     reading::project_purpose(html, r, u);
     html.push_str("</header><div class=\"overview-grid\"><section class=\"continue-card\">");
-    if let Some(work) = c.current.as_ref().or(c.entries.first()) {
-        html.push_str(&format!("<p class=\"card-topline\">{}</p><h2>{}</h2><p lang=\"{}\">{}</p><div class=\"card-bottom\"><small>{} · ",if c.current.is_some(){text(r.locale,"Recent work in progress","최근 진행 중인 작업")}else{text(r.locale,"Most recently recorded Work","최근 기록된 작업")},escape(name(work,r)),escape(&content_language_tag(&r.requested_language)),escape(summary(work,r)),understanding_work_state_label(work.state,r.locale)));
+    let featured = c.current.as_ref().or(c.entries.first());
+    if let Some(work) = featured {
+        html.push_str(&format!(
+            "<p class=\"card-topline\">{}</p><h2>{}</h2><p lang=\"{}\">{}</p>",
+            if c.current.is_some() {
+                text(r.locale, "Recent work in progress", "최근 진행 중인 작업")
+            } else {
+                text(r.locale, "Most recently recorded Work", "최근 기록된 작업")
+            },
+            escape(name(work, r)),
+            escape(&content_language_tag(&r.requested_language)),
+            crate::authored_text::code_only(summary(work, r))
+        ));
+        if work.has_pass_alongside_unresolved_failure {
+            html.push_str(&format!(
+                "<p class=\"overview-verification-note\">{}</p>",
+                reading::pass_with_unresolved_failure(r.locale)
+            ));
+        }
+        html.push_str(&format!(
+            "<div class=\"card-bottom\"><small>{} · ",
+            understanding_work_state_label(work.state, r.locale)
+        ));
         date(html, r, work.updated_at);
         html.push_str(&format!(
             "</small><a class=\"button primary\" data-work-link=\"{}\" href=\"{}\">{} →</a></div>",
@@ -298,7 +333,13 @@ pub(super) fn overview(
     }
     html.push_str(&format!("</div><div class=\"list-section-heading\"><div><h2>{}</h2></div><a href=\"{}\">{} →</a></div><div class=\"work-list recent\">",text(r.locale,"Recent Work","최근 작업"),escape(&href(r,WorkCatalogueQuery::default())),text(r.locale,"All Work","전체 작업 보기")));
     for entry in c.entries.iter().take(5) {
-        row(html, r, entry, None);
+        row(
+            html,
+            r,
+            entry,
+            None,
+            featured.is_none_or(|work| work.id != entry.id),
+        );
     }
     html.push_str("</div></section>");
 }

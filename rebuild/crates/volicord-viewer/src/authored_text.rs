@@ -19,10 +19,10 @@ pub(crate) fn evidence_label(claim: &str, locator: &str, start: usize, end: usiz
     }
 }
 
-/// A complete fenced example or pipe table may occupy one grounded reader unit.
-/// Malformed/mixed notation falls back to the complete ordinary escaped text.
+/// Complete examples and tables may be separated from adjoining prose by blank
+/// lines. Rendering never splits the underlying unit or changes claim offsets.
 pub(crate) fn block(text: &str, korean: bool) -> Option<String> {
-    block_selection(text, None, korean, &[])
+    formatted(text, None, korean, &[])
 }
 
 pub(crate) fn with_actions(
@@ -33,22 +33,98 @@ pub(crate) fn with_actions(
     if actions.is_empty() {
         block(text, korean)
     } else {
-        block_selection(text, None, korean, actions)
+        formatted(text, None, korean, actions)
     }
 }
 
 /// The full admitted unit supplies context while its exact cited claim selects
 /// table rows. Never reconstruct a table from a partial Markdown substring.
 pub(crate) fn selected(text: &str, start: usize, end: usize, korean: bool) -> String {
-    block_selection(text, Some((start, end)), korean, &[])
+    formatted(text, Some((start, end)), korean, &[])
         .unwrap_or_else(|| inline(text.get(start..end).unwrap_or("")))
+}
+
+fn formatted(
+    text: &str,
+    selection: Option<(usize, usize)>,
+    korean: bool,
+    actions: &[(usize, usize, String)],
+) -> Option<String> {
+    let mut remaining = text;
+    let mut output = String::new();
+    let mut has_block = false;
+    while !remaining.is_empty() {
+        let offset = text.len() - remaining.len();
+        let mut lines = remaining.split_inclusive('\n');
+        let first = lines.next()?;
+        let mut end = first.len();
+        if first.trim_end_matches(['\r', '\n']).starts_with("```") {
+            // Preserve blank lines inside a fence, and keep an incomplete
+            // fence as literal text through the end of this unit.
+            for line in lines {
+                end += line.len();
+                if line.trim() == "```" {
+                    break;
+                }
+            }
+        } else if !first.trim().is_empty() {
+            for line in lines.take_while(|line| !line.trim().is_empty()) {
+                end += line.len();
+            }
+        }
+        let part = &remaining[..end];
+        remaining = &remaining[end..];
+        let local_selection = match selection {
+            Some((start, stop)) if start < offset + end && stop > offset => {
+                Some((start.saturating_sub(offset), (stop - offset).min(end)))
+            }
+            Some(_) => continue,
+            None => None,
+        };
+        let local_actions = actions
+            .iter()
+            .filter(|(start, stop, _)| *start < offset + end && *stop > offset)
+            .map(|(start, stop, action)| {
+                (
+                    start.saturating_sub(offset),
+                    (*stop - offset).min(end),
+                    action.as_str(),
+                )
+            })
+            .collect::<Vec<_>>();
+        // Require the same explicit block boundary after a closing fence as
+        // before it. An adjacent nonblank line keeps the notation literal.
+        let boundary = remaining
+            .lines()
+            .next()
+            .is_none_or(|line| line.trim().is_empty());
+        if let Some(rendered) = boundary
+            .then(|| block_selection(part, local_selection, korean, &local_actions))
+            .flatten()
+        {
+            has_block = true;
+            output.push_str(&rendered);
+        } else {
+            let visible =
+                local_selection.map_or(part, |(start, stop)| part.get(start..stop).unwrap_or(""));
+            if !visible.trim().is_empty() {
+                let content = if part.contains("```") {
+                    escape(visible.trim())
+                } else {
+                    inline(visible.trim())
+                };
+                output.push_str(&format!("<p>{content}</p>"));
+            }
+        }
+    }
+    has_block.then_some(output)
 }
 
 fn block_selection(
     text: &str,
     selection: Option<(usize, usize)>,
     korean: bool,
-    actions: &[(usize, usize, String)],
+    actions: &[(usize, usize, &str)],
 ) -> Option<String> {
     let lines: Vec<_> = text.trim().lines().collect();
     if let Some(language) = lines.first()?.strip_prefix("```") {
@@ -142,11 +218,48 @@ fn block_selection(
 /// including HTTP/HTML/JavaScript and malformed references, stays literal text.
 /// Resolution is a final presentation pass, never a canonical relation/write.
 pub(crate) fn inline(text: &str) -> String {
+    render_inline(text, true)
+}
+
+/// Catalogue summaries render identifiers without creating nested links.
+pub(crate) fn code_only(text: &str) -> String {
+    render_inline(text, false)
+}
+
+fn render_inline(text: &str, work_links: bool) -> String {
+    if text
+        .lines()
+        .any(|line| line.trim_start().starts_with("```"))
+    {
+        return escape(text);
+    }
     let mut out = String::new();
     let mut rest = text;
-    while let Some(start) = rest.find('[') {
+    while let Some(start) = rest.find(|c| c == '`' || (work_links && c == '[')) {
         out.push_str(&escape(&rest[..start]));
         rest = &rest[start..];
+        if rest.starts_with('`') {
+            let width = rest.bytes().take_while(|byte| *byte == b'`').count();
+            let delimiter = &rest[..width];
+            let line = rest[width..].split(['\n', '\r']).next().unwrap_or("");
+            let closing = line.match_indices(delimiter).find_map(|(end, _)| {
+                (end > 0
+                    && line.as_bytes().get(end - 1) != Some(&b'`')
+                    && line.as_bytes().get(end + width) != Some(&b'`')
+                    && !line[..end].trim().is_empty())
+                .then_some(end)
+            });
+            if let Some(end) = closing {
+                out.push_str("<code>");
+                out.push_str(&escape(&line[..end]));
+                out.push_str("</code>");
+                rest = &rest[width + end + width..];
+            } else {
+                out.push_str(delimiter);
+                rest = &rest[width..];
+            }
+            continue;
+        }
         if let Some((label, tail)) = rest[1..].split_once("](work:") {
             if !label.is_empty() && !label.contains(['[', ']', '\n', '\r']) {
                 if let Some(id) = tail.get(..32).filter(|id| {

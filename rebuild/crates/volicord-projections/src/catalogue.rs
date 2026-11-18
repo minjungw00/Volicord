@@ -61,6 +61,9 @@ pub struct WorkCatalogueEntry {
     pub checkpoint_count: usize,
     /// Failed reports without historical applicability or an explicit comparable passing retest.
     pub unresolved_failed_reports: usize,
+    /// A pass was also reported in the same Checkpoint or a later one. This
+    /// does not establish execution order within the Checkpoint or comparability.
+    pub has_pass_alongside_unresolved_failure: bool,
     pub article: CatalogueArticle,
     /// Request-local comparison of the permitted article's actual code basis.
     pub repository_comparison: RepositoryComparisonState,
@@ -110,6 +113,8 @@ pub fn work_catalogue_metadata(canonical: &CanonicalReadBasis) -> Vec<WorkCatalo
                 .and_then(|r| r.first_recorded_at)
                 .map(|t| t.as_unix_micros());
             let latest = g.checkpoints.last();
+            let (unresolved_failed_reports, has_pass_alongside_unresolved_failure) =
+                crate::verification::unresolved_failed_report_status(&g.checkpoints);
             WorkCatalogueEntry {
                 id: g.goal.id,
                 name: None,
@@ -119,9 +124,8 @@ pub fn work_catalogue_metadata(canonical: &CanonicalReadBasis) -> Vec<WorkCatalo
                 created_at: creation,
                 updated_at: latest.map(|c| c.recorded_at.as_unix_micros()).or(creation),
                 checkpoint_count: g.checkpoints.len(),
-                unresolved_failed_reports: crate::verification::unresolved_failed_report_count(
-                    &g.checkpoints,
-                ),
+                unresolved_failed_reports,
+                has_pass_alongside_unresolved_failure,
                 article: CatalogueArticle::Missing,
                 repository_comparison: RepositoryComparisonState::NotChecked,
             }

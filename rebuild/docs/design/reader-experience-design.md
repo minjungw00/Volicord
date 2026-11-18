@@ -1636,14 +1636,18 @@ use case before internal details. Independent Work summaries help choose a docum
 problem, supported current result and remaining action/material state. Do not clip
 existing prose, infer a summary from a prefix or turn the card into a verification
 ledger. Detailed methods and limits remain in their explicit roles, with material
-caveats kept near claims. A measured comparison includes relevant modes and actual
+caveats kept near claims. Aim for two short card sentences, retaining any
+qualification that changes the result. Keep hashes, check counts and methods in
+Work detail. Overview shows the featured Work's synopsis once, with its entry
+in Recent Work still available for comparison. A measured comparison includes relevant modes and actual
 conditions, separating observations from proposed causes. Examples never imply an
 execution; authors distinguish illustrative values from observed output.
 
-An entire generated narrative unit may explicitly author a fenced code example or
-a pipe comparison table (header, separator, consistent columns). Viewer presents
-these as escaped non-executable code or an accessible horizontally scrollable
-table. Mixed/malformed notation remains complete escaped text. Canonical quotations,
+Generated narrative units may mix prose and explicitly fenced code examples or
+pipe comparison tables (header, separator, consistent columns) on blank-line
+boundaries. Viewer presents the blocks as escaped non-executable code or accessible
+horizontally scrollable tables. Matched backticks mark literal inline code.
+Malformed blocks remain complete escaped text. Canonical quotations,
 Source bytes, headings and synopsis are never parsed this way. Unit identity, exact
 original text/claim coordinates, evidence actions and lifecycle do not change.
 No arbitrary markup link, raw HTML, execution, external content or new Source authority is
@@ -1700,11 +1704,22 @@ Repository articles identify their actually retained local
 Git basis when available. A match does not establish public-release availability:
 authors must ground and distinguish relevant local changes, baseline behavior and
 unestablished comparisons without inferring Work links from paths or chronology.
+At narrow widths, related Decision disclosures put the title and state above
+the synopsis, using the available width of the card for both.
+
+When the same Checkpoint or a later Checkpoint also reports passes, the
+failure notice and featured Work distinguish those reports from a comparable
+passing retest. Sharing a Checkpoint supplies no ordering between executions.
+The checks section surfaces recorded non-comparability reasons beside authored
+verification, with the individual checks and sample basis in the originals.
+Authored verification and limit headings take the place of generic labels when
+they introduce those sections.
 
 Quiet evidence actions remain icon-free. Initial-page embedding omissions do not
 add notices below prose or diagram evidence actions. Exact inclusion and omitted
-ranges remain inspectable inside the evidence view; actual unavailable Source
-bodies retain their separate availability notice and recovery boundary.
+ranges remain inspectable inside the evidence view. A single document notice
+summarizes actual unavailable Source bodies, and individual ranges retain their
+exact availability and recovery boundary inside the evidence view.
 Previous/next diagram-description controls select the related explanation while
 preserving the document and figure scroll positions. Keyboard focus continues at
 the corresponding control in the selected explanation without scrolling; native

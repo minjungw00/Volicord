@@ -88,9 +88,9 @@ fn unrelated_pass_keeps_failure_visible_and_exact_details_disclosed(
                         "재검증 비교 미확인"
                     }));
                     assert!(notice.contains(if language == "en" {
-                        "Later passing reports are recorded."
+                        "This Work also has passing reports."
                     } else {
-                        "이후 통과 보고가 기록되어 있습니다."
+                        "이 작업에는 통과 보고도 있습니다."
                     }));
                     assert!(
                         notice.contains("failure-check-links"),

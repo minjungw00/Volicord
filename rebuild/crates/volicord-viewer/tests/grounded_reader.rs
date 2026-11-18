@@ -404,13 +404,20 @@ fn overview_uses_purpose_and_recent_cards_without_empty_legacy_sections(
                     .next()
                     .ok_or("Work entry end")?;
                 assert!(!card.contains(f["goal"].as_str().ok_or("original Goal")?));
-                assert!(card.contains(if mode == "snapshot" {
-                    "content-unavailable"
-                } else if key == "en" {
-                    "Work summary is unavailable"
+                if mode == "snapshot" {
+                    assert!(card.contains("content-unavailable"));
                 } else {
-                    "작업 요약을 사용할 수 없습니다"
-                }));
+                    let missing = if key == "en" {
+                        "Work summary is unavailable"
+                    } else {
+                        "작업 요약을 사용할 수 없습니다"
+                    };
+                    assert_eq!(overview.matches(missing).count(), 1);
+                    assert!(
+                        !card.contains(missing),
+                        "featured summary state already appears above Recent Work"
+                    );
+                }
                 assert!(overview.contains("data-work-state=\"open\""));
                 assert!(!overview.contains("data-work-state=\"completed\""));
                 assert!(page.contains(if mode == "live" {
@@ -2474,11 +2481,8 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
         assert_eq!(document.matches("class=\"document-nav\"").count(), 1);
         assert!(nav.contains("How the constant reaches the caller"));
         assert!(nav.contains("What this inspection establishes"));
-        assert!(!nav.contains("Execution was not observed"),"compact contents keeps peer section headings; subordinate topics stay in the reading layer");
-        assert!(
-            !nav.contains("No downstream coverage"),
-            "subordinate limit heading remains in its section rather than widening the compact contents"
-        );
+        assert!(nav.contains("Execution was not observed"));
+        assert!(nav.contains("No downstream coverage"));
         let article = page
             .find("How the constant reaches the caller</h3>")
             .ok_or("authored topic")?;
@@ -2492,8 +2496,8 @@ fn authored_topics_drive_navigation_and_keep_verification_and_limits_in_separate
             .find("class=\"reading-section evidence-index\"")
             .ok_or("index")?;
         assert!(article < verification && verification < limits && limits < index);
-        assert!(page.contains("Execution was not observed</h4>"));
-        assert!(page.contains("No downstream coverage</h4>"));
+        assert!(page.contains("Execution was not observed</h3>"));
+        assert!(page.contains("No downstream coverage</h3>"));
         assert!(
             page[verification..limits].contains("No command was executed for this investigation.")
         );

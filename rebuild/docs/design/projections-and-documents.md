@@ -4269,18 +4269,24 @@ Preparation asks the authorized host to establish prior problem, actual change
 versus existing mechanism, user-visible result and concrete recorded next action.
 For repository understanding, establish a representative user journey before
 responsibility/code-entry details and distinguish investigated local changes from
-public/baseline behavior. Independent card summaries prioritize selection rather
-than a completion ledger. Review each language and diagram element's actual
+public/baseline behavior. Independent card summaries prioritize the problem,
+supported result and material next action in a brief synopsis. Preserve exact
+grounding while leaving hashes, test counts and methods in Work detail. Use the
+scoped verification read to check the actual retest verdict and comparison reason
+before writing about a pass or matching artifact samples. Review the actor,
+operation and affected object against each cited implementation, and choose
+idiomatic terms with concrete meaning in each language. Review each diagram element's actual
 conditional/ownership claim; avoid broad repeated claim spans. Command/output
 examples, field/alternative tables and all relevant measured modes belong to
 grounded units, with illustrative and observed values distinguished. This is an
 authoring obligation, not a keyword/length oracle or an admission quality claim.
 
-Viewer may present complete explicitly fenced examples and consistent pipe tables
-inside generated prose units. Raw strings and all sealed offsets/citations remain
+Viewer may present fenced examples and consistent pipe tables on blank-line
+boundaries inside generated prose, and matched backticks as inline code. Raw
+strings and all sealed offsets/citations remain
 unchanged; other readers retain the same authored text. Neither a code example nor
-a table cell becomes a Source quotation or observed run. Whole-unit presentation
-fails back to full escaped text for malformed/mixed syntax and never interprets
+a table cell becomes a Source quotation or observed run. Malformed block syntax
+stays escaped literal text. This presentation never interprets
 HTML or arbitrary links. Overview's repository introduction reuses only the permitted
 same-language repository synopsis; it does not manufacture Project Purpose or
 create a separate lifetime. Work situation sentences use actual typed history and
