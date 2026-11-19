@@ -818,7 +818,7 @@ fn related_decisions_share_work_outline_and_keep_canonical_meaning(
                         .split("class=\"record-box decision-originals\"")
                         .next()
                         .ok_or("primary Decision reading")?;
-                    let question = primary.find("class=\"decision-opening-question\"");
+                    let question = primary.find("<blockquote class=\"decision-opening-question\"");
                     if let Some(context) = &d.decision.question_context {
                         let opening = &primary[question.ok_or("visible opening question")?..];
                         assert!(opening.starts_with(&format!(
