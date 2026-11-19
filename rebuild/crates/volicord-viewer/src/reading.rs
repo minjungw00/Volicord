@@ -3400,17 +3400,15 @@ fn decision_detail(
     // opens this exact Decision. Its summary retains the compact title/state.
     html.push_str(&format!("<details class=\"record-box related-decision\"><summary id=\"{heading_id}\"><h3 data-toc-entry data-toc-target=\"{body_id}\"><span class=\"decision-title\" lang=\"{}\"{}>{}</span><span class=\"record-strip\">{}</span></h3>",
         escape(&content_language_tag(&r.requested_language)),publication_scope(&reader),escape(&title),brief_decision_state_label(d.decision.state,r.locale)));
-    if let Some(unit) = reader.prose.iter().find(|unit| unit.question == "Synopsis") {
-        html.push_str(&format!(
-            "<p class=\"decision-choice-summary\" lang=\"{}\"{}>{}</p>",
-            escape(&content_language_tag(&r.requested_language)),
-            publication_scope(&reader),
-            escape(&unit.text)
-        ));
-    }
     html.push_str(&format!(
         "</summary><div class=\"related-decision-body\" id=\"{body_id}\" tabindex=\"-1\">"
     ));
+    if let Some(question) = &d.decision.question_context {
+        html.push_str(&format!(
+            "<blockquote class=\"decision-opening-question\" lang=\"\">{}</blockquote>",
+            escape(&question.prompt)
+        ));
+    }
     if let Some((index, _)) = heading {
         reader_inline_citations(html, r, &reader, index);
     }

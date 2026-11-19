@@ -4508,6 +4508,53 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
         .as_str()
         .expect("repository Source identity");
 
+    let route = &result["repository_reading"]["inspect"];
+    let mut args = route["arguments"].clone();
+    args["requested_language"] = json!("ko");
+    let before_read = adapter
+        .operations()
+        .privacy_status(project_id)
+        .expect("privacy");
+    let repository_read = call(
+        &mut adapter,
+        route["tool"].as_str().expect("read tool"),
+        args,
+    );
+    assert_eq!(
+        repository_read["result"]["isError"], false,
+        "{repository_read}"
+    );
+    let scoped = structured(&repository_read);
+    assert_eq!(scoped["read_only"], true);
+    assert_eq!(scoped["analysis_snapshot_id"], analysis_id);
+    assert_eq!(
+        scoped["repository_explanation"]["explanation_state"],
+        "missing"
+    );
+    assert_eq!(
+        scoped["authoring_handoff"]["cli_arguments"],
+        json!([
+            "--project",
+            project,
+            "repository",
+            "explain",
+            "produce",
+            "--analysis",
+            analysis_id,
+            "--language",
+            "ko",
+            "--reason",
+            "boundary"
+        ])
+    );
+    assert_eq!(
+        before_read,
+        adapter
+            .operations()
+            .privacy_status(project_id)
+            .expect("privacy after read")
+    );
+
     let analysis_path = adapter
         .operations()
         .layout()
@@ -4557,6 +4604,17 @@ fn repository_analysis_exposes_its_canonical_source_identity_without_display_par
         repository_source_id,
         "the structured Source identity is stable for the returned analysis"
     );
+    fs::write(repository.join("README.md"), "# Changed after analysis\n").expect("changed fixture");
+    let stale = call(
+        &mut adapter,
+        "repository_understanding",
+        json!({
+            "project_id":project,"reading_focus":"repository_explanation","requested_language":"ko"
+        }),
+    );
+    assert_eq!(stale["result"]["isError"], false, "{stale}");
+    assert_eq!(structured(&stale)["analysis_state"], "stale");
+    assert!(structured(&stale).get("authoring_handoff").is_none());
 }
 
 #[test]

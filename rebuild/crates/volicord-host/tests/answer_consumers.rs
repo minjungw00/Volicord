@@ -66,6 +66,7 @@ fn focused_repository_mcp_preserves_exact_article_scope_and_source_deletion(
     assert_eq!(data["project_id"], f.project.to_string());
     assert_eq!(data["read_only"], true);
     assert!(data.get("selected_work").is_none());
+    assert!(data.get("authoring_handoff").is_none());
     let answers = &data["repository_explanation"];
     assert_eq!(answers["explanation_state"], "current");
     assert_eq!(answers["provenance"]["subject"]["kind"], "repository");

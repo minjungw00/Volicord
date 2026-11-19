@@ -1688,8 +1688,8 @@ acceptance-record absence. It does not parse report prose into implementation
 completion, diagnoses or retest resolution. Its next-action link targets only an
 actually admitted authored NextStep. Decision applicability and code comparison
 remain separate states with a nearby explanation. A collapsed related Decision
-may repeat its admitted synopsis to retain the choice and material impact before
-opening; no prefix extraction, truncation or invented choice summary is used.
+shows its title and state. The admitted synopsis keeps its original claim anchor
+in the opened reading.
 
 Overview may show the current same-language repository article's admitted synopsis
 as a repository introduction, separately from canonical Project Purpose. Missing,
@@ -1742,3 +1742,9 @@ supported; justified non-applicability imposes no table/example quota. Missing o
 incomplete review cannot establish content completion. Readable deliberate
 publications remain readable without invented review. The host's positive review
 is neither independent meaning acceptance nor personal Human comprehension.
+
+An expanded related Decision opens with the exact originating question when
+available, as a quotation ahead of generated interpretation. Its synopsis
+appears in the same body after the question.
+The originals disclosure preserves the full recorded choice and supporting
+facts, including the original question for deliberate inspection.

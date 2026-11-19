@@ -4069,6 +4069,12 @@ Repository reading is inspected through `repository_understanding` with
 uses the pinned local CLI `repository explain prepare/compose/record` route and
 its exact analysis/Source investigation. Related Decision prose uses
 `decision_explanation produce` with actual Work-related canonical identities.
+The analysis receipt also routes to that repository-only read, including when
+no Work exists. The scoped read returns the selected analysis identity and
+state. When the repository comparison is current and the requested explanation
+is missing or stale, it supplies exact CLI production arguments for that
+Project, analysis and language. The explicit CLI operation revalidates the
+snapshot and requires existing local authoring authority.
 These routes neither execute automatically nor grant Source/model authority,
 create a Work/Question/Decision, impose an authoring quota or block ordinary work.
 Missing evidence/authority and failed production remain explicit; current bases
@@ -4331,6 +4337,13 @@ requires an explicit active-host reader review before recording. The review bind
 Project, subject, language, production identity, current plan and the hash of the
 complete realization, including wording, claim ranges, citations and diagram roles.
 Editing that realization or changing its language, scope or basis needs a new review.
+
+For a material user action or recovery, the host review identifies the grounded
+input or invocation and the expected observable result. A test-only Work can
+explain its added proof with a representative case. Explain recorded Decision
+questions before alternatives and outcomes. For a figure, assess whether
+handoffs, branches or lifetime would be hard to follow in prose and use the
+actual Source basis to author the relationship or record missing evidence.
 
 Projection owns the common obligation inventory. Work review covers the actual
 problem/change/result, useful examples, state/next action, related decisions,

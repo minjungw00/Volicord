@@ -818,6 +818,26 @@ fn related_decisions_share_work_outline_and_keep_canonical_meaning(
                         .split("class=\"record-box decision-originals\"")
                         .next()
                         .ok_or("primary Decision reading")?;
+                    let question = primary.find("class=\"decision-opening-question\"");
+                    if let Some(context) = &d.decision.question_context {
+                        let opening = &primary[question.ok_or("visible opening question")?..];
+                        assert!(opening.starts_with(&format!(
+                            "<blockquote class=\"decision-opening-question\" lang=\"\">{}</blockquote>",
+                            escape(&context.prompt)
+                        )));
+                        assert!(question < primary.find("class=\"decision-state-note\""));
+                    } else {
+                        assert!(question.is_none());
+                    }
+                    if d.decision.decision_id == decision {
+                        let synopsis = "Recorded choice and its independent interpretation";
+                        assert_eq!(primary.matches(synopsis).count(), 1);
+                        assert!(
+                            question
+                                .ok_or("exact originating question for the explicit Decision")?
+                                < primary.find(synopsis).ok_or("admitted synopsis")?
+                        );
+                    }
                     assert_eq!(primary.contains("class=\"scope-summary\""), !matches!(d.decision.work_scope, DecisionWorkScope::WorkItem(_)), "only broader or unresolved applicability is repeated in the primary reading");
                     assert!(
                         body.contains(&escape(&decision_choice_attribution(&d.decision, locale)))

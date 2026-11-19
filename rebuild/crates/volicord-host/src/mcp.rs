@@ -83,16 +83,20 @@ pub const HOST_TOOL_NAMES: [&str; 28] = [
     "guarded_interaction",
 ];
 
+fn repository_production_followup(project: ProjectId) -> Value {
+    json!({
+        "inspect":{"tool":"repository_understanding","arguments":{"project_id":project.to_string(),"reading_focus":"repository_explanation"}},
+        "analysis_inspect":{"tool":"repository_understanding","arguments":{"project_id":project.to_string()}},
+        "authoring":{"interface":"local_cli","project_id":project.to_string(),"analysis_basis":"Use the analysis identity returned by the scoped read. The local CLI revalidates it against the repository before production.","commands":["repository explain produce","repository explain compose","repository explain production-assess","repository explain production-review","repository explain record"]},
+        "instruction":"Check repository reading independently of Work for each requested language. Set requested_language on inspect. If prose is needed and already authorized, follow the exact CLI arguments in that read, investigate representative repository journeys and permitted Sources, then explicitly compose, assess diagrams, review and record. Read back the publication. If blocked, report the missing scope and reason. Work production does not publish repository prose. This handoff grants no authority and starts no authoring or retention."})
+}
+
 fn work_production_followup(project: ProjectId, work: ContextItemId, reason: &str) -> Value {
     let mut followup = json!({"tool":"work_explanation","action":"produce","project_id":project.to_string(),"work_item_id":work.to_string(),"reason":reason,
         "scopes":if reason == "boundary" {vec!["summary","article"]} else {vec!["name","summary"]},
         "instruction":"The authorized active host authors useful independent names at initiation and summaries after meaningful progress, in the actually requested language. At switch/pause/completion assess needed Work, repository and related Decision explanations and diagrams. Invoke Work produce explicitly for each needed Work scope; use the separate repository CLI and Decision routes at that boundary. For articles, use assess for diagram applicability and review for exact-realization reader obligations before record. Inspect content_complete and reader_review_required, not currentness alone; preserve incomplete outcomes and failures. Unchanged current bases skip; refinement explicitly requests another edition. This follow-up starts no generation or retention and is not a per-turn or per-Checkpoint quota, work blocker, Learning activation or provider grant."});
     if reason == "boundary" {
-        followup["repository_reading"] = json!({
-            "inspect":{"tool":"repository_understanding","arguments":{"project_id":project.to_string(),"reading_focus":"repository_explanation"}},
-            "analysis_inspect":{"tool":"repository_understanding","arguments":{"project_id":project.to_string()}},
-            "authoring":{"interface":"local_cli","project_id":project.to_string(),"analysis_basis":"Use this handoff's current_analysis_snapshot_id when supplied; otherwise inspect the current repository analysis through analysis_inspect before producing. Preparation revalidates the exact analysis; a retained check receipt alone does not assert current whole-repository coverage.","commands":["repository explain produce","repository explain compose","repository explain production-assess","repository explain production-review","repository explain record"]},
-            "instruction":"Inspect repository prose independently of this Work. If needed and authorized, use the pinned CLI route with this Project, the exact analysis and requested language. Follow preparation instructions, investigate repository-wide responsibilities and flows through permitted Sources, then explicitly produce/compose, assess diagrams, review the exact realization against every reader obligation and record it with production-id. Reread current prose before preserving it; readability/currentness alone does not certify reader completion. Work produce does not create repository prose. Missing authority or evidence remains incomplete; do not invent a Goal, Question, consent or content. Reads never author, capture or renew."});
+        followup["repository_reading"] = repository_production_followup(project);
         followup["related_decision_reading"] = json!({
             "tool":"decision_explanation","action":"produce","project_id":project.to_string(),
             "selection":"Only actual canonical Decisions related to this Work; use each exact decision_id and requested language",
@@ -704,10 +708,26 @@ impl HostAdapter {
                     FixedLocale::English
                 },
             );
-            return Ok(
-                json!({"project_id":project.to_string(),"reading_focus":"repository_explanation",
-                "repository_explanation":answers,"read_only":true}),
-            );
+            let analysis = &projection.repository_analysis;
+            let mut output = json!({"project_id":project.to_string(),
+                "reading_focus":"repository_explanation","repository_explanation":answers,
+                "analysis_snapshot_id":analysis.analysis_snapshot,"analysis_state":analysis.state,
+                "read_only":true});
+            if let Some(snapshot) = analysis.current_snapshot().filter(|_| {
+                use volicord_projections::ExplanationState;
+                matches!(
+                    answers.explanation_state,
+                    ExplanationState::Missing | ExplanationState::Stale
+                )
+            }) {
+                output["authoring_handoff"] = json!({
+                    "condition":"Use only with existing explicit local authoring authority and permitted Sources.",
+                    "cli_arguments":["--project",project.to_string(),"repository","explain","produce",
+                        "--analysis",snapshot.to_string(),"--language",language,"--reason","boundary"],
+                    "runtime":"Use the installed CLI and the Runtime selected by this MCP connection. Production revalidates the analysis and does not run a model."
+                });
+            }
+            return Ok(output);
         }
         let projection = self
             .operations
@@ -827,10 +847,11 @@ impl HostAdapter {
                 .workflow_after_recall(project_id)
                 .map_err(operation_error)?,
         };
-        Ok(with_workflow(
-            json!({"project_id":project_id.to_string(),"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"repository_observation_basis":repository_observation_basis,"completed_scopes":result.partial.completed_scopes,"partial_scopes":result.partial.partial_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"capability_reports":analysis_summary["capability_reports"],"diagnostics":analysis_summary["diagnostics"],"diagnostics_omitted_count":analysis_summary["diagnostics_omitted_count"],"diagnostic":result.diagnostic}),
-            workflow,
-        ))
+        let mut response = json!({"project_id":project_id.to_string(),"operation_id":result.operation_id.to_string(),"state":format!("{:?}",result.state).to_lowercase(),"duration_micros":result.duration_micros,"analysis_snapshot_id":analysis_snapshot_id,"repository_snapshot_id":repository_snapshot_id,"repository_source_id":repository_source_id,"repository_observation_basis":repository_observation_basis,"completed_scopes":result.partial.completed_scopes,"partial_scopes":result.partial.partial_scopes,"failed_scopes":result.partial.failed_scopes,"omitted_scopes":result.partial.omitted_scopes,"capability_reports":analysis_summary["capability_reports"],"diagnostics":analysis_summary["diagnostics"],"diagnostics_omitted_count":analysis_summary["diagnostics_omitted_count"],"diagnostic":result.diagnostic});
+        if analysis_snapshot_id.is_some() {
+            response["repository_reading"] = repository_production_followup(project_id);
+        }
+        Ok(with_workflow(response, workflow))
     }
 
     fn engineering_choice_discovery(&self, args: &Value) -> Result<Value, HostError> {
@@ -1887,7 +1908,7 @@ impl HostAdapter {
                     result["generation_status"] = json!("awaiting_host_interpretation");
                     result["generation_id"] = json!(request_id.clone());
                     result["host_session_correlation"] = json!(self.host_session);
-                    result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Read plan.instructions and question_grounding: every paragraph needs genuinely supporting prepared canonical evidence_keys and the question's required key relationship, independently of Source citations. Follow source_inventory.discovery through canonical_inspect, joining compact JSON chunks with exact selector, next_offset and expected_fingerprint; restart if the list changes. Discover only relevant Source copies; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Author a distinct heading and synopsis connecting the problem, actual approach and supported outcome; then write reader narrative. Use compose with this generation_id and a host-authored draft to derive mechanical citation bindings. Record the composed realization. A fresh record-only document can omit unavailable technical detail; technical claims keep their Source dependencies. A no-change investigation is not a patch. Host transmission authorization is separate from this canonical plan; missing plan data establishes neither consent nor its absence. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
+                    result["next_action"] = json!("The current authorized interactive host must now investigate relevant evidence. Read plan.instructions and question_grounding: every paragraph needs genuinely supporting prepared canonical evidence_keys and the question's required key relationship, independently of Source citations. Follow source_inventory.discovery through canonical_inspect, joining compact JSON chunks with exact selector, next_offset and expected_fingerprint; restart if the list changes. Discover only relevant Source copies; observe additional relevant included files with work_source using explicit permitted retention when needed. Read every selected Source through work_explanation read_source with this generation_id. Author a distinct heading and synopsis connecting the problem, actual approach and supported outcome; then write reader narrative. Use compose with this generation_id and a host-authored draft to derive mechanical citation bindings. A fresh record-only document can omit unavailable technical detail; technical claims keep their Source dependencies. A no-change investigation is not a patch. Host transmission authorization is separate from this canonical plan; missing plan data establishes neither consent nor its absence. Submit the host-created realization through work_explanation record with this generation_id. The user need not author JSON. If host generation/access is unavailable, report that incomplete condition and use recorded facts as a read-only fallback. Preparation alone is not generated prose. No automatic retries or background provider calls.");
                     if matches!(
                         subject,
                         ExplanationSubject::WorkName(_) | ExplanationSubject::WorkSummary(_)
@@ -1914,7 +1935,7 @@ impl HostAdapter {
                         result["reader_review_obligations"] =
                             json!(volicord_projections::reader_review_obligations(subject));
                         result["reader_review_required"] = json!(true);
-                        result["next_action"] = json!(format!("{instruction} Before record, use assess for diagram applicability: authored, justified not_needed or insufficient_evidence. Then use review with this generation_id, exact composed realization and every returned reader obligation: outcome, concrete rationale and exact unit_indices. Review the actual language, claims, examples, scope, next action and known related Work navigation; missing evidence stays insufficient. Currentness, byte bindings and a positive host review are not independent semantic or Human approval. Inspect content_complete/reader_review_required after record. No automatic reauthoring or Source renewal."));
+                        result["next_action"] = json!(format!("{instruction} Before record, use assess for diagram applicability: authored, justified not_needed or insufficient_evidence. Then use review with this generation_id, exact composed realization and every returned reader obligation: outcome, concrete rationale and exact unit_indices. For a use or recovery flow, point to grounded action and result units. For Decision review, locate the question before outcomes. For diagram assessment, explain how the reader can follow the actual handoffs, branches or state in prose, or show a cited figure. Missing evidence stays insufficient. Currentness, byte bindings and a positive host review are not independent semantic or Human approval. Inspect content_complete/reader_review_required after record. No automatic reauthoring or Source renewal."));
                     }
                     explanation_tool_result(result.clone())?;
                     self.explanation_requests.insert(
@@ -3945,7 +3966,7 @@ fn tool_contract(name: &str) -> Option<ToolContract> {
             ToolBehavior::ReadOnlyClosed,
         ),
         "repository_understanding" => (
-            "Read the bounded human-oriented Project Understanding: purpose; current, completed, and remaining Work with stable identities; Decisions and rationale; next steps; current-work code, component, and flow basis; coverage, freshness, gaps, uncertainty, and explicit omissions. For retained repository prose without the full topology, select reading_focus=repository_explanation; this uses the existing bounded complete explanation transport and never generates. Repository-wide normal authoring uses local CLI repository explain produce/compose/production-assess/production-review/record with the exact production-id; deliberate prepare/compose/record remains available without invented reader review: investigate the exact analysis and permitted repository Sources across material responsibilities and distinct flows first, following the prepared instructions. A recent Work or a single subsystem is not a repository-wide explanation. This read grants no Source collection, retention or model authority and never mutates canonical or Candidate state.",
+            "Read the bounded human-oriented Project Understanding: purpose; current, completed, and remaining Work with stable identities; Decisions and rationale; next steps; current-work code, component, and flow basis; coverage, freshness, gaps, uncertainty, and explicit omissions. Select reading_focus=repository_explanation for the bounded repository article and analysis identity. A missing or stale explanation with current analysis includes scoped local production arguments for an already authorized host. This read never generates. Repository-wide normal authoring uses local CLI repository explain produce/compose/production-assess/production-review/record with the exact production-id; deliberate prepare/compose/record remains available without invented reader review: investigate the exact analysis and permitted repository Sources across material responsibilities and distinct flows first, following the prepared instructions. A recent Work or a single subsystem is not a repository-wide explanation. This read grants no Source collection, retention or model authority and never mutates canonical or Candidate state.",
             object_schema(vec![("project_id",identity_schema("Project identity")),("requested_language",text_schema("Exact generated language",1,128)),("fixed_locale",enum_schema("Fixed labels", &["en","ko"])),("reading_focus",enum_schema("Read the full overview or only the exact retained repository document", &["overview","repository_explanation"]))], &["project_id"]),
             ToolBehavior::ReadOnlyClosed,
         ),

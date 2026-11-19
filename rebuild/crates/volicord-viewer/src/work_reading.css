@@ -107,17 +107,11 @@
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{min-height:48px;padding:12px 0}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary h3{font:inherit;color:inherit}
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{
-  display:grid;grid-template-columns:12px minmax(0,1fr) minmax(0,2fr);align-items:baseline
-}
-.related-decision > summary .decision-choice-summary{margin:0;min-width:0;overflow-wrap:anywhere}
-@media(max-width:760px){
-  .doc[data-reading-layout="grouped"] .related-decisions .related-decision > summary{
-    grid-template-columns:12px minmax(0,1fr);row-gap:7px
-  }
-  .related-decision > summary .decision-choice-summary{grid-column:2}
+  display:grid;grid-template-columns:12px minmax(0,1fr);align-items:baseline
 }
 .doc[data-reading-layout="grouped"] .related-decisions .related-decision[open]{padding-bottom:14px}
 .doc[data-reading-layout="grouped"] .related-decision-body > .article-section .unit-text,.doc[data-reading-layout="grouped"] .related-decision-body > .unit > .unit-text{font-size:14px;line-height:1.9;color:var(--body)}
+.related-decision-body > .decision-opening-question{margin:0 0 16px;padding-left:12px;border-left:2px solid var(--line);color:var(--body);font-size:14px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}
 .doc[data-reading-layout="grouped"] .document-nav nav ol a{padding-left:28px}
 .notice-report-options q{display:block;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--body);font-size:12px;line-height:1.8}
 /* The Work's explanation, related choices, checks and originals are peers. */

@@ -58,6 +58,15 @@ pub struct RepositoryAnalysisReading {
 }
 
 impl RepositoryAnalysisReading {
+    /// Publication guidance needs a current repository comparison. A later
+    /// failed attempt or degraded capability can coexist with that comparison.
+    pub fn current_snapshot(&self) -> Option<AnalysisSnapshotId> {
+        self.freshness
+            .as_ref()
+            .filter(|basis| basis.state == FreshnessState::Current)
+            .and(self.analysis_snapshot)
+    }
+
     pub(crate) fn absent(unavailable: bool) -> Self {
         Self {
             state: if unavailable {
